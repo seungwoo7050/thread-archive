@@ -48,64 +48,64 @@
 ## 4. Commit map
 
 1. `f3f1d04cc836` — `feat(geometry): hit와 도형 교차 계약 정의`
-   - Importance: S
-   - Tags: ARCH, GEOMETRY, SCENE
-   - Source-defined role: Establishes the common shape/hit contract that lets scene traversal and shading consume heterogeneous geometry.
+ - Importance: S
+ - Tags: ARCH, GEOMETRY, SCENE
+ - Source-defined role: Establishes the common shape/hit contract that lets scene traversal and shading consume heterogeneous geometry.
 
 2. `2a01cb406d9d` — `feat(scene): 카메라·조명과 장면 aggregate 구성`
-   - Importance: A
-   - Tags: ARCH, SCENE
-   - Source-defined role: Creates the scene aggregate that owns the state needed to trace an image.
+ - Importance: A
+ - Tags: ARCH, SCENE
+ - Source-defined role: Creates the scene aggregate that owns the state needed to trace an image.
 
 3. `41a1d6bbe5ef` — `feat(scene): 선형 최근접 교차 탐색 구현`
-   - Importance: A
-   - Tags: CORE, SCENE
-   - Source-defined role: Defines the linear closest-hit reference semantics later preserved by acceleration.
+ - Importance: A
+ - Tags: CORE, SCENE
+ - Source-defined role: Defines the linear closest-hit reference semantics later preserved by acceleration.
 
 4. `3545eb1e82df` — `feat(parser): 소스 위치 오류와 line tokenization 구성`
-   - Importance: B
-   - Tags: PARSER, PRACTICAL
-   - Source-defined role: Establishes source-located parser diagnostics and line tokenization.
+ - Importance: B
+ - Tags: PARSER, PRACTICAL
+ - Source-defined role: Establishes source-located parser diagnostics and line tokenization.
 
 5. `6bff18bf0bac` — `feat(parser): 줄 단위 지시어 dispatch 기반 구성`
-   - Importance: A
-   - Tags: ARCH, PARSER
-   - Source-defined role: Defines the directive-dispatch grammar boundary.
+ - Importance: A
+ - Tags: ARCH, PARSER
+ - Source-defined role: Defines the directive-dispatch grammar boundary.
 
 6. `1e1fda47d913` — `feat(parser): 필수 지시어 검증과 입력 loader 완성`
-   - Importance: A
-   - Tags: PARSER, INTEGRATION
-   - Source-defined role: Completes required-directive validation and file/text scene loading.
+ - Importance: A
+ - Tags: PARSER, INTEGRATION
+ - Source-defined role: Completes required-directive validation and file/text scene loading.
 
 7. `e6da5f987b97` — `feat(camera): 화면 좌표를 카메라 광선으로 변환`
-   - Importance: A
-   - Tags: CORE, RAY_PIPELINE
-   - Source-defined role: Converts pixel coordinates into camera rays.
+ - Importance: A
+ - Tags: CORE, RAY_PIPELINE
+ - Source-defined role: Converts pixel coordinates into camera rays.
 
 8. `e8b7dc42a52c` — `feat(render): 직접광과 그림자 추적 구현`
-   - Importance: S
-   - Tags: CORE, RAY_PIPELINE, RISK
-   - Source-defined role: Defines ambient/direct lighting and shadow visibility.
+ - Importance: S
+ - Tags: CORE, RAY_PIPELINE, RISK
+ - Source-defined role: Defines ambient/direct lighting and shadow visibility.
 
 9. `c742b2401e52` — `feat(renderer): 직렬 이미지 렌더링 구현`
-   - Importance: S
-   - Tags: ARCH, CORE, RAY_PIPELINE
-   - Source-defined role: Executes the complete serial image-rendering loop.
+ - Importance: S
+ - Tags: ARCH, CORE, RAY_PIPELINE
+ - Source-defined role: Executes the complete serial image-rendering loop.
 
 10. `1bc7cacd30aa` — `feat(output): PPM 직렬화와 이미지 체크섬 구현`
-   - Importance: A
-   - Tags: OUTPUT, DETERMINISM
-   - Source-defined role: Publishes a P3 representation and deterministic checksum.
+ - Importance: A
+ - Tags: OUTPUT, DETERMINISM
+ - Source-defined role: Publishes a P3 representation and deterministic checksum.
 
 11. `b983f0ea2744` — `feat(cli): 장면 렌더링 명령 연결`
-   - Importance: B
-   - Tags: CLI, INTEGRATION
-   - Source-defined role: Connects the pipeline to the CLI.
+ - Importance: B
+ - Tags: CLI, INTEGRATION
+ - Source-defined role: Connects the pipeline to the CLI.
 
 12. `d05a6ab48bb1` — `test(render): 장면 렌더링 smoke 검사 추가`
-   - Importance: B
-   - Tags: TEST, INTEGRATION
-   - Source-defined role: Verifies the first complete valid and invalid command paths.
+ - Importance: B
+ - Tags: TEST, INTEGRATION
+ - Source-defined role: Verifies the first complete valid and invalid command paths.
 
 ## 5. Commit별 학습 기록
 
@@ -127,11 +127,11 @@
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - include/ray/geometry.hpp — `Shape`, `HitRecord`, `HitRecord::setFaceNormal`
-  - src/geometry.cpp — 해당 시점의 공통 geometry 구현
+ - include/ray/geometry.hpp — `Shape`, `HitRecord`, `HitRecord::setFaceNormal`
+ - src/geometry.cpp — 해당 시점의 공통 geometry 구현
 - **caller → callee / data flow:** concrete shape의 `intersect(ray, tMin, tMax, record)` → candidate parameter/point/outward normal 계산 → `setFaceNormal` → material 값과 source shape identity 기록 → scene/shading이 동일 record 소비
 - **ownership·state transition:** `HitRecord`가 point·normal·material을 값으로 보유합니다. `HitRecord::shape`는 `const Shape*` 비소유 포인터이므로 record 수명보다 shape owner의 수명이 길어야 합니다. normal은 outward normal 그대로가 아니라 incoming ray에 대해 방향이 정해진 상태로 저장됩니다.
-- **failure/edge branch:** 이 SHA는 호출자가 주는 유효 구간 밖의 root를 거부할 수 있는 interface만 제공합니다. shape lifetime을 record가 연장하지 않으며, 구체 도형의 완전한 교차 수식과 scene winner 규칙은 아직 이 commit의 보장이 아닙니다.
+- **failure/edge branch:** 이 SHA는 호출자가 주는 유효 구간 밖의 root를 거부할 수 있는 interface만 제공합니다. shape lifetime을 record가 연장하지 않으며, 구체 도형의 완전한 교차 수식과 scene winner 규칙은 아직이 commit의 보장이 아닙니다.
 
 #### 보장 범위와 남은 공백
 
@@ -163,8 +163,8 @@
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - include/ray/scene.hpp — `Scene`, `Camera`, light/shape storage
-  - src/scene.cpp — scene aggregate 동작
+ - include/ray/scene.hpp — `Scene`, `Camera`, light/shape storage
+ - src/scene.cpp — scene aggregate 동작
 - **caller → callee / data flow:** parser 또는 caller가 directive 값을 검증 → `Scene` field 설정/shape·light 추가 → camera/shading/renderer가 같은 aggregate를 읽음
 - **ownership·state transition:** 이 시점에는 Scene과 외부 `shared_ptr` 보유자가 shape ownership을 공유할 수 있습니다. required-directive flags는 장면 구성 완료 여부를 나타내지만 whole-file validation은 아직 parser 후속 commit에 있습니다.
 - **failure/edge branch:** aggregate 자체는 누락·중복 directive를 거부하지 않고, 가속 구조나 invalidation 상태도 갖지 않습니다.
@@ -199,8 +199,8 @@
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - src/scene.cpp — `Scene::intersect`
-  - include/ray/scene.hpp — scene query 선언
+ - src/scene.cpp — `Scene::intersect`
+ - include/ray/scene.hpp — scene query 선언
 - **caller → callee / data flow:** ray + caller interval → shapes 순서대로 primitive dispatch → 현재 closest 이하 candidate → record 교체 → 마지막 winner 반환
 - **ownership·state transition:** `closest`와 output `HitRecord`가 loop의 authoritative state입니다. record의 non-owning shape pointer는 Scene이 보유한 shape를 가리킵니다.
 - **failure/edge branch:** 가속 없이 모든 shape를 검사하므로 correctness 기준은 생기지만 work는 O(N)입니다. equal-`t` winner는 단순히 “먼저 발견한 것”이 아니라 뒤 index임을 보존해야 합니다.
@@ -235,8 +235,8 @@
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - include/ray/parser.hpp — `ParseError`와 parser 선언
-  - src/parser.cpp — trim/tokenization 및 오류 문자열 구성
+ - include/ray/parser.hpp — `ParseError`와 parser 선언
+ - src/parser.cpp — trim/tokenization 및 오류 문자열 구성
 - **caller → callee / data flow:** source text line → trim/token split → validation failure → source/line을 포함한 `ParseError`
 - **ownership·state transition:** line number가 0보다 큰 오류는 실제 줄에 귀속되고, whole-file/file-open 오류는 후속 loader에서 line 0으로 구분할 수 있는 표현이 생깁니다.
 - **failure/edge branch:** 이 commit은 완전한 directive grammar나 required singleton 검증을 아직 제공하지 않습니다.
@@ -271,7 +271,7 @@
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - src/parser.cpp — line loop, directive dispatch, directive별 handler/validator
+ - src/parser.cpp — line loop, directive dispatch, directive별 handler/validator
 - **caller → callee / data flow:** 각 physical line → comment 제거 → tokens → first token dispatch → validated Scene mutation 또는 즉시 ParseError
 - **ownership·state transition:** 한 줄은 검증이 끝난 뒤에만 Scene을 변경합니다. unknown/surplus token은 무시되지 않습니다.
 - **failure/edge branch:** line-local grammar는 생기지만 파일 전체가 끝났을 때 R/A/C 누락을 막는 final validation은 아직 없습니다.
@@ -280,7 +280,7 @@
 
 - **이 SHA가 보장하는 것:** directive 문법과 Scene mutation 사이에 fail-closed 경계를 만듭니다.
 - **이 SHA가 보장하지 않는 것:** 불완전하지만 line-local하게 유효한 장면이 반환되지 않도록 하는 whole-file 검사는 `1e1fda47d913`에서 완성됩니다.
-- **직접 확인/후속 evidence:** 해당 SHA의 parser diff에서 dispatch와 handler 추가를 확인했습니다. 후속 material token grammar를 이 시점에 소급하지 않았습니다.
+- **직접 확인/후속 evidence:** 해당 SHA의 parser diff에서 dispatch와 handler 추가를 확인했습니다. 후속 material token grammar를이 시점에 소급하지 않았습니다.
 
 #### Thread 내 연결
 
@@ -306,10 +306,10 @@
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - include/ray/parser.hpp — text/file loader API
-  - src/parser.cpp — `parseSceneText`, file load, required-directive final validation
-  - scenes/basic.rt
-  - scenes/invalid.rt
+ - include/ray/parser.hpp — text/file loader API
+ - src/parser.cpp — `parseSceneText`, file load, required-directive final validation
+ - scenes/basic.rt
+ - scenes/invalid.rt
 - **caller → callee / data flow:** file open → text read → line-local parse/mutation → EOF required singleton validation → 완성된 Scene 반환
 - **ownership·state transition:** 성공 반환이 Scene completeness의 commit point입니다. line-local 오류는 실제 line, 파일 open/whole-file 누락은 line 0으로 표현됩니다.
 - **failure/edge branch:** 어느 단계에서든 `ParseError`가 나오면 Scene은 caller에 성공값으로 반환되지 않습니다.
@@ -344,8 +344,8 @@
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - include/ray/camera.hpp — camera frame/ray API
-  - src/camera.cpp — `buildCameraFrame`, `makeCameraRay`
+ - include/ray/camera.hpp — camera frame/ray API
+ - src/camera.cpp — `buildCameraFrame`, `makeCameraRay`
 - **caller → callee / data flow:** camera position/direction/FOV + image dimensions + sample `(x,y)` → precomputed frame → NDC/screen coordinate → normalized world ray
 - **ownership·state transition:** frame은 렌더 전체에서 재사용 가능한 derived read-only 값입니다. 방향이 +Z에 가까운 경우 up 후보를 바꾸어 cross product 붕괴를 피합니다.
 - **failure/edge branch:** safe dimension 처리로 분모 0을 피하지만 parser가 보장해야 할 실제 positive resolution과 finite/nonzero direction 정책을 대신하지 않습니다.
@@ -380,9 +380,9 @@
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - include/ray/renderer.hpp — tracing/shading API
-  - src/shading.cpp — `traceRay`, direct-light/shadow path
-  - src/scene.cpp — occlusion query가 통과하는 scene traversal
+ - include/ray/renderer.hpp — tracing/shading API
+ - src/shading.cpp — `traceRay`, direct-light/shadow path
+ - src/scene.cpp — occlusion query가 통과하는 scene traversal
 - **caller → callee / data flow:** primary ray → `Scene::intersect` → miss background 또는 hit ambient → each light: positive diffuse → bounded shadow ray → visible direct contribution → clamped color의 입력
 - **ownership·state transition:** shadow ray는 원래 primary ray와 별개이며 origin offset과 `[kRayTMin, lightDistance-kRayTMin]` 구간을 갖습니다. material은 `HitRecord`에서 값으로 읽습니다.
 - **failure/edge branch:** 거리 epsilon 이하 또는 diffuse term 이하이면 shadow query 자체를 생략합니다. 이 SHA의 `maxDepth` 인자는 아직 recursive material에 소비되지 않습니다.
@@ -391,7 +391,7 @@
 
 - **이 SHA가 보장하는 것:** self-intersection을 줄이는 시작 offset과 light segment에 한정된 visibility를 포함한 deterministic direct lighting을 정의합니다.
 - **이 SHA가 보장하지 않는 것:** 반사 recursion은 `85583e1e9beb`에서 추가됩니다. 이 commit은 random sampling이나 global illumination을 제공하지 않습니다.
-- **직접 확인/후속 evidence:** 직렬 renderer와 material thread에서 이 함수를 소비하는 상태를 각 SHA별로 분리해 확인했습니다.
+- **직접 확인/후속 evidence:** 직렬 renderer와 material thread에서이 함수를 소비하는 상태를 각 SHA별로 분리해 확인했습니다.
 
 #### Thread 내 연결
 
@@ -417,8 +417,8 @@
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - include/ray/renderer.hpp — `RenderSettings`, `Image`, `renderScene`
-  - src/renderer.cpp — serial pixel loop
+ - include/ray/renderer.hpp — `RenderSettings`, `Image`, `renderScene`
+ - src/renderer.cpp — serial pixel loop
 - **caller → callee / data flow:** Scene + settings → camera frame → row-major pixel center → camera ray → trace → clamp/quantize → contiguous RGB bytes → Image
 - **ownership·state transition:** 한 cursor 또는 pixel offset이 image storage를 순차적으로 채웁니다. 렌더 반환 전 모든 pixel이 완성됩니다.
 - **failure/edge branch:** 이 시점의 `Image` allocation은 `width*height*3` 산술 overflow를 아직 검사하지 않습니다. `samplesPerPixel`, `tMin/tMax` 설정도 실제 loop에서 모두 소비되는 상태가 아닙니다.
@@ -427,7 +427,7 @@
 
 - **이 SHA가 보장하는 것:** 한 scene에 대해 deterministic single-sample image byte baseline을 만듭니다.
 - **이 SHA가 보장하지 않는 것:** 안전한 image representation은 Thread 6, tile/parallel execution은 Thread 5에서 보완됩니다.
-- **직접 확인/후속 evidence:** 후속 exact PPM/checksum 및 worker-count equivalence가 이 pixel kernel 결과를 비교하는 것을 확인했습니다.
+- **직접 확인/후속 evidence:** 후속 exact PPM/checksum 및 worker-count equivalence가이 pixel kernel 결과를 비교하는 것을 확인했습니다.
 
 #### Thread 내 연결
 
@@ -453,10 +453,10 @@
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - include/ray/output.hpp — PPM/checksum API
-  - src/output.cpp — `writePpm`, image checksum
+ - include/ray/output.hpp — PPM/checksum API
+ - src/output.cpp — `writePpm`, image checksum
 - **caller → callee / data flow:** Image dimensions/pixels → P3 text 또는 dimension bytes + pixel bytes → checksum hex
-- **ownership·state transition:** PPM과 checksum 모두 quantized bytes를 source로 사용합니다. path writer는 이 시점에 대상 파일을 직접 열어 씁니다.
+- **ownership·state transition:** PPM과 checksum 모두 quantized bytes를 source로 사용합니다. path writer는이 시점에 대상 파일을 직접 열어 씁니다.
 - **failure/edge branch:** stream/write/atomic replacement safety와 public storage validation은 아직 없습니다. 초기 checksum constant는 `89c3c7269877`에서 수정됩니다.
 
 #### 보장 범위와 남은 공백
@@ -489,8 +489,8 @@
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - src/main.cpp — argument parsing과 top-level try/catch
-  - Makefile — CLI source 연결
+ - src/main.cpp — argument parsing과 top-level try/catch
+ - Makefile — CLI source 연결
 - **caller → callee / data flow:** argv → usage validation → `loadScene` → `renderScene` → `writePpm` → optional checksum stdout → exit 0; exception → stderr → exit 1
 - **ownership·state transition:** output 생성은 parsing 이후에만 시작하므로 invalid scene은 writer에 도달하지 않습니다.
 - **failure/edge branch:** CLI는 오류를 message/exit status로 변환하지만 당시 writer가 이미 연 대상의 transactional preservation까지 제공하지는 않습니다.
@@ -525,8 +525,8 @@
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - tests/render_smoke.sh — CLI integration regression
-  - Makefile — `test` target
+ - tests/render_smoke.sh — CLI integration regression
+ - Makefile — `test` target
 - **caller → callee / data flow:** shell fixture 작성 → CLI invalid invocation/no-output assertion → valid invocation 두 번 → header/checksum/byte comparisons
 - **ownership·state transition:** test artifact는 temp directory에 한정되고 trap이 제거합니다. production path는 `main`부터 parser, renderer, output까지 전체를 통과합니다.
 - **failure/edge branch:** broad smoke이므로 개별 geometry 수식, image overflow, writer replacement failure를 격리해 증명하지 않습니다.
@@ -543,14 +543,14 @@
 #### 보장 범위와 남은 공백
 
 - **이 SHA가 보장하는 것:** 최초 완전한 valid command와 invalid command의 외부 observable contract를 고정합니다.
-- **이 SHA가 보장하지 않는 것:** 테스트 자체의 소스 메커니즘은 검사했지만 이 환경에서는 executable을 빌드·실행하지 않았습니다.
+- **이 SHA가 보장하지 않는 것:** 테스트 자체의 소스 메커니즘은 검사했지만이 환경에서는 executable을 빌드·실행하지 않았습니다.
 - **직접 확인/후속 evidence:** 테스트 성격: broad CLI integration + repeat-run deterministic regression. 실제 명령 결과는 기록하지 않습니다.
 
 #### Thread 내 연결
 
 - 이전 Thread commit: `b983f0ea2744`
 - 다음 Thread commit: 이 Thread의 종료점
-- 이 commit이 Thread 종료에 제공하는 것: Thread-level invariant ledger와 최종 실행 흐름에서 이 SHA의 결과를 최종 상태에 반영했습니다.
+- 이 commit이 Thread 종료에 제공하는 것: Thread-level invariant ledger와 최종 실행 순서에서이 SHA의 결과를 최종 상태에 반영했습니다.
 
 ## 6. Invariant ledger
 
@@ -570,7 +570,7 @@
 
 ## 7. Failure → Fix → Test 연결
 
-| Failure 또는 위험 | Decision/Fix | Test 또는 evidence | 실제 failure path와 assertion |
+| Failure 또는 위험 | Decision/Fix | Test 또는 evidence | 실제 실패 처리와 assertion |
 | --- | --- | --- | --- |
 | unknown/malformed/missing scene directive | parser dispatch + EOF required validation | d05a6ab48bb1 smoke invalid path | writer 전에 ParseError → nonzero → output 부재 |
 | shadow self-hit 또는 light 뒤 occluder | normal offset + bounded shadow interval | 후속 rendering regressions/직접 코드 검사 | `point+n·epsilon`, upper bound `distance-epsilon` |
@@ -589,13 +589,13 @@
 `shared_ptr` storage이므로 외부와 소유를 공유할 수 있고, `HitRecord::shape`는 수명을
 연장하지 않는 `const Shape*`입니다. parser는 성공 반환 전까지 Scene construction을
 담당하고, renderer는 Scene을 읽어 새 `Image`를 소유해 반환합니다. output은 Image를
-소비하지만 이 Thread의 초기 path writer는 아직 final path publication을 transactional하게
-관리하지 않습니다. 후속 Thread의 `unique_ptr`/private storage와 atomic output을 이 시점에
+소비하지만이 Thread의 초기 path writer는 아직 final path publication을 transactional하게
+관리하지 않습니다. 후속 Thread의 `unique_ptr`/private storage와 atomic output을이 시점에
 소급하지 않았습니다.
 
 ### 학습자 최종 기록
 
-- **source state와 derived state:** `Scene`은 카메라·조명·도형 집합의 aggregate입니다. 초기 SHA에서 shapes는 `shared_ptr` storage이므로 외부와 소유를 공유할 수 있고, `HitRecord::shape`는 수명을 연장하지 않는 `const Shape*`입니다. parser는 성공 반환 전까지 Scene construction을 담당하고, renderer는 Scene을 읽어 새 `Image`를 소유해 반환합니다. output은 Image를 소비하지만 이 Thread의 초기 path writer는 아직 final path publication을 transactional하게 관리하지 않습니다. 후속 Thread의 `unique_ptr`/private storage와 atomic output을 이 시점에 소급하지 않았습니다.
+- **source state와 derived state:** `Scene`은 카메라·조명·도형 집합의 aggregate입니다. 초기 SHA에서 shapes는 `shared_ptr` storage이므로 외부와 소유를 공유할 수 있고, `HitRecord::shape`는 수명을 연장하지 않는 `const Shape*`입니다. parser는 성공 반환 전까지 Scene construction을 담당하고, renderer는 Scene을 읽어 새 `Image`를 소유해 반환합니다. output은 Image를 소비하지만이 Thread의 초기 path writer는 아직 final path publication을 transactional하게 관리하지 않습니다. 후속 Thread의 `unique_ptr`/private storage와 atomic output을이 시점에 소급하지 않았습니다.
 - **mutation/transition boundary:** commit별 `ownership·state transition`과 위 invariant ledger에 표시했습니다.
 - **failure 시 복구 상태:** Failure → Fix → Test 표와 각 fix/test section에 정상·오류 상태를 구분했습니다.
 
@@ -655,7 +655,7 @@ image mutation, transactional publication은 뒤 Thread의 책임입니다.
 - [x] test가 증명하는 것과 증명하지 않는 것을 구분했습니다.
 - [x] invariant ledger의 각 변화를 commit evidence와 연결했습니다.
 - [ ] 해당 SHA checkout에서 테스트·benchmark·sanitizer를 직접 실행했습니다. 환경 제한 때문에 미실행 상태입니다.
-- [x] 별도의 프로젝트 재학습 없이 이 Thread의 설계 → 구현 → 위험 → 수정 → 검증 발전을 설명할 수 있는 기록을 남겼습니다.
+- [x] 별도의 프로젝트 재학습 없이이 Thread의 설계 → 구현 → 위험 → 수정 → 검증 발전을 설명할 수 있는 기록을 남겼습니다.
 ===== END FILE: 01-geometric-contracts-to-first-image.md =====
 
 ===== BEGIN FILE: 02-large-vector-normalization.md =====
@@ -707,14 +707,14 @@ image mutation, transactional publication은 뒤 Thread의 책임입니다.
 ## 4. Commit map
 
 1. `aa92a87c98a3` — `fix(math): 큰 유한 벡터를 안정적으로 정규화`
-   - Importance: A
-   - Tags: DEBUG, EDGE, RAY_PIPELINE
-   - Source-defined role: Replaces overflow-prone sum-of-squares magnitude with `std::hypot`.
+ - Importance: A
+ - Tags: DEBUG, EDGE, RAY_PIPELINE
+ - Source-defined role: Replaces overflow-prone sum-of-squares magnitude with `std::hypot`.
 
 2. `ff18d1cc3afc` — `test(math): 큰 유한 벡터 정규화 검증`
-   - Importance: B
-   - Tags: TEST, EDGE
-   - Source-defined role: Fixes the exact large-finite-vector regression as a permanent test case.
+ - Importance: B
+ - Tags: TEST, EDGE
+ - Source-defined role: Fixes the exact large-finite-vector regression as a permanent test case.
 
 ## 5. Commit별 학습 기록
 
@@ -744,8 +744,8 @@ image mutation, transactional publication은 뒤 Thread의 책임입니다.
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - src/math.cpp — `Vec3::length`
-  - include/ray/math.hpp — `Vec3`, normalization API
+ - src/math.cpp — `Vec3::length`
+ - include/ray/math.hpp — `Vec3`, normalization API
 - **caller → callee / data flow:** `Vec3(1e308,0,0)` → old: square `inf` → length `inf` → component/`inf` = zero-like; fixed: `hypot` = `1e308` → division = `(1,0,0)`
 - **ownership·state transition:** ownership 변화는 없습니다. 동일한 immutable component 입력에서 derived magnitude와 normalized output만 바뀝니다. near-zero epsilon 정책과 normalization interface는 그대로입니다.
 - **failure/edge branch:** 수정 전 위험은 input non-finiteness가 아니라 finite input의 intermediate overflow입니다. 이 fix는 parser range, NaN/Inf 수용 정책, 모든 subnormal 정확도를 새로 정의하지 않습니다.
@@ -754,7 +754,7 @@ image mutation, transactional publication은 뒤 Thread의 책임입니다.
 
 - **이 SHA가 보장하는 것:** non-negligible large finite vector가 avoidable overflow 때문에 zero-like direction으로 붕괴하지 않습니다.
 - **이 SHA가 보장하지 않는 것:** 모든 가능한 방향과 비정상 부동소수 값에 대한 완전한 정책은 보장하지 않습니다.
-- **직접 확인/후속 evidence:** immediate parent의 sum-of-squares와 이 SHA의 `std::hypot` 한 줄 차이를 확인하고, 후속 exact regression과 연결했습니다. 실행은 하지 않았습니다.
+- **직접 확인/후속 evidence:** immediate parent의 sum-of-squares와이 SHA의 `std::hypot` 한 줄 차이를 확인하고, 후속 exact regression과 연결했습니다. 실행은 하지 않았습니다.
 
 #### Thread 내 연결
 
@@ -780,8 +780,8 @@ image mutation, transactional publication은 뒤 Thread의 책임입니다.
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - tests/core_tests.cpp — large finite vector normalization assertion
-  - src/math.cpp — `Vec3::length`/normalization production path
+ - tests/core_tests.cpp — large finite vector normalization assertion
+ - src/math.cpp — `Vec3::length`/normalization production path
 - **caller → callee / data flow:** test vector construction → public normalization → `Vec3::length` → `std::hypot` → component division → exact vector comparison
 - **ownership·state transition:** fixture나 mutable 외부 상태 없이 하나의 deterministic value regression입니다.
 - **failure/edge branch:** fix 이전에는 magnitude가 infinity가 되고 x component가 0처럼 되어 assertion이 실패합니다. 이 테스트는 NaN, infinity, subnormal, arbitrary 3-axis approximate accuracy를 다루지 않습니다.
@@ -805,7 +805,7 @@ image mutation, transactional publication은 뒤 Thread의 책임입니다.
 
 - 이전 Thread commit: `aa92a87c98a3`
 - 다음 Thread commit: 이 Thread의 종료점
-- 이 commit이 Thread 종료에 제공하는 것: Thread-level invariant ledger와 최종 실행 흐름에서 이 SHA의 결과를 최종 상태에 반영했습니다.
+- 이 commit이 Thread 종료에 제공하는 것: Thread-level invariant ledger와 최종 실행 순서에서이 SHA의 결과를 최종 상태에 반영했습니다.
 
 ## 6. Invariant ledger
 
@@ -822,7 +822,7 @@ image mutation, transactional publication은 뒤 Thread의 책임입니다.
 
 ## 7. Failure → Fix → Test 연결
 
-| Failure 또는 위험 | Decision/Fix | Test 또는 evidence | 실제 failure path와 assertion |
+| Failure 또는 위험 | Decision/Fix | Test 또는 evidence | 실제 실패 처리와 assertion |
 | --- | --- | --- | --- |
 | finite component 제곱합의 intermediate infinity | `std::hypot`의 scaled magnitude | ff18d1cc3afc | `normalize(Vec3(1e308,0,0)) == Vec3(1,0,0)` |
 
@@ -845,11 +845,11 @@ image mutation, transactional publication은 뒤 Thread의 책임입니다.
 
 ## 9. Thread 최종 상태
 
-large finite component를 가진 non-negligible vector도 avoidable intermediate overflow 없이 길이와 unit direction을 계산합니다. 정확한 과거 실패 입력이 regression으로 남아 naive sum-of-squares 회귀를 막습니다. NaN/Inf/subnormal 전체 정책은 이 Thread가 정의하지 않습니다.
+large finite component를 가진 non-negligible vector도 avoidable intermediate overflow 없이 길이와 unit direction을 계산합니다. 정확한 과거 실패 입력이 regression으로 남아 naive sum-of-squares 회귀를 막습니다. NaN/Inf/subnormal 전체 정책은이 Thread가 정의하지 않습니다.
 
 ### 직접 작성한 결론
 
-- **Thread 시작과 종료의 behavior 차이:** large finite component를 가진 non-negligible vector도 avoidable intermediate overflow 없이 길이와 unit direction을 계산합니다. 정확한 과거 실패 입력이 regression으로 남아 naive sum-of-squares 회귀를 막습니다. NaN/Inf/subnormal 전체 정책은 이 Thread가 정의하지 않습니다.
+- **Thread 시작과 종료의 behavior 차이:** large finite component를 가진 non-negligible vector도 avoidable intermediate overflow 없이 길이와 unit direction을 계산합니다. 정확한 과거 실패 입력이 regression으로 남아 naive sum-of-squares 회귀를 막습니다. NaN/Inf/subnormal 전체 정책은이 Thread가 정의하지 않습니다.
 - **아직 다른 Thread 또는 외부 검증이 보완해야 하는 항목:** non-finite 입력 정책과 geometry-specific numerical edges는 별도 parser/geometry contracts에 남습니다.
 
 ## 10. 최종 architecture 또는 execution flow 정리
@@ -871,7 +871,7 @@ large finite component를 가진 non-negligible vector도 avoidable intermediate
 
 ### 학습자의 최종 설명
 
-large finite component를 가진 non-negligible vector도 avoidable intermediate overflow 없이 길이와 unit direction을 계산합니다. 정확한 과거 실패 입력이 regression으로 남아 naive sum-of-squares 회귀를 막습니다. NaN/Inf/subnormal 전체 정책은 이 Thread가 정의하지 않습니다.
+large finite component를 가진 non-negligible vector도 avoidable intermediate overflow 없이 길이와 unit direction을 계산합니다. 정확한 과거 실패 입력이 regression으로 남아 naive sum-of-squares 회귀를 막습니다. NaN/Inf/subnormal 전체 정책은이 Thread가 정의하지 않습니다.
 
 남은 경계는 다음과 같습니다. non-finite 입력 정책과 geometry-specific numerical edges는 별도 parser/geometry contracts에 남습니다.
 
@@ -887,7 +887,7 @@ large finite component를 가진 non-negligible vector도 avoidable intermediate
 - [x] test가 증명하는 것과 증명하지 않는 것을 구분했습니다.
 - [x] invariant ledger의 각 변화를 commit evidence와 연결했습니다.
 - [ ] 해당 SHA checkout에서 테스트·benchmark·sanitizer를 직접 실행했습니다. 환경 제한 때문에 미실행 상태입니다.
-- [x] 별도의 프로젝트 재학습 없이 이 Thread의 설계 → 구현 → 위험 → 수정 → 검증 발전을 설명할 수 있는 기록을 남겼습니다.
+- [x] 별도의 프로젝트 재학습 없이이 Thread의 설계 → 구현 → 위험 → 수정 → 검증 발전을 설명할 수 있는 기록을 남겼습니다.
 ===== END FILE: 02-large-vector-normalization.md =====
 
 ===== BEGIN FILE: 03-correctness-preserving-bvh.md =====
@@ -917,7 +917,7 @@ large finite component를 가진 non-negligible vector도 avoidable intermediate
 ### 이 Thread에 연결된 engineering difficulty
 
 - Reordering primitive tests through a BVH without changing equal-distance selection, materials, normals, hit pointers, or final image bytes.
-- Managing the BVH as derived state whose correctness depends on shape lifetime, geometry immutability, invalidation, rebuilding, and fallback behavior.
+- Managing the BVH as derived state whose correctness depends on shape lifetime, geometry immutability, invalidation, rebuilding, and 대체 동작.
 - Designing performance evidence that rejects behaviorally different results, separates primitive from AABB work, fixes workload configuration, and reports repeatable median measurements.
 - Maintaining numerical validity across conservative cylinder bounds.
 
@@ -952,84 +952,84 @@ large finite component를 가진 non-negligible vector도 avoidable intermediate
 ## 4. Commit map
 
 1. `f4dcb50939e2` — `perf(render): 광선과 교차 작업량 계측 추가`
-   - Importance: A
-   - Tags: PERF, RAY_PIPELINE
-   - Source-defined role: Adds semantic work counters and timing before acceleration changes behavior.
+ - Importance: A
+ - Tags: PERF, RAY_PIPELINE
+ - Source-defined role: Adds semantic work counters and timing before acceleration changes behavior.
 
 2. `4fb2345c7d35` — `perf(benchmark): 조밀 장면 기준 workload 추가`
-   - Importance: B
-   - Tags: PERF, ACCEL
-   - Source-defined role: Establishes a fixed dense-scene workload.
+ - Importance: B
+ - Tags: PERF, ACCEL
+ - Source-defined role: Establishes a fixed dense-scene workload.
 
 3. `f5a2c4ade16d` — `perf(benchmark): 반복 측정과 결정성 보고 구성`
-   - Importance: A
-   - Tags: PERF, DETERMINISM
-   - Source-defined role: Defines repeated median measurement and rejects inconsistent results.
+ - Importance: A
+ - Tags: PERF, DETERMINISM
+ - Source-defined role: Defines repeated median measurement and rejects inconsistent results.
 
 4. `7b19f2ad78e3` — `feat(accel): ray-box slab 교차 구현`
-   - Importance: A
-   - Tags: ACCEL, HARD, EDGE
-   - Source-defined role: Implements the ray/AABB interval test.
+ - Importance: A
+ - Tags: ACCEL, HARD, EDGE
+ - Source-defined role: Implements the ray/AABB interval test.
 
 5. `a40452885176` — `feat(accel): 도형 경계 계약과 구·평면 bounds 추가`
-   - Importance: A
-   - Tags: ARCH, ACCEL, GEOMETRY
-   - Source-defined role: Defines which shapes provide finite bounds and which remain unbounded.
+ - Importance: A
+ - Tags: ARCH, ACCEL, GEOMETRY
+ - Source-defined role: Defines which shapes provide finite bounds and which remain unbounded.
 
 6. `b782e22450d8` — `feat(accel): 원기둥의 보수적 bounds 계산 추가`
-   - Importance: A
-   - Tags: ACCEL, GEOMETRY, HARD
-   - Source-defined role: Adds conservative arbitrary-axis cylinder bounds.
+ - Importance: A
+ - Tags: ACCEL, GEOMETRY, HARD
+ - Source-defined role: Adds conservative arbitrary-axis cylinder bounds.
 
 7. `419d52d687fc` — `test(accel): AABB와 도형 경계 계산 검증`
-   - Importance: A
-   - Tags: TEST, ACCEL, RISK
-   - Source-defined role: Verifies AABB edge behavior and the no-false-negative bounds contract.
+ - Importance: A
+ - Tags: TEST, ACCEL, RISK
+ - Source-defined role: Verifies AABB edge behavior and the no-false-negative bounds contract.
 
 8. `bb65e8092632` — `feat(accel): 결정적 중앙 분할 BVH 구축 구현`
-   - Importance: A
-   - Tags: ACCEL, HARD, DETERMINISM
-   - Source-defined role: Builds a deterministic median-split BVH.
+ - Importance: A
+ - Tags: ACCEL, HARD, DETERMINISM
+ - Source-defined role: Builds a deterministic median-split BVH.
 
 9. `9a7f29b5d78a` — `feat(accel): 선형·BVH 탐색 모드 계약 연결`
-   - Importance: A
-   - Tags: ARCH, ACCEL, DETERMINISM
-   - Source-defined role: Preserves the linear equal-`t` winner through original shape indices and exposes both modes.
+ - Importance: A
+ - Tags: ARCH, ACCEL, DETERMINISM
+ - Source-defined role: Preserves the linear equal-`t` winner through original shape indices and exposes both modes.
 
 10. `f7e969537c10` — `feat(scene): 가속 구조 소유권과 rebuild 경계 구성`
-   - Importance: S
-   - Tags: ARCH, ACCEL, SCENE
-   - Source-defined role: Makes acceleration owned, rebuildable derived scene state with an unbounded-shape path.
+ - Importance: S
+ - Tags: ARCH, ACCEL, SCENE
+ - Source-defined role: Makes acceleration owned, rebuildable derived scene state with an unbounded-shape path.
 
 11. `d4f6ee5b6042` — `feat(accel): 결정적 BVH 최근접 순회 구현`
-   - Importance: S
-   - Tags: CORE, ACCEL, HARD
-   - Source-defined role: Implements near-first explicit-stack traversal and pruning.
+ - Importance: S
+ - Tags: CORE, ACCEL, HARD
+ - Source-defined role: Implements near-first explicit-stack traversal and pruning.
 
 12. `41c9a59f27a6` — `test(accel): 선형 탐색과 BVH 결과 동치 검증`
-   - Importance: A
-   - Tags: TEST, ACCEL, DETERMINISM
-   - Source-defined role: Proves linear/BVH hit and pixel equivalence while checking work reduction.
+ - Importance: A
+ - Tags: TEST, ACCEL, DETERMINISM
+ - Source-defined role: Proves linear/BVH hit and pixel equivalence while checking work reduction.
 
 13. `da3e8b43d09e` — `perf(benchmark): 선형 탐색과 BVH 작업량 비교`
-   - Importance: A
-   - Tags: PERF, ACCEL, DETERMINISM
-   - Source-defined role: Measures both modes under the same correctness constraints.
+ - Importance: A
+ - Tags: PERF, ACCEL, DETERMINISM
+ - Source-defined role: Measures both modes under the same correctness constraints.
 
 14. `9b77225cf6b7` — `perf(benchmark): 측정 schema와 가속 기준 검증 고정`
-   - Importance: A
-   - Tags: PERF, ACCEL, DETERMINISM
-   - Source-defined role: Fixes a versioned benchmark schema and enforces a primitive-test reduction threshold.
+ - Importance: A
+ - Tags: PERF, ACCEL, DETERMINISM
+ - Source-defined role: Fixes a versioned benchmark schema and enforces a primitive-test reduction threshold.
 
 15. `ef5320a83c27` — `fix(accel): 가속 구조의 도형 불변식 보호`
-   - Importance: S
-   - Tags: ARCH, ACCEL, SCENE
-   - Source-defined role: Prevents callers from mutating geometry behind a ready BVH.
+ - Importance: S
+ - Tags: ARCH, ACCEL, SCENE
+ - Source-defined role: Prevents callers from mutating geometry behind a ready BVH.
 
 16. `13f153e23920` — `test(accel): 장면 변경과 가속 상태 불변식 검증`
-   - Importance: A
-   - Tags: TEST, ACCEL, SCENE
-   - Source-defined role: Verifies immutability, invalidation, linear fallback, and rebuild as one state transition.
+ - Importance: A
+ - Tags: TEST, ACCEL, SCENE
+ - Source-defined role: Verifies immutability, invalidation, linear fallback, and rebuild as one state transition.
 
 ## 5. Commit별 학습 기록
 
@@ -1051,12 +1051,12 @@ large finite component를 가진 non-negligible vector도 avoidable intermediate
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - include/ray/renderer.hpp — `RenderStats`, optional stats parameters
-  - src/renderer.cpp — primary rays와 elapsed interval
-  - src/shading.cpp — secondary/shadow counters
-  - src/scene.cpp — primitive dispatch counter
+ - include/ray/renderer.hpp — `RenderStats`, optional stats parameters
+ - src/renderer.cpp — primary rays와 elapsed interval
+ - src/shading.cpp — secondary/shadow counters
+ - src/scene.cpp — primitive dispatch counter
 - **caller → callee / data flow:** render entry → optional sink 전달 → 실제 ray/query/primitive dispatch에서 integer counter 증가 → image 완료 후 elapsed 기록
-- **ownership·state transition:** sink가 null이면 기존 호출과 결과를 유지합니다. counters는 관찰용 derived data이며 image selection에 참여하지 않습니다. `aabbTests` field는 준비되지만 이 SHA에는 실제 box traversal이 없습니다.
+- **ownership·state transition:** sink가 null이면 기존 호출과 결과를 유지합니다. counters는 관찰용 derived data이며 image selection에 참여하지 않습니다. `aabbTests` field는 준비되지만이 SHA에는 실제 box traversal이 없습니다.
 - **failure/edge branch:** counter를 dispatch 뒤에 올리면 예외/early return work를 누락하고, scene size로 추정하면 실제 pruning을 측정하지 못합니다. 이 commit은 그런 위치 오류를 피하도록 semantic boundary에 계측을 둡니다.
 
 #### 보장 범위와 남은 공백
@@ -1089,8 +1089,8 @@ large finite component를 가진 non-negligible vector도 avoidable intermediate
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - benchmarks/render_benchmark.cpp — fixed dense scene construction and single measured render
-  - CMakeLists.txt — benchmark target
+ - benchmarks/render_benchmark.cpp — fixed dense scene construction and single measured render
+ - CMakeLists.txt — benchmark target
 - **caller → callee / data flow:** hard-coded configuration → dense Scene construction → render with stats → checksum/work/time report
 - **ownership·state transition:** workload geometry와 resolution이 source에 고정되어 비교 입력이 됩니다. 이 시점에는 반복 median이나 linear/BVH 두 모드 비교가 아직 없습니다.
 - **failure/edge branch:** 한 번의 elapsed measurement는 warm-up과 OS scheduling noise에 취약합니다.
@@ -1125,7 +1125,7 @@ large finite component를 가진 non-negligible vector도 avoidable intermediate
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - benchmarks/render_benchmark.cpp — warm-up, five samples, consistency checks, median/report
+ - benchmarks/render_benchmark.cpp — warm-up, five samples, consistency checks, median/report
 - **caller → callee / data flow:** warm-up(discard) → measured render ×5 → per-run checksum/work equality → elapsed sort → median output
 - **ownership·state transition:** checksum과 integer work는 deterministic contract이고 elapsed는 관찰값입니다. benchmark가 mismatch를 발견하면 representative time을 성공값으로 보고하지 않습니다.
 - **failure/edge branch:** 결과가 다른 빠른 implementation이나 nondeterministic work를 시간 개선으로 받아들이는 것을 거부합니다.
@@ -1160,8 +1160,8 @@ large finite component를 가진 non-negligible vector도 avoidable intermediate
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - include/ray/accel.hpp — `Aabb`와 intersection API
-  - src/accel.cpp — slab test
+ - include/ray/accel.hpp — `Aabb`와 intersection API
+ - src/accel.cpp — slab test
 - **caller → callee / data flow:** ray + valid box + caller interval → axis별 slab interval → running near/far 교집합 → optional entry + hit/miss
 - **ownership·state transition:** running near/far가 축을 지날 때마다 좁아지는 local state입니다. box invalidity와 parallel-outside는 즉시 miss입니다.
 - **failure/edge branch:** `far <= near`로 거부하면 tangent/contact traversal을 false negative로 만들 수 있습니다. 0으로 나누기 전에 parallel branch를 분리해야 합니다.
@@ -1196,8 +1196,8 @@ large finite component를 가진 non-negligible vector도 avoidable intermediate
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - include/ray/geometry.hpp — virtual `bounds` contract
-  - src/geometry.cpp — `Sphere::bounds`, `Plane::bounds`
+ - include/ray/geometry.hpp — virtual `bounds` contract
+ - src/geometry.cpp — `Sphere::bounds`, `Plane::bounds`
 - **caller → callee / data flow:** shape → optional bounds → bounded shape는 BVH 후보, unbounded shape는 별도 linear path
 - **ownership·state transition:** bounds는 source geometry에서 계산되는 derived value입니다. `nullopt`는 오류가 아니라 acceleration partition 정보입니다.
 - **failure/edge branch:** Plane에 arbitrary finite box를 부여하면 box 밖의 실제 hit가 pruning되어 false negative가 됩니다.
@@ -1232,10 +1232,10 @@ large finite component를 가진 non-negligible vector도 avoidable intermediate
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - src/geometry.cpp — `Cylinder::bounds`
-  - include/ray/geometry.hpp — cylinder bounds override
+ - src/geometry.cpp — `Cylinder::bounds`
+ - include/ray/geometry.hpp — cylinder bounds override
 - **caller → callee / data flow:** center/normalized axis/radius/half-height → 축별 cap+side 최대 extent → conservative min/max → outward `nextafter`
-- **ownership·state transition:** bounds는 cylinder geometry의 derived snapshot입니다. 이후 geometry mutation이 허용되면 이 snapshot과 BVH가 stale해질 수 있다는 문제가 Thread 후반에 드러납니다.
+- **ownership·state transition:** bounds는 cylinder geometry의 derived snapshot입니다. 이후 geometry mutation이 허용되면이 snapshot과 BVH가 stale해질 수 있다는 문제가 Thread 후반에 드러납니다.
 - **failure/edge branch:** projection 일부를 빼거나 rounding inward가 되면 실제 surface point가 box 밖에 놓여 traversal false negative가 발생합니다.
 
 #### 보장 범위와 남은 공백
@@ -1268,9 +1268,9 @@ large finite component를 가진 non-negligible vector도 avoidable intermediate
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - tests/core_tests.cpp — AABB and shape-bounds regression cases
-  - src/accel.cpp — slab production path
-  - src/geometry.cpp — shape bounds
+ - tests/core_tests.cpp — AABB and shape-bounds regression cases
+ - src/accel.cpp — slab production path
+ - src/geometry.cpp — shape bounds
 - **caller → callee / data flow:** deterministic ray/box cases → slab result/entry assertions; geometry construction → bounds → containment assertions
 - **ownership·state transition:** fixture는 local value objects이며 external state가 없습니다.
 - **failure/edge branch:** contact를 miss로 바꾸거나 cylinder extent를 작게 만들면 assertion이 실패합니다.
@@ -1314,8 +1314,8 @@ large finite component를 가진 non-negligible vector도 avoidable intermediate
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - include/ray/accel.hpp — BVH node/primitive storage
-  - src/accel.cpp — `Bvh::build` and recursive builder
+ - include/ray/accel.hpp — BVH node/primitive storage
+ - src/accel.cpp — `Bvh::build` and recursive builder
 - **caller → callee / data flow:** bounded primitive refs → node bounds/centroid bounds → deterministic split axis → stable sort `(centroid, shapeIndex)` → median recursion → flat nodes + primitive indices
 - **ownership·state transition:** BVH owns node/index arrays but shapes 자체는 소유하지 않고 scene-owned objects를 참조합니다. empty build는 empty state로 종료합니다.
 - **failure/edge branch:** centroid-only unstable sort는 동률에서 build shape를 바꿀 수 있고, original index를 잃으면 exact equal-`t` semantics를 복원하기 어렵습니다.
@@ -1350,10 +1350,10 @@ large finite component를 가진 non-negligible vector도 avoidable intermediate
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - include/ray/renderer.hpp — `AccelMode`/settings
-  - include/ray/accel.hpp — indexed primitive representation
-  - src/scene.cpp — candidate update helper/linear path
-  - src/renderer.cpp, src/shading.cpp — mode 전달
+ - include/ray/renderer.hpp — `AccelMode`/settings
+ - include/ray/accel.hpp — indexed primitive representation
+ - src/scene.cpp — candidate update helper/linear path
+ - src/renderer.cpp, src/shading.cpp — mode 전달
 - **caller → callee / data flow:** candidate `(t,index)` → current winner와 비교 → smaller t 또는 exact tie/larger index만 authoritative record 교체
 - **ownership·state transition:** winner state가 거리뿐 아니라 original index를 포함합니다. traversal order는 더 이상 semantic tie-break source가 아닙니다.
 - **failure/edge branch:** `<=` 또는 discovery order만 쓰면 tree shape/near-first order에 따라 material·normal·shape identity가 바뀔 수 있습니다.
@@ -1388,9 +1388,9 @@ large finite component를 가진 non-negligible vector도 avoidable intermediate
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - include/ray/scene.hpp — BVH/unbounded indices/ready state
-  - src/scene.cpp — `addShape`, invalidation, `buildAcceleration`
-  - src/parser.cpp — complete scene 뒤 acceleration build
+ - include/ray/scene.hpp — BVH/unbounded indices/ready state
+ - src/scene.cpp — `addShape`, invalidation, `buildAcceleration`
+ - src/parser.cpp — complete scene 뒤 acceleration build
 - **caller → callee / data flow:** Scene shape mutation → ready=false → build: bounded/unbounded partition + BVH rebuild → ready=true → query가 derived state 사용 가능
 - **ownership·state transition:** shape objects는 Scene이 소유하고 BVH는 그 수명 안에서 non-owning references/indices를 가진 derived cache입니다. unbounded list도 같은 source set에서 파생됩니다.
 - **failure/edge branch:** ready cache가 source geometry와 다르면 false negative가 가능합니다. 이 초기 설계는 public mutable built-in geometry를 완전히 차단하지 못해 `ef5320a83c27`에서 수정됩니다.
@@ -1425,8 +1425,8 @@ large finite component를 가진 non-negligible vector도 avoidable intermediate
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - src/scene.cpp — mode-aware `Scene::intersect`, explicit-stack BVH traversal, unbounded pass
-  - include/ray/accel.hpp — nodes/primitive indices
+ - src/scene.cpp — mode-aware `Scene::intersect`, explicit-stack BVH traversal, unbounded pass
+ - include/ray/accel.hpp — nodes/primitive indices
 - **caller → callee / data flow:** query → linear/not-ready fallback OR root box → explicit stack → node box/prune → leaves primitive dispatch → bounded winner → unbounded dispatch → shared candidate result
 - **ownership·state transition:** stack은 query-local이며 Scene/BVH를 변경하지 않습니다. `closest`와 original winner index가 pruning과 semantic selection의 authoritative state입니다. stats sink가 있으면 AABB/primitive work를 실제 dispatch 시점에 셉니다.
 - **failure/edge branch:** far child를 잘못된 순서로 push하거나 equal-entry tie를 비결정적으로 두어도 image winner는 candidate rule로 보호되지만 work sequence가 흔들릴 수 있습니다. unbounded pass를 생략하면 Plane hit가 사라집니다.
@@ -1461,9 +1461,9 @@ large finite component를 가진 non-negligible vector도 avoidable intermediate
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - tests/accel_tests.cpp — differential hit and render tests
-  - src/scene.cpp — both intersection modes
-  - src/renderer.cpp — full image path
+ - tests/accel_tests.cpp — differential hit and render tests
+ - src/scene.cpp — both intersection modes
+ - src/renderer.cpp — full image path
 - **caller → callee / data flow:** 동일 Scene/ray 또는 settings → Linear result/stats → Bvh result/stats → full-record/pixel/checksum/work assertions
 - **ownership·state transition:** 동일 source Scene에서 두 derived execution mode만 바뀝니다. exact overlapping sphere case는 original index tie rule을 직접 노립니다.
 - **failure/edge branch:** 다른 hit pointer/material/normal이나 다른 pixel을 만드는 “빠른” BVH는 work gate 전에 실패합니다.
@@ -1507,7 +1507,7 @@ large finite component를 가진 non-negligible vector도 avoidable intermediate
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - benchmarks/render_benchmark.cpp — two-mode measurement/report
+ - benchmarks/render_benchmark.cpp — two-mode measurement/report
 - **caller → callee / data flow:** same built Scene → Linear warmup/samples → Bvh warmup/samples → internal consistency → cross-mode checksum equality → paired report
 - **ownership·state transition:** workload와 output semantics는 공유되고 mode만 독립 변수입니다. elapsed는 mode별 median, counters는 deterministic work입니다.
 - **failure/edge branch:** 다른 image를 만드는 acceleration은 speed comparison 전에 거부됩니다.
@@ -1542,8 +1542,8 @@ large finite component를 가진 non-negligible vector도 avoidable intermediate
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - benchmarks/render_benchmark.cpp — versioned schema and gate
-  - benchmarks/reference.json — fixed reference shape/configuration
+ - benchmarks/render_benchmark.cpp — versioned schema and gate
+ - benchmarks/reference.json — fixed reference shape/configuration
 - **caller → callee / data flow:** correctness-consistent samples → schema/config report → primitive ratio gate → ratios/speedup output
 - **ownership·state transition:** schema와 workload metadata가 machine-comparable contract가 됩니다. gate는 deterministic integer work에 걸리고 elapsed speedup은 보고만 합니다.
 - **failure/edge branch:** image가 같지만 culling이 부족한 regression은 primitive ratio gate에서 실패합니다. 환경이 느려 wall-clock speedup이 작아도 deterministic gate와 구분됩니다.
@@ -1586,10 +1586,10 @@ large finite component를 가진 non-negligible vector도 avoidable intermediate
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - include/ray/geometry.hpp — private geometry fields/const getters
-  - src/geometry.cpp — getter-backed implementations
-  - include/ray/scene.hpp — private shape storage and read-only access
-  - src/scene.cpp — ownership/access adaptation
+ - include/ray/geometry.hpp — private geometry fields/const getters
+ - src/geometry.cpp — getter-backed implementations
+ - include/ray/scene.hpp — private shape storage and read-only access
+ - src/scene.cpp — ownership/access adaptation
 - **caller → callee / data flow:** validated geometry construction → Scene ownership transfer → immutable built-in geometry read → acceleration build; 이후 변경은 Scene mutation API를 통해서만 일어나 invalidation 가능
 - **ownership·state transition:** authoritative source geometry는 Scene-owned shape object이고 BVH는 그 immutable snapshot의 derived cache입니다. caller는 non-owning const view만 받습니다.
 - **failure/edge branch:** 수정 전에는 ready flag가 true인 채 geometry center/radius/axis가 바뀌어 old box가 new shape를 cull할 수 있었습니다. 단순 rebuild 빈도 증가가 아니라 mutation channel 차단이 root cause 수정입니다.
@@ -1624,8 +1624,8 @@ large finite component를 가진 non-negligible vector도 avoidable intermediate
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - tests/accel_tests.cpp — immutability compile-time checks and acceleration lifecycle regression
-  - src/scene.cpp — `addShape`, ready flag, fallback, rebuild
+ - tests/accel_tests.cpp — immutability compile-time checks and acceleration lifecycle regression
+ - src/scene.cpp — `addShape`, ready flag, fallback, rebuild
 - **caller → callee / data flow:** Scene build → acceleration ready → shape addition → ready false → Bvh-mode query/linear fallback sees new shape → rebuild → ready true → same semantic hit
 - **ownership·state transition:** source set과 derived state의 다섯 단계가 하나의 test 안에서 observable합니다. compile-time 부분은 mutation API가 아예 형성되지 않음을 검사합니다.
 - **failure/edge branch:** stale BVH를 그대로 사용하면 new/changed shape hit가 누락되고, fallback이 old tree를 참조하면 pre/post rebuild 결과가 달라집니다.
@@ -1649,7 +1649,7 @@ large finite component를 가진 non-negligible vector도 avoidable intermediate
 
 - 이전 Thread commit: `ef5320a83c27`
 - 다음 Thread commit: 이 Thread의 종료점
-- 이 commit이 Thread 종료에 제공하는 것: Thread-level invariant ledger와 최종 실행 흐름에서 이 SHA의 결과를 최종 상태에 반영했습니다.
+- 이 commit이 Thread 종료에 제공하는 것: Thread-level invariant ledger와 최종 실행 순서에서이 SHA의 결과를 최종 상태에 반영했습니다.
 
 ## 6. Invariant ledger
 
@@ -1671,7 +1671,7 @@ large finite component를 가진 non-negligible vector도 avoidable intermediate
 
 ## 7. Failure → Fix → Test 연결
 
-| Failure 또는 위험 | Decision/Fix | Test 또는 evidence | 실제 failure path와 assertion |
+| Failure 또는 위험 | Decision/Fix | Test 또는 evidence | 실제 실패 처리와 assertion |
 | --- | --- | --- | --- |
 | AABB contact/parallel 처리 오류 | closed slab interval과 zero-direction branch | 419d52d687fc | boundary hit/parallel miss/entry assertions |
 | cylinder bounds가 실제 geometry를 자름 | axis projection + outward expansion | 419d52d687fc | 대표 surface point containment |
@@ -1763,7 +1763,7 @@ reduction과 환경 의존적 elapsed speedup을 보고합니다.
 - [x] test가 증명하는 것과 증명하지 않는 것을 구분했습니다.
 - [x] invariant ledger의 각 변화를 commit evidence와 연결했습니다.
 - [ ] 해당 SHA checkout에서 테스트·benchmark·sanitizer를 직접 실행했습니다. 환경 제한 때문에 미실행 상태입니다.
-- [x] 별도의 프로젝트 재학습 없이 이 Thread의 설계 → 구현 → 위험 → 수정 → 검증 발전을 설명할 수 있는 기록을 남겼습니다.
+- [x] 별도의 프로젝트 재학습 없이이 Thread의 설계 → 구현 → 위험 → 수정 → 검증 발전을 설명할 수 있는 기록을 남겼습니다.
 ===== END FILE: 03-correctness-preserving-bvh.md =====
 
 ===== BEGIN FILE: 04-material-syntax-and-reflection.md =====
@@ -1814,24 +1814,24 @@ reduction과 환경 의존적 elapsed speedup을 보고합니다.
 ## 4. Commit map
 
 1. `85583e1e9beb` — `feat(material): metal 모델과 깊이 제한 반사 구현`
-   - Importance: A
-   - Tags: CORE, MATERIAL, RAY_PIPELINE
-   - Source-defined role: Extends tracing with a deterministic perfect-metal branch and depth consumption.
+ - Importance: A
+ - Tags: CORE, MATERIAL, RAY_PIPELINE
+ - Source-defined role: Extends tracing with a deterministic perfect-metal branch and depth consumption.
 
 2. `a90130a5b030` — `feat(parser): 선택적 도형 재질 문법 추가`
-   - Importance: B
-   - Tags: PARSER, MATERIAL
-   - Source-defined role: Adds optional material tokens while retaining diffuse defaults.
+ - Importance: B
+ - Tags: PARSER, MATERIAL
+ - Source-defined role: Adds optional material tokens while retaining diffuse defaults.
 
 3. `9a352ffe8233` — `test(material): 재질 파싱과 반사 깊이 검증`
-   - Importance: B
-   - Tags: TEST, MATERIAL, DETERMINISM
-   - Source-defined role: Verifies parsing, unknown-material failure, recursion depth, secondary-ray counts, and diffuse compatibility.
+ - Importance: B
+ - Tags: TEST, MATERIAL, DETERMINISM
+ - Source-defined role: Verifies parsing, unknown-material failure, recursion depth, secondary-ray counts, and diffuse compatibility.
 
 4. `3aa806753cc4` — `feat(cli): 반사 깊이 option과 기본값 추가`
-   - Importance: B
-   - Tags: CLI, MATERIAL
-   - Source-defined role: Exposes reflection depth through the CLI and adopts a default of four.
+ - Importance: B
+ - Tags: CLI, MATERIAL
+ - Source-defined role: Exposes reflection depth through the CLI and adopts a default of four.
 
 ## 5. Commit별 학습 기록
 
@@ -1853,9 +1853,9 @@ reduction과 환경 의존적 elapsed speedup을 보고합니다.
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - include/ray/material.hpp — `MaterialType`, default material
-  - src/shading.cpp — metal branch in `traceRay`
-  - include/ray/renderer.hpp — depth-aware tracing signature
+ - include/ray/material.hpp — `MaterialType`, default material
+ - src/shading.cpp — metal branch in `traceRay`
+ - include/ray/renderer.hpp — depth-aware tracing signature
 - **caller → callee / data flow:** primary/secondary ray → hit material → Diffuse: 기존 direct lighting; Metal: depth check → reflected ray → recursive `traceRay(depth-1)` → albedo modulation
 - **ownership·state transition:** depth는 recursive budget이며 각 metal bounce에서만 감소합니다. Scene과 camera/geometry는 read-only로 공유되고 stats sink에 secondary count가 누적됩니다.
 - **failure/edge branch:** depth 감소가 없으면 mirror cycle이 무한 재귀로 이어질 수 있고, reflected origin offset이 없으면 방금 hit한 surface를 즉시 다시 맞을 수 있습니다. depth 0은 partial diffuse fallback이 아니라 명시적 black입니다.
@@ -1890,7 +1890,7 @@ reduction과 환경 의존적 elapsed speedup을 보고합니다.
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - src/parser.cpp — optional material-token parser and shape directive arity branches
+ - src/parser.cpp — optional material-token parser and shape directive arity branches
 - **caller → callee / data flow:** shape tokens → base/base+1 arity check → optional material decode/default → geometry validation/construction → `Scene::addShape`
 - **ownership·state transition:** omitted token은 기존 Material default를 명시적으로 보존합니다. invalid token에서는 Scene mutation 전 예외가 발생합니다.
 - **failure/edge branch:** unknown token을 diffuse로 조용히 처리하면 오타가 렌더 결과만 바꾸고 오류가 드러나지 않습니다.
@@ -1925,9 +1925,9 @@ reduction과 환경 의존적 elapsed speedup을 보고합니다.
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - tests/material_tests.cpp — parser/reflection/depth/stats/golden regressions
-  - src/parser.cpp — optional grammar
-  - src/shading.cpp — `traceRay` material branch
+ - tests/material_tests.cpp — parser/reflection/depth/stats/golden regressions
+ - src/parser.cpp — optional grammar
+ - src/shading.cpp — `traceRay` material branch
 - **caller → callee / data flow:** parser cases → material assertions/errors; controlled mirror scene → `traceRay` depth 1/0 → exact color and counter; diffuse render → golden checksum
 - **ownership·state transition:** mirror fixture는 light contribution 없이 recursive background만 관찰하게 구성되어 reflection arithmetic을 격리합니다.
 - **failure/edge branch:** depth가 감소하지 않거나 albedo 곱 위치가 바뀌거나 omitted token default가 바뀌면 서로 다른 assertion이 실패합니다.
@@ -1971,9 +1971,9 @@ reduction과 환경 의존적 elapsed speedup을 보고합니다.
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - src/main.cpp — `--max-depth` parsing and validation
-  - include/ray/renderer.hpp — default `maxDepth`
-  - benchmarks/tests callers — explicit setting adaptation where needed
+ - src/main.cpp — `--max-depth` parsing and validation
+ - include/ray/renderer.hpp — default `maxDepth`
+ - benchmarks/tests callers — explicit setting adaptation where needed
 - **caller → callee / data flow:** argv scan → option/value validation → settings.maxDepth → render → `traceRay` recursive budget
 - **ownership·state transition:** 0은 metal recursion disabled/black-at-metal-hit 의미를 유지하고, 1..32는 최대 bounce budget입니다. default 4는 CLI와 settings construction에 적용됩니다.
 - **failure/edge branch:** 무제한 값은 stack/work 폭증을 허용하고, duplicate option은 ambiguous authority를 만듭니다. 둘 다 renderer 전에 거부됩니다.
@@ -1988,7 +1988,7 @@ reduction과 환경 의존적 elapsed speedup을 보고합니다.
 
 - 이전 Thread commit: `9a352ffe8233`
 - 다음 Thread commit: 이 Thread의 종료점
-- 이 commit이 Thread 종료에 제공하는 것: Thread-level invariant ledger와 최종 실행 흐름에서 이 SHA의 결과를 최종 상태에 반영했습니다.
+- 이 commit이 Thread 종료에 제공하는 것: Thread-level invariant ledger와 최종 실행 순서에서이 SHA의 결과를 최종 상태에 반영했습니다.
 
 ## 6. Invariant ledger
 
@@ -2007,7 +2007,7 @@ reduction과 환경 의존적 elapsed speedup을 보고합니다.
 
 ## 7. Failure → Fix → Test 연결
 
-| Failure 또는 위험 | Decision/Fix | Test 또는 evidence | 실제 failure path와 assertion |
+| Failure 또는 위험 | Decision/Fix | Test 또는 evidence | 실제 실패 처리와 assertion |
 | --- | --- | --- | --- |
 | unknown material token이 silently diffuse 처리 | exact token decode와 ParseError | 9a352ffe8233 parser tests | unknown material failure assertion |
 | metal ray 무한 재귀 | depth zero stop와 `depth-1` | 9a352ffe8233 | depth 0 black/depth 1 one secondary |
@@ -2038,7 +2038,7 @@ Diffuse는 기존 direct-light path와 golden을 유지하고 Metal은 perfect r
 ### 직접 작성한 결론
 
 - **Thread 시작과 종료의 behavior 차이:** Diffuse는 기존 direct-light path와 golden을 유지하고 Metal은 perfect reflection ray를 depth budget 안에서 재귀 추적합니다. scene syntax는 token 생략을 diffuse로 해석해 backward compatibility를 유지하며, CLI는 default 4와 0..32 범위를 renderer setting에 전달합니다. roughness/refraction/stochastic transport는 범위 밖입니다.
-- **아직 다른 Thread 또는 외부 검증이 보완해야 하는 항목:** 물리 기반 Fresnel, roughness, transparency/refraction, stochastic anti-aliasing은 이 material contract에 포함되지 않습니다.
+- **아직 다른 Thread 또는 외부 검증이 보완해야 하는 항목:** 물리 기반 Fresnel, roughness, transparency/refraction, stochastic anti-aliasing은이 material contract에 포함되지 않습니다.
 
 ## 10. 최종 architecture 또는 execution flow 정리
 
@@ -2063,7 +2063,7 @@ shape material token/default → `MaterialType` → `HitRecord::material` → `t
 
 Diffuse는 기존 direct-light path와 golden을 유지하고 Metal은 perfect reflection ray를 depth budget 안에서 재귀 추적합니다. scene syntax는 token 생략을 diffuse로 해석해 backward compatibility를 유지하며, CLI는 default 4와 0..32 범위를 renderer setting에 전달합니다. roughness/refraction/stochastic transport는 범위 밖입니다.
 
-남은 경계는 다음과 같습니다. 물리 기반 Fresnel, roughness, transparency/refraction, stochastic anti-aliasing은 이 material contract에 포함되지 않습니다.
+남은 경계는 다음과 같습니다. 물리 기반 Fresnel, roughness, transparency/refraction, stochastic anti-aliasing은이 material contract에 포함되지 않습니다.
 
 ## 11. 학습 완료 자가 점검
 
@@ -2077,7 +2077,7 @@ Diffuse는 기존 direct-light path와 golden을 유지하고 Metal은 perfect r
 - [x] test가 증명하는 것과 증명하지 않는 것을 구분했습니다.
 - [x] invariant ledger의 각 변화를 commit evidence와 연결했습니다.
 - [ ] 해당 SHA checkout에서 테스트·benchmark·sanitizer를 직접 실행했습니다. 환경 제한 때문에 미실행 상태입니다.
-- [x] 별도의 프로젝트 재학습 없이 이 Thread의 설계 → 구현 → 위험 → 수정 → 검증 발전을 설명할 수 있는 기록을 남겼습니다.
+- [x] 별도의 프로젝트 재학습 없이이 Thread의 설계 → 구현 → 위험 → 수정 → 검증 발전을 설명할 수 있는 기록을 남겼습니다.
 ===== END FILE: 04-material-syntax-and-reflection.md =====
 
 ===== BEGIN FILE: 05-deterministic-tiled-rendering.md =====
@@ -2136,39 +2136,39 @@ row-major serial renderer를 고정 tile work unit으로 바꾼 뒤, atomic clai
 ## 4. Commit map
 
 1. `498266fc0abf` — `refactor(render): 직렬 렌더링을 고정 tile 순회로 전환`
-   - Importance: B
-   - Tags: REFACTOR, CONCURRENCY, DETERMINISM
-   - Source-defined role: Converts serial row loop into fixed tile traversal without threads.
+ - Importance: B
+ - Tags: REFACTOR, CONCURRENCY, DETERMINISM
+ - Source-defined role: Converts serial row loop into fixed tile traversal without threads.
 
 2. `849f878ca0b0` — `feat(render): 원자적 tile 분배와 작업자 통계 병합 구현`
-   - Importance: S
-   - Tags: ARCH, CONCURRENCY, DETERMINISM
-   - Source-defined role: Distributes tiles atomically, assigns disjoint pixel writes, merges worker-local stats.
+ - Importance: S
+ - Tags: ARCH, CONCURRENCY, DETERMINISM
+ - Source-defined role: Distributes tiles atomically, assigns disjoint pixel writes, merges worker-local stats.
 
 3. `18459bfda416` — `feat(renderer): 작업자 수 설정과 자동 선택 추가`
-   - Importance: B
-   - Tags: CONCURRENCY, PERF
-   - Source-defined role: Adds explicit/automatic worker-count policy.
+ - Importance: B
+ - Tags: CONCURRENCY, PERF
+ - Source-defined role: Adds explicit/automatic worker-count policy.
 
 4. `3619550fa354` — `test(render): 작업자 수에 따른 함수 결과 동치 검증`
-   - Importance: A
-   - Tags: TEST, CONCURRENCY, DETERMINISM
-   - Source-defined role: Verifies equal pixels/work 1 vs 4 workers in both accel modes.
+ - Importance: A
+ - Tags: TEST, CONCURRENCY, DETERMINISM
+ - Source-defined role: Verifies equal pixels/work 1 vs 4 workers in both accel modes.
 
 5. `ca2d108f2255` — `test(render): 실행 모드별 PPM byte 결정성 검증`
-   - Importance: A
-   - Tags: TEST, DETERMINISM, OUTPUT
-   - Source-defined role: Verifies exact PPM-byte equality through CLI.
+ - Importance: A
+ - Tags: TEST, DETERMINISM, OUTPUT
+ - Source-defined role: Verifies exact PPM-byte equality through CLI.
 
 6. `0536e4829070` — `fix(renderer): 작업자 예외를 호출자에게 전달`
-   - Importance: A
-   - Tags: CONCURRENCY, RISK, DEBUG
-   - Source-defined role: Captures worker failures, stops new work, joins all workers, rethrows caller.
+ - Importance: A
+ - Tags: CONCURRENCY, RISK, DEBUG
+ - Source-defined role: Captures worker failures, stops new work, joins all workers, rethrows caller.
 
 7. `b5c708ac981a` — `test(renderer): 작업자 실패 전파와 회수 검증`
-   - Importance: A
-   - Tags: TEST, CONCURRENCY, RISK
-   - Source-defined role: Injects throwing shape to lock propagation/recovery.
+ - Importance: A
+ - Tags: TEST, CONCURRENCY, RISK
+ - Source-defined role: Injects throwing shape to lock propagation/recovery.
 
 ## 5. Commit별 학습 기록
 
@@ -2190,7 +2190,7 @@ row-major serial renderer를 고정 tile work unit으로 바꾼 뒤, atomic clai
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - src/renderer.cpp — serial 16×16 tile decomposition and unchanged pixel kernel
+ - src/renderer.cpp — serial 16×16 tile decomposition and unchanged pixel kernel
 - **caller → callee / data flow:** image dimensions → ceil-div tile counts → row-major tile index → clipped tile bounds → each pixel → existing ray/color/byte path
 - **ownership·state transition:** execution은 여전히 한 thread이며 Image가 유일한 mutable output입니다. 각 pixel은 정확히 한 tile에 속합니다.
 - **failure/edge branch:** edge tile을 fixed size로 처리하면 image 밖을 쓰거나 마지막 row/column을 누락할 수 있습니다. global offset 대신 tile-local offset을 쓰면 storage 위치가 달라집니다.
@@ -2225,8 +2225,8 @@ row-major serial renderer를 고정 tile work unit으로 바꾼 뒤, atomic clai
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - src/renderer.cpp — worker function, atomic tile claim, thread creation/join, stats merge
-  - CMakeLists.txt — Threads dependency
+ - src/renderer.cpp — worker function, atomic tile claim, thread creation/join, stats merge
+ - CMakeLists.txt — Threads dependency
 - **caller → callee / data flow:** tile_count + worker_count → threads start → relaxed atomic unique claims → disjoint pixel kernel + local stats → join all → deterministic integer merge → Image/stats return
 - **ownership·state transition:** shared mutable scheduler state는 atomic counter 하나이고, shared Image writes는 주소가 disjoint합니다. worker-local stats만 각 thread가 변경합니다. merge 전까지 global stats를 동시 수정하지 않습니다.
 - **failure/edge branch:** 이 초기 implementation은 thread 생성/호출자 예외의 join은 처리하지만 worker body 안에서 `traceRay`가 던진 예외는 thread entry 밖으로 빠져 `std::terminate`를 유발합니다. 이 gap은 `0536e4829070`에서 수정됩니다.
@@ -2261,9 +2261,9 @@ row-major serial renderer를 고정 tile work unit으로 바꾼 뒤, atomic clai
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - include/ray/renderer.hpp — `threadCount` setting
-  - src/renderer.cpp — auto/fallback/cap policy
-  - benchmarks/render_benchmark.cpp — explicit one-worker setting
+ - include/ray/renderer.hpp — `threadCount` setting
+ - src/renderer.cpp — auto/fallback/cap policy
+ - benchmarks/render_benchmark.cpp — explicit one-worker setting
 - **caller → callee / data flow:** settings.threadCount → explicit or hardware count → zero fallback → cap to tile count → worker launch
 - **ownership·state transition:** thread count는 scheduling policy이고 pixel semantics에는 참여하지 않습니다. no-work/empty tile count에서 불필요한 worker를 만들지 않는 경계가 생깁니다.
 - **failure/edge branch:** `hardware_concurrency()==0`을 그대로 사용하면 worker가 없어 image가 채워지지 않습니다. tile 수보다 많은 worker는 의미 없이 resource를 소모합니다.
@@ -2298,9 +2298,9 @@ row-major serial renderer를 고정 tile work unit으로 바꾼 뒤, atomic clai
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - tests/render_tests.cpp — worker-count differential render tests
-  - src/renderer.cpp — scheduler/pixel kernel/stats merge
-  - src/scene.cpp — both acceleration modes
+ - tests/render_tests.cpp — worker-count differential render tests
+ - src/renderer.cpp — scheduler/pixel kernel/stats merge
+ - src/scene.cpp — both acceleration modes
 - **caller → callee / data flow:** same Scene/settings except threadCount → mode별 1-worker baseline → 4-worker result → bytes/checksum/work equality
 - **ownership·state transition:** worker count만 독립 변수이고 Scene, mode, depth, resolution은 고정됩니다.
 - **failure/edge branch:** tile overlap/missing tile, shared stats race, schedule-dependent floating accumulation이 있으면 pixels 또는 counters가 달라집니다.
@@ -2344,9 +2344,9 @@ row-major serial renderer를 고정 tile work unit으로 바꾼 뒤, atomic clai
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - tests/render_determinism.sh — four-mode CLI regression
-  - src/main.cpp — accel/thread options
-  - src/output.cpp — PPM serialization
+ - tests/render_determinism.sh — four-mode CLI regression
+ - src/main.cpp — accel/thread options
+ - src/output.cpp — PPM serialization
 - **caller → callee / data flow:** temporary scene/output paths → four CLI invocations → checksum capture/equality → PPM byte comparisons → cleanup
 - **ownership·state transition:** process boundary, argument parsing, rendering, serialization 전체가 포함됩니다. output files는 temp area에 격리됩니다.
 - **failure/edge branch:** CLI가 setting을 잘못 전달하거나 writer ordering이 달라지면 in-process test는 통과해도 byte comparison이 실패합니다.
@@ -2398,7 +2398,7 @@ row-major serial renderer를 고정 tile work unit으로 바꾼 뒤, atomic clai
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - src/renderer.cpp — worker error slots, stop signal, join, post-join rethrow
+ - src/renderer.cpp — worker error slots, stop signal, join, post-join rethrow
 - **caller → callee / data flow:** worker production exception → catch/store → scheduler stop → other workers finish current tile/exit → caller joins all → error scan → original exception rethrow
 - **ownership·state transition:** exception ownership은 worker stack에서 `exception_ptr` value로 이전됩니다. Image 일부가 이미 써졌을 수 있지만 caller에게 성공값으로 반환되지 않습니다. 모든 thread resource cleanup이 rethrow보다 앞섭니다.
 - **failure/edge branch:** join 전에 rethrow하면 아직 실행 중인 thread와 joinable thread destructor 문제가 남습니다. catch 없이 thread boundary를 넘으면 process가 terminate됩니다.
@@ -2433,9 +2433,9 @@ row-major serial renderer를 고정 tile work unit으로 바꾼 뒤, atomic clai
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - tests/render_tests.cpp — `ThrowingShape` and worker-failure regression
-  - src/renderer.cpp — worker catch/stop/join/rethrow
-  - src/scene.cpp — unbounded shape dispatch
+ - tests/render_tests.cpp — `ThrowingShape` and worker-failure regression
+ - src/renderer.cpp — worker catch/stop/join/rethrow
+ - src/scene.cpp — unbounded shape dispatch
 - **caller → callee / data flow:** parallel render → worker tile → ray trace → Scene dispatch → `ThrowingShape::intersect` throws → renderer capture/stop/join → caller catches sentinel
 - **ownership·state transition:** failure injection은 매번 같은 production acquisition/dispatch 지점에서 발생합니다. 외부 mutable flag나 timing에 의존하지 않습니다.
 - **failure/edge branch:** fix 전에는 expected catch로 돌아오지 않고 process termination이 발생합니다. wrong message/type 또는 swallowed failure도 assertion이 잡습니다.
@@ -2459,7 +2459,7 @@ row-major serial renderer를 고정 tile work unit으로 바꾼 뒤, atomic clai
 
 - 이전 Thread commit: `0536e4829070`
 - 다음 Thread commit: 이 Thread의 종료점
-- 이 commit이 Thread 종료에 제공하는 것: Thread-level invariant ledger와 최종 실행 흐름에서 이 SHA의 결과를 최종 상태에 반영했습니다.
+- 이 commit이 Thread 종료에 제공하는 것: Thread-level invariant ledger와 최종 실행 순서에서이 SHA의 결과를 최종 상태에 반영했습니다.
 
 ## 6. Invariant ledger
 
@@ -2479,7 +2479,7 @@ row-major serial renderer를 고정 tile work unit으로 바꾼 뒤, atomic clai
 
 ## 7. Failure → Fix → Test 연결
 
-| Failure 또는 위험 | Decision/Fix | Test 또는 evidence | 실제 failure path와 assertion |
+| Failure 또는 위험 | Decision/Fix | Test 또는 evidence | 실제 실패 처리와 assertion |
 | --- | --- | --- | --- |
 | tile edge 계산 오류/중복 claim | clipped fixed tiles + atomic fetch_add | 3619550fa354 | 1/4 worker exact pixels and primary count |
 | schedule-dependent stats | worker-local counters + post-join integer merge | 3619550fa354 | mode별 counter equality |
@@ -2513,13 +2513,13 @@ caller로 전송되고 partial Image는 성공 결과로 반환되지 않습니�
 renderer는 fixed 16×16 tiles를 nondeterministic schedule로 처리하지만 tile ownership과 pixel
 writes는 disjoint하고 각 pixel의 floating operation order는 serial baseline과 같습니다.
 counters는 worker-local integer state라 join 후 merge order가 결과를 바꾸지 않습니다. one/four
-workers와 Linear/Bvh의 in-process 및 CLI exact comparison이 이 성질을 고정합니다. worker가
+workers와 Linear/Bvh의 in-process 및 CLI exact comparison이이 성질을 고정합니다. worker가
 production path에서 실패하면 새 work를 중단하고 모든 worker를 join한 뒤 original exception을
 caller에서 rethrow하므로 process termination이나 partial-success 반환을 막습니다.
 
 ### 직접 작성한 결론
 
-- **Thread 시작과 종료의 behavior 차이:** renderer는 fixed 16×16 tiles를 nondeterministic schedule로 처리하지만 tile ownership과 pixel writes는 disjoint하고 각 pixel의 floating operation order는 serial baseline과 같습니다. counters는 worker-local integer state라 join 후 merge order가 결과를 바꾸지 않습니다. one/four workers와 Linear/Bvh의 in-process 및 CLI exact comparison이 이 성질을 고정합니다. worker가 production path에서 실패하면 새 work를 중단하고 모든 worker를 join한 뒤 original exception을 caller에서 rethrow하므로 process termination이나 partial-success 반환을 막습니다.
+- **Thread 시작과 종료의 behavior 차이:** renderer는 fixed 16×16 tiles를 nondeterministic schedule로 처리하지만 tile ownership과 pixel writes는 disjoint하고 각 pixel의 floating operation order는 serial baseline과 같습니다. counters는 worker-local integer state라 join 후 merge order가 결과를 바꾸지 않습니다. one/four workers와 Linear/Bvh의 in-process 및 CLI exact comparison이이 성질을 고정합니다. worker가 production path에서 실패하면 새 work를 중단하고 모든 worker를 join한 뒤 original exception을 caller에서 rethrow하므로 process termination이나 partial-success 반환을 막습니다.
 - **아직 다른 Thread 또는 외부 검증이 보완해야 하는 항목:** ThreadSanitizer evidence, cooperative cancellation 중 진행 중 tile의 조기 중단, partial buffer rollback은 제공하지 않습니다.
 
 ## 10. 최종 architecture 또는 execution flow 정리
@@ -2548,7 +2548,7 @@ caller에서 rethrow하므로 process termination이나 partial-success 반환�
 renderer는 fixed 16×16 tiles를 nondeterministic schedule로 처리하지만 tile ownership과 pixel
 writes는 disjoint하고 각 pixel의 floating operation order는 serial baseline과 같습니다.
 counters는 worker-local integer state라 join 후 merge order가 결과를 바꾸지 않습니다. one/four
-workers와 Linear/Bvh의 in-process 및 CLI exact comparison이 이 성질을 고정합니다. worker가
+workers와 Linear/Bvh의 in-process 및 CLI exact comparison이이 성질을 고정합니다. worker가
 production path에서 실패하면 새 work를 중단하고 모든 worker를 join한 뒤 original exception을
 caller에서 rethrow하므로 process termination이나 partial-success 반환을 막습니다.
 
@@ -2566,7 +2566,7 @@ caller에서 rethrow하므로 process termination이나 partial-success 반환�
 - [x] test가 증명하는 것과 증명하지 않는 것을 구분했습니다.
 - [x] invariant ledger의 각 변화를 commit evidence와 연결했습니다.
 - [ ] 해당 SHA checkout에서 테스트·benchmark·sanitizer를 직접 실행했습니다. 환경 제한 때문에 미실행 상태입니다.
-- [x] 별도의 프로젝트 재학습 없이 이 Thread의 설계 → 구현 → 위험 → 수정 → 검증 발전을 설명할 수 있는 기록을 남겼습니다.
+- [x] 별도의 프로젝트 재학습 없이이 Thread의 설계 → 구현 → 위험 → 수정 → 검증 발전을 설명할 수 있는 기록을 남겼습니다.
 ===== END FILE: 05-deterministic-tiled-rendering.md =====
 
 ===== BEGIN FILE: 06-image-representation-and-atomic-output.md =====
@@ -2624,44 +2624,44 @@ image dimension/storage/index arithmetic에서 시작해 checksum definition, mu
 ## 4. Commit map
 
 1. `71096cd311d5` — `fix(image): 이미지 할당과 픽셀 인덱스 overflow 방지`
-   - Importance: A
-   - Tags: OUTPUT, RISK, EDGE
-   - Source-defined role: Makes allocation sizing/pixel offsets overflow-aware.
+ - Importance: A
+ - Tags: OUTPUT, RISK, EDGE
+ - Source-defined role: Makes allocation sizing/pixel offsets overflow-aware.
 
 2. `3d2e6a5becb7` — `test(image): 잘못된 차원과 저장 크기 계산 검증`
-   - Importance: B
-   - Tags: TEST, OUTPUT
-   - Source-defined role: Verifies positive dimensions/exact storage.
+ - Importance: B
+ - Tags: TEST, OUTPUT
+ - Source-defined role: Verifies positive dimensions/exact storage.
 
 3. `89c3c7269877` — `fix(output): 표준 FNV-1a 기준값 적용`
-   - Importance: B
-   - Tags: DEBUG, OUTPUT
-   - Source-defined role: Corrects the FNV-1a definition.
+ - Importance: B
+ - Tags: DEBUG, OUTPUT
+ - Source-defined role: Corrects the FNV-1a definition.
 
 4. `eac2ecd13c33` — `test(output): PPM과 렌더링 체크섬 기준 고정`
-   - Importance: A
-   - Tags: TEST, DETERMINISM, OUTPUT
-   - Source-defined role: Pins checksum/full-render goldens.
+ - Importance: A
+ - Tags: TEST, DETERMINISM, OUTPUT
+ - Source-defined role: Pins checksum/full-render goldens.
 
 5. `4eb50073bc3e` — `fix(output): 불일치한 이미지 저장소 거부`
-   - Importance: A
-   - Tags: OUTPUT, RISK, EDGE
-   - Source-defined role: Validates image dimensions/pixel storage agree.
+ - Importance: A
+ - Tags: OUTPUT, RISK, EDGE
+ - Source-defined role: Validates image dimensions/pixel storage agree.
 
 6. `918dd1efeaf3` — `test(output): 잘못된 이미지 저장소 처리 검증`
-   - Importance: B
-   - Tags: TEST, OUTPUT, RISK
-   - Source-defined role: Exercises short/oversized storage and existing destination preservation.
+ - Importance: B
+ - Tags: TEST, OUTPUT, RISK
+ - Source-defined role: Exercises short/oversized storage and existing destination preservation.
 
 7. `053235a7a5e1` — `fix(output): PPM 출력 실패 시 기존 파일 보존`
-   - Importance: A
-   - Tags: OUTPUT, RISK, PRACTICAL
-   - Source-defined role: Writes checked stream and publishes temp+final replacement.
+ - Importance: A
+ - Tags: OUTPUT, RISK, PRACTICAL
+ - Source-defined role: Writes checked stream and publishes temp+final replacement.
 
 8. `c6a6a7562a4d` — `test(output): 출력 실패의 대상 보존과 정리 검증`
-   - Importance: A
-   - Tags: TEST, OUTPUT, RISK
-   - Source-defined role: Injects serialization/replacement failures, verifies cleanup/preservation.
+ - Importance: A
+ - Tags: TEST, OUTPUT, RISK
+ - Source-defined role: Injects serialization/replacement failures, verifies cleanup/preservation.
 
 ## 5. Commit별 학습 기록
 
@@ -2678,7 +2678,7 @@ image dimension/storage/index arithmetic에서 시작해 checksum definition, mu
 #### A-level subsystem와 decision 복원
 
 - **직전 관련 상태:** `Image` construction의 `width * height * 3`과 PPM offset의 `(y * width + x) * 3`이 signed `int` domain에서 먼저 계산되면, 이후 `size_t`로 변환해도 이미 overflow한 값입니다. 잘못된 allocation 또는 out-of-bounds indexing으로 이어질 수 있습니다.
-- **핵심 구현 결정:** `pixelStorageSize`가 width/height 양수를 먼저 검사하고 operands를 `size_t`로 변환한 뒤 단계별 division check를 합니다. `w > max / h`, `w*h > max / 3`이면 `overflow_error`, non-positive dimensions면 `invalid_argument`입니다. Image constructor는 이 helper 결과로 vector를 만듭니다. PPM/checksum indexing도 각 operand를 먼저 `size_t`로 올려 multiplication이 unsigned storage domain에서 일어나게 합니다.
+- **핵심 구현 결정:** `pixelStorageSize`가 width/height 양수를 먼저 검사하고 operands를 `size_t`로 변환한 뒤 단계별 division check를 합니다. `w > max / h`, `w*h > max / 3`이면 `overflow_error`, non-positive dimensions면 `invalid_argument`입니다. Image constructor는이 helper 결과로 vector를 만듭니다. PPM/checksum indexing도 각 operand를 먼저 `size_t`로 올려 multiplication이 unsigned storage domain에서 일어나게 합니다.
 
 #### Failure → Fix 연결
 
@@ -2691,9 +2691,9 @@ image dimension/storage/index arithmetic에서 시작해 checksum definition, mu
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - include/ray/renderer.hpp — Image declaration/storage helper exposure if present
-  - src/renderer.cpp — `pixelStorageSize`, `Image` constructor
-  - src/output.cpp — size-safe pixel offset calculation
+ - include/ray/renderer.hpp — Image declaration/storage helper exposure if present
+ - src/renderer.cpp — `pixelStorageSize`, `Image` constructor
+ - src/output.cpp — size-safe pixel offset calculation
 - **caller → callee / data flow:** signed dimensions → positivity validation → size_t conversion → checked pixel count → checked RGB byte count → vector allocation; pixel `(x,y)` → pre-converted size_t offset
 - **ownership·state transition:** dimension values와 pixel vector size가 construction 시점에 일치합니다. 예외가 발생하면 vector allocation/partial Image 성공값이 없습니다.
 - **failure/edge branch:** overflow 후 비교하는 검사는 너무 늦습니다. signed multiplication은 undefined behavior가 될 수 있고 작은 vector와 큰 logical dimensions의 불일치를 만듭니다.
@@ -2728,8 +2728,8 @@ image dimension/storage/index arithmetic에서 시작해 checksum definition, mu
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - tests/core_tests.cpp — Image dimension/storage tests
-  - src/renderer.cpp — `pixelStorageSize`, Image constructor
+ - tests/core_tests.cpp — Image dimension/storage tests
+ - src/renderer.cpp — `pixelStorageSize`, Image constructor
 - **caller → callee / data flow:** valid/invalid dimension construction → helper validation/arithmetic → vector length 또는 expected exception
 - **ownership·state transition:** fixture는 constructor outcome만 관찰합니다. valid Image는 dimensions와 pixel size가 일치합니다.
 - **failure/edge branch:** positivity check 제거 또는 channel multiplier 오류가 assertion에서 드러납니다.
@@ -2746,7 +2746,7 @@ image dimension/storage/index arithmetic에서 시작해 checksum definition, mu
 #### 보장 범위와 남은 공백
 
 - **이 SHA가 보장하는 것:** 대표 valid size와 non-positive boundary를 고정합니다.
-- **이 SHA가 보장하지 않는 것:** `int` dimensions와 64-bit size_t 조합에서 실제 multiplication-overflow exception을 강제로 재현하지는 않습니다. construction 이후 public mutation도 이 테스트 범위 밖입니다.
+- **이 SHA가 보장하지 않는 것:** `int` dimensions와 64-bit size_t 조합에서 실제 multiplication-overflow exception을 강제로 재현하지는 않습니다. construction 이후 public mutation도이 테스트 범위 밖입니다.
 - **직접 확인/후속 evidence:** 테스트 성격: constructor boundary regression. 소스를 검사했으며 실행하지 않았습니다.
 
 #### Thread 내 연결
@@ -2773,7 +2773,7 @@ image dimension/storage/index arithmetic에서 시작해 checksum definition, mu
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - src/output.cpp — checksum initial constant and update loop
+ - src/output.cpp — checksum initial constant and update loop
 - **caller → callee / data flow:** standard offset basis → dimension bytes → pixel bytes 각각 xor/multiply → fixed-width hex
 - **ownership·state transition:** Image representation은 바뀌지 않고 derived checksum 값만 의도적으로 변경됩니다.
 - **failure/edge branch:** 기존 golden은 모두 새 정의와 불일치하므로 후속 commit이 새 기준을 명시적으로 고정해야 합니다.
@@ -2808,9 +2808,9 @@ image dimension/storage/index arithmetic에서 시작해 checksum definition, mu
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - tests/core_tests.cpp — small checksum golden and full-render golden
-  - src/output.cpp — checksum production path
-  - src/renderer.cpp and upstream pipeline — full-render input
+ - tests/core_tests.cpp — small checksum golden and full-render golden
+ - src/output.cpp — checksum production path
+ - src/renderer.cpp and upstream pipeline — full-render input
 - **caller → callee / data flow:** small explicit bytes → checksum exact value; parsed/basic Scene → full render bytes → same checksum function → full golden
 - **ownership·state transition:** 두 golden은 같은 checksum function을 쓰지만 upstream 범위가 다릅니다. small case는 encoding order, full case는 renderer semantics까지 포함합니다.
 - **failure/edge branch:** checksum constant/update 순서 변경은 둘 다 깨지고, rendering-only drift는 full golden만 깨질 수 있어 fault localization이 가능합니다.
@@ -2862,9 +2862,9 @@ image dimension/storage/index arithmetic에서 시작해 checksum definition, mu
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - include/ray/renderer.hpp — `Image::validate`
-  - src/renderer.cpp — representation validation
-  - src/output.cpp — checksum/writer precondition call
+ - include/ray/renderer.hpp — `Image::validate`
+ - src/renderer.cpp — representation validation
+ - src/output.cpp — checksum/writer precondition call
 - **caller → callee / data flow:** possibly externally mutated Image → validate dimensions/expected bytes/exact vector length → only then checksum indexing or output operation
 - **ownership·state transition:** public mutable representation은 유지되지만 모든 public consumer 앞에서 invariant를 재확립합니다. validation은 object를 고치지 않고 fail closed합니다.
 - **failure/edge branch:** storage가 짧으면 out-of-bounds read, 길면 ignored trailing data/ambiguous representation이 됩니다. writer가 파일을 먼저 열면 invalid input이 기존 destination을 파괴할 수 있습니다.
@@ -2899,9 +2899,9 @@ image dimension/storage/index arithmetic에서 시작해 checksum definition, mu
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - tests/core_tests.cpp — malformed Image regression and existing destination assertion
-  - src/renderer.cpp — `Image::validate`
-  - src/output.cpp — checksum/path writer
+ - tests/core_tests.cpp — malformed Image regression and existing destination assertion
+ - src/renderer.cpp — `Image::validate`
+ - src/output.cpp — checksum/path writer
 - **caller → callee / data flow:** valid Image → short mutation → checksum reject → existing file seed → path write reject before open/truncate → content preserved → oversized mutation → reject
 - **ownership·state transition:** failure injection은 public vector mutation으로 deterministic합니다. destination 내용은 observable external state입니다.
 - **failure/edge branch:** validation이 after-open으로 이동하면 exception은 나더라도 `preserve me`가 사라져 preservation assertion이 실패합니다.
@@ -2918,7 +2918,7 @@ image dimension/storage/index arithmetic에서 시작해 checksum definition, mu
 #### 보장 범위와 남은 공백
 
 - **이 SHA가 보장하는 것:** short와 oversized representation을 모두 거부하고 invalid input이 기존 destination을 건드리지 않음을 고정합니다.
-- **이 SHA가 보장하지 않는 것:** valid image의 serialization 도중 stream/flush/replace failure는 이 테스트가 주입하지 않습니다.
+- **이 SHA가 보장하지 않는 것:** valid image의 serialization 도중 stream/flush/replace failure는이 테스트가 주입하지 않습니다.
 - **직접 확인/후속 evidence:** 테스트 성격: deterministic representation failure injection + pre-side-effect preservation regression. 실행은 하지 않았습니다.
 
 #### Thread 내 연결
@@ -2953,8 +2953,8 @@ image dimension/storage/index arithmetic에서 시작해 checksum definition, mu
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - include/ray/output.hpp — checked stream/path overloads
-  - src/output.cpp — stream validation, `TemporaryOutput`, temp naming, flush/close, platform replacement
+ - include/ray/output.hpp — checked stream/path overloads
+ - src/output.cpp — stream validation, `TemporaryOutput`, temp naming, flush/close, platform replacement
 - **caller → callee / data flow:** Image validate → same-directory temp open → complete P3 write → stream check → flush check → close check → atomic-style replacement → temp guard commit; any throw before commit → guard removes temp
 - **ownership·state transition:** 기존 destination은 final replacement까지 authoritative합니다. temp file이 new candidate를 소유하고, replacement 성공이 publication commit point입니다. guard destructor가 uncommitted temp cleanup을 맡습니다.
 - **failure/edge branch:** validation/open/serialization/flush/close/replacement 어느 단계든 예외가 나면 final path를 직접 수정하지 않습니다. replacement가 실패하면 temp를 제거하고 기존 target을 유지합니다.
@@ -2989,8 +2989,8 @@ image dimension/storage/index arithmetic에서 시작해 checksum definition, mu
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - tests/output_tests.cpp — failing buffer, temp directory fixture, replacement failure/preservation assertions
-  - src/output.cpp — stream writer and transactional path writer
+ - tests/output_tests.cpp — failing buffer, temp directory fixture, replacement failure/preservation assertions
+ - src/output.cpp — stream writer and transactional path writer
 - **caller → callee / data flow:** failing stream buffer → checked stream write throws; seeded destination/directory → temp candidate complete → replacement fails → guard cleanup → destination/sentinel/temp-directory scan assertions
 - **ownership·state transition:** destination, sentinel, temp directory listing이 failure 전후 external state입니다. failure injection은 timing이나 disk-full에 의존하지 않습니다.
 - **failure/edge branch:** stream state를 검사하지 않으면 short output을 성공으로 볼 수 있고, replacement failure 뒤 guard commit/cleanup 순서가 틀리면 temp leak 또는 destination 손상이 나타납니다.
@@ -3014,7 +3014,7 @@ image dimension/storage/index arithmetic에서 시작해 checksum definition, mu
 
 - 이전 Thread commit: `053235a7a5e1`
 - 다음 Thread commit: 이 Thread의 종료점
-- 이 commit이 Thread 종료에 제공하는 것: Thread-level invariant ledger와 최종 실행 흐름에서 이 SHA의 결과를 최종 상태에 반영했습니다.
+- 이 commit이 Thread 종료에 제공하는 것: Thread-level invariant ledger와 최종 실행 순서에서이 SHA의 결과를 최종 상태에 반영했습니다.
 
 ## 6. Invariant ledger
 
@@ -3034,7 +3034,7 @@ image dimension/storage/index arithmetic에서 시작해 checksum definition, mu
 
 ## 7. Failure → Fix → Test 연결
 
-| Failure 또는 위험 | Decision/Fix | Test 또는 evidence | 실제 failure path와 assertion |
+| Failure 또는 위험 | Decision/Fix | Test 또는 evidence | 실제 실패 처리와 assertion |
 | --- | --- | --- | --- |
 | dimension/storage multiplication 또는 index overflow | size_t pre-conversion + division checks | 3d2e6a5becb7 | valid size/non-positive boundary assertions |
 | public pixels short/oversized | `Image::validate` exact equality | 918dd1efeaf3 | checksum/write reject and existing content preservation |
@@ -3071,11 +3071,11 @@ Image storage와 offset은 multiplication 전에 checked `size_t` domain에서 �
 FNV-1a로 정의되고 local/full goldens이 byte order와 pipeline을 고정합니다. valid PPM은 final path가
 아닌 same-directory temp에 완전히 serialize·flush·close된 뒤 replacement됩니다. validation, stream,
 close, replace failure에서는 기존 destination이 유지되고 temp guard가 candidate를 제거합니다.
-power-loss durability와 directory fsync는 이 API-level contract 밖입니다.
+power-loss durability와 directory fsync는이 API-level contract 밖입니다.
 
 ### 직접 작성한 결론
 
-- **Thread 시작과 종료의 behavior 차이:** Image storage와 offset은 multiplication 전에 checked `size_t` domain에서 계산되고, public mutation으로 생긴 short/oversized state는 checksum/output side effect 전에 거부됩니다. checksum은 표준 64-bit FNV-1a로 정의되고 local/full goldens이 byte order와 pipeline을 고정합니다. valid PPM은 final path가 아닌 same-directory temp에 완전히 serialize·flush·close된 뒤 replacement됩니다. validation, stream, close, replace failure에서는 기존 destination이 유지되고 temp guard가 candidate를 제거합니다. power-loss durability와 directory fsync는 이 API-level contract 밖입니다.
+- **Thread 시작과 종료의 behavior 차이:** Image storage와 offset은 multiplication 전에 checked `size_t` domain에서 계산되고, public mutation으로 생긴 short/oversized state는 checksum/output side effect 전에 거부됩니다. checksum은 표준 64-bit FNV-1a로 정의되고 local/full goldens이 byte order와 pipeline을 고정합니다. valid PPM은 final path가 아닌 same-directory temp에 완전히 serialize·flush·close된 뒤 replacement됩니다. validation, stream, close, replace failure에서는 기존 destination이 유지되고 temp guard가 candidate를 제거합니다. power-loss durability와 directory fsync는이 API-level contract 밖입니다.
 - **아직 다른 Thread 또는 외부 검증이 보완해야 하는 항목:** process crash·power loss에 대한 durable atomicity, directory fsync, 모든 filesystem/Windows edge는 별도 시스템 수준 검증이 필요합니다.
 
 ## 10. 최종 architecture 또는 execution flow 정리
@@ -3106,7 +3106,7 @@ Image storage와 offset은 multiplication 전에 checked `size_t` domain에서 �
 FNV-1a로 정의되고 local/full goldens이 byte order와 pipeline을 고정합니다. valid PPM은 final path가
 아닌 same-directory temp에 완전히 serialize·flush·close된 뒤 replacement됩니다. validation, stream,
 close, replace failure에서는 기존 destination이 유지되고 temp guard가 candidate를 제거합니다.
-power-loss durability와 directory fsync는 이 API-level contract 밖입니다.
+power-loss durability와 directory fsync는이 API-level contract 밖입니다.
 
 남은 경계는 다음과 같습니다. process crash·power loss에 대한 durable atomicity, directory fsync, 모든 filesystem/Windows edge는 별도 시스템 수준 검증이 필요합니다.
 
@@ -3122,7 +3122,7 @@ power-loss durability와 directory fsync는 이 API-level contract 밖입니다.
 - [x] test가 증명하는 것과 증명하지 않는 것을 구분했습니다.
 - [x] invariant ledger의 각 변화를 commit evidence와 연결했습니다.
 - [ ] 해당 SHA checkout에서 테스트·benchmark·sanitizer를 직접 실행했습니다. 환경 제한 때문에 미실행 상태입니다.
-- [x] 별도의 프로젝트 재학습 없이 이 Thread의 설계 → 구현 → 위험 → 수정 → 검증 발전을 설명할 수 있는 기록을 남겼습니다.
+- [x] 별도의 프로젝트 재학습 없이이 Thread의 설계 → 구현 → 위험 → 수정 → 검증 발전을 설명할 수 있는 기록을 남겼습니다.
 ===== END FILE: 06-image-representation-and-atomic-output.md =====
 
 ===== BEGIN FILE: 07-reproducible-verification.md =====
@@ -3174,24 +3174,24 @@ production core와 검증 executable을 같은 build graph에 묶고, component 
 ## 4. Commit map
 
 1. `2cf2f17980bb` — `build(cmake): 코어 라이브러리와 검증 타깃 구성`
-   - Importance: B
-   - Tags: BUILD, TEST
-   - Source-defined role: Separates `raycore`, executable, CTest targets under CMake.
+ - Importance: B
+ - Tags: BUILD, TEST
+ - Source-defined role: Separates `raycore`, executable, CTest targets under CMake.
 
 2. `0e8c3b51e3b7` — `test(core): 수학·기하·파서·출력 회귀 기준 추가`
-   - Importance: B
-   - Tags: TEST, DETERMINISM
-   - Source-defined role: Adds broad component regression coverage.
+ - Importance: B
+ - Tags: TEST, DETERMINISM
+ - Source-defined role: Adds broad component regression coverage.
 
 3. `58d53cce0ee5` — `build(sanitizers): 메모리와 정의되지 않은 동작 검사 구성`
-   - Importance: B
-   - Tags: BUILD, TEST, RISK
-   - Source-defined role: Adds ASan/UBSan config.
+ - Importance: B
+ - Tags: BUILD, TEST, RISK
+ - Source-defined role: Adds ASan/UBSan config.
 
 4. `4491bea4d93c` — `ci: 플랫폼별 빌드와 회귀 검사 자동화`
-   - Importance: B
-   - Tags: BUILD, TEST, INTEGRATION
-   - Source-defined role: Runs release regressions Ubuntu/macOS and sanitizer checks Linux.
+ - Importance: B
+ - Tags: BUILD, TEST, INTEGRATION
+ - Source-defined role: Runs release regressions Ubuntu/macOS and sanitizer checks Linux.
 
 ## 5. Commit별 학습 기록
 
@@ -3213,9 +3213,9 @@ production core와 검증 executable을 같은 build graph에 묶고, component 
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - CMakeLists.txt — `raycore`, CLI, testing, warnings and standard
-  - Makefile — CMake delegation
-  - tests/render_smoke.sh — built executable argument
+ - CMakeLists.txt — `raycore`, CLI, testing, warnings and standard
+ - Makefile — CMake delegation
+ - tests/render_smoke.sh — built executable argument
 - **caller → callee / data flow:** CMake configure → raycore compile → CLI link → CTest test registration with built target path → `ctest` execution
 - **ownership·state transition:** production implementation의 authoritative object graph는 `raycore` 하나입니다. executable/test가 별도 source copy를 컴파일하지 않고 link dependency를 공유합니다.
 - **failure/edge branch:** test가 hard-coded `./ray` 경로를 사용하면 multi-config/build-tree 환경에서 다른 binary를 실행하거나 찾지 못할 수 있습니다. source 목록 중복은 production/test drift를 만듭니다.
@@ -3250,8 +3250,8 @@ production core와 검증 executable을 같은 build graph에 묶고, component 
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - CMakeLists.txt — `ray-core-tests`, `RAY_SOURCE_DIR`, CTest registration
-  - tests/core_tests.cpp — component regressions
+ - CMakeLists.txt — `ray-core-tests`, `RAY_SOURCE_DIR`, CTest registration
+ - tests/core_tests.cpp — component regressions
 - **caller → callee / data flow:** CTest → native test executable → direct raycore API calls/fixture parse → assertions; shell smoke는 별도 CLI process path 유지
 - **ownership·state transition:** test executable은 production library를 link하되 fixture location만 compile-time source root를 전달받습니다. process current directory가 fixture authority가 아닙니다.
 - **failure/edge branch:** source root가 없으면 out-of-tree build에서 fixture lookup이 깨질 수 있습니다. broad smoke만 있으면 local failure가 checksum mismatch 하나로만 보일 수 있습니다.
@@ -3295,8 +3295,8 @@ production core와 검증 executable을 같은 build graph에 묶고, component 
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - CMakeLists.txt — sanitizer option, compiler gate, compile/link options
-  - .gitignore — sanitizer build tree
+ - CMakeLists.txt — sanitizer option, compiler gate, compile/link options
+ -.gitignore — sanitizer build tree
 - **caller → callee / data flow:** configure option ON → compiler-family validation → instrumented raycore compile/link interface → linked tests/CLI instrumentation → CTest runtime diagnostics
 - **ownership·state transition:** option OFF인 normal build와 ON인 diagnostic build가 별도 build tree에서 공존합니다. frame pointer가 diagnostic stack trace를 지원합니다.
 - **failure/edge branch:** compile flags만 적용하고 link flags를 빼면 sanitizer runtime link가 실패할 수 있습니다. unsupported toolchain에서 option을 무시하면 user가 검사됐다고 오인합니다.
@@ -3331,8 +3331,8 @@ production core와 검증 executable을 같은 build graph에 묶고, component 
 #### 실제 코드와 실행 경로
 
 - **확인한 file path와 symbol:**
-  - .github/workflows/ci.yml — release matrix and sanitizer job
-  - CMakeLists.txt — consumed configuration options/tests
+ -.github/workflows/ci.yml — release matrix and sanitizer job
+ - CMakeLists.txt — consumed configuration options/tests
 - **caller → callee / data flow:** push/PR → platform checkout/configure → build → CTest; Linux sanitizer branch → instrumented Debug build → ASAN/UBSAN runtime env → CTest
 - **ownership·state transition:** release portability와 runtime instrumentation은 독립 jobs라 한쪽 실패가 다른 증거로 대체되지 않습니다. 동일 registered tests를 다른 configuration에서 실행합니다.
 - **failure/edge branch:** macOS/Ubuntu compile 차이, release-only issues, sanitizer diagnostics는 각 job에서 별도 failure status가 됩니다.
@@ -3340,14 +3340,14 @@ production core와 검증 executable을 같은 build graph에 묶고, component 
 #### 보장 범위와 남은 공백
 
 - **이 SHA가 보장하는 것:** 지정 workflow가 유지되는 동안 두 OS의 release regression과 Linux ASan/UBSan regression을 자동으로 요청합니다.
-- **이 SHA가 보장하지 않는 것:** Windows, 다른 compiler/version, race detector, 실제 workflow run 성공을 이 source 검사만으로 증명하지 않습니다. 이 작업에서는 과거 CI run이나 명령 결과를 성공으로 기록하지 않았습니다.
+- **이 SHA가 보장하지 않는 것:** Windows, 다른 compiler/version, race detector, 실제 workflow run 성공을이 source 검사만으로 증명하지 않습니다. 이 작업에서는 과거 CI run이나 명령 결과를 성공으로 기록하지 않았습니다.
 - **직접 확인/후속 evidence:** workflow triggers, matrix, configure/build/ctest commands와 sanitizer environment를 source에서 확인했습니다. CI는 새로 실행하지 않았습니다.
 
 #### Thread 내 연결
 
 - 이전 Thread commit: `58d53cce0ee5`
 - 다음 Thread commit: 이 Thread의 종료점
-- 이 commit이 Thread 종료에 제공하는 것: Thread-level invariant ledger와 최종 실행 흐름에서 이 SHA의 결과를 최종 상태에 반영했습니다.
+- 이 commit이 Thread 종료에 제공하는 것: Thread-level invariant ledger와 최종 실행 순서에서이 SHA의 결과를 최종 상태에 반영했습니다.
 
 ## 6. Invariant ledger
 
@@ -3367,7 +3367,7 @@ production core와 검증 executable을 같은 build graph에 묶고, component 
 
 ## 7. Failure → Fix → Test 연결
 
-| Failure 또는 위험 | Decision/Fix | Test 또는 evidence | 실제 failure path와 assertion |
+| Failure 또는 위험 | Decision/Fix | Test 또는 evidence | 실제 실패 처리와 assertion |
 | --- | --- | --- | --- |
 | test가 다른 source copy 또는 binary 실행 | `raycore` link + generated target path | CTest smoke/native tests | active build artifact path |
 | out-of-tree fixture lookup 실패 | compile-time source root | 0e8c3b51e3b7 core test | invalid fixture line assertion |
@@ -3393,11 +3393,11 @@ CMake target graph가 production source 목록의 authority를 `raycore`에 둡�
 
 ## 9. Thread 최종 상태
 
-동일 production `raycore`를 사용하는 CLI·native tests·benchmark가 CMake graph에 있고 CTest가 shell integration과 component regressions를 실행합니다. 별도 sanitizer configuration은 GCC/Clang compile/link instrumentation을 적용하고, CI는 Ubuntu/macOS Release와 Linux ASan/UBSan jobs를 분리합니다. source inspection은 이 자동화의 구성만 확인하며 실제 workflow/test 성공을 대신하지 않습니다.
+동일 production `raycore`를 사용하는 CLI·native tests·benchmark가 CMake graph에 있고 CTest가 shell integration과 component regressions를 실행합니다. 별도 sanitizer configuration은 GCC/Clang compile/link instrumentation을 적용하고, CI는 Ubuntu/macOS Release와 Linux ASan/UBSan jobs를 분리합니다. source inspection은이 자동화의 구성만 확인하며 실제 workflow/test 성공을 대신하지 않습니다.
 
 ### 직접 작성한 결론
 
-- **Thread 시작과 종료의 behavior 차이:** 동일 production `raycore`를 사용하는 CLI·native tests·benchmark가 CMake graph에 있고 CTest가 shell integration과 component regressions를 실행합니다. 별도 sanitizer configuration은 GCC/Clang compile/link instrumentation을 적용하고, CI는 Ubuntu/macOS Release와 Linux ASan/UBSan jobs를 분리합니다. source inspection은 이 자동화의 구성만 확인하며 실제 workflow/test 성공을 대신하지 않습니다.
+- **Thread 시작과 종료의 behavior 차이:** 동일 production `raycore`를 사용하는 CLI·native tests·benchmark가 CMake graph에 있고 CTest가 shell integration과 component regressions를 실행합니다. 별도 sanitizer configuration은 GCC/Clang compile/link instrumentation을 적용하고, CI는 Ubuntu/macOS Release와 Linux ASan/UBSan jobs를 분리합니다. source inspection은이 자동화의 구성만 확인하며 실제 workflow/test 성공을 대신하지 않습니다.
 - **아직 다른 Thread 또는 외부 검증이 보완해야 하는 항목:** 이 작업에서는 로컬 build/test/sanitizer/CI를 실행하지 않았습니다. Windows, TSan, 추가 compiler와 actual historical run status는 별도 evidence가 필요합니다.
 
 ## 10. 최종 architecture 또는 execution flow 정리
@@ -3420,7 +3420,7 @@ CMake configure → `raycore` → CLI/tests/benchmark link → CTest registratio
 
 ### 학습자의 최종 설명
 
-동일 production `raycore`를 사용하는 CLI·native tests·benchmark가 CMake graph에 있고 CTest가 shell integration과 component regressions를 실행합니다. 별도 sanitizer configuration은 GCC/Clang compile/link instrumentation을 적용하고, CI는 Ubuntu/macOS Release와 Linux ASan/UBSan jobs를 분리합니다. source inspection은 이 자동화의 구성만 확인하며 실제 workflow/test 성공을 대신하지 않습니다.
+동일 production `raycore`를 사용하는 CLI·native tests·benchmark가 CMake graph에 있고 CTest가 shell integration과 component regressions를 실행합니다. 별도 sanitizer configuration은 GCC/Clang compile/link instrumentation을 적용하고, CI는 Ubuntu/macOS Release와 Linux ASan/UBSan jobs를 분리합니다. source inspection은이 자동화의 구성만 확인하며 실제 workflow/test 성공을 대신하지 않습니다.
 
 남은 경계는 다음과 같습니다. 이 작업에서는 로컬 build/test/sanitizer/CI를 실행하지 않았습니다. Windows, TSan, 추가 compiler와 actual historical run status는 별도 evidence가 필요합니다.
 
@@ -3436,7 +3436,7 @@ CMake configure → `raycore` → CLI/tests/benchmark link → CTest registratio
 - [x] test가 증명하는 것과 증명하지 않는 것을 구분했습니다.
 - [x] invariant ledger의 각 변화를 commit evidence와 연결했습니다.
 - [ ] 해당 SHA checkout에서 테스트·benchmark·sanitizer를 직접 실행했습니다. 환경 제한 때문에 미실행 상태입니다.
-- [x] 별도의 프로젝트 재학습 없이 이 Thread의 설계 → 구현 → 위험 → 수정 → 검증 발전을 설명할 수 있는 기록을 남겼습니다.
+- [x] 별도의 프로젝트 재학습 없이이 Thread의 설계 → 구현 → 위험 → 수정 → 검증 발전을 설명할 수 있는 기록을 남겼습니다.
 ===== END FILE: 07-reproducible-verification.md =====
 
 ===== BEGIN FILE: README.md =====
@@ -3516,7 +3516,7 @@ git grep -n "<symbol>" <sha> -- .
 - 핵심 decision
 - 실제 핵심 코드와 caller/callee
 - ownership, lifecycle, state transition
-- 주요 failure path
+- 주요 실패 처리
 - 이 SHA가 보장하는 것과 아직 보장하지 않는 것
 - 후속 fix와 regression test
 
@@ -3524,7 +3524,7 @@ git grep -n "<symbol>" <sha> -- .
 
 ### A
 
-주요 subsystem, integration boundary, failure path, numerical/geometric decision을 이해하는 깊이입니다.
+주요 subsystem, integration boundary, 실패 처리, numerical/geometric decision을 이해하는 깊이입니다.
 
 - 핵심 구현과 state change
 - 선택한 algorithm 또는 boundary
@@ -3546,7 +3546,7 @@ Thread 흐름에서 맡는 구현 역할을 이해하는 깊이입니다.
 
 Thread 이해에 필요한 맥락만 확인합니다. 문서 유지보수나 evidence snapshot을
 S/A와 같은 깊이로 분석하지 않습니다. 현재 source의 Development Threads에는 C commit이 없지만,
-다른 문맥에서 C commit을 참조할 때 이 기준을 적용합니다.
+다른 문맥에서 C commit을 참조할 때이 기준을 적용합니다.
 
 ## 실제 코드 삽입 기준
 

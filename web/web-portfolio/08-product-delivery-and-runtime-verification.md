@@ -1,90 +1,90 @@
 ===== BEGIN FILE: 01-reproducible-toolchain-and-production-server-verification.md =====
-# Thread: Reproducible toolchain and production-server verification
+# 개발 흐름: 재현 가능한 개발 도구 버전과 배포용 서버 검증
 
-> Project: 42 Archive Portfolio (`web/portfolio`)
+> 프로젝트: 42 Archive Portfolio (`web/portfolio`)
 >
-> 이 문서는 원본 Development Thread를 변경하지 않고, 같은 branch history에 product-delivery 관점을 추가한 확장 workbook입니다.
+> 이 문서는 원본 개발 흐름을 변경하지 않고, 같은 브랜치 이력에 제품 전달 관점을 추가한 확장 학습 문서입니다.
 
 ## 0. 분류 출처와 변경 가능 범위
 
-- Commit SHA, subject, importance, tags는 `commit/commit-importance.md`의 branch-scoped 분류를 사용합니다.
-- Phase 1 audit에서 category/thread grouping과 commit set을 실제 history에 대조한 뒤 이 문서를 freeze했습니다.
-- Phase 2는 freeze된 구조와 fixed metadata를 바꾸지 않고 learner-facing 기록만 완성합니다.
-- 다른 branch의 구현이나 final HEAD를 과거 SHA 설명에 소급하지 않습니다.
-- 실행하지 않은 build/test/CI/Docker 결과는 exact-SHA source inspection과 구분합니다.
+- 커밋 SHA·제목·중요도·태그는 `commit/commit-importance.md`의 브랜치별 분류를 사용합니다.
+- 1단계 검토에서 분류와 개발 흐름 묶음, 커밋 집합을 실제 이력과 대조한 뒤 이 문서를 고정했습니다.
+- 2단계는 고정된 구조와 고정된 메타데이터를 바꾸지 않고 학습자용 기록만 완성합니다.
+- 다른 브랜치의 구현이나 최종 HEAD를 과거 SHA 설명에 소급하지 않습니다.
+- 실행하지 않은 빌드·테스트·CI·Docker 결과는 해당 SHA의 원본 정적 검토와 구분합니다.
 
-## 1. Thread 목표
+## 1. 개발 흐름 목표
 
-개발 환경의 암묵적 버전 차이를 제거하고, 최적화된 production server를 실제 browser test 대상으로 만든 뒤 같은 검증을 CI의 기본 전달 gate로 승격하는 과정을 복원합니다.
+개발 환경의 암묵적 버전 차이를 제거하고, 최적화된 배포용 서버를 실제 브라우저 테스트 대상으로 만든 뒤 같은 검증을 CI의 기본 전달 검사 단계로 승격하는 과정을 복원합니다.
 
-### 계획된 핵심 invariant
+### 계획된 핵심 불변 조건
 
-- 지원 Node.js와 npm 버전은 repository metadata와 CI가 같은 값으로 해석합니다.
-- 브라우저 검증은 development server가 아니라 production build를 시작한 server를 대상으로 수행할 수 있습니다.
-- CI는 fresh install부터 정적 검사, content validation, production browser verification까지 하나의 재현 가능한 경로로 수행합니다.
+- 지원 Node.js와 npm 버전은 저장소 메타데이터와 CI가 같은 값으로 해석합니다.
+- 브라우저 검증은 개발 서버가 아니라 배포용 빌드를 시작한 서버를 대상으로 수행할 수 있습니다.
+- CI는 새 환경에서 의존성을 설치한 뒤 정적 검사, 콘텐츠 검증, 배포용 브라우저 검증을 하나의 재현 가능한 순서로 수행합니다.
 
-## 2. 이 Thread를 이해하기 위한 핵심 질문
+## 2. 이 개발 흐름을 이해하기 위한 핵심 질문
 
-- 버전 파일과 `package.json` 선언은 어떤 소비자에게 읽히며, 잘못된 local runtime을 실제로 차단하는가?
-- `test:e2e:production`은 build, server 시작, readiness와 browser matrix를 어떤 순서로 소유하는가?
-- CI가 local production E2E 경로를 재사용하는 지점과 아직 포함하지 않는 release 검증은 무엇인가?
-- 각 단계의 timeout, cancellation, server reuse와 권한 경계는 failure를 어떻게 제한하는가?
+- 버전 파일과 `package.json` 선언은 어떤 소비자에게 읽히며, 잘못된 로컬 실행 시점을 실제로 차단하는가?
+- `test:e2e:production`은 빌드, 서버 시작, 배포 준비 상태와 브라우저 조합표를 어떤 순서로 소유하는가?
+- CI가 로컬 배포용 E2E 경로를 재사용하는 지점과 아직 포함하지 않는 배포 검증은 무엇인가?
+- 각 단계의 시간 제한, 취소, 서버 재사용과 권한 범위는 실패를 어떻게 제한하는가?
 
 ## 3. 완료 기준
 
-- 각 SHA의 parent diff와 resulting tree에서 실제 변경 file, function, config, script와 workflow step을 확인했습니다.
-- Source, generated artifact, CI gate, container/runtime owner를 구분했습니다.
-- Missing artifact, portability failure, threshold violation, startup failure와 cleanup branch를 기록했습니다.
-- Test/CI command의 technique, production path, proves/does-not-prove와 실제 실행 여부를 구분했습니다.
-- 최종 product-delivery 흐름과 cross-thread handoff를 코드 없이 설명할 수 있습니다.
+- 각 SHA의 부모 커밋과의 차이와 변경 후 파일 트리에서 실제 변경 파일, 함수, 설정, 스크립트와 작업 단계를 확인했습니다.
+- 원본, 생성 산출물, CI 검사 단계, 컨테이너·실행 시점 소유 주체를 구분했습니다.
+- 누락된 산출물, 이식성 실패, 기준값 초과, 시작 실패와 정리 브랜치를 기록했습니다.
+- 테스트·CI 명령의 방법, 실제 코드 경로, 증명 범위와 증명하지 않는 범위와 실제 실행 여부를 구분했습니다.
+- 최종 제품 전달 흐름과 다른 개발 흐름으로 넘기는 지점을 코드 없이 설명할 수 있습니다.
 
-## 4. Commit map
+## 4. 커밋 목록
 
-| 순서 | Commit | Subject | Importance | Tags | 확장 thread에서 확인할 역할 |
-| ---: | --- | --- | :---: | --- | --- |
-| 1 | `f66b880a8f97` | chore(runtime): 지원 Node.js와 npm 버전 고정 | B | DEPLOY | 초기 전달 경계 — runtime/package-manager 버전을 repository contract로 고정합니다. |
-| 2 | `f81691072413` | test(e2e): production server 검증 경로 추가 | A | VALIDATION, DEPLOY, TEST | 회귀·artifact 검증 — production build와 별도 server port를 사용하는 browser verification 경로를 만듭니다. |
-| 3 | `9fd3541c11dc` | ci: 기본 배포 품질 검사 추가 | A | DEPLOY, TEST | 통합 gate — 고정 toolchain과 production E2E를 GitHub Actions의 기본 delivery gate로 연결합니다. |
+| 순서 | 커밋 | 제목 | 중요도 | 태그 | 확장 개발 흐름에서 확인할 역할 |
+| ---: | --- | --- |:---: | --- | --- |
+| 1 | `f66b880a8f97` | chore(runtime): 지원 Node.js와 npm 버전 고정 | B | DEPLOY | 초기 전달 경계 — 실행 환경·패키지 관리자 버전을 저장소 규칙으로 고정합니다. |
+| 2 | `f81691072413` | test(e2e): production server 검증 경로 추가 | A | VALIDATION, DEPLOY, TEST | 회귀·산출물 검증 — 배포용 빌드와 별도 서버 포트를 사용하는 브라우저 검증 경로를 만듭니다. |
+| 3 | `9fd3541c11dc` | ci: 기본 배포 품질 검사 추가 | A | DEPLOY, TEST | 통합 검사 단계 — 고정 개발 도구 버전과 배포용 E2E를 GitHub Actions의 기본 전달 품질 검사로 연결합니다. |
 
-## 5. Commit별 학습 기록
+## 5. 커밋별 학습 기록
 
-각 section은 반드시 해당 SHA의 tree와 parent diff를 기준으로 작성합니다. 다른 Thread의 later commit은 관계 설명에만 사용하고 과거 구현에 소급하지 않습니다.
+각 섹션은 반드시 해당 SHA의 파일 트리와 부모 커밋과의 차이를 기준으로 작성합니다. 다른 개발 흐름의 후속 커밋은 관계 설명에만 사용하고 과거 구현에 소급하지 않습니다.
 
 ### 1. `f66b880a8f97` — chore(runtime): 지원 Node.js와 npm 버전 고정
 
 - **Full SHA:** `f66b880a8f975443974896891a71e1dfd70fbe32`
 - **Importance:** B
 - **Tags:** DEPLOY
-- **확장 thread에서의 역할:** 초기 전달 경계 — runtime/package-manager 버전을 repository contract로 고정합니다.
+- **확장 개발 흐름에서의 역할:** 초기 전달 경계 — 실행 환경·패키지 관리자 버전을 저장소 규칙으로 고정합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `f66b880a8f97^`와 비교해 `.node-version`, `.nvmrc`, `package.json`, `package-lock.json`에 추가된 정확한 Node/npm 값을 대조합니다.
-- `packageManager`와 `engines`가 npm/version manager/CI에서 각각 어떤 방식으로 소비되는지 구분합니다.
-- 이 SHA 자체에는 잘못된 runtime을 강제 종료하는 script나 CI가 있는지 확인하고, 선언과 enforcement를 혼동하지 않습니다.
-- 후속 `9fd3541c11dc`가 `.nvmrc`와 npm pin을 실제 workflow 입력으로 소비하는 연결을 기록합니다.
+- `packageManager`와 `engines`가 npm·버전 관리자·CI에서 각각 어떤 방식으로 소비되는지 구분합니다.
+- 이 SHA 자체에 잘못된 실행 환경을 강제로 거부하는 스크립트나 CI가 있는지 확인하고, 버전 선언과 강제 적용을 혼동하지 않습니다.
+- 후속 `9fd3541c11dc`가 `.nvmrc`와 고정된 npm 버전을 실제 작업 정의의 입력으로 사용하는 연결을 기록합니다.
 
 확인 원칙:
 
-- 먼저 `f66b880a8f97^`와 `f66b880a8f97`를 비교하고, 필요한 file은 `f66b880a8f97:<path>`의 resulting tree에서 읽습니다.
-- Final HEAD의 workflow, script, Dockerfile 또는 generated output을 이 commit에 소급하지 않습니다.
-- Commit subject나 body만으로 behavior를 추정하지 않고 실제 changed code/test/config를 기준으로 판단합니다.
-- 실제 실행하지 않은 command 결과는 code inspection과 분리합니다.
+- 먼저 `f66b880a8f97^`와 `f66b880a8f97`를 비교하고, 필요한 파일은 `f66b880a8f97:<path>`의 변경 후 파일 트리에서 읽습니다.
+- 최종 HEAD의 작업 정의·스크립트·Dockerfile·생성 산출물을 이 커밋의 구현으로 소급하지 않습니다.
+- 커밋 제목이나 본문만으로 동작을 추정하지 않고 실제 변경된 코드·테스트·설정을 기준으로 판단합니다.
+- 실행하지 않은 명령의 결과는 코드 정적 검토와 구분합니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 전달 상태와 부족함 | `package.json`과 lockfile은 있었지만 repository가 지원 Node.js/npm의 단일 값을 선언하지 않았습니다. 따라서 개발자 shell과 자동화가 서로 다른 runtime/package-manager로 같은 lockfile을 해석할 여지가 있었습니다. |
-| 실제 변경 file/symbol/command/artifact | `.node-version`과 `.nvmrc`에 `24.18.0`을 추가하고, `package.json`의 `packageManager`를 `npm@11.16.0`, `engines.node`를 `24.18.0`, `engines.npm`을 `11.16.0`으로 고정했습니다. `package-lock.json`의 root package metadata에도 같은 engines가 기록됩니다. |
-| Build/runtime/resource owner와 lifetime | 버전 값의 owner는 repository metadata입니다. `.node-version`/`.nvmrc`는 version manager와 CI setup step이 읽고, `packageManager`/`engines`는 package tooling이 읽습니다. 이 commit은 process나 resource lifetime을 새로 만들지 않습니다. |
-| Failure·missing output·cleanup 처리 | 이 SHA에는 version mismatch를 직접 검사해 실패시키는 command가 없습니다. npm의 engine 처리는 환경 설정에 따라 warning에 그칠 수 있고, 현재 shell이 실제로 선언값을 사용했는지도 보장하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | 네 곳의 runtime 선언과 lockfile root metadata가 같은 값으로 수렴합니다. 그러나 dependency 설치의 네트워크 가용성, OS 차이, 또는 잘못된 runtime의 강제 차단까지 보장하지 않습니다. |
-| 다음 delivery commit 또는 관련 test 연결 | `f81691072413`이 production build/test command를 만들고, `9fd3541c11dc`가 `.nvmrc`로 Node를 설정한 뒤 npm 11.16.0을 설치해 이 선언을 실행 경로로 승격합니다. |
+| 직전 전달 상태와 부족함 | `package.json`과 잠금 파일은 있었지만 저장소가 지원 Node.js/npm의 단일 값을 선언하지 않았습니다. 따라서 개발자 셸과 자동화가 서로 다른 실행 환경·패키지 관리자로 같은 잠금 파일을 해석할 여지가 있었습니다. |
+| 실제 변경 파일·심볼·명령·산출물 | `.node-version`과 `.nvmrc`에 `24.18.0`을 추가하고, `package.json`의 `packageManager`를 `npm@11.16.0`, `engines.node`를 `24.18.0`, `engines.npm`을 `11.16.0`으로 고정했습니다. `package-lock.json`의 최상위 패키지 메타데이터에도 같은 engines가 기록됩니다. |
+| 빌드·실행 시점·자원 소유 주체와 수명 | 버전 값의 소유 주체는 저장소 메타데이터입니다. `.node-version`/`.nvmrc`는 버전 관리자와 CI 설정 단계가 읽고, `packageManager`/`engines`는 패키지 도구가 읽습니다. 이 커밋은 프로세스나 자원 수명을 새로 만들지 않습니다. |
+| 실패·누락된 산출물·정리 처리 | 이 SHA에는 버전 불일치를 직접 검사해 실패시키는 명령이 없습니다. npm의 엔진 처리는 환경 설정에 따라 warning에 그칠 수 있고, 현재 셸이 실제로 선언값을 사용했는지도 보장하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 네 곳의 실행 시점 선언과 잠금 파일 최상위 메타데이터가 같은 값으로 수렴합니다. 그러나 의존성 설치의 네트워크 가용성, OS 차이, 또는 잘못된 실행 시점의 강제 차단까지 보장하지 않습니다. |
+| 다음 전달 커밋 또는 관련 테스트 연결 | `f81691072413`이 배포용 빌드·테스트 명령을 만들고, `9fd3541c11dc`가 `.nvmrc`로 Node를 설정한 뒤 npm 11.16.0을 설치해 이 선언을 실행 경로로 승격합니다. |
 
 #### 코드·실행 증거 기록
 
-- **변경 전 대응 코드:** Parent에는 `.node-version`과 `.nvmrc`가 없고 `package.json`에도 `packageManager`/`engines`가 없습니다.
+- **변경 전 대응 코드:** 부모 커밋에는 `.node-version`과 `.nvmrc`가 없고 `package.json`에도 `packageManager`/`engines`가 없습니다.
 - **해당 SHA 핵심 코드:** `f66b880a8f975443974896891a71e1dfd70fbe32` · `package.json 및 version files`
 
 ```text
@@ -99,45 +99,45 @@ package.json
 }
 ```
 
-- **관찰 근거의 성격:** Exact-SHA diff에서 직접 확인한 repository metadata입니다.
-- **실행·테스트 증거:** 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git checkout, npm dependency tree, Chromium 및 Docker daemon을 사용할 수 없었습니다. GitHub connector로 해당 SHA의 commit diff와 resulting source를 검사했으며, command 성공 결과는 주장하지 않습니다.
-- **다음 commit 연결:** `f81691072413`이 production build/test command를 만들고, `9fd3541c11dc`가 `.nvmrc`로 Node를 설정한 뒤 npm 11.16.0을 설치해 이 선언을 실행 경로로 승격합니다.
+- **관찰 근거의 성격:** 해당 SHA 변경 내용에서 직접 확인한 저장소 메타데이터입니다.
+- **실행·테스트 증거:** 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git 체크아웃, npm 의존성 파일 트리, Chromium 및 Docker 데몬을 사용할 수 없었습니다. GitHub 연결 도구로 해당 SHA의 커밋 변경 내용과 변경 후 원본을 검사했으며, 명령 성공 결과는 주장하지 않습니다.
+- **다음 커밋 연결:** `f81691072413`이 배포용 빌드·테스트 명령을 만들고, `9fd3541c11dc`가 `.nvmrc`로 Node를 설정한 뒤 npm 11.16.0을 설치해 이 선언을 실행 경로로 승격합니다.
 
 ### 2. `f81691072413` — test(e2e): production server 검증 경로 추가
 
 - **Full SHA:** `f81691072413c11707251491fdb5af0c67e716ec`
 - **Importance:** A
 - **Tags:** VALIDATION, DEPLOY, TEST
-- **확장 thread에서의 역할:** 회귀·artifact 검증 — production build와 별도 server port를 사용하는 browser verification 경로를 만듭니다.
+- **확장 개발 흐름에서의 역할:** 회귀·산출물 검증 — 배포용 빌드와 별도 서버 포트를 사용하는 브라우저 검증 경로를 만듭니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `package.json`의 `start:e2e`와 `test:e2e:production`을 추적해 build가 server 시작보다 먼저 실패할 수 있는 경계를 확인합니다.
-- `playwright.production.config.ts`의 `webServer.command`, `url`, `reuseExistingServer`, `timeout`, `workers`와 두 device project를 기록합니다.
-- 기존 `tests/e2e`를 재사용한다는 사실과 production 전용 fixture를 새로 만드는 것이 아니라는 점을 구분합니다.
-- 이 경로가 `next start`를 검증하지만 `.next/standalone/server.js`나 container image를 실행하지 않는다는 non-guarantee를 명시합니다.
+- `package.json`의 `start:e2e`와 `test:e2e:production`을 추적해 빌드가 서버 시작보다 먼저 실패할 수 있는 경계를 확인합니다.
+- `playwright.production.config.ts`의 `webServer.command`, `url`, `reuseExistingServer`, `timeout`, `workers`와 두 기기 프로젝트를 기록합니다.
+- 기존 `tests/e2e`를 재사용한다는 사실과 배포 모드 전용 테스트 입력을 새로 만드는 것이 아니라는 점을 구분합니다.
+- 이 경로가 `next start`를 검증하지만 `.next/standalone/server.js`나 컨테이너 이미지를 실행하지 않는다는 보장하지 않는 범위를 명시합니다.
 
 확인 원칙:
 
-- 먼저 `f81691072413^`와 `f81691072413`를 비교하고, 필요한 file은 `f81691072413:<path>`의 resulting tree에서 읽습니다.
-- Final HEAD의 workflow, script, Dockerfile 또는 generated output을 이 commit에 소급하지 않습니다.
-- Commit subject나 body만으로 behavior를 추정하지 않고 실제 changed code/test/config를 기준으로 판단합니다.
-- 실제 실행하지 않은 command 결과는 code inspection과 분리합니다.
+- 먼저 `f81691072413^`와 `f81691072413`를 비교하고, 필요한 파일은 `f81691072413:<path>`의 변경 후 파일 트리에서 읽습니다.
+- 최종 HEAD의 작업 정의·스크립트·Dockerfile·생성 산출물을 이 커밋의 구현으로 소급하지 않습니다.
+- 커밋 제목이나 본문만으로 동작을 추정하지 않고 실제 변경된 코드·테스트·설정을 기준으로 판단합니다.
+- 실행하지 않은 명령의 결과는 코드 정적 검토와 구분합니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 전달 상태와 부족함 | 기존 Playwright 경로는 있었지만 production build를 먼저 만들고 최적화된 `next start` process를 별도 port에서 검증하는 command/config가 없었습니다. 따라서 development compiler에서 통과한 route matrix가 production serving에서도 동작하는지는 별도 계약이 아니었습니다. |
-| 실제 변경 file/symbol/command/artifact | `start:e2e`를 `next start -p 3200`으로 추가하고, `test:e2e:production`을 `npm run build && playwright test --config=playwright.production.config.ts`로 연결했습니다. 새 config는 `http://localhost:3200`, `reuseExistingServer: false`, server timeout 120초, worker 1, Desktop Chrome와 Pixel 7을 사용합니다. |
-| Build/runtime/resource owner와 lifetime | package script가 build 선행 조건을 소유하고, Playwright `webServer`가 server process의 시작·readiness 대기·test 종료 시 정리를 소유합니다. E2E specification은 기존 `tests/e2e`가 그대로 소유합니다. |
-| Failure·missing output·cleanup 처리 | `npm run build`가 실패하면 browser phase로 진행하지 않습니다. server가 120초 안에 URL을 제공하지 못하면 Playwright가 실패하며, 기존 server 재사용을 금지해 다른 process의 성공을 오인하지 않습니다. test assertion 실패도 command exit를 실패로 만듭니다. |
-| 보장하는 것과 보장하지 않는 것 | 동일한 desktop/mobile E2E matrix가 optimized production server를 대상으로 실행될 수 있습니다. standalone artifact 구조, container, 성능 budget, 운영 환경 네트워크나 production content mode는 아직 검증하지 않습니다. |
-| 다음 delivery commit 또는 관련 test 연결 | `9fd3541c11dc`가 이 exact command를 CI의 마지막 검증 step으로 호출합니다. 뒤의 standalone/container Thread는 같은 build output을 더 좁은 artifact/runtime 경계에서 검증합니다. |
+| 직전 전달 상태와 부족함 | 기존 Playwright 경로는 있었지만 배포용 빌드를 먼저 만들고 최적화된 `next start` 프로세스를 별도 포트에서 검증하는 명령·설정이 없었습니다. 따라서 개발 컴파일러에서 통과한 라우트 조합표가 배포 환경 제공에서도 동작하는지는 별도 계약이 아니었습니다. |
+| 실제 변경 파일·심볼·명령·산출물 | `start:e2e`를 `next start -p 3200`으로 추가하고, `test:e2e:production`을 `npm run build && playwright test --config=playwright.production.config.ts`로 연결했습니다. 새 설정은 `http://localhost:3200`, `reuseExistingServer: false`, 서버 시간 제한 120초, 작업자 1, 데스크톱 Chrome과 Pixel 7을 사용합니다. |
+| 빌드·실행 시점·자원 소유 주체와 수명 | 패키지 스크립트가 빌드 선행 조건을 소유하고, Playwright `webServer`가 서버 프로세스의 시작·배포 준비 상태 대기·테스트 종료 시 정리를 소유합니다. E2E 테스트 명세는 기존 `tests/e2e`가 그대로 소유합니다. |
+| 실패·누락된 산출물·정리 처리 | `npm run build`가 실패하면 브라우저 단계로 진행하지 않습니다. 서버가 120초 안에 URL을 제공하지 못하면 Playwright가 실패하며, 기존 서버 재사용을 금지해 다른 프로세스의 성공을 오인하지 않습니다. 테스트 단언문 실패도 명령 종료를 실패로 만듭니다. |
+| 보장하는 것과 보장하지 않는 것 | 동일한 데스크톱·모바일 E2E 조합표가 optimized 배포용 서버를 대상으로 실행될 수 있습니다. 독립 실행형 산출물 구조, 컨테이너, 성능 허용량, 운영 환경 네트워크나 배포 콘텐츠 모드는 아직 검증하지 않습니다. |
+| 다음 전달 커밋 또는 관련 테스트 연결 | `9fd3541c11dc`가 이 정확한 명령을 CI의 마지막 검증 단계로 호출합니다. 뒤의 독립 실행형·컨테이너 개발 흐름은 같은 빌드 산출물을 더 좁은 산출물·실행 시점 경계에서 검증합니다. |
 
 #### 코드·실행 증거 기록
 
-- **변경 전 대응 코드:** Parent의 `package.json`에는 `test:e2e`만 있고 production-specific build/start command와 `playwright.production.config.ts`가 없습니다.
+- **변경 전 대응 코드:** 부모 커밋의 `package.json`에는 `test:e2e`만 있고 배포 환경 전용 빌드·시작 명령과 `playwright.production.config.ts`가 없습니다.
 - **해당 SHA 핵심 코드:** `f81691072413c11707251491fdb5af0c67e716ec` · `package.json, playwright.production.config.ts`
 
 ```text
@@ -153,45 +153,45 @@ webServer: {
 }
 ```
 
-- **관찰 근거의 성격:** Exact-SHA package/config diff에서 직접 확인한 production E2E contract입니다.
-- **실행·테스트 증거:** 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git checkout, npm dependency tree, Chromium 및 Docker daemon을 사용할 수 없었습니다. GitHub connector로 해당 SHA의 commit diff와 resulting source를 검사했으며, command 성공 결과는 주장하지 않습니다.
-- **다음 commit 연결:** `9fd3541c11dc`가 이 exact command를 CI의 마지막 검증 step으로 호출합니다. 뒤의 standalone/container Thread는 같은 build output을 더 좁은 artifact/runtime 경계에서 검증합니다.
+- **관찰 근거의 성격:** 해당 SHA 패키지·설정 변경 내용에서 직접 확인한 배포용 E2E 규칙입니다.
+- **실행·테스트 증거:** 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git 체크아웃, npm 의존성 파일 트리, Chromium 및 Docker 데몬을 사용할 수 없었습니다. GitHub 연결 도구로 해당 SHA의 커밋 변경 내용과 변경 후 원본을 검사했으며, 명령 성공 결과는 주장하지 않습니다.
+- **다음 커밋 연결:** `9fd3541c11dc`가 이 정확한 명령을 CI의 마지막 검증 단계로 호출합니다. 뒤의 독립 실행형·컨테이너 개발 흐름은 같은 빌드 산출물을 더 좁은 산출물·실행 시점 경계에서 검증합니다.
 
 ### 3. `9fd3541c11dc` — ci: 기본 배포 품질 검사 추가
 
 - **Full SHA:** `9fd3541c11dc8fa86561c3cd0b7116449b8f0f03`
 - **Importance:** A
 - **Tags:** DEPLOY, TEST
-- **확장 thread에서의 역할:** 통합 gate — 고정 toolchain과 production E2E를 GitHub Actions의 기본 delivery gate로 연결합니다.
+- **확장 개발 흐름에서의 역할:** 통합 검사 단계 — 고정 개발 도구 버전과 배포용 E2E를 GitHub Actions의 기본 전달 품질 검사로 연결합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `.github/workflows/ci.yml`의 trigger, permissions, concurrency, timeout과 step 순서를 parent diff에서 확인합니다.
-- `actions/setup-node`가 `.nvmrc`를 읽고, 별도 global install이 npm 11.16.0을 고정하는 이중 소비 관계를 추적합니다.
-- `npm ci` 이후 lint → typecheck → content check → Chromium install → production E2E 순서와 fail-fast 성질을 기록합니다.
-- 이 SHA의 workflow가 unit test, standalone verify, bundle/Lighthouse, Docker를 아직 실행하지 않는다는 범위를 명시합니다.
+- `.github/workflows/ci.yml`의 열기 버튼, 권한, 동시 실행, 시간 제한과 단계 순서를 부모 커밋과의 차이에서 확인합니다.
+- `actions/setup-node`가 `.nvmrc`를 읽고, 별도 전역 설치가 npm 11.16.0을 고정하는 이중 소비 관계를 추적합니다.
+- `npm ci` 이후 lint → typecheck → 콘텐츠 검사 → Chromium 설치 → 배포용 E2E 순서와 빠른 실패 성질을 기록합니다.
+- 이 SHA의 작업 정의가 단위 테스트, 독립 실행형 검증, 번들·Lighthouse, Docker를 아직 실행하지 않는다는 범위를 명시합니다.
 
 확인 원칙:
 
-- 먼저 `9fd3541c11dc^`와 `9fd3541c11dc`를 비교하고, 필요한 file은 `9fd3541c11dc:<path>`의 resulting tree에서 읽습니다.
-- Final HEAD의 workflow, script, Dockerfile 또는 generated output을 이 commit에 소급하지 않습니다.
-- Commit subject나 body만으로 behavior를 추정하지 않고 실제 changed code/test/config를 기준으로 판단합니다.
-- 실제 실행하지 않은 command 결과는 code inspection과 분리합니다.
+- 먼저 `9fd3541c11dc^`와 `9fd3541c11dc`를 비교하고, 필요한 파일은 `9fd3541c11dc:<path>`의 변경 후 파일 트리에서 읽습니다.
+- 최종 HEAD의 작업 정의·스크립트·Dockerfile·생성 산출물을 이 커밋의 구현으로 소급하지 않습니다.
+- 커밋 제목이나 본문만으로 동작을 추정하지 않고 실제 변경된 코드·테스트·설정을 기준으로 판단합니다.
+- 실행하지 않은 명령의 결과는 코드 정적 검토와 구분합니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 전달 상태와 부족함 | production E2E command는 local opt-in 경로였고 push/pull request에서 동일한 toolchain과 command를 강제하는 workflow가 없었습니다. 검증을 수행했다는 사실이 integration 조건이 아니었습니다. |
-| 실제 변경 file/symbol/command/artifact | read-only `CI` workflow를 추가했습니다. push와 pull request에서 `.nvmrc` 기반 Node setup, npm 11.16.0 global pin, version 출력, `npm ci`, lint, typecheck, content validation, Chromium 설치, `npm run test:e2e:production`을 순서대로 실행합니다. job은 30분 timeout과 ref별 concurrency cancellation을 갖습니다. |
-| Build/runtime/resource owner와 lifetime | GitHub Actions `verify` job이 fresh runner와 step ordering을 소유합니다. repository는 command만 제공하고, Actions runner가 checkout·tool cache·process lifecycle을 관리합니다. `permissions: contents: read`로 workflow authority를 제한합니다. |
-| Failure·missing output·cleanup 처리 | 각 shell step의 non-zero exit가 후속 step을 막습니다. 30분을 넘으면 job이 중단되고, 같은 ref의 이전 run은 새 run으로 취소됩니다. Chromium 설치나 dependency registry 접근 실패도 delivery gate 실패로 표면화됩니다. |
-| 보장하는 것과 보장하지 않는 것 | push/PR마다 pinned toolchain에서 fresh install과 production browser path가 자동 요구됩니다. 이 시점에는 `npm test`, standalone file completeness, performance gate, Docker runtime 또는 외부 hosting 배포가 포함되지 않습니다. |
-| 다음 delivery commit 또는 관련 test 연결 | Thread 3의 `c5e73853a1b6`, Thread 4의 `abbd530368a0`, Thread 5의 `b94fa6dd0118`이 같은 workflow에 artifact, performance, container gate를 단계적으로 추가합니다. |
+| 직전 전달 상태와 부족함 | 배포용 E2E 명령은 로컬에서 명시적으로 실행하는 경로였고 푸시·풀 리퀘스트에서 동일한 개발 도구 버전과 명령을 강제하는 작업 정의가 없었습니다. 검증을 수행했다는 사실이 통합 조건이 아니었습니다. |
+| 실제 변경 파일·심볼·명령·산출물 | 읽기 전용 CI 작업 정의를 추가했습니다. push와 pull request에서 `.nvmrc` 기반 Node 설정, npm 11.16.0 전역 고정, 버전 출력, `npm ci`, lint, typecheck, 콘텐츠 검증, Chromium 설치, `npm run test:e2e:production`을 순서대로 실행합니다. 작업은 30분 제한 시간과 참조별 동시 실행 취소를 적용합니다. |
+| 빌드·실행 시점·자원 소유 주체와 수명 | GitHub Actions의 `verify` 작업이 새 실행 환경과 단계 순서를 관리합니다. 저장소는 실행할 명령만 제공하고, Actions 실행기가 체크아웃·도구 캐시·프로세스 수명을 관리합니다. `permissions: contents: read`로 작업 권한을 읽기 전용으로 제한합니다. |
+| 실패·누락된 산출물·정리 처리 | 각 셸 단계의 0이 아닌 종료가 후속 단계를 막습니다. 30분을 넘으면 작업이 중단되고, 같은 참조의 이전 실행은 새 실행으로 취소됩니다. Chromium 설치나 의존성 등록부 접근 실패도 전달 품질 검사 실패로 표면화됩니다. |
+| 보장하는 것과 보장하지 않는 것 | push/PR마다 고정된 개발 도구 버전에서 새 환경 설치와 배포 환경 브라우저 경로가 자동 요구됩니다. 이 시점에는 `npm test`, 독립 실행형 파일 완전성, 성능 차단 기준, Docker 실행 시점 또는 외부 호스팅 배포가 포함되지 않습니다. |
+| 다음 전달 커밋 또는 관련 테스트 연결 | 개발 흐름 3의 `c5e73853a1b6`, 개발 흐름 4의 `abbd530368a0`, 개발 흐름 5의 `b94fa6dd0118`이 같은 작업 정의에 산출물, 성능, 컨테이너 검사 단계를 단계적으로 추가합니다. |
 
 #### 코드·실행 증거 기록
 
-- **변경 전 대응 코드:** Parent에는 `.github/workflows/ci.yml`이 없습니다.
+- **변경 전 대응 코드:** 부모 커밋에는 `.github/workflows/ci.yml`이 없습니다.
 - **해당 SHA 핵심 코드:** `9fd3541c11dc8fa86561c3cd0b7116449b8f0f03` · `.github/workflows/ci.yml`
 
 ```text
@@ -208,141 +208,141 @@ webServer: {
 - run: npm run test:e2e:production
 ```
 
-- **관찰 근거의 성격:** Exact-SHA workflow diff에서 직접 확인한 CI step graph입니다.
-- **실행·테스트 증거:** 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git checkout, npm dependency tree, Chromium 및 Docker daemon을 사용할 수 없었습니다. GitHub connector로 해당 SHA의 commit diff와 resulting source를 검사했으며, command 성공 결과는 주장하지 않습니다.
-- **다음 commit 연결:** Thread 3의 `c5e73853a1b6`, Thread 4의 `abbd530368a0`, Thread 5의 `b94fa6dd0118`이 같은 workflow에 artifact, performance, container gate를 단계적으로 추가합니다.
+- **관찰 근거의 성격:** 해당 SHA 작업 정의 변경 내용에서 직접 확인한 CI 단계 참조 관계입니다.
+- **실행·테스트 증거:** 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git 체크아웃, npm 의존성 파일 트리, Chromium 및 Docker 데몬을 사용할 수 없었습니다. GitHub 연결 도구로 해당 SHA의 커밋 변경 내용과 변경 후 원본을 검사했으며, 명령 성공 결과는 주장하지 않습니다.
+- **다음 커밋 연결:** 개발 흐름 3의 `c5e73853a1b6`, 개발 흐름 4의 `abbd530368a0`, 개발 흐름 5의 `b94fa6dd0118`이 같은 작업 정의에 산출물, 성능, 컨테이너 검사 단계를 단계적으로 추가합니다.
 
-## 6. Invariant ledger
+## 6. 불변 조건 기록
 
-| Invariant | 이전 상태 | 도입·수정 | 검증·소비 | 남은 비보장 |
+| 불변 조건 | 이전 상태 | 도입·수정 | 검증·소비 | 남은 비보장 |
 | --- | --- | --- | --- | --- |
-| Runtime version discovery | 환경별 암묵값 | `f66b880a8f97`에서 Node 24.18.0/npm 11.16.0을 여러 metadata 경계에 선언 | `9fd3541c11dc`가 `.nvmrc`와 npm pin을 실제 CI 입력으로 사용 | local shell의 강제 일치 여부 |
-| Browser target | development path만 존재 | `f81691072413`에서 build 후 `next start`를 별도 port로 실행 | `9fd3541c11dc`가 production E2E command를 push/PR gate로 실행 | standalone/container runtime |
-| Delivery gate ownership | local 수행 여부에 의존 | `9fd3541c11dc`에서 read-only, bounded CI job이 순서를 소유 | 후속 artifact/performance/container gate로 확장 | 외부 배포와 운영 |
+| 실행 시점 버전 탐색 가능 여부 | 환경별 암묵값 | `f66b880a8f97`에서 Node 24.18.0/npm 11.16.0을 여러 메타데이터 경계에 선언 | `9fd3541c11dc`가 `.nvmrc`와 npm 버전 고정을 실제 CI 입력으로 사용 | 로컬 셸의 강제 일치 여부 |
+| 브라우저 대상 | 개발 경로만 존재 | `f81691072413`에서 빌드 후 `next start`를 별도 포트로 실행 | `9fd3541c11dc`가 배포용 E2E 명령을 push/PR 검사 단계로 실행 | 독립 실행형·컨테이너 실행 환경 |
+| Delivery 검사 단계 소유 주체 | 로컬 수행 여부에 의존 | `9fd3541c11dc`에서 읽기 전용, 제한된 CI 작업이 순서를 소유 | 후속 산출물·성능·컨테이너 검사 단계로 확장 | 외부 배포와 운영 |
 
-## 7. Failure → Fix → Test 연결
+## 7. 실패 → 수정 → 테스트 연결
 
-| Failure 또는 위험 | Fix/decision | Test·gate evidence | 한계 |
+| 실패 또는 위험 | 수정·결정 | 테스트·검사 단계 근거 | 한계 |
 | --- | --- | --- | --- |
-| 서로 다른 Node/npm이 lockfile을 해석 | `f66b880a8f97`의 네 metadata 경계 | `9fd3541c11dc`의 version setup·출력·fresh install | 잘못된 local shell은 강제 차단하지 않음 |
-| dev server 통과를 production 성공으로 오인 | `f81691072413`의 build-first production Playwright config | `9fd3541c11dc`가 exact command를 CI에서 실행 | standalone/container는 별도 Thread |
-| 검증이 local 선택사항 | `9fd3541c11dc`의 push/PR workflow | step non-zero/timeout/cancellation이 integration을 차단 | unit test와 후속 release gate는 아직 없음 |
+| 서로 다른 Node/npm이 잠금 파일을 해석 | `f66b880a8f97`의 네 메타데이터 경계 | `9fd3541c11dc`의 버전 설정·출력·새 환경 설치 | 잘못된 로컬 셸은 강제 차단하지 않음 |
+| dev 서버 통과를 배포 환경 성공으로 오인 | `f81691072413`의 빌드 첫 번째 배포 환경 Playwright 설정 | `9fd3541c11dc`가 정확한 명령을 CI에서 실행 | 독립 실행형·컨테이너는 별도 개발 흐름 |
+| 검증이 로컬 선택사항 | `9fd3541c11dc`의 push/PR 작업 정의 | 단계 0이 아닌·시간 제한·취소이 통합을 차단 | 단위 테스트와 후속 배포 차단 기준은 아직 없음 |
 
-## 8. Ownership / state / responsibility 변화
+## 8. 소유 주체·상태·담당 작업 변화
 
-| 대상 | 이전 owner/state | 중간 변화 | 최종 owner/state |
+| 대상 | 이전 소유 주체·상태 | 중간 변화 | 최종 소유 주체·상태 |
 | --- | --- | --- | --- |
-| Toolchain 선택 | 개발자/runner의 설치 상태 | repository version metadata | GitHub Actions setup + npm pin |
-| Production process | production-specific owner 없음 | Playwright `webServer`가 `next start` lifecycle 소유 | CI가 같은 command를 호출 |
-| Integration 판정 | 수동 local 결과 | local production E2E command | bounded `verify` job의 exit status |
+| Toolchain 선택 | 개발자·실행기의 설치 상태 | 저장소 버전 메타데이터 | GitHub Actions 설정 + npm 버전 고정 |
+| 배포 환경 프로세스 | 배포 환경 전용 소유 주체 없음 | Playwright `webServer`가 `next start` 실행 주기 소유 | CI가 같은 명령을 호출 |
+| Integration 판정 | 수동 로컬 결과 | 로컬 배포용 E2E 명령 | 제한된 `verify` 작업의 종료 상태 |
 
-## 9. Thread 최종 상태
+## 9. 개발 흐름 최종 상태
 
-브랜치는 지원 Node/npm을 명시하고, production build를 만든 뒤 별도 `next start` process에서 기존 desktop/mobile route matrix를 실행할 수 있습니다. CI는 fresh checkout에서 같은 버전과 command를 사용해 push/PR을 판정합니다. 다만 이 Thread의 마지막 SHA만으로는 standalone 파일 배치, 성능 budget, container image, production hosting을 검증하지 않습니다.
+브랜치는 지원 Node/npm을 명시하고, 배포용 빌드를 만든 뒤 별도 `next start` 프로세스에서 기존 데스크톱·모바일 라우트 조합표를 실행할 수 있습니다. CI는 새 체크아웃에서 같은 버전과 명령을 사용해 push/PR을 판정합니다. 다만 이 개발 흐름의 마지막 SHA만으로는 독립 실행형 파일 배치, 성능 허용량, 컨테이너 이미지, 배포 환경 호스팅을 검증하지 않습니다.
 
-## 10. 최종 product-delivery flow 정리
+## 10. 최종 제품 전달 순서
 
-version metadata → Actions가 Node/npm 선택 → `npm ci` → lint/type/content checks → `npm run build` → Playwright가 port 3200의 `next start`를 시작하고 기다림 → 기존 E2E matrix 실행 → command/job exit status가 integration 결과가 됩니다.
+버전 메타데이터 → GitHub Actions가 Node/npm을 선택 → `npm ci` → lint·타입·콘텐츠 검사 → `npm run build` → Playwright가 포트 3200의 `next start`를 시작하고 기다림 → 기존 E2E 조합표 실행 → 명령·작업 종료 상태가 통합 결과가 됩니다.
 
 ## 11. 학습 완료 자가 점검
 
-- [x] 네 runtime metadata 위치와 같은 값이 반복되는 이유를 설명했습니다.
-- [x] production E2E의 build/server/readiness/test lifecycle owner를 구분했습니다.
-- [x] CI의 step 순서, 권한, timeout과 cancellation을 확인했습니다.
-- [x] 이 Thread가 standalone, performance, container, hosting을 보장하지 않는다고 기록했습니다.
-- [ ] Exact-SHA runtime command를 직접 실행해 결과를 기록했습니다. — 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git checkout, npm dependency tree, Chromium 및 Docker daemon을 사용할 수 없었습니다. GitHub connector로 해당 SHA의 commit diff와 resulting source를 검사했으며, command 성공 결과는 주장하지 않습니다.
+- [x] 네 실행 시점 메타데이터 위치와 같은 값이 반복되는 이유를 설명했습니다.
+- [x] 배포용 E2E의 빌드·서버·배포 준비 상태·테스트 동작 수명 관리를 구분했습니다.
+- [x] CI의 단계 순서, 권한, 시간 제한과 취소을 확인했습니다.
+- [x] 이 개발 흐름이 독립 실행형, 성능, 컨테이너, 호스팅을 보장하지 않는다고 기록했습니다.
+- [ ] 해당 SHA 실행 명령을 직접 실행해 결과를 기록했습니다. — 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git 체크아웃, npm 의존성 파일 트리, Chromium 및 Docker 데몬을 사용할 수 없었습니다. GitHub 연결 도구로 해당 SHA의 커밋 변경 내용과 변경 후 원본을 검사했으며, 명령 성공 결과는 주장하지 않습니다.
 ===== END FILE: 01-reproducible-toolchain-and-production-server-verification.md =====
 
 ===== BEGIN FILE: 02-self-contained-production-build-and-portability.md =====
-# Thread: Self-contained production build and portability
+# 개발 흐름: 자체 완결형 배포 빌드와 이식성
 
-> Project: 42 Archive Portfolio (`web/portfolio`)
+> 프로젝트: 42 Archive Portfolio (`web/portfolio`)
 >
-> 이 문서는 원본 Development Thread를 변경하지 않고, 같은 branch history에 product-delivery 관점을 추가한 확장 workbook입니다.
+> 이 문서는 원본 개발 흐름을 변경하지 않고, 같은 브랜치 이력에 제품 전달 관점을 추가한 확장 학습 문서입니다.
 
 ## 0. 분류 출처와 변경 가능 범위
 
-- Commit SHA, subject, importance, tags는 `commit/commit-importance.md`의 branch-scoped 분류를 사용합니다.
-- Phase 1 audit에서 category/thread grouping과 commit set을 실제 history에 대조한 뒤 이 문서를 freeze했습니다.
-- Phase 2는 freeze된 구조와 fixed metadata를 바꾸지 않고 learner-facing 기록만 완성합니다.
-- 다른 branch의 구현이나 final HEAD를 과거 SHA 설명에 소급하지 않습니다.
-- 실행하지 않은 build/test/CI/Docker 결과는 exact-SHA source inspection과 구분합니다.
+- 커밋 SHA·제목·중요도·태그는 `commit/commit-importance.md`의 브랜치별 분류를 사용합니다.
+- 1단계 검토에서 분류와 개발 흐름 묶음, 커밋 집합을 실제 이력과 대조한 뒤 이 문서를 고정했습니다.
+- 2단계는 고정된 구조와 고정된 메타데이터를 바꾸지 않고 학습자용 기록만 완성합니다.
+- 다른 브랜치의 구현이나 최종 HEAD를 과거 SHA 설명에 소급하지 않습니다.
+- 실행하지 않은 빌드·테스트·CI·Docker 결과는 해당 SHA의 원본 정적 검토와 구분합니다.
 
-## 1. Thread 목표
+## 1. 개발 흐름 목표
 
-production build가 외부 font fetch와 암묵적인 compiler·framework native binary·CSS transform 상태에 기대지 않도록 만들고, fresh Linux/container 환경에서도 같은 입력과 설정으로 artifact를 만들 수 있는 경계를 복원합니다.
+배포용 빌드가 외부 글꼴 fetch와 암묵적인 컴파일러·프레임워크 브라우저 기본 바이너리·CSS 변환 상태에 기대지 않도록 만들고, 새 Linux 환경·컨테이너 환경에서도 같은 입력과 설정으로 산출물을 만들 수 있는 경계를 복원합니다.
 
-### 계획된 핵심 invariant
+### 계획된 핵심 불변 조건
 
-- 빌드에 필요한 font binary와 license/provenance 정보는 repository가 소유하며 `next/font/local`이 소비합니다.
-- production build compiler는 generated manifest를 해석하는 downstream tooling과 합의된 webpack 경로로 고정됩니다.
-- Next.js runtime, lint tooling과 platform-specific SWC package는 같은 patch line과 lockfile resolution을 사용합니다.
-- Tailwind utility 변환은 dependency 존재 여부가 아니라 명시적인 root PostCSS configuration으로 활성화됩니다.
+- 빌드에 필요한 글꼴 바이너리와 라이선스·측정 출처 정보는 저장소가 소유하며 `next/font/local`이 소비합니다.
+- 배포용 빌드 컴파일러는 생성된 명세 파일을 해석하는 후속 도구와 합의된 webpack 경로로 고정됩니다.
+- Next.js 실행 시점, lint 도구와 운영체제별 SWC 패키지는 같은 패치 버전대과 잠금 파일 해석을 사용합니다.
+- Tailwind 유틸리티 변환은 의존성 존재 여부가 아니라 명시적인 최상위 PostCSS 설정으로 활성화됩니다.
 
-## 2. 이 Thread를 이해하기 위한 핵심 질문
+## 2. 이 개발 흐름을 이해하기 위한 핵심 질문
 
-- 외부 font provider 호출을 제거할 때 binary, license, source record와 CSS variable compatibility는 각각 누가 소유하는가?
-- source-level TypeScript 성공과 실제 production CSS/font output 성공 사이에 어떤 build-only failure가 남는가?
-- webpack compiler pin, Next patch update와 GNU/musl SWC lockfile metadata가 portability에 어떤 서로 다른 역할을 갖는가?
-- 각 fix에 직접적인 regression test가 있는지, 아니면 broad build/visual verification만 존재하는지 구분할 수 있는가?
+- 외부 글꼴 제공자 호출을 제거할 때 바이너리, 라이선스, 원본 레코드와 CSS 변수 호환는 각각 누가 소유하는가?
+- 소스 코드 수준 TypeScript 성공과 실제 배포 환경 CSS·글꼴 출력 성공 사이에 어떤 빌드 전용 실패가 남는가?
+- webpack 컴파일러 pin, Next 패치 update와 GNU/musl SWC 잠금 파일 메타데이터가 이식성에 어떤 서로 다른 역할을 갖는가?
+- 각 수정에 직접적인 회귀 테스트가 있는지, 아니면 포괄적인 빌드·시각 검증만 존재하는지 구분할 수 있는가?
 
 ## 3. 완료 기준
 
-- 각 SHA의 parent diff와 resulting tree에서 실제 변경 file, function, config, script와 workflow step을 확인했습니다.
-- Source, generated artifact, CI gate, container/runtime owner를 구분했습니다.
-- Missing artifact, portability failure, threshold violation, startup failure와 cleanup branch를 기록했습니다.
-- Test/CI command의 technique, production path, proves/does-not-prove와 실제 실행 여부를 구분했습니다.
-- 최종 product-delivery 흐름과 cross-thread handoff를 코드 없이 설명할 수 있습니다.
+- 각 SHA의 부모 커밋과의 차이와 변경 후 파일 트리에서 실제 변경 파일, 함수, 설정, 스크립트와 작업 단계를 확인했습니다.
+- 원본, 생성 산출물, CI 검사 단계, 컨테이너·실행 시점 소유 주체를 구분했습니다.
+- 누락된 산출물, 이식성 실패, 기준값 초과, 시작 실패와 정리 브랜치를 기록했습니다.
+- 테스트·CI 명령의 방법, 실제 코드 경로, 증명 범위와 증명하지 않는 범위와 실제 실행 여부를 구분했습니다.
+- 최종 제품 전달 흐름과 다른 개발 흐름으로 넘기는 지점을 코드 없이 설명할 수 있습니다.
 
-## 4. Commit map
+## 4. 커밋 목록
 
-| 순서 | Commit | Subject | Importance | Tags | 확장 thread에서 확인할 역할 |
-| ---: | --- | --- | :---: | --- | --- |
-| 1 | `7872e1214de7` | fix(font): 빌드용 글꼴과 출처를 저장소에서 제공 | A | DEPLOY, DEBUG | 외부 build dependency 제거 — Google Font fetch를 repository-owned WOFF2와 `next/font/local`로 교체합니다. |
-| 2 | `2f65f6a6fcb6` | test(font): 로컬 글꼴과 license 경계 검증 | A | VALIDATION, DEPLOY, TEST | 결정적 source/file regression — local font registration, WOFF2 file와 license notice를 검사합니다. |
-| 3 | `404a220e5d40` | fix(build): production build에 webpack compiler 고정 | B | DEPLOY, DEBUG | compiler contract 고정 — production output을 downstream manifest tooling이 이해하는 webpack 형식으로 만듭니다. |
-| 4 | `5d903132306a` | fix(deps): Next.js runtime 보안 패치 적용 | B | DEPLOY, DEBUG | framework/native portability maintenance — Next, ESLint config와 platform SWC resolution을 같은 patch line으로 갱신합니다. |
-| 5 | `1de3d36e3a48` | fix(build): Tailwind utility CSS 변환 복원 | A | DEPLOY, DEBUG | production transform 복원 — installed Tailwind PostCSS plugin을 explicit root config로 등록합니다. |
+| 순서 | 커밋 | 제목 | 중요도 | 태그 | 확장 개발 흐름에서 확인할 역할 |
+| ---: | --- | --- |:---: | --- | --- |
+| 1 | `7872e1214de7` | fix(font): 빌드용 글꼴과 출처를 저장소에서 제공 | A | DEPLOY, DEBUG | 외부 빌드 의존성 제거 — Google Font fetch를 저장소가 소유한 WOFF2와 `next/font/local`로 교체합니다. |
+| 2 | `2f65f6a6fcb6` | test(font): 로컬 글꼴과 license 경계 검증 | A | VALIDATION, DEPLOY, TEST | 결정적 원본·파일 회귀 — 로컬 글꼴 등록, WOFF2 파일과 라이선스 고지문을 검사합니다. |
+| 3 | `404a220e5d40` | fix(build): production build에 webpack compiler 고정 | B | DEPLOY, DEBUG | 컴파일러 규칙 고정 — 배포 산출물을 후속 명세 파일 도구가 이해하는 webpack 형식으로 만듭니다. |
+| 4 | `5d903132306a` | fix(deps): Next.js runtime 보안 패치 적용 | B | DEPLOY, DEBUG | 프레임워크·네이티브 모듈 이식성 유지보수 — Next, ESLint 설정과 플랫폼 SWC 해석을 같은 패치 버전 계열로 갱신합니다. |
+| 5 | `1de3d36e3a48` | fix(build): Tailwind utility CSS 변환 복원 | A | DEPLOY, DEBUG | 배포 환경 변환 복원 — 설치된 Tailwind PostCSS 플러그인을 명시적인 루트 설정으로 등록합니다. |
 
-## 5. Commit별 학습 기록
+## 5. 커밋별 학습 기록
 
-각 section은 반드시 해당 SHA의 tree와 parent diff를 기준으로 작성합니다. 다른 Thread의 later commit은 관계 설명에만 사용하고 과거 구현에 소급하지 않습니다.
+각 섹션은 반드시 해당 SHA의 파일 트리와 부모 커밋과의 차이를 기준으로 작성합니다. 다른 개발 흐름의 후속 커밋은 관계 설명에만 사용하고 과거 구현에 소급하지 않습니다.
 
 ### 1. `7872e1214de7` — fix(font): 빌드용 글꼴과 출처를 저장소에서 제공
 
 - **Full SHA:** `7872e1214de7b5d58722358998c6d63cfbe9f279`
 - **Importance:** A
 - **Tags:** DEPLOY, DEBUG
-- **확장 thread에서의 역할:** 외부 build dependency 제거 — Google Font fetch를 repository-owned WOFF2와 `next/font/local`로 교체합니다.
+- **확장 개발 흐름에서의 역할:** 외부 빌드 의존성 제거 — Google Font fetch를 저장소가 소유한 WOFF2와 `next/font/local`로 교체합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `src/app/layout.tsx`에서 `next/font/google` import와 세 font registration이 `next/font/local`로 어떻게 바뀌는지 비교합니다.
-- `src/app/fonts/FONT_SOURCES.md`, 세 WOFF2, 두 OFL license file의 version·size·SHA-256 기록과 실제 file ownership을 확인합니다.
-- `SourceHanSerifKR`를 사용하면서 기존 CSS variable `--font-noto-serif-kr`을 유지하는 compatibility decision을 추적합니다.
-- `src/designs/editorial/editorial-route.module.css` 등 font-family consumer가 hard-coded name 대신 generated CSS variable을 사용하도록 바뀌는지 확인합니다.
+- `src/app/layout.tsx`에서 `next/font/google` 가져오기와 세 글꼴 등록이 `next/font/local`로 어떻게 바뀌는지 비교합니다.
+- `src/app/fonts/FONT_SOURCES.md`, 세 WOFF2, 두 OFL 라이선스 파일의 버전·크기·SHA-256 기록과 실제 파일 소유 주체를 확인합니다.
+- `SourceHanSerifKR`를 사용하면서 기존 CSS 변수 `--font-noto-serif-kr`을 유지하는 호환 결정을 추적합니다.
+- `src/designs/editorial/editorial-route.module.css` 등 글꼴 종류 소비자가 코드에 고정된 이름 대신 생성된 CSS 변수를 사용하도록 바뀌는지 확인합니다.
 
 확인 원칙:
 
-- 먼저 `7872e1214de7^`와 `7872e1214de7`를 비교하고, 필요한 file은 `7872e1214de7:<path>`의 resulting tree에서 읽습니다.
-- Final HEAD의 workflow, script, Dockerfile 또는 generated output을 이 commit에 소급하지 않습니다.
-- Commit subject나 body만으로 behavior를 추정하지 않고 실제 changed code/test/config를 기준으로 판단합니다.
-- 실제 실행하지 않은 command 결과는 code inspection과 분리합니다.
+- 먼저 `7872e1214de7^`와 `7872e1214de7`를 비교하고, 필요한 파일은 `7872e1214de7:<path>`의 변경 후 파일 트리에서 읽습니다.
+- 최종 HEAD의 작업 정의·스크립트·Dockerfile·생성 산출물을 이 커밋의 구현으로 소급하지 않습니다.
+- 커밋 제목이나 본문만으로 동작을 추정하지 않고 실제 변경된 코드·테스트·설정을 기준으로 판단합니다.
+- 실행하지 않은 명령의 결과는 코드 정적 검토와 구분합니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 전달 상태와 부족함 | `src/app/layout.tsx`가 `next/font/google`의 Geist, Geist Mono, Noto Serif KR를 사용했습니다. 따라서 production build가 font provider에 접근할 수 없는 환경에서는 source가 유효해도 font download 단계에서 실패할 수 있었습니다. |
-| 실제 변경 file/symbol/command/artifact | 세 원본 WOFF2와 OFL license를 `src/app/fonts/**`에 저장하고, 출처·version·size·SHA-256을 `FONT_SOURCES.md`에 기록했습니다. layout은 `next/font/local`로 variable font weight range와 `display: swap`을 선언합니다. Source Han Serif KR를 사용하지만 기존 style contract를 깨지 않도록 `--font-noto-serif-kr` 이름은 유지하고 CSS consumer를 variable 기반으로 바꿉니다. |
-| Build/runtime/resource owner와 lifetime | font binary와 license lifetime은 repository가 소유하고 build가 bundle에 포함합니다. `src/app/layout.tsx`가 font registration과 HTML class binding을 소유하며, renderer CSS는 제공된 variable만 소비합니다. 외부 provider는 build path에서 제거됩니다. |
-| Failure·missing output·cleanup 처리 | missing/corrupt local file은 build 또는 file read에서 실패할 수 있습니다. 이 commit 자체에는 file signature나 license 검사가 없으며, 문서의 SHA-256과 실제 binary가 일치하는지 자동 검증하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | 이 세 font를 구성하기 위해 build-time Google Fonts 요청이 필요하지 않습니다. npm registry/base image 등 다른 dependency network, 모든 CSS의 외부 URL 부재, glyph coverage와 실제 browser rendering 품질은 보장하지 않습니다. |
-| 다음 delivery commit 또는 관련 test 연결 | `2f65f6a6fcb6`이 layout import, local path, WOFF2 magic과 license text를 검증합니다. 후속 performance work는 큰 CJK font의 route별 loading cost를 별도로 최적화하지만 이 SHA에 소급하지 않습니다. |
+| 직전 전달 상태와 부족함 | `src/app/layout.tsx`가 `next/font/google`의 Geist, Geist Mono, Noto Serif KR를 사용했습니다. 따라서 배포용 빌드가 글꼴 제공자에 접근할 수 없는 환경에서는 원본이 유효해도 글꼴 다운로드 단계에서 실패할 수 있었습니다. |
+| 실제 변경 파일·심볼·명령·산출물 | 세 원본 WOFF2와 OFL 라이선스를 `src/app/fonts/**`에 저장하고, 출처·버전·크기·SHA-256을 `FONT_SOURCES.md`에 기록했습니다. 레이아웃은 `next/font/local`로 변수 글꼴 굵기 범위와 `display: swap`을 선언합니다. Source Han Serif KR를 사용하지만 기존 스타일 규칙을 깨지 않도록 `--font-noto-serif-kr` 이름은 유지하고 CSS 소비자를 변수 기반으로 바꿉니다. |
+| 빌드·실행 시점·자원 소유 주체와 수명 | 글꼴 바이너리와 라이선스 수명은 저장소가 소유하고 빌드가 번들에 포함합니다. `src/app/layout.tsx`가 글꼴 등록과 HTML 클래스 연결을 소유하며, 렌더러 CSS는 제공된 변수만 소비합니다. 외부 제공자는 빌드 경로에서 제거됩니다. |
+| 실패·누락된 산출물·정리 처리 | 누락된·손상된 로컬 파일은 빌드 또는 파일 읽기에서 실패할 수 있습니다. 이 커밋 자체에는 파일 시그니처나 라이선스 검사가 없으며, 문서의 SHA-256과 실제 바이너리가 일치하는지 자동 검증하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 이 세 글꼴을 구성하기 위해 빌드 시점 Google Fonts 요청이 필요하지 않습니다. npm 등록부·기본 이미지 등 다른 의존성 네트워크, 모든 CSS의 외부 URL 부재, glyph 검증 범위와 실제 브라우저 렌더링 품질은 보장하지 않습니다. |
+| 다음 전달 커밋 또는 관련 테스트 연결 | `2f65f6a6fcb6`이 레이아웃 가져오기, 로컬 경로, WOFF2 magic과 라이선스 문구를 검증합니다. 후속 성능 work는 큰 CJK 글꼴의 라우트별 로딩 비용을 별도로 최적화하지만 이 SHA에 소급하지 않습니다. |
 
 #### 코드·실행 증거 기록
 
-- **변경 전 대응 코드:** `src/app/layout.tsx`는 `next/font/google`에서 `Geist`, `Geist_Mono`, `Noto_Serif_KR`를 import했습니다.
+- **변경 전 대응 코드:** `src/app/layout.tsx`는 `next/font/google`에서 `Geist`, `Geist_Mono`, `Noto_Serif_KR`를 불러왔습니다.
 - **해당 SHA 핵심 코드:** `7872e1214de7b5d58722358998c6d63cfbe9f279` · `src/app/layout.tsx`
 
 ```text
@@ -362,45 +362,45 @@ const koreanSerif = localFont({
 });
 ```
 
-- **관찰 근거의 성격:** Exact-SHA diff와 repository-owned font/source/license files에서 직접 확인했습니다.
-- **실행·테스트 증거:** 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git checkout, npm dependency tree, Chromium 및 Docker daemon을 사용할 수 없었습니다. GitHub connector로 해당 SHA의 commit diff와 resulting source를 검사했으며, command 성공 결과는 주장하지 않습니다.
-- **다음 commit 연결:** `2f65f6a6fcb6`이 layout import, local path, WOFF2 magic과 license text를 검증합니다. 후속 performance work는 큰 CJK font의 route별 loading cost를 별도로 최적화하지만 이 SHA에 소급하지 않습니다.
+- **관찰 근거의 성격:** 해당 SHA 변경 내용과 저장소가 소유한 글꼴·원본·라이선스 파일에서 직접 확인했습니다.
+- **실행·테스트 증거:** 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git 체크아웃, npm 의존성 파일 트리, Chromium 및 Docker 데몬을 사용할 수 없었습니다. GitHub 연결 도구로 해당 SHA의 커밋 변경 내용과 변경 후 원본을 검사했으며, 명령 성공 결과는 주장하지 않습니다.
+- **다음 커밋 연결:** `2f65f6a6fcb6`이 레이아웃 가져오기, 로컬 경로, WOFF2 magic과 라이선스 문구를 검증합니다. 후속 성능 work는 큰 CJK 글꼴의 라우트별 로딩 비용을 별도로 최적화하지만 이 SHA에 소급하지 않습니다.
 
 ### 2. `2f65f6a6fcb6` — test(font): 로컬 글꼴과 license 경계 검증
 
 - **Full SHA:** `2f65f6a6fcb6e753497ded0f4a8948cfa0238c48`
 - **Importance:** A
 - **Tags:** VALIDATION, DEPLOY, TEST
-- **확장 thread에서의 역할:** 결정적 source/file regression — local font registration, WOFF2 file와 license notice를 검사합니다.
+- **확장 개발 흐름에서의 역할:** 결정적 원본·파일 회귀 — 로컬 글꼴 등록, WOFF2 파일과 라이선스 고지문을 검사합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `src/app/local-fonts.test.ts`가 layout source를 어떻게 읽고 Google provider token을 어떤 정규식으로 금지하는지 확인합니다.
-- `it.each`의 configured source path와 physical filename 쌍을 추적하고 `wOF2` magic 검사 범위를 기록합니다.
-- license 검사가 두 file의 특정 문구만 확인하며 provenance hash나 전체 license equivalence를 검증하지 않는다는 점을 구분합니다.
-- production build/browser를 실행하는 test가 아니라 source + repository file boundary test라는 technique를 분류합니다.
+- `src/app/local-fonts.test.ts`가 레이아웃 원본을 어떻게 읽고 Google 제공자 토큰을 어떤 정규식으로 금지하는지 확인합니다.
+- `it.each`의 설정된 원본 경로와 physical 파일 이름 쌍을 추적하고 `wOF2` magic 검사 범위를 기록합니다.
+- 라이선스 검사가 두 파일의 특정 문구만 확인하며 측정 출처 hash나 전체 라이선스 동일성을 검증하지 않는다는 점을 구분합니다.
+- 배포용 빌드·브라우저를 실행하는 테스트가 아니라 원본 + 저장소 파일 입력 경계 테스트라는 방법을 분류합니다.
 
 확인 원칙:
 
-- 먼저 `2f65f6a6fcb6^`와 `2f65f6a6fcb6`를 비교하고, 필요한 file은 `2f65f6a6fcb6:<path>`의 resulting tree에서 읽습니다.
-- Final HEAD의 workflow, script, Dockerfile 또는 generated output을 이 commit에 소급하지 않습니다.
-- Commit subject나 body만으로 behavior를 추정하지 않고 실제 changed code/test/config를 기준으로 판단합니다.
-- 실제 실행하지 않은 command 결과는 code inspection과 분리합니다.
+- 먼저 `2f65f6a6fcb6^`와 `2f65f6a6fcb6`를 비교하고, 필요한 파일은 `2f65f6a6fcb6:<path>`의 변경 후 파일 트리에서 읽습니다.
+- 최종 HEAD의 작업 정의·스크립트·Dockerfile·생성 산출물을 이 커밋의 구현으로 소급하지 않습니다.
+- 커밋 제목이나 본문만으로 동작을 추정하지 않고 실제 변경된 코드·테스트·설정을 기준으로 판단합니다.
+- 실행하지 않은 명령의 결과는 코드 정적 검토와 구분합니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 전달 상태와 부족함 | local font file과 license가 repository에 들어왔지만, layout이 다시 Google import로 돌아가거나 file이 사라져도 이를 빠르게 잡는 focused regression이 없었습니다. |
-| 실제 변경 file/symbol/command/artifact | `src/app/local-fonts.test.ts`를 추가했습니다. layout source에 `next/font/local`이 있고 `next/font/google`, `fonts.googleapis.com`, `fonts.gstatic.com`이 없음을 확인합니다. 세 local path가 layout에 존재하고 각 file의 첫 네 byte가 `wOF2`인지 검사하며, 두 license file에 OFL 1.1 표기가 있는지 검사합니다. |
-| Build/runtime/resource owner와 lifetime | Vitest test process가 source와 binary/license file을 read-only로 읽습니다. fixture를 복사하거나 mutation하지 않으며, 각 `readFileSync` 호출의 file descriptor lifetime은 Node가 호출 단위로 관리합니다. |
-| Failure·missing output·cleanup 처리 | layout token mismatch, missing file, 잘못된 magic, license 문구 부재가 assertion 또는 file-read error로 실패합니다. binary 전체 corruption, recorded SHA-256, browser font load, glyph coverage와 build output은 검사하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | local registration과 최소 file/license shape가 source regression으로 보호됩니다. 이 test 통과만으로 production build가 성공하거나 font가 시각적으로 올바르게 표시된다고 결론 내릴 수 없습니다. |
-| 다음 delivery commit 또는 관련 test 연결 | `7872e1214de7`의 local ownership invariant를 직접 보호합니다. compiler/CSS 변환은 뒤의 별도 fix와 cross-thread build/visual 검증이 맡습니다. |
+| 직전 전달 상태와 부족함 | 로컬 글꼴 파일과 라이선스가 저장소에 들어왔지만, 레이아웃이 다시 Google 가져오기로 돌아가거나 파일이 사라져도 이를 빠르게 잡는 집중된 회귀가 없었습니다. |
+| 실제 변경 파일·심볼·명령·산출물 | `src/app/local-fonts.test.ts`를 추가했습니다. 레이아웃 원본에 `next/font/local`이 있고 `next/font/google`, `fonts.googleapis.com`, `fonts.gstatic.com`이 없음을 확인합니다. 세 로컬 경로가 레이아웃에 존재하고 각 파일의 첫 네 바이트가 `wOF2`인지 검사하며, 두 라이선스 파일에 OFL 1.1 표기가 있는지 검사합니다. |
+| 빌드·실행 시점·자원 소유 주체와 수명 | Vitest 테스트 프로세스가 원본과 바이너리·라이선스 파일을 읽기 전용으로 읽습니다. 테스트 입력을 복사하거나 변경하지 않으며, 각 `readFileSync` 호출의 파일 디스크립터의 수명은 Node가 호출 단위로 관리합니다. |
+| 실패·누락된 산출물·정리 처리 | 레이아웃 토큰 불일치, 누락된 파일, 잘못된 WOFF2 식별값, 라이선스 문구 부재가 단언문 또는 파일 읽기 오류로 실패합니다. 바이너리 전체 손상, 기록된 SHA-256, 브라우저 글꼴 로딩, 글리프 범위와 빌드 산출물은 검사하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 로컬 등록과 최소 파일·라이선스 형식이 원본 회귀로 보호됩니다. 이 테스트 통과만으로 배포용 빌드가 성공하거나 글꼴이 시각적으로 올바르게 표시된다고 결론 내릴 수 없습니다. |
+| 다음 전달 커밋 또는 관련 테스트 연결 | `7872e1214de7`의 로컬 소유 주체 불변 조건을 직접 보호합니다. 컴파일러·CSS 변환은 뒤의 별도 수정과 개발 흐름 간 빌드·시각 검증이 맡습니다. |
 
 #### 코드·실행 증거 기록
 
-- **변경 전 대응 코드:** Parent에는 `src/app/local-fonts.test.ts`가 없습니다.
+- **변경 전 대응 코드:** 부모 커밋에는 `src/app/local-fonts.test.ts`가 없습니다.
 - **해당 SHA 핵심 코드:** `2f65f6a6fcb6e753497ded0f4a8948cfa0238c48` · `src/app/local-fonts.test.ts`
 
 ```text
@@ -413,41 +413,41 @@ const font = readFileSync(resolve(projectRoot, "src/app/fonts", fileName));
 expect(font.subarray(0, 4).toString("ascii")).toBe("wOF2");
 ```
 
-- **관찰 근거의 성격:** Exact-SHA test implementation에서 직접 확인한 static repository contract입니다.
-- **실행·테스트 증거:** 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git checkout, npm dependency tree, Chromium 및 Docker daemon을 사용할 수 없었습니다. GitHub connector로 해당 SHA의 commit diff와 resulting source를 검사했으며, command 성공 결과는 주장하지 않습니다.
-- **다음 commit 연결:** `7872e1214de7`의 local ownership invariant를 직접 보호합니다. compiler/CSS 변환은 뒤의 별도 fix와 cross-thread build/visual 검증이 맡습니다.
+- **관찰 근거의 성격:** 해당 SHA 테스트 구현에서 직접 확인한 정적 저장소 규칙입니다.
+- **실행·테스트 증거:** 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git 체크아웃, npm 의존성 파일 트리, Chromium 및 Docker 데몬을 사용할 수 없었습니다. GitHub 연결 도구로 해당 SHA의 커밋 변경 내용과 변경 후 원본을 검사했으며, 명령 성공 결과는 주장하지 않습니다.
+- **다음 커밋 연결:** `7872e1214de7`의 로컬 소유 주체 불변 조건을 직접 보호합니다. 컴파일러·CSS 변환은 뒤의 별도 수정과 개발 흐름 간 빌드·시각 검증이 맡습니다.
 
 ### 3. `404a220e5d40` — fix(build): production build에 webpack compiler 고정
 
 - **Full SHA:** `404a220e5d408d39e360a7fe2149042a6e2af3ee`
 - **Importance:** B
 - **Tags:** DEPLOY, DEBUG
-- **확장 thread에서의 역할:** compiler contract 고정 — production output을 downstream manifest tooling이 이해하는 webpack 형식으로 만듭니다.
+- **확장 개발 흐름에서의 역할:** 컴파일러 규칙 고정 — 배포 산출물을 후속 명세 파일 도구가 이해하는 webpack 형식으로 만듭니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `package.json`의 `build`가 `next build`에서 `next build --webpack`으로 바뀌는 단일 diff를 확인합니다.
-- 같은 SHA의 `dev`가 이미 `next dev --webpack`이라는 점과 development/production compiler 정렬을 기록합니다.
-- 이 commit에는 generated manifest parser나 regression test가 아직 없음을 확인하고 후속 `c24c350ce42c`와 연결합니다.
-- compiler pin이 application semantics를 검증하는 것이 아니라 output format 선택을 소유한다는 점을 명시합니다.
+- `package.json`의 `build`가 `next build`에서 `next build --webpack`으로 바뀌는 단일 변경 내용을 확인합니다.
+- 같은 SHA의 `dev`가 이미 `next dev --webpack`이라는 점과 개발·배포용 컴파일러 정렬을 기록합니다.
+- 이 커밋에는 생성된 명세 파일 파서나 회귀 테스트가 아직 없음을 확인하고 후속 `c24c350ce42c`와 연결합니다.
+- 컴파일러 pin이 애플리케이션 의미 구조를 검증하는 것이 아니라 출력 형식 선택을 소유한다는 점을 명시합니다.
 
 확인 원칙:
 
-- 먼저 `404a220e5d40^`와 `404a220e5d40`를 비교하고, 필요한 file은 `404a220e5d40:<path>`의 resulting tree에서 읽습니다.
-- Final HEAD의 workflow, script, Dockerfile 또는 generated output을 이 commit에 소급하지 않습니다.
-- Commit subject나 body만으로 behavior를 추정하지 않고 실제 changed code/test/config를 기준으로 판단합니다.
-- 실제 실행하지 않은 command 결과는 code inspection과 분리합니다.
+- 먼저 `404a220e5d40^`와 `404a220e5d40`를 비교하고, 필요한 파일은 `404a220e5d40:<path>`의 변경 후 파일 트리에서 읽습니다.
+- 최종 HEAD의 작업 정의·스크립트·Dockerfile·생성 산출물을 이 커밋의 구현으로 소급하지 않습니다.
+- 커밋 제목이나 본문만으로 동작을 추정하지 않고 실제 변경된 코드·테스트·설정을 기준으로 판단합니다.
+- 실행하지 않은 명령의 결과는 코드 정적 검토와 구분합니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 전달 상태와 부족함 | development command는 webpack을 명시했지만 production `build`는 compiler를 명시하지 않았습니다. framework default가 바뀌면 development와 production output 형식이 달라질 수 있었습니다. |
-| 실제 변경 file/symbol/command/artifact | `package.json`의 `build`를 `next build --webpack`으로 바꿨습니다. 다른 script나 source file은 변경하지 않습니다. |
-| Build/runtime/resource owner와 lifetime | compiler 선택의 owner가 framework default에서 repository package script로 이동합니다. 모든 downstream command가 `npm run build`를 호출할 때 동일한 compiler path를 사용합니다. |
-| Failure·missing output·cleanup 처리 | webpack build 자체의 failure는 command non-zero로 나타나지만 이 SHA에는 선택값을 검사하는 test가 없습니다. webpack manifest format과 parser의 실제 호환성도 아직 구현되지 않았습니다. |
-| 보장하는 것과 보장하지 않는 것 | repository의 canonical production build command가 webpack을 명시합니다. Next 내부 output format의 영구 안정성이나 다른 사람이 직접 `next build`를 호출하는 경우까지 보장하지 않습니다. |
-| 다음 delivery commit 또는 관련 test 연결 | Thread 4의 `c2fb8a7c238d` parser와 `c24c350ce42c` compiler contract test가 이 선택을 실제 measurement invariant로 사용합니다. |
+| 직전 전달 상태와 부족함 | 개발 명령은 webpack을 명시했지만 배포용 `build` 명령은 컴파일러를 명시하지 않았습니다. 프레임워크 기본값이 바뀌면 개발 환경과 배포 환경의 산출물 형식이 달라질 수 있었습니다. |
+| 실제 변경 파일·심볼·명령·산출물 | `package.json`의 `build`를 `next build --webpack`으로 바꿨습니다. 다른 스크립트나 원본 파일은 변경하지 않습니다. |
+| 빌드·실행 시점·자원 소유 주체와 수명 | 컴파일러 선택의 소유 주체가 프레임워크 기본값에서 저장소 패키지 스크립트로 이동합니다. 모든 후속 명령이 `npm run build`를 호출할 때 동일한 컴파일러 경로를 사용합니다. |
+| 실패·누락된 산출물·정리 처리 | webpack 빌드 자체의 실패는 명령 0이 아닌로 나타나지만 이 SHA에는 선택값을 검사하는 테스트가 없습니다. webpack 명세 파일 형식과 파서의 실제 호환성도 아직 구현되지 않았습니다. |
+| 보장하는 것과 보장하지 않는 것 | 저장소의 기준 배포용 빌드 명령이 webpack을 명시합니다. Next 내부 출력 형식의 영구 안정성이나 다른 사람이 직접 `next build`를 호출하는 경우까지 보장하지 않습니다. |
+| 다음 전달 커밋 또는 관련 테스트 연결 | 개발 흐름 4의 `c2fb8a7c238d` 파서와 `c24c350ce42c` 컴파일러 규칙 테스트가 이 선택을 실제 측정 불변 조건으로 사용합니다. |
 
 #### 코드·실행 증거 기록
 
@@ -458,45 +458,45 @@ expect(font.subarray(0, 4).toString("ascii")).toBe("wOF2");
 "build": "next build --webpack"
 ```
 
-- **관찰 근거의 성격:** Exact-SHA one-line package script diff입니다.
-- **실행·테스트 증거:** 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git checkout, npm dependency tree, Chromium 및 Docker daemon을 사용할 수 없었습니다. GitHub connector로 해당 SHA의 commit diff와 resulting source를 검사했으며, command 성공 결과는 주장하지 않습니다.
-- **다음 commit 연결:** Thread 4의 `c2fb8a7c238d` parser와 `c24c350ce42c` compiler contract test가 이 선택을 실제 measurement invariant로 사용합니다.
+- **관찰 근거의 성격:** 해당 SHA 하나 줄 패키지 스크립트 변경 내용입니다.
+- **실행·테스트 증거:** 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git 체크아웃, npm 의존성 파일 트리, Chromium 및 Docker 데몬을 사용할 수 없었습니다. GitHub 연결 도구로 해당 SHA의 커밋 변경 내용과 변경 후 원본을 검사했으며, 명령 성공 결과는 주장하지 않습니다.
+- **다음 커밋 연결:** 개발 흐름 4의 `c2fb8a7c238d` 파서와 `c24c350ce42c` 컴파일러 규칙 테스트가 이 선택을 실제 측정 불변 조건으로 사용합니다.
 
 ### 4. `5d903132306a` — fix(deps): Next.js runtime 보안 패치 적용
 
 - **Full SHA:** `5d903132306a1ab6db0fe715415e1527f63ebb93`
 - **Importance:** B
 - **Tags:** DEPLOY, DEBUG
-- **확장 thread에서의 역할:** framework/native portability maintenance — Next, ESLint config와 platform SWC resolution을 같은 patch line으로 갱신합니다.
+- **확장 개발 흐름에서의 역할:** 프레임워크·네이티브 모듈 이식성 유지보수 — Next, ESLint 설정과 플랫폼 SWC 해석을 같은 패치 버전 계열로 갱신합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `package.json`에서 `next`와 `eslint-config-next`가 16.2.4에서 16.2.11로 함께 이동하는지 확인합니다.
-- `package-lock.json`에서 `@next/env`, lint plugin, 각 OS/CPU SWC package가 같은 patch line으로 해석되는지 추적합니다.
-- Linux ARM64/x64 GNU와 musl package에 추가된 `libc` constraint가 container/native binary selection에 미치는 역할을 기록합니다.
-- repository가 특정 CVE 번호, exploit 재현이나 security regression test를 제공하는지 확인하고 없는 사실을 명시합니다.
+- `package-lock.json`에서 `@next/env`, lint 플러그인, 각 OS/CPU SWC 패키지가 같은 패치 버전 계열로 해석되는지 추적합니다.
+- Linux ARM64/x64 GNU와 musl 패키지에 추가된 `libc` constraint가 컨테이너·브라우저 기본 바이너리 선택에 미치는 역할을 기록합니다.
+- 저장소가 특정 CVE 번호, exploit 재현이나 보안 회귀 테스트를 제공하는지 확인하고 없는 사실을 명시합니다.
 
 확인 원칙:
 
-- 먼저 `5d903132306a^`와 `5d903132306a`를 비교하고, 필요한 file은 `5d903132306a:<path>`의 resulting tree에서 읽습니다.
-- Final HEAD의 workflow, script, Dockerfile 또는 generated output을 이 commit에 소급하지 않습니다.
-- Commit subject나 body만으로 behavior를 추정하지 않고 실제 changed code/test/config를 기준으로 판단합니다.
-- 실제 실행하지 않은 command 결과는 code inspection과 분리합니다.
+- 먼저 `5d903132306a^`와 `5d903132306a`를 비교하고, 필요한 파일은 `5d903132306a:<path>`의 변경 후 파일 트리에서 읽습니다.
+- 최종 HEAD의 작업 정의·스크립트·Dockerfile·생성 산출물을 이 커밋의 구현으로 소급하지 않습니다.
+- 커밋 제목이나 본문만으로 동작을 추정하지 않고 실제 변경된 코드·테스트·설정을 기준으로 판단합니다.
+- 실행하지 않은 명령의 결과는 코드 정적 검토와 구분합니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 전달 상태와 부족함 | Next runtime과 matching ESLint/compiler package가 16.2.4 patch line에 고정돼 있었습니다. commit subject는 security maintenance 필요를 나타내지만 repository evidence에는 특정 CVE나 재현 scenario가 없습니다. |
-| 실제 변경 file/symbol/command/artifact | `next`와 `eslint-config-next`를 16.2.11로 올리고 lockfile의 `@next/env`, `@next/eslint-plugin-next`, darwin/linux/windows SWC package를 같은 version으로 갱신했습니다. Linux GNU/musl native package에는 명시적 `libc` metadata가 기록됩니다. |
-| Build/runtime/resource owner와 lifetime | runtime/compiler dependency resolution은 `package.json`과 lockfile이 소유합니다. install 시 npm이 OS·CPU·libc 조건에 맞는 optional SWC package를 선택합니다. application code ownership은 바뀌지 않습니다. |
-| Failure·missing output·cleanup 처리 | 잘못된 native package 선택은 install/build failure로 드러날 수 있습니다. 이 commit에는 CVE-specific test, runtime exploit reproduction, application behavior regression test가 없습니다. |
-| 보장하는 것과 보장하지 않는 것 | framework, lint plugin과 native compiler artifact가 16.2.11 patch line으로 정렬되고 libc 조건이 lockfile에 남습니다. 모든 보안 취약점 제거, future vulnerability 부재, multi-architecture runtime 실행 성공은 보장하지 않습니다. |
-| 다음 delivery commit 또는 관련 test 연결 | 앞의 webpack pin과 뒤의 build measurement/container install이 같은 patched dependency graph를 사용합니다. 이 commit은 font나 Tailwind failure를 직접 고친 것이 아니라 portability thread의 framework/native dependency 경계를 보강합니다. |
+| 직전 전달 상태와 부족함 | Next 실행 시점과 matching ESLint·컴파일러 패키지가 16.2.4 패치 버전대에 고정돼 있었습니다. 커밋 제목는 보안 유지보수 필요를 나타내지만 저장소 근거에는 특정 CVE나 재현 상황가 없습니다. |
+| 실제 변경 파일·심볼·명령·산출물 | `next`와 `eslint-config-next`를 16.2.11로 올리고 잠금 파일의 `@next/env`, `@next/eslint-plugin-next`, darwin/linux/windows SWC 패키지를 같은 버전으로 갱신했습니다. Linux GNU/musl 플랫폼별 패키지에는 명시적 `libc` 메타데이터가 기록됩니다. |
+| 빌드·실행 시점·자원 소유 주체와 수명 | 실행 시점·컴파일러 의존성 해석은 `package.json`과 잠금 파일이 소유합니다. 설치 시 npm이 OS·CPU·libc 조건에 맞는 선택적 SWC 패키지를 선택합니다. 애플리케이션 코드 소유 주체는 바뀌지 않습니다. |
+| 실패·누락된 산출물·정리 처리 | 잘못된 플랫폼별 패키지 선택은 설치·빌드 실패로 드러날 수 있습니다. 이 커밋에는 특정 CVE 대상 테스트, 공격 재현, 애플리케이션 동작 회귀 테스트가 없습니다. |
+| 보장하는 것과 보장하지 않는 것 | 프레임워크, lint 플러그인과 브라우저 기본 컴파일러 산출물이 16.2.11 패치 버전 계열로 정렬되고 libc 조건이 잠금 파일에 남습니다. 모든 보안 취약점 제거, 향후 취약점 부재, 여러 아키텍처 실행 시점 실행 성공은 보장하지 않습니다. |
+| 다음 전달 커밋 또는 관련 테스트 연결 | 앞의 webpack pin과 뒤의 빌드 측정·컨테이너 설치가 같은 패치 버전의 의존성 관계를 사용합니다. 이 커밋은 글꼴이나 Tailwind 실패를 직접 고친 것이 아니라 이식성 개발 흐름의 프레임워크·브라우저 기본 의존성 경계를 보강합니다. |
 
 #### 코드·실행 증거 기록
 
-- **변경 전 대응 코드:** `next`와 `eslint-config-next`가 16.2.4이고 lockfile의 matching packages도 16.2.4였습니다.
+- **변경 전 대응 코드:** `next`와 `eslint-config-next`가 16.2.4이고 잠금 파일의 matching packages도 16.2.4였습니다.
 - **해당 SHA 핵심 코드:** `5d903132306a1ab6db0fe715415e1527f63ebb93` · `package.json`
 
 ```text
@@ -508,45 +508,45 @@ expect(font.subarray(0, 4).toString("ascii")).toBe("wOF2");
 }
 ```
 
-- **관찰 근거의 성격:** Exact-SHA dependency/lockfile diff와 branch commit body에서 확인했습니다.
-- **실행·테스트 증거:** 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git checkout, npm dependency tree, Chromium 및 Docker daemon을 사용할 수 없었습니다. GitHub connector로 해당 SHA의 commit diff와 resulting source를 검사했으며, command 성공 결과는 주장하지 않습니다.
-- **다음 commit 연결:** 앞의 webpack pin과 뒤의 build measurement/container install이 같은 patched dependency graph를 사용합니다. 이 commit은 font나 Tailwind failure를 직접 고친 것이 아니라 portability thread의 framework/native dependency 경계를 보강합니다.
+- **관찰 근거의 성격:** 해당 SHA 의존성·잠금 파일 변경 내용과 브랜치 커밋 본문에서 확인했습니다.
+- **실행·테스트 증거:** 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git 체크아웃, npm 의존성 파일 트리, Chromium 및 Docker 데몬을 사용할 수 없었습니다. GitHub 연결 도구로 해당 SHA의 커밋 변경 내용과 변경 후 원본을 검사했으며, 명령 성공 결과는 주장하지 않습니다.
+- **다음 커밋 연결:** 앞의 webpack pin과 뒤의 빌드 측정·컨테이너 설치가 같은 패치 버전의 의존성 관계를 사용합니다. 이 커밋은 글꼴이나 Tailwind 실패를 직접 고친 것이 아니라 이식성 개발 흐름의 프레임워크·브라우저 기본 의존성 경계를 보강합니다.
 
 ### 5. `1de3d36e3a48` — fix(build): Tailwind utility CSS 변환 복원
 
 - **Full SHA:** `1de3d36e3a485830b0a459cbc9dc9748ca15d763`
 - **Importance:** A
 - **Tags:** DEPLOY, DEBUG
-- **확장 thread에서의 역할:** production transform 복원 — installed Tailwind PostCSS plugin을 explicit root config로 등록합니다.
+- **확장 개발 흐름에서의 역할:** 배포 환경 변환 복원 — 설치된 Tailwind PostCSS 플러그인을 명시적인 루트 설정으로 등록합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- parent에 `@tailwindcss/postcss` dependency는 있지만 root `postcss.config.mjs`가 없는지 구분합니다.
-- 새 config의 export shape와 plugin key를 확인하고 Next production build가 conventional root config를 발견하는 경로를 추적합니다.
-- source CSS가 parse되더라도 utility output이 없는 structurally valid/visually broken artifact 가능성을 기록합니다.
-- 이 SHA에 direct regression test가 없고 후속 broad production visual checks가 간접 보호만 제공한다는 점을 명시합니다.
+- 부모 커밋에 `@tailwindcss/postcss` 의존성은 있지만 최상위 `postcss.config.mjs`가 없는지 구분합니다.
+- 새 설정의 내보내는 객체 형식과 플러그인 키를 확인하고 Next 배포용 빌드가 일반적인 루트 설정을 찾는하는 경로를 추적합니다.
+- 원본 CSS가 파싱되더라도 utility 출력이 없는 structurally 유효한·화면 스타일이 깨진 산출물 가능성을 기록합니다.
+- 이 SHA에 직접 회귀 테스트가 없고 후속 포괄적인 배포 환경 시각 검사가 간접 보호만 제공한다는 점을 명시합니다.
 
 확인 원칙:
 
-- 먼저 `1de3d36e3a48^`와 `1de3d36e3a48`를 비교하고, 필요한 file은 `1de3d36e3a48:<path>`의 resulting tree에서 읽습니다.
-- Final HEAD의 workflow, script, Dockerfile 또는 generated output을 이 commit에 소급하지 않습니다.
-- Commit subject나 body만으로 behavior를 추정하지 않고 실제 changed code/test/config를 기준으로 판단합니다.
-- 실제 실행하지 않은 command 결과는 code inspection과 분리합니다.
+- 먼저 `1de3d36e3a48^`와 `1de3d36e3a48`를 비교하고, 필요한 파일은 `1de3d36e3a48:<path>`의 변경 후 파일 트리에서 읽습니다.
+- 최종 HEAD의 작업 정의·스크립트·Dockerfile·생성 산출물을 이 커밋의 구현으로 소급하지 않습니다.
+- 커밋 제목이나 본문만으로 동작을 추정하지 않고 실제 변경된 코드·테스트·설정을 기준으로 판단합니다.
+- 실행하지 않은 명령의 결과는 코드 정적 검토와 구분합니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 전달 상태와 부족함 | `@tailwindcss/postcss` package는 설치돼 있었지만 root PostCSS configuration이 없었습니다. dependency 존재만으로 Next build가 plugin을 호출하지 않으므로 Tailwind import/utility가 production CSS로 확장되지 않을 수 있었습니다. |
-| 실제 변경 file/symbol/command/artifact | root `postcss.config.mjs`를 추가해 `plugins: { "@tailwindcss/postcss": {} }`를 export합니다. application component나 stylesheet source는 변경하지 않습니다. |
-| Build/runtime/resource owner와 lifetime | CSS transform activation의 owner가 implicit tooling assumption에서 repository root config로 이동합니다. Next development, production build, Lighthouse와 bundle measurement가 같은 config discovery path를 사용합니다. |
-| Failure·missing output·cleanup 처리 | config가 없거나 plugin key가 틀리면 source/build가 일부 성공해도 utility layer가 누락된 visually broken artifact가 나올 수 있습니다. 이 commit 자체에는 config contract unit test나 snapshot이 없습니다. |
-| 보장하는 것과 보장하지 않는 것 | canonical Next/PostCSS path가 Tailwind plugin을 명시적으로 등록합니다. 모든 utility가 사용 의도대로 생성되는지, visual snapshot이 통과하는지, browser별 rendering이 동일한지는 이 SHA만으로 보장하지 않습니다. |
-| 다음 delivery commit 또는 관련 test 연결 | 후속 production visual regression suite와 Lighthouse/CI가 broad artifact 결과를 검사하지만, PostCSS config 하나만을 격리한 direct test는 branch에 없습니다. Thread 4의 CI activation 전에 이 fix가 들어가므로 performance 수치가 styling이 빠진 artifact를 기준으로 확정되는 위험을 줄입니다. |
+| 직전 전달 상태와 부족함 | `@tailwindcss/postcss` 패키지는 설치돼 있었지만 최상위 PostCSS 설정이 없었습니다. 의존성 존재만으로 Next 빌드가 플러그인을 호출하지 않으므로 Tailwind 가져오기·utility가 배포 환경 CSS로 확장되지 않을 수 있었습니다. |
+| 실제 변경 파일·심볼·명령·산출물 | 최상위 `postcss.config.mjs`를 추가해 `plugins: { "@tailwindcss/postcss": {} }`를 공개합니다. 애플리케이션 컴포넌트나 스타일시트 원본은 변경하지 않습니다. |
+| 빌드·실행 시점·자원 소유 주체와 수명 | CSS 변환 활성화의 소유 주체가 암묵적인 도구 가정에서 저장소 루트 설정으로 이동합니다. Next 개발, 배포용 빌드, Lighthouse와 번들 측정가 같은 설정 탐색 가능 여부 경로를 사용합니다. |
+| 실패·누락된 산출물·정리 처리 | 설정이 없거나 플러그인 키가 틀리면 원본·빌드가 일부 성공해도 유틸리티 CSS가 누락된 화면 스타일이 깨진 산출물이 나올 수 있습니다. 이 커밋 자체에는 설정 규칙 단위 테스트나 스냅샷이 없습니다. |
+| 보장하는 것과 보장하지 않는 것 | 기준 Next/PostCSS 경로가 Tailwind 플러그인을 명시적으로 등록합니다. 모든 utility가 사용 의도대로 생성되는지, 시각 스냅샷이 통과하는지, 브라우저별 렌더링이 동일한지는 이 SHA만으로 보장하지 않습니다. |
+| 다음 전달 커밋 또는 관련 테스트 연결 | 후속 배포 환경 시각 회귀 테스트 모음과 Lighthouse/CI가 포괄적인 산출물 결과를 검사하지만, PostCSS 설정 하나만을 격리한 직접 테스트는 브랜치에 없습니다. 개발 흐름 4의 CI 활성화 전에 이 수정이 들어가므로 성능 수치가 스타일 적용이 빠진 산출물을 기준으로 확정되는 위험을 줄입니다. |
 
 #### 코드·실행 증거 기록
 
-- **변경 전 대응 코드:** Parent root에는 `postcss.config.mjs`가 없습니다.
+- **변경 전 대응 코드:** 부모 커밋 최상위에는 `postcss.config.mjs`가 없습니다.
 - **해당 SHA 핵심 코드:** `1de3d36e3a485830b0a459cbc9dc9748ca15d763` · `postcss.config.mjs`
 
 ```text
@@ -559,137 +559,137 @@ const config = {
 export default config;
 ```
 
-- **관찰 근거의 성격:** Exact-SHA에서 새로 추가된 root build configuration입니다.
-- **실행·테스트 증거:** 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git checkout, npm dependency tree, Chromium 및 Docker daemon을 사용할 수 없었습니다. GitHub connector로 해당 SHA의 commit diff와 resulting source를 검사했으며, command 성공 결과는 주장하지 않습니다.
-- **다음 commit 연결:** 후속 production visual regression suite와 Lighthouse/CI가 broad artifact 결과를 검사하지만, PostCSS config 하나만을 격리한 direct test는 branch에 없습니다. Thread 4의 CI activation 전에 이 fix가 들어가므로 performance 수치가 styling이 빠진 artifact를 기준으로 확정되는 위험을 줄입니다.
+- **관찰 근거의 성격:** 해당 SHA에서 새로 추가된 최상위 빌드 설정입니다.
+- **실행·테스트 증거:** 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git 체크아웃, npm 의존성 파일 트리, Chromium 및 Docker 데몬을 사용할 수 없었습니다. GitHub 연결 도구로 해당 SHA의 커밋 변경 내용과 변경 후 원본을 검사했으며, 명령 성공 결과는 주장하지 않습니다.
+- **다음 커밋 연결:** 후속 배포 환경 시각 회귀 테스트 모음과 Lighthouse/CI가 포괄적인 산출물 결과를 검사하지만, PostCSS 설정 하나만을 격리한 직접 테스트는 브랜치에 없습니다. 개발 흐름 4의 CI 활성화 전에 이 수정이 들어가므로 성능 수치가 스타일 적용이 빠진 산출물을 기준으로 확정되는 위험을 줄입니다.
 
-## 6. Invariant ledger
+## 6. 불변 조건 기록
 
-| Invariant | 이전 상태 | 도입·수정 | 검증·소비 | 남은 비보장 |
+| 불변 조건 | 이전 상태 | 도입·수정 | 검증·소비 | 남은 비보장 |
 | --- | --- | --- | --- | --- |
-| Font acquisition | build-time provider fetch | `7872e1214de7`에서 binary/license/provenance를 repository로 이동 | `2f65f6a6fcb6`이 source/path/magic/license를 보호 | hash·glyph·browser rendering |
-| Compiler output format | production compiler default | `404a220e5d40`에서 webpack을 package script에 고정 | Thread 4 parser/contract test가 소비 | Next internal format의 future 변화 |
-| Framework/native resolution | 16.2.4 patch line | `5d903132306a`에서 16.2.11과 GNU/musl metadata로 정렬 | 후속 npm install/build/container가 같은 lockfile 사용 | CVE-specific behavior·multiarch 실행 |
-| CSS transform | plugin 설치만 존재 | `1de3d36e3a48`에서 root PostCSS config가 plugin 호출을 소유 | 후속 broad production visual/performance path가 결과를 소비 | direct config regression test |
+| 글꼴 확보 | 빌드 시점 외부 제공자 요청 | `7872e1214de7`에서 바이너리·라이선스·출처 정보를 저장소로 이동 | `2f65f6a6fcb6`이 원본·경로·파일 시그니처·라이선스를 보호 | 해시·글리프·브라우저 렌더링 |
+| 컴파일러 출력 형식 | 배포용 컴파일러 기본값 | `404a220e5d40`에서 webpack을 패키지 스크립트에 고정 | 개발 흐름 4 파서·규칙 테스트가 소비 | Next 내부 형식의 향후 변화 |
+| Framework·브라우저 기본 해석 | 16.2.4 패치 버전대 | `5d903132306a`에서 16.2.11과 GNU/musl 메타데이터로 정렬 | 후속 npm 설치·빌드·컨테이너가 같은 잠금 파일 사용 | 특정 CVE 대상 동작·multi아키텍처 실행 |
+| CSS 변환 | 플러그인 설치만 존재 | `1de3d36e3a48`에서 최상위 PostCSS 설정이 플러그인 호출을 소유 | 후속 포괄적인 배포 환경 시각·성능 경로가 결과를 소비 | 직접 설정 회귀 테스트 |
 
-## 7. Failure → Fix → Test 연결
+## 7. 실패 → 수정 → 테스트 연결
 
-| Failure 또는 위험 | Fix/decision | Test·gate evidence | 한계 |
+| 실패 또는 위험 | 수정·결정 | 테스트·검사 단계 근거 | 한계 |
 | --- | --- | --- | --- |
-| 외부 font endpoint가 차단된 build | local WOFF2 + `next/font/local` | `local-fonts.test.ts`의 source/file contract | 실제 build/browser는 별도 |
-| framework default compiler drift | `next build --webpack` | Thread 4의 exact script/parser fixture test | 직접 `next build` 호출은 우회 가능 |
-| OS/libc에 맞지 않는 SWC resolution | matching 16.2.11 lockfile + libc constraints | install/build downstream에서만 드러남 | dedicated native matrix 없음 |
-| Tailwind plugin 미호출로 utility CSS 누락 | root PostCSS config | 후속 broad visual regression이 간접 검출 | 이 commit에 direct test 없음 |
+| 외부 글꼴 진입점가 차단된 빌드 | 로컬 WOFF2 + `next/font/local` | `local-fonts.test.ts`의 원본·파일 규칙 | 실제 빌드·브라우저는 별도 |
+| 프레임워크 기본값 컴파일러 불일치 | `next build --webpack` | 개발 흐름 4의 정확한 스크립트·파서 테스트 입력 테스트 | 직접 `next build` 호출은 우회 가능 |
+| OS/libc에 맞지 않는 SWC 해석 | matching 16.2.11 잠금 파일 + libc constraints | 설치·빌드 후속에서만 드러남 | 전용 브라우저 기본 조합표 없음 |
+| Tailwind 플러그인 미호출로 유틸리티 CSS 누락 | 최상위 PostCSS 설정 | 후속 포괄적인 시각 회귀가 간접 검출 | 이 커밋에 직접 테스트 없음 |
 
-## 8. Ownership / state / responsibility 변화
+## 8. 소유 주체·상태·담당 작업 변화
 
-| 대상 | 이전 owner/state | 중간 변화 | 최종 owner/state |
+| 대상 | 이전 소유 주체·상태 | 중간 변화 | 최종 소유 주체·상태 |
 | --- | --- | --- | --- |
-| Font bytes/provenance | external provider | `src/app/fonts/**`와 `FONT_SOURCES.md` | layout registration + CSS variables |
-| Compiler selection | Next production default | `package.json` canonical build script | performance parser/test가 계약 소비 |
-| Native compiler package | 기존 lock resolution | patched package/lock graph와 libc metadata | npm platform selection |
-| CSS transform activation | dependency가 암묵적으로 동작한다는 가정 | root `postcss.config.mjs` | 모든 Next build consumer |
+| 글꼴 바이트와 출처 | 외부 제공자 | `src/app/fonts/**`와 `FONT_SOURCES.md` | 레이아웃 등록과 CSS 변수 |
+| 컴파일러 선택 | Next 배포 환경 기본값 | `package.json` 기준 빌드 스크립트 | 성능 파서·테스트가 계약 소비 |
+| 브라우저 기본 컴파일러 패키지 | 기존 lock 해석 | patched 패키지·lock 참조 관계와 libc 메타데이터 | npm 플랫폼 선택 |
+| CSS 변환 활성화 | 의존성이 암묵적으로 동작한다는 가정 | 최상위 `postcss.config.mjs` | 모든 Next 빌드 소비자 |
 
-## 9. Thread 최종 상태
+## 9. 개발 흐름 최종 상태
 
-font binary와 legal/source record는 repository 안에 있고, production build는 webpack과 patched Next/SWC graph를 명시하며, Tailwind transform은 root config로 활성화됩니다. 이는 fresh build portability를 크게 좁히지만 npm registry, base image, OS toolchain과 실제 browser rendering을 완전히 offline/self-contained하게 만들지는 않습니다.
+글꼴 바이너리와 라이선스·출처 기록은 저장소 안에 있습니다. 배포용 빌드는 webpack과 패치된 Next·SWC 의존성을 명시하고 Tailwind 변환은 루트 설정으로 활성화합니다. 이는 새 환경에서의 빌드 차이를 줄이지만 npm 등록부, 기본 이미지, 운영체제 도구와 실제 브라우저 렌더링까지 완전히 오프라인이거나 자체 완결형으로 만들지는 않습니다.
 
-## 10. 최종 product-delivery flow 정리
+## 10. 최종 제품 전달 순서
 
-npm이 pinned framework/SWC graph를 platform 조건에 맞게 설치 → `npm run build`가 webpack을 선택 → Next가 root PostCSS config로 Tailwind를 변환 → `next/font/local`이 repository WOFF2를 build output에 포함 → downstream production/measurement/container 경로가 같은 artifact를 소비합니다.
+npm이 고정된 프레임워크·SWC 참조 관계를 플랫폼 조건에 맞게 설치 → `npm run build`가 webpack을 선택 → Next가 최상위 PostCSS 설정으로 Tailwind를 변환 → `next/font/local`이 저장소 WOFF2를 빌드 산출물에 포함 → 후속 배포 환경·측정·컨테이너 경로가 같은 산출물을 소비합니다.
 
 ## 11. 학습 완료 자가 점검
 
-- [x] font binary, source record, license와 layout/CSS consumer ownership을 연결했습니다.
-- [x] webpack pin과 manifest parser contract의 cross-thread 관계를 설명했습니다.
-- [x] Next patch update의 security subject를 CVE-specific 주장으로 확대하지 않았습니다.
-- [x] Tailwind fix의 direct regression test 부재와 broad verification 범위를 구분했습니다.
-- [ ] Exact-SHA runtime command를 직접 실행해 결과를 기록했습니다. — 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git checkout, npm dependency tree, Chromium 및 Docker daemon을 사용할 수 없었습니다. GitHub connector로 해당 SHA의 commit diff와 resulting source를 검사했으며, command 성공 결과는 주장하지 않습니다.
+- [x] 글꼴 바이너리, 원본 레코드, 라이선스와 레이아웃·CSS 소비자 소유 주체를 연결했습니다.
+- [x] webpack pin과 명세 파일 파서 규칙의 개발 흐름 간 관계를 설명했습니다.
+- [x] Next 패치 update의 보안 제목을 특정 CVE 대상 주장으로 확대하지 않았습니다.
+- [x] Tailwind 수정의 직접 회귀 테스트 부재와 포괄적인 검증 범위를 구분했습니다.
+- [ ] 해당 SHA 실행 명령을 직접 실행해 결과를 기록했습니다. — 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git 체크아웃, npm 의존성 파일 트리, Chromium 및 Docker 데몬을 사용할 수 없었습니다. GitHub 연결 도구로 해당 SHA의 커밋 변경 내용과 변경 후 원본을 검사했으며, 명령 성공 결과는 주장하지 않습니다.
 ===== END FILE: 02-self-contained-production-build-and-portability.md =====
 
 ===== BEGIN FILE: 03-standalone-artifact-contract-and-ci-verification.md =====
-# Thread: Standalone artifact contract and CI verification
+# 개발 흐름: 독립 실행형 산출물 규칙과 CI 검증
 
-> Project: 42 Archive Portfolio (`web/portfolio`)
+> 프로젝트: 42 Archive Portfolio (`web/portfolio`)
 >
-> 이 문서는 원본 Development Thread를 변경하지 않고, 같은 branch history에 product-delivery 관점을 추가한 확장 workbook입니다.
+> 이 문서는 원본 개발 흐름을 변경하지 않고, 같은 브랜치 이력에 제품 전달 관점을 추가한 확장 학습 문서입니다.
 
 ## 0. 분류 출처와 변경 가능 범위
 
-- Commit SHA, subject, importance, tags는 `commit/commit-importance.md`의 branch-scoped 분류를 사용합니다.
-- Phase 1 audit에서 category/thread grouping과 commit set을 실제 history에 대조한 뒤 이 문서를 freeze했습니다.
-- Phase 2는 freeze된 구조와 fixed metadata를 바꾸지 않고 learner-facing 기록만 완성합니다.
-- 다른 branch의 구현이나 final HEAD를 과거 SHA 설명에 소급하지 않습니다.
-- 실행하지 않은 build/test/CI/Docker 결과는 exact-SHA source inspection과 구분합니다.
+- 커밋 SHA·제목·중요도·태그는 `commit/commit-importance.md`의 브랜치별 분류를 사용합니다.
+- 1단계 검토에서 분류와 개발 흐름 묶음, 커밋 집합을 실제 이력과 대조한 뒤 이 문서를 고정했습니다.
+- 2단계는 고정된 구조와 고정된 메타데이터를 바꾸지 않고 학습자용 기록만 완성합니다.
+- 다른 브랜치의 구현이나 최종 HEAD를 과거 SHA 설명에 소급하지 않습니다.
+- 실행하지 않은 빌드·테스트·CI·Docker 결과는 해당 SHA의 원본 정적 검토와 구분합니다.
 
-## 1. Thread 목표
+## 1. 개발 흐름 목표
 
-Next production build를 source tree나 전체 development dependency graph가 아닌 standalone server artifact로 전달할 수 있게 만들고, 그 artifact의 최소 file-layout contract를 local command와 CI가 동일하게 검증하도록 복원합니다.
+Next 배포용 빌드를 원본 파일 트리나 전체 개발 의존성 참조 관계가 아닌 독립 실행형 서버 산출물로 전달할 수 있게 만들고, 그 산출물의 최소 파일 레이아웃 규칙을 로컬 명령과 CI가 동일하게 검증하도록 복원합니다.
 
-### 계획된 핵심 invariant
+### 계획된 핵심 불변 조건
 
-- `next.config.ts`는 standalone output 생성을 명시합니다.
-- post-build verification은 `.next/standalone/server.js`와 `.next/static`의 존재를 fail-closed로 요구합니다.
-- CI는 production E2E가 만든 동일한 `.next` tree에 local `build:verify` command를 적용합니다.
+- `next.config.ts`는 독립 실행형 출력 생성을 명시합니다.
+- 빌드 후 검증은 `.next/standalone/server.js`와 `.next/static`의 존재를 검증에 실패하면 차단하도록 요구합니다.
+- CI는 배포용 E2E가 만든 동일한 `.next` 파일 트리에 로컬 `build:verify` 명령을 적용합니다.
 
-## 2. 이 Thread를 이해하기 위한 핵심 질문
+## 2. 이 개발 흐름을 이해하기 위한 핵심 질문
 
-- `output: "standalone"`이 생성하는 artifact와 별도로 복사해야 하는 static/public 자산은 무엇인가?
-- file existence 검증은 어떤 missing state를 잡고, 실행 가능성·내용·public asset에 대해서는 무엇을 증명하지 못하는가?
-- CI가 build를 두 번 수행하는지, 아니면 production E2E의 output을 재사용하는지 step ordering으로 확인할 수 있는가?
-- 이 Thread의 artifact contract가 다음 Docker Thread에 어떻게 handoff되는가?
+- `output: "standalone"`이 생성하는 산출물과 별도로 복사해야 하는 정적·공개 자산은 무엇인가?
+- 파일 존재 여부 검증은 어떤 누락된 상태를 잡고, 실행 가능성·내용·공개 자산에 대해서는 무엇을 증명하지 못하는가?
+- CI가 빌드를 두 번 수행하는지, 아니면 배포용 E2E의 출력을 재사용하는지 단계 순서 결정으로 확인할 수 있는가?
+- 이 개발 흐름의 산출물 검증 규칙이 다음 Docker 개발 흐름에 어떻게 인계되는가?
 
 ## 3. 완료 기준
 
-- 각 SHA의 parent diff와 resulting tree에서 실제 변경 file, function, config, script와 workflow step을 확인했습니다.
-- Source, generated artifact, CI gate, container/runtime owner를 구분했습니다.
-- Missing artifact, portability failure, threshold violation, startup failure와 cleanup branch를 기록했습니다.
-- Test/CI command의 technique, production path, proves/does-not-prove와 실제 실행 여부를 구분했습니다.
-- 최종 product-delivery 흐름과 cross-thread handoff를 코드 없이 설명할 수 있습니다.
+- 각 SHA의 부모 커밋과의 차이와 변경 후 파일 트리에서 실제 변경 파일, 함수, 설정, 스크립트와 작업 단계를 확인했습니다.
+- 원본, 생성 산출물, CI 검사 단계, 컨테이너·실행 시점 소유 주체를 구분했습니다.
+- 누락된 산출물, 이식성 실패, 기준값 초과, 시작 실패와 정리 브랜치를 기록했습니다.
+- 테스트·CI 명령의 방법, 실제 코드 경로, 증명 범위와 증명하지 않는 범위와 실제 실행 여부를 구분했습니다.
+- 최종 제품 전달 흐름과 다른 개발 흐름으로 넘기는 지점을 코드 없이 설명할 수 있습니다.
 
-## 4. Commit map
+## 4. 커밋 목록
 
-| 순서 | Commit | Subject | Importance | Tags | 확장 thread에서 확인할 역할 |
-| ---: | --- | --- | :---: | --- | --- |
-| 1 | `29508f4668ea` | build: standalone server 산출물 생성 | B | DEPLOY | artifact 형식 선택 — Next.js가 traced runtime dependency를 포함한 standalone server bundle을 생성하도록 설정합니다. |
-| 2 | `c0f7434467a0` | test(build): standalone 산출물 완전성 검증 | A | VALIDATION, DEPLOY, TEST | artifact shape regression — server entry와 generated static directory의 존재를 explicit command로 검사합니다. |
-| 3 | `c5e73853a1b6` | ci: standalone 산출물 검증 추가 | A | VALIDATION, DEPLOY, TEST | CI promotion — production E2E build output에 standalone completeness command를 적용합니다. |
+| 순서 | 커밋 | 제목 | 중요도 | 태그 | 확장 개발 흐름에서 확인할 역할 |
+| ---: | --- | --- |:---: | --- | --- |
+| 1 | `29508f4668ea` | build: standalone server 산출물 생성 | B | DEPLOY | 산출물 형식 선택 — Next.js가 추적된 실행 시점 의존성을 포함한 독립 실행형 서버 번들을 생성하도록 설정합니다. |
+| 2 | `c0f7434467a0` | test(build): standalone 산출물 완전성 검증 | A | VALIDATION, DEPLOY, TEST | 산출물 형식 회귀 — 서버 진입점과 생성된 정적 디렉터리의 존재를 명시적인 명령으로 검사합니다. |
+| 3 | `c5e73853a1b6` | ci: standalone 산출물 검증 추가 | A | VALIDATION, DEPLOY, TEST | CI promotion — 배포용 E2E 빌드 산출물에 독립 실행형 완전성 명령을 적용합니다. |
 
-## 5. Commit별 학습 기록
+## 5. 커밋별 학습 기록
 
-각 section은 반드시 해당 SHA의 tree와 parent diff를 기준으로 작성합니다. 다른 Thread의 later commit은 관계 설명에만 사용하고 과거 구현에 소급하지 않습니다.
+각 섹션은 반드시 해당 SHA의 파일 트리와 부모 커밋과의 차이를 기준으로 작성합니다. 다른 개발 흐름의 후속 커밋은 관계 설명에만 사용하고 과거 구현에 소급하지 않습니다.
 
 ### 1. `29508f4668ea` — build: standalone server 산출물 생성
 
 - **Full SHA:** `29508f4668eaed37c393c8c2ef2e80d0e6c8e2f2`
 - **Importance:** B
 - **Tags:** DEPLOY
-- **확장 thread에서의 역할:** artifact 형식 선택 — Next.js가 traced runtime dependency를 포함한 standalone server bundle을 생성하도록 설정합니다.
+- **확장 개발 흐름에서의 역할:** 산출물 형식 선택 — Next.js가 추적된 실행 시점 의존성을 포함한 독립 실행형 서버 번들을 생성하도록 설정합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `next.config.ts`의 parent/resulting tree를 비교해 `output: "standalone"`이 유일한 behavior change인지 확인합니다.
-- generated `.next/standalone`은 source control에 commit되지 않고 build가 소유하는 ephemeral output이라는 점을 기록합니다.
-- standalone output만으로 `.next/static`과 `public`이 자동 포함되는지 후속 commits의 copy/verify logic으로 확인합니다.
-- 이 SHA에는 artifact existence test나 runtime launch가 없다는 범위를 명시합니다.
+- `next.config.ts`의 부모 커밋·변경 후 파일 트리를 비교해 `output: "standalone"`이 유일한 동작 변경인지 확인합니다.
+- 생성된 `.next/standalone`은 원본 제어에 커밋되지 않고 빌드가 소유하는 ephemeral 출력이라는 점을 기록합니다.
+- 독립 실행형 출력만으로 `.next/static`과 `public`이 자동 포함되는지 후속 커밋의 복사·검증 logic으로 확인합니다.
+- 이 SHA에는 산출물 존재 여부 테스트나 실행 시점 launch가 없다는 범위를 명시합니다.
 
 확인 원칙:
 
-- 먼저 `29508f4668ea^`와 `29508f4668ea`를 비교하고, 필요한 file은 `29508f4668ea:<path>`의 resulting tree에서 읽습니다.
-- Final HEAD의 workflow, script, Dockerfile 또는 generated output을 이 commit에 소급하지 않습니다.
-- Commit subject나 body만으로 behavior를 추정하지 않고 실제 changed code/test/config를 기준으로 판단합니다.
-- 실제 실행하지 않은 command 결과는 code inspection과 분리합니다.
+- 먼저 `29508f4668ea^`와 `29508f4668ea`를 비교하고, 필요한 파일은 `29508f4668ea:<path>`의 변경 후 파일 트리에서 읽습니다.
+- 최종 HEAD의 작업 정의·스크립트·Dockerfile·생성 산출물을 이 커밋의 구현으로 소급하지 않습니다.
+- 커밋 제목이나 본문만으로 동작을 추정하지 않고 실제 변경된 코드·테스트·설정을 기준으로 판단합니다.
+- 실행하지 않은 명령의 결과는 코드 정적 검토와 구분합니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 전달 상태와 부족함 | Next production build는 가능했지만 deployment용 traced standalone server bundle을 생성하라는 repository configuration이 없었습니다. 전달자가 전체 project/node_modules를 어떻게 배치할지 암묵적으로 결정해야 했습니다. |
-| 실제 변경 file/symbol/command/artifact | `next.config.ts`의 `nextConfig`에 `output: "standalone"`을 추가했습니다. |
-| Build/runtime/resource owner와 lifetime | artifact generation의 owner는 Next build configuration과 `npm run build`입니다. `.next/standalone`은 generated directory이며 repository source가 소유하지 않습니다. |
-| Failure·missing output·cleanup 처리 | build가 실패하면 artifact가 생성되지 않지만, 이 SHA에는 missing/partial output을 별도로 검사하는 script가 없습니다. standalone server가 실제로 시작되는지도 검증하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | canonical build가 standalone output mode를 요청합니다. generated file의 존재·완전성, static/public asset 포함, runtime response는 아직 보장하지 않습니다. |
-| 다음 delivery commit 또는 관련 test 연결 | `c0f7434467a0`이 최소 required artifact를 검사하고, Thread 5의 Dockerfile이 standalone server와 static/public을 명시적으로 분리해 복사합니다. |
+| 직전 전달 상태와 부족함 | Next 배포용 빌드는 가능했지만 배포 상태용 추적된 독립 실행형 서버 번들을 생성하라는 저장소 설정이 없었습니다. 전달자가 전체 프로젝트·node_modules를 어떻게 배치할지 암묵적으로 결정해야 했습니다. |
+| 실제 변경 파일·심볼·명령·산출물 | `next.config.ts`의 `nextConfig`에 `output: "standalone"`을 추가했습니다. |
+| 빌드·실행 시점·자원 소유 주체와 수명 | 산출물 생성의 소유 주체는 Next 빌드 설정과 `npm run build`입니다. `.next/standalone`은 생성된 디렉터리이며 저장소 원본이 소유하지 않습니다. |
+| 실패·누락된 산출물·정리 처리 | 빌드가 실패하면 산출물이 생성되지 않지만, 이 SHA에는 누락된·일부 출력을 별도로 검사하는 스크립트가 없습니다. 독립 실행형 서버가 실제로 시작되는지도 검증하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 기준 빌드가 독립 실행형 출력 모드를 요청합니다. 생성된 파일의 존재·완전성, 정적·공개 자산 포함, 실행 시점 응답은 아직 보장하지 않습니다. |
+| 다음 전달 커밋 또는 관련 테스트 연결 | `c0f7434467a0`이 최소 필수 산출물을 검사하고, 개발 흐름 5의 Dockerfile이 독립 실행형 서버와 정적·공개를 명시적으로 분리해 복사합니다. |
 
 #### 코드·실행 증거 기록
 
@@ -703,45 +703,45 @@ const nextConfig: NextConfig = {
 };
 ```
 
-- **관찰 근거의 성격:** Exact-SHA config diff에서 직접 확인한 generated artifact mode입니다.
-- **실행·테스트 증거:** 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git checkout, npm dependency tree, Chromium 및 Docker daemon을 사용할 수 없었습니다. GitHub connector로 해당 SHA의 commit diff와 resulting source를 검사했으며, command 성공 결과는 주장하지 않습니다.
-- **다음 commit 연결:** `c0f7434467a0`이 최소 required artifact를 검사하고, Thread 5의 Dockerfile이 standalone server와 static/public을 명시적으로 분리해 복사합니다.
+- **관찰 근거의 성격:** 해당 SHA 설정 변경 내용에서 직접 확인한 생성 산출물 모드입니다.
+- **실행·테스트 증거:** 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git 체크아웃, npm 의존성 파일 트리, Chromium 및 Docker 데몬을 사용할 수 없었습니다. GitHub 연결 도구로 해당 SHA의 커밋 변경 내용과 변경 후 원본을 검사했으며, 명령 성공 결과는 주장하지 않습니다.
+- **다음 커밋 연결:** `c0f7434467a0`이 최소 필수 산출물을 검사하고, 개발 흐름 5의 Dockerfile이 독립 실행형 서버와 정적·공개를 명시적으로 분리해 복사합니다.
 
 ### 2. `c0f7434467a0` — test(build): standalone 산출물 완전성 검증
 
 - **Full SHA:** `c0f7434467a051f93273a7e850d7bf94cc97a215`
 - **Importance:** A
 - **Tags:** VALIDATION, DEPLOY, TEST
-- **확장 thread에서의 역할:** artifact shape regression — server entry와 generated static directory의 존재를 explicit command로 검사합니다.
+- **확장 개발 흐름에서의 역할:** 산출물 형식 회귀 — 서버 진입점과 생성된 정적 디렉터리의 존재를 명시적인 명령으로 검사합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `package.json`의 `build:verify`와 `scripts/verify-build-output.mjs`의 `requiredArtifacts` 배열을 확인합니다.
-- `existsSync(resolve(...))`가 file/directory type이나 내용이 아니라 path existence만 확인한다는 technique를 분류합니다.
-- missing path를 모두 수집해 한 error에 출력하는 failure shape와 success log를 기록합니다.
-- `public` directory와 standalone server launch가 검사 목록에 없는 이유를 후속 Docker contract와 연결합니다.
+- `existsSync(resolve(...))`가 파일·디렉터리 타입이나 내용이 아니라 경로 존재 여부만 확인한다는 방법을 분류합니다.
+- 누락된 경로를 모두 수집해 한 오류에 출력하는 실패 형식과 성공 로그를 기록합니다.
+- `public` 디렉터리와 독립 실행형 서버 launch가 검사 목록에 없는 이유를 후속 Docker 규칙과 연결합니다.
 
 확인 원칙:
 
-- 먼저 `c0f7434467a0^`와 `c0f7434467a0`를 비교하고, 필요한 file은 `c0f7434467a0:<path>`의 resulting tree에서 읽습니다.
-- Final HEAD의 workflow, script, Dockerfile 또는 generated output을 이 commit에 소급하지 않습니다.
-- Commit subject나 body만으로 behavior를 추정하지 않고 실제 changed code/test/config를 기준으로 판단합니다.
-- 실제 실행하지 않은 command 결과는 code inspection과 분리합니다.
+- 먼저 `c0f7434467a0^`와 `c0f7434467a0`를 비교하고, 필요한 파일은 `c0f7434467a0:<path>`의 변경 후 파일 트리에서 읽습니다.
+- 최종 HEAD의 작업 정의·스크립트·Dockerfile·생성 산출물을 이 커밋의 구현으로 소급하지 않습니다.
+- 커밋 제목이나 본문만으로 동작을 추정하지 않고 실제 변경된 코드·테스트·설정을 기준으로 판단합니다.
+- 실행하지 않은 명령의 결과는 코드 정적 검토와 구분합니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 전달 상태와 부족함 | standalone output mode는 설정됐지만 build가 부분적으로 끝나거나 expected layout이 바뀌어도 repository command가 이를 명시적으로 판정하지 않았습니다. |
-| 실제 변경 file/symbol/command/artifact | `build:verify` script와 `scripts/verify-build-output.mjs`를 추가했습니다. `.next/standalone/server.js`와 `.next/static`을 `existsSync`로 확인하고, 누락된 모든 path를 나열해 exception을 던집니다. |
-| Build/runtime/resource owner와 lifetime | verification script가 required path list와 pass/fail 결정을 소유합니다. existing build output을 read-only로 검사하며 artifact를 생성·수정·정리하지 않습니다. |
-| Failure·missing output·cleanup 처리 | 둘 중 하나라도 없으면 `Standalone build output is incomplete` error와 missing list로 process가 실패합니다. path가 존재하기만 하면 통과하므로 file type, server syntax, static content, permissions, public assets와 runtime startup은 검사하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | 두 deployment-critical path의 부재는 deterministic post-build failure가 됩니다. artifact가 실제로 독립 실행되거나 올바른 response를 제공한다는 보장은 아닙니다. |
-| 다음 delivery commit 또는 관련 test 연결 | `c5e73853a1b6`이 exact `npm run build:verify`를 CI에서 호출합니다. Docker builder도 이후 `npm run build && npm run build:verify`를 image 생성 전 조건으로 재사용합니다. |
+| 직전 전달 상태와 부족함 | 독립 실행형 출력 모드는 설정됐지만 빌드가 부분적으로 끝나거나 예상한 레이아웃이 바뀌어도 저장소 명령이 이를 명시적으로 판정하지 않았습니다. |
+| 실제 변경 파일·심볼·명령·산출물 | `build:verify` 스크립트와 `scripts/verify-build-output.mjs`를 추가했습니다. `.next/standalone/server.js`와 `.next/static`을 `existsSync`로 확인하고, 누락된 모든 경로를 나열해 exception을 던집니다. |
+| 빌드·실행 시점·자원 소유 주체와 수명 | 검증 스크립트가 필수 경로 목록과 통과·실패 결정을 소유합니다. 기존 빌드 산출물을 읽기 전용으로 검사하며 산출물을 생성·수정·정리하지 않습니다. |
+| 실패·누락된 산출물·정리 처리 | 둘 중 하나라도 없으면 `Standalone build output is incomplete` 오류와 누락된 목록으로 프로세스가 실패합니다. 경로가 존재하기만 하면 통과하므로 파일 타입, 서버 문법, 정적 콘텐츠, 권한, 공개 자산과 실행 시점 시작은 검사하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 두 배포 중요한 상태 경로의 부재는 결정적인 빌드 후 실패가 됩니다. 산출물이 실제로 독립 실행되거나 올바른 응답을 제공한다는 보장은 아닙니다. |
+| 다음 전달 커밋 또는 관련 테스트 연결 | `c5e73853a1b6`이 정확한 `npm run build:verify`를 CI에서 호출합니다. Docker 빌드 단계도 이후 `npm run build && npm run build:verify`를 이미지 생성 전 조건으로 재사용합니다. |
 
 #### 코드·실행 증거 기록
 
-- **변경 전 대응 코드:** Parent에는 `build:verify` script와 `scripts/verify-build-output.mjs`가 없습니다.
+- **변경 전 대응 코드:** 부모 커밋에는 `build:verify` 스크립트와 `scripts/verify-build-output.mjs`가 없습니다.
 - **해당 SHA 핵심 코드:** `c0f7434467a051f93273a7e850d7bf94cc97a215` · `scripts/verify-build-output.mjs`
 
 ```text
@@ -756,45 +756,45 @@ if (missing.length > 0) {
 console.log(`verified ${requiredArtifacts.length} portfolio build artifacts`);
 ```
 
-- **관찰 근거의 성격:** Exact-SHA script implementation에서 직접 확인한 path-existence test입니다.
-- **실행·테스트 증거:** 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git checkout, npm dependency tree, Chromium 및 Docker daemon을 사용할 수 없었습니다. GitHub connector로 해당 SHA의 commit diff와 resulting source를 검사했으며, command 성공 결과는 주장하지 않습니다.
-- **다음 commit 연결:** `c5e73853a1b6`이 exact `npm run build:verify`를 CI에서 호출합니다. Docker builder도 이후 `npm run build && npm run build:verify`를 image 생성 전 조건으로 재사용합니다.
+- **관찰 근거의 성격:** 해당 SHA 스크립트 구현에서 직접 확인한 경로 존재 여부 테스트입니다.
+- **실행·테스트 증거:** 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git 체크아웃, npm 의존성 파일 트리, Chromium 및 Docker 데몬을 사용할 수 없었습니다. GitHub 연결 도구로 해당 SHA의 커밋 변경 내용과 변경 후 원본을 검사했으며, 명령 성공 결과는 주장하지 않습니다.
+- **다음 커밋 연결:** `c5e73853a1b6`이 정확한 `npm run build:verify`를 CI에서 호출합니다. Docker 빌드 단계도 이후 `npm run build && npm run build:verify`를 이미지 생성 전 조건으로 재사용합니다.
 
 ### 3. `c5e73853a1b6` — ci: standalone 산출물 검증 추가
 
 - **Full SHA:** `c5e73853a1b69e39561748435f4768109a368544`
 - **Importance:** A
 - **Tags:** VALIDATION, DEPLOY, TEST
-- **확장 thread에서의 역할:** CI promotion — production E2E build output에 standalone completeness command를 적용합니다.
+- **확장 개발 흐름에서의 역할:** CI promotion — 배포용 E2E 빌드 산출물에 독립 실행형 완전성 명령을 적용합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `.github/workflows/ci.yml`에서 새 step이 `Build and run production E2E tests` 뒤에 위치하는지 확인합니다.
-- 새 step이 rebuild하지 않고 앞 step이 남긴 `.next`를 `npm run build:verify`로 검사한다는 artifact handoff를 기록합니다.
-- 앞 E2E 실패 시 verify step에 도달하지 않는 fail-fast ordering과, E2E 성공 뒤 artifact shape가 별도 실패할 수 있는 이유를 설명합니다.
-- CI가 이 시점에 `public` copy나 standalone `server.js` 직접 실행을 아직 하지 않는다는 범위를 명시합니다.
+- `.github/workflows/ci.yml`에서 새 단계가 `Build and run production E2E tests` 뒤에 위치하는지 확인합니다.
+- 새 단계가 rebuild하지 않고 앞 단계가 남긴 `.next`를 `npm run build:verify`로 검사한다는 산출물 인계를 기록합니다.
+- 앞 E2E 실패 시 검증 단계에 도달하지 않는 빠른 실패 순서 결정과, E2E 성공 뒤 산출물 형식이 별도 실패할 수 있는 이유를 설명합니다.
+- CI가 이 시점에 `public` 복사나 독립 실행형 `server.js` 직접 실행을 아직 하지 않는다는 범위를 명시합니다.
 
 확인 원칙:
 
-- 먼저 `c5e73853a1b6^`와 `c5e73853a1b6`를 비교하고, 필요한 file은 `c5e73853a1b6:<path>`의 resulting tree에서 읽습니다.
-- Final HEAD의 workflow, script, Dockerfile 또는 generated output을 이 commit에 소급하지 않습니다.
-- Commit subject나 body만으로 behavior를 추정하지 않고 실제 changed code/test/config를 기준으로 판단합니다.
-- 실제 실행하지 않은 command 결과는 code inspection과 분리합니다.
+- 먼저 `c5e73853a1b6^`와 `c5e73853a1b6`를 비교하고, 필요한 파일은 `c5e73853a1b6:<path>`의 변경 후 파일 트리에서 읽습니다.
+- 최종 HEAD의 작업 정의·스크립트·Dockerfile·생성 산출물을 이 커밋의 구현으로 소급하지 않습니다.
+- 커밋 제목이나 본문만으로 동작을 추정하지 않고 실제 변경된 코드·테스트·설정을 기준으로 판단합니다.
+- 실행하지 않은 명령의 결과는 코드 정적 검토와 구분합니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 전달 상태와 부족함 | `build:verify`는 local opt-in command였고 CI production E2E가 성공하더라도 standalone path contract는 integration 조건이 아니었습니다. |
-| 실제 변경 file/symbol/command/artifact | CI workflow에 `Verify standalone output` step을 추가해 production E2E 직후 `npm run build:verify`를 실행합니다. |
-| Build/runtime/resource owner와 lifetime | 앞 production E2E step이 `.next`를 생성하고, 다음 verify step이 같은 runner workspace의 artifact를 소비합니다. workflow ordering이 producer/consumer lifetime을 소유하며 별도 persistence는 없습니다. |
-| Failure·missing output·cleanup 처리 | E2E build/test가 실패하면 step에 도달하지 않습니다. E2E가 통과해도 required path가 없으면 verify command가 non-zero로 CI를 실패시킵니다. runner 종료 시 generated artifact는 폐기됩니다. |
-| 보장하는 것과 보장하지 않는 것 | push/PR의 production path는 browser behavior와 standalone 최소 layout을 모두 요구합니다. standalone entry를 직접 실행하거나 public assets, image packaging, non-root user를 검증하지 않습니다. |
-| 다음 delivery commit 또는 관련 test 연결 | Thread 5가 이 artifact contract를 Docker builder prerequisite로 사용하고, runtime script가 실제 HTTP response와 public assets를 검증합니다. |
+| 직전 전달 상태와 부족함 | `build:verify`는 로컬에서 명시적으로 실행하는 명령이었고 CI 배포용 E2E가 성공하더라도 독립 실행형 경로 규칙은 통합 조건이 아니었습니다. |
+| 실제 변경 파일·심볼·명령·산출물 | CI 작업 정의에 `Verify standalone output` 단계를 추가해 배포용 E2E 직후 `npm run build:verify`를 실행합니다. |
+| 빌드·실행 시점·자원 소유 주체와 수명 | 앞 배포용 E2E 단계가 `.next`를 생성하고, 다음 검증 단계가 같은 실행기 workspace의 산출물을 소비합니다. 작업 정의 순서 결정이 생성 함수·소비자 수명을 소유하며 별도 persistence는 없습니다. |
+| 실패·누락된 산출물·정리 처리 | E2E 빌드·테스트가 실패하면 단계에 도달하지 않습니다. E2E가 통과해도 필수 경로가 없으면 검증 명령이 0이 아닌로 CI를 실패시킵니다. 실행기 종료 시 생성 산출물은 폐기됩니다. |
+| 보장하는 것과 보장하지 않는 것 | push/PR의 실제 코드 경로는 브라우저 동작과 독립 실행형 최소 레이아웃을 모두 요구합니다. 독립 실행형 진입점을 직접 실행하거나 공개 자산, 이미지 패키징, 비관리자 사용자를 검증하지 않습니다. |
+| 다음 전달 커밋 또는 관련 테스트 연결 | 개발 흐름 5가 이 산출물 검증 규칙을 Docker 빌드 단계 선행 조건으로 사용하고, 실행 시점 스크립트가 실제 HTTP 응답과 공개 자산을 검증합니다. |
 
 #### 코드·실행 증거 기록
 
-- **변경 전 대응 코드:** Parent workflow는 production E2E step으로 끝나며 standalone verify step이 없습니다.
+- **변경 전 대응 코드:** 부모 커밋 작업 정의는 배포용 E2E 단계로 끝나며 독립 실행형 검증 단계가 없습니다.
 - **해당 SHA 핵심 코드:** `c5e73853a1b69e39561748435f4768109a368544` · `.github/workflows/ci.yml`
 
 ```text
@@ -805,149 +805,149 @@ console.log(`verified ${requiredArtifacts.length} portfolio build artifacts`);
   run: npm run build:verify
 ```
 
-- **관찰 근거의 성격:** Exact-SHA workflow diff에서 직접 확인한 artifact producer/consumer order입니다.
-- **실행·테스트 증거:** 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git checkout, npm dependency tree, Chromium 및 Docker daemon을 사용할 수 없었습니다. GitHub connector로 해당 SHA의 commit diff와 resulting source를 검사했으며, command 성공 결과는 주장하지 않습니다.
-- **다음 commit 연결:** Thread 5가 이 artifact contract를 Docker builder prerequisite로 사용하고, runtime script가 실제 HTTP response와 public assets를 검증합니다.
+- **관찰 근거의 성격:** 해당 SHA 작업 정의 변경 내용에서 직접 확인한 산출물 생성 함수·소비자 순서입니다.
+- **실행·테스트 증거:** 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git 체크아웃, npm 의존성 파일 트리, Chromium 및 Docker 데몬을 사용할 수 없었습니다. GitHub 연결 도구로 해당 SHA의 커밋 변경 내용과 변경 후 원본을 검사했으며, 명령 성공 결과는 주장하지 않습니다.
+- **다음 커밋 연결:** 개발 흐름 5가 이 산출물 검증 규칙을 Docker 빌드 단계 선행 조건으로 사용하고, 실행 시점 스크립트가 실제 HTTP 응답과 공개 자산을 검증합니다.
 
-## 6. Invariant ledger
+## 6. 불변 조건 기록
 
-| Invariant | 이전 상태 | 도입·수정 | 검증·소비 | 남은 비보장 |
+| 불변 조건 | 이전 상태 | 도입·수정 | 검증·소비 | 남은 비보장 |
 | --- | --- | --- | --- | --- |
-| Artifact generation | 일반 Next build output | `29508f4668ea`에서 standalone mode 선택 | production build가 `.next/standalone` 생성 | 생성 성공 여부는 후속 검사 |
-| Minimum layout | implicit framework assumption | `c0f7434467a0`에서 server.js + static path를 explicit list로 정의 | `c5e73853a1b6`이 CI에서 소비 | public·content·runtime response |
-| CI artifact lifetime | 검증 command local-only | production E2E step이 `.next` producer | 다음 step이 같은 workspace output을 검사 | runner 밖 artifact publish |
+| 산출물 생성 | 일반 Next 빌드 산출물 | `29508f4668ea`에서 독립 실행형 모드 선택 | 배포용 빌드가 `.next/standalone` 생성 | 생성 성공 여부는 후속 검사 |
+| Minimum 레이아웃 | 암묵적인 프레임워크 가정 | `c0f7434467a0`에서 서버.js + 정적 경로를 명시적인 목록으로 정의 | `c5e73853a1b6`이 CI에서 소비 | 공개·콘텐츠·실행 시점 응답 |
+| CI 산출물 수명 | 검증 명령 로컬에서만 | 배포용 E2E 단계가 `.next` 생성 함수 | 다음 단계가 같은 workspace 출력을 검사 | 실행기 밖 산출물 공개 |
 
-## 7. Failure → Fix → Test 연결
+## 7. 실패 → 수정 → 테스트 연결
 
-| Failure 또는 위험 | Fix/decision | Test·gate evidence | 한계 |
+| 실패 또는 위험 | 수정·결정 | 테스트·검사 단계 근거 | 한계 |
 | --- | --- | --- | --- |
-| standalone mode 미설정 | `output: "standalone"` | post-build required path check | mode 설정만으로 runtime 성공은 아님 |
-| partial/missing build layout | missing path aggregation + throw | CI의 `npm run build:verify` | path type/content 미검사 |
-| browser test는 성공하지만 deployable layout 누락 | E2E 뒤 별도 artifact step | 동일 `.next` tree를 순차 검사 | public/container는 다음 Thread |
+| 독립 실행형 모드 미설정 | `output: "standalone"` | 빌드 후 필수 경로 검사 | 모드 설정만으로 실행 시점 성공은 아님 |
+| 일부·누락된 빌드 레이아웃 | 누락된 경로 집계 방식 + 예외 발생 | CI의 `npm run build:verify` | 경로 타입·콘텐츠 미검사 |
+| 브라우저 테스트는 성공하지만 배포 가능한 레이아웃 누락 | E2E 뒤 별도 산출물 단계 | 동일 `.next` 파일 트리를 순차 검사 | 공개·컨테이너는 다음 개발 흐름 |
 
-## 8. Ownership / state / responsibility 변화
+## 8. 소유 주체·상태·담당 작업 변화
 
-| 대상 | 이전 owner/state | 중간 변화 | 최종 owner/state |
+| 대상 | 이전 소유 주체·상태 | 중간 변화 | 최종 소유 주체·상태 |
 | --- | --- | --- | --- |
-| Output format | framework default | `next.config.ts` | `npm run build` |
-| Artifact completeness policy | 암묵적 | `requiredArtifacts` array | local/CI/Docker builder가 재사용 |
-| Generated tree lifetime | local build directory | CI E2E step producer | verify step consumer 후 runner 폐기 |
+| 출력 형식 | 프레임워크 기본값 | `next.config.ts` | `npm run build` |
+| 산출물 완전성 규칙 | 암묵적 | `requiredArtifacts` 배열 | 로컬·CI/Docker 빌드 단계가 재사용 |
+| Generated 파일 트리 수명 | 로컬 빌드 디렉터리 | CI E2E 단계 생성 함수 | 검증 단계 소비자 후 실행기 폐기 |
 
-## 9. Thread 최종 상태
+## 9. 개발 흐름 최종 상태
 
-production build는 standalone server mode를 요청하고, repository command와 CI는 `server.js` 및 generated static directory의 존재를 요구합니다. 이 계약은 artifact shape만 다루며 public asset copy, 직접 server startup, runtime user와 HTTP response는 다음 container Thread가 맡습니다.
+배포용 빌드는 독립 실행형 서버 모드를 요청하고, 저장소 명령과 CI는 `server.js` 및 생성된 정적 디렉터리의 존재를 요구합니다. 이 계약은 산출물 형식만 다루며 공개 자산 복사, 직접 서버 시작, 실행 시점 사용자와 HTTP 응답은 다음 컨테이너 개발 흐름이 맡습니다.
 
-## 10. 최종 product-delivery flow 정리
+## 10. 최종 제품 전달 순서
 
-`next.config.ts`가 standalone mode 선택 → production E2E의 `npm run build`가 `.next` 생성 → existing browser suite가 `next start` 검증 → 같은 workspace에서 `build:verify`가 server entry/static path 확인 → CI exit status가 artifact completeness를 판정합니다.
+`next.config.ts`가 독립 실행형 모드 선택 → 배포용 E2E의 `npm run build`가 `.next` 생성 → 기존 브라우저 테스트 모음이 `next start` 검증 → 같은 workspace에서 `build:verify`가 서버 진입점·정적 경로 확인 → CI 종료 상태가 산출물 완전성을 판정합니다.
 
 ## 11. 학습 완료 자가 점검
 
-- [x] standalone mode 설정과 generated output ownership을 구분했습니다.
-- [x] path-existence test가 증명하는 것과 증명하지 않는 것을 기록했습니다.
-- [x] CI가 rebuild하지 않고 앞 step의 `.next`를 재사용함을 확인했습니다.
-- [x] public assets와 actual standalone runtime이 다음 Thread 책임임을 연결했습니다.
-- [ ] Exact-SHA runtime command를 직접 실행해 결과를 기록했습니다. — 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git checkout, npm dependency tree, Chromium 및 Docker daemon을 사용할 수 없었습니다. GitHub connector로 해당 SHA의 commit diff와 resulting source를 검사했으며, command 성공 결과는 주장하지 않습니다.
+- [x] 독립 실행형 모드 설정과 생성 산출물 소유 주체를 구분했습니다.
+- [x] 경로 존재 여부 테스트가 증명하는 것과 증명하지 않는 것을 기록했습니다.
+- [x] CI가 rebuild하지 않고 앞 단계의 `.next`를 재사용함을 확인했습니다.
+- [x] 공개 자산과 실제 독립 실행형 실행 시점이 다음 개발 흐름 책임임을 연결했습니다.
+- [ ] 해당 SHA 실행 명령을 직접 실행해 결과를 기록했습니다. — 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git 체크아웃, npm 의존성 파일 트리, Chromium 및 Docker 데몬을 사용할 수 없었습니다. GitHub 연결 도구로 해당 SHA의 커밋 변경 내용과 변경 후 원본을 검사했으며, 명령 성공 결과는 주장하지 않습니다.
 ===== END FILE: 03-standalone-artifact-contract-and-ci-verification.md =====
 
 ===== BEGIN FILE: 04-release-performance-gates.md =====
-# Thread: Release performance gates
+# 개발 흐름: 배포 성능 차단 기준
 
-> Project: 42 Archive Portfolio (`web/portfolio`)
+> 프로젝트: 42 Archive Portfolio (`web/portfolio`)
 >
-> 이 문서는 원본 Development Thread를 변경하지 않고, 같은 branch history에 product-delivery 관점을 추가한 확장 workbook입니다.
+> 이 문서는 원본 개발 흐름을 변경하지 않고, 같은 브랜치 이력에 제품 전달 관점을 추가한 확장 학습 문서입니다.
 
 ## 0. 분류 출처와 변경 가능 범위
 
-- Commit SHA, subject, importance, tags는 `commit/commit-importance.md`의 branch-scoped 분류를 사용합니다.
-- Phase 1 audit에서 category/thread grouping과 commit set을 실제 history에 대조한 뒤 이 문서를 freeze했습니다.
-- Phase 2는 freeze된 구조와 fixed metadata를 바꾸지 않고 learner-facing 기록만 완성합니다.
-- 다른 branch의 구현이나 final HEAD를 과거 SHA 설명에 소급하지 않습니다.
-- 실행하지 않은 build/test/CI/Docker 결과는 exact-SHA source inspection과 구분합니다.
+- 커밋 SHA·제목·중요도·태그는 `commit/commit-importance.md`의 브랜치별 분류를 사용합니다.
+- 1단계 검토에서 분류와 개발 흐름 묶음, 커밋 집합을 실제 이력과 대조한 뒤 이 문서를 고정했습니다.
+- 2단계는 고정된 구조와 고정된 메타데이터를 바꾸지 않고 학습자용 기록만 완성합니다.
+- 다른 브랜치의 구현이나 최종 HEAD를 과거 SHA 설명에 소급하지 않습니다.
+- 실행하지 않은 빌드·테스트·CI·Docker 결과는 해당 SHA의 원본 정적 검토와 구분합니다.
 
-## 1. Thread 목표
+## 1. 개발 흐름 목표
 
-webpack production output에서 route별 client JS/CSS를 계측하고 reviewable baseline에 대해 fail-closed budget을 적용한 뒤, production server의 desktop Lighthouse matrix와 함께 CI release gate로 승격하는 과정을 복원합니다.
+webpack 배포 산출물에서 라우트별 클라이언트 JS/CSS를 계측하고 reviewable 기준선에 대해 초과 시 차단하는 허용량을 적용한 뒤, 배포용 서버의 데스크톱 Lighthouse 조합표와 함께 CI 배포 차단 기준로 승격하는 과정을 복원합니다.
 
-### 계획된 핵심 invariant
+### 계획된 핵심 불변 조건
 
-- route asset measurement는 source 추정치가 아니라 webpack production manifests와 실제 asset file size를 사용합니다.
-- routine `bundle:check`는 committed baseline을 읽기만 하며, baseline 갱신은 별도 explicit command입니다.
-- baseline route 누락, 새 route의 baseline 부재, route별 JS/CSS 5% 초과는 모두 violation입니다.
-- Lighthouse는 production server에서 5 designs × home/project-detail × 3 desktop runs를 median으로 평가합니다.
-- CI는 production build output을 재사용해 standalone, bundle budget과 desktop Lighthouse threshold를 차례로 요구합니다.
+- 라우트 자산 측정은 원본 추정치가 아니라 webpack 배포 환경 명세 파일과 실제 자산 파일 크기를 사용합니다.
+- 처리 `bundle:check`는 커밋된 기준선을 읽기만 하며, 기준선 갱신은 별도 명시적인 명령입니다.
+- 기준선 라우트 누락, 새 라우트의 기준선 부재, 라우트별 JS/CSS 5% 초과는 모두 위반입니다.
+- Lighthouse는 배포용 서버에서 다섯 디자인 × 홈·프로젝트 상세 × 3 데스크톱 runs를 중앙값으로 평가합니다.
+- CI는 배포용 빌드 산출물을 재사용해 독립 실행형, 번들 허용량과 데스크톱 Lighthouse 기준값을 차례로 요구합니다.
 
-## 2. 이 Thread를 이해하기 위한 핵심 질문
+## 2. 이 개발 흐름을 이해하기 위한 핵심 질문
 
-- generated client-reference manifest를 JavaScript로 실행하지 않고 JSON payload만 추출하는 parser boundary는 무엇인가?
-- shared JS, route JS, non-inlined CSS와 duplicate asset을 어떤 규칙으로 byte accounting하는가?
-- baseline creation과 routine check를 분리하지 않으면 어떤 self-approval failure가 생기는가?
-- Lighthouse gate의 URL matrix, aggregation, threshold와 browser executable ownership은 어디에 고정되는가?
-- committed lab result는 실제 CI gate인가, observation artifact인가, 또는 둘의 조합인가?
+- 생성된 클라이언트 참조 명세 파일을 JavaScript로 실행하지 않고 JSON 페이로드만 추출하는 파서 구분 지점은 무엇인가?
+- 공용 JS, 라우트 JS, 인라인되지 않은 CSS와 중복된 자산을 어떤 규칙으로 바이트 계산하는가?
+- 기준선 creation과 처리 검사를 분리하지 않으면 어떤 self-approval 실패가 생기는가?
+- Lighthouse 검사 단계의 URL 조합표, 집계 방식, 기준값과 브라우저 실행 파일 소유 주체는 어디에 고정되는가?
+- 커밋된 lab 결과는 실제 CI 검사 단계인가, 관찰 결과 산출물인가, 또는 둘의 조합인가?
 
 ## 3. 완료 기준
 
-- 각 SHA의 parent diff와 resulting tree에서 실제 변경 file, function, config, script와 workflow step을 확인했습니다.
-- Source, generated artifact, CI gate, container/runtime owner를 구분했습니다.
-- Missing artifact, portability failure, threshold violation, startup failure와 cleanup branch를 기록했습니다.
-- Test/CI command의 technique, production path, proves/does-not-prove와 실제 실행 여부를 구분했습니다.
-- 최종 product-delivery 흐름과 cross-thread handoff를 코드 없이 설명할 수 있습니다.
+- 각 SHA의 부모 커밋과의 차이와 변경 후 파일 트리에서 실제 변경 파일, 함수, 설정, 스크립트와 작업 단계를 확인했습니다.
+- 원본, 생성 산출물, CI 검사 단계, 컨테이너·실행 시점 소유 주체를 구분했습니다.
+- 누락된 산출물, 이식성 실패, 기준값 초과, 시작 실패와 정리 브랜치를 기록했습니다.
+- 테스트·CI 명령의 방법, 실제 코드 경로, 증명 범위와 증명하지 않는 범위와 실제 실행 여부를 구분했습니다.
+- 최종 제품 전달 흐름과 다른 개발 흐름으로 넘기는 지점을 코드 없이 설명할 수 있습니다.
 
-## 4. Commit map
+## 4. 커밋 목록
 
-| 순서 | Commit | Subject | Importance | Tags | 확장 thread에서 확인할 역할 |
-| ---: | --- | --- | :---: | --- | --- |
-| 1 | `c2fb8a7c238d` | fix(perf): webpack route manifest parser 보강 | A | ARCH, ROUTING, PERF | generated-output trust boundary — webpack client-reference wrapper에서 JSON payload만 안전하게 추출합니다. |
-| 2 | `c24c350ce42c` | test(build): compiler와 manifest parser 계약 검증 | A | VALIDATION, DEPLOY, TEST | deterministic contract test — webpack build script와 generated wrapper parser fixture를 함께 고정합니다. |
-| 3 | `605b64512edf` | build(perf): route별 client asset 측정 추가 | A | ARCH, ROUTING, PERF | production measurement — app paths와 client-reference manifests를 join해 route별 uncompressed JS/CSS bytes를 계산합니다. |
-| 4 | `518ff5b51ec5` | build(perf): route bundle 성장 예산 평가 추가 | A | ARCH, ROUTING, PERF | pure policy evaluator — committed route coverage와 JS/CSS별 최대 5% 성장을 structured violations로 판정합니다. |
-| 5 | `57a1b0876941` | build(perf): bundle budget CLI 연결 | B | PERF, DEPLOY | operational split — baseline write와 routine check를 별도 package commands로 노출합니다. |
-| 6 | `6ac1ea4b5055` | chore(perf): route bundle 기준값 기록 | B | ROUTING, PERF | reviewable operational state — 여덟 public route pattern의 accepted uncompressed byte baseline을 commit합니다. |
-| 7 | `1529ccf225c1` | build(perf): desktop Lighthouse 실행 경계 추가 | A | PERF, DEPLOY | production lab gate definition — 10 URL desktop matrix, median aggregation과 release thresholds를 설정합니다. |
-| 8 | `f1c72dfdd16a` | build(perf): Lighthouse 결과 요약기 추가 | B | PERF, DEPLOY | measurement provenance — raw LHRs를 URL별 runs/median과 execution environment를 가진 JSON으로 요약합니다. |
-| 9 | `4e8f95249481` | test(perf): 배포 성능 gate 규칙 검증 | A | VALIDATION, PERF, TEST | policy regression suite — compiler/parser assertions를 보존하며 Lighthouse matrix와 budget arithmetic을 검증합니다. |
-| 10 | `abbd530368a0` | ci: 검증된 bundle과 Lighthouse gate 활성화 | A | VALIDATION, PERF, DEPLOY | release integration — production build output에 standalone, bundle와 Lighthouse checks를 순차 적용합니다. |
-| 11 | `a39856cf734a` | chore(perf): 최종 lab 성능 측정 결과 기록 | C | PERF | generated evidence snapshot — desktop enforced matrix와 별도 mobile observation의 측정 결과를 환경과 함께 보존합니다. |
+| 순서 | 커밋 | 제목 | 중요도 | 태그 | 확장 개발 흐름에서 확인할 역할 |
+| ---: | --- | --- |:---: | --- | --- |
+| 1 | `c2fb8a7c238d` | fix(perf): webpack route manifest parser 보강 | A | ARCH, ROUTING, PERF | 생성 산출물 검증을 통과해야 하는 지점 — webpack 클라이언트 참조 래퍼에서 JSON 페이로드만 안전하게 추출합니다. |
+| 2 | `c24c350ce42c` | test(build): compiler와 manifest parser 계약 검증 | A | VALIDATION, DEPLOY, TEST | 결정적인 규칙 테스트 — webpack 빌드 스크립트와 생성된 래퍼 파서 테스트 입력을 함께 고정합니다. |
+| 3 | `605b64512edf` | build(perf): route별 client asset 측정 추가 | A | ARCH, ROUTING, PERF | 배포 산출물 측정 — app 경로와 클라이언트 참조 명세 파일을 결합해 라우트별 압축하지 않은 JS/CSS 바이트를 계산합니다. |
+| 4 | `518ff5b51ec5` | build(perf): route bundle 성장 예산 평가 추가 | A | ARCH, ROUTING, PERF | 입력에만 의존하는 규칙 계산 함수 — 커밋된 라우트 검증 범위와 JS/CSS별 최대 5% 성장을 구조화된 위반로 판정합니다. |
+| 5 | `57a1b0876941` | build(perf): bundle budget CLI 연결 | B | PERF, DEPLOY | operational 분리 — 기준선 write와 처리 검사를 별도 패키지 명령으로 노출합니다. |
+| 6 | `6ac1ea4b5055` | chore(perf): route bundle 기준값 기록 | B | ROUTING, PERF | reviewable operational 상태 — 여덟 공개 라우트 패턴의 accepted 압축하지 않은 바이트 기준선을 커밋합니다. |
+| 7 | `1529ccf225c1` | build(perf): desktop Lighthouse 실행 경계 추가 | A | PERF, DEPLOY | 배포 환경 lab 검사 단계 정의 — 10 URL 데스크톱 조합표, 중앙값 집계 방식과 배포 기준값을 설정합니다. |
+| 8 | `f1c72dfdd16a` | build(perf): Lighthouse 결과 요약기 추가 | B | PERF, DEPLOY | 측정 출처 — 원본 LHR 보고서를 URL별 실행값과 중앙값과 실행 환경 정보를 포함한 JSON으로 요약합니다. |
+| 9 | `4e8f95249481` | test(perf): 배포 성능 gate 규칙 검증 | A | VALIDATION, PERF, TEST | 규칙 회귀 테스트 모음 — 컴파일러·파서 단언문을 보존하며 Lighthouse 조합표와 허용량 arithmetic을 검증합니다. |
+| 10 | `abbd530368a0` | ci: 검증된 bundle과 Lighthouse gate 활성화 | A | VALIDATION, PERF, DEPLOY | 배포 통합 — 배포용 빌드 산출물에 독립 실행형, 번들과 Lighthouse 검사를 순차 적용합니다. |
+| 11 | `a39856cf734a` | chore(perf): 최종 lab 성능 측정 결과 기록 | C | PERF | 생성된 근거 스냅샷 — 데스크톱 enforced 조합표와 별도 모바일 관찰 결과의 측정 결과를 환경과 함께 보존합니다. |
 
-## 5. Commit별 학습 기록
+## 5. 커밋별 학습 기록
 
-각 section은 반드시 해당 SHA의 tree와 parent diff를 기준으로 작성합니다. 다른 Thread의 later commit은 관계 설명에만 사용하고 과거 구현에 소급하지 않습니다.
+각 섹션은 반드시 해당 SHA의 파일 트리와 부모 커밋과의 차이를 기준으로 작성합니다. 다른 개발 흐름의 후속 커밋은 관계 설명에만 사용하고 과거 구현에 소급하지 않습니다.
 
 ### 1. `c2fb8a7c238d` — fix(perf): webpack route manifest parser 보강
 
 - **Full SHA:** `c2fb8a7c238d355c717a14359ef805fb9cc7f6f7`
 - **Importance:** A
 - **Tags:** ARCH, ROUTING, PERF
-- **확장 thread에서의 역할:** generated-output trust boundary — webpack client-reference wrapper에서 JSON payload만 안전하게 추출합니다.
+- **확장 개발 흐름에서의 역할:** 생성 산출물 검증을 통과해야 하는 지점 — webpack 클라이언트 참조 래퍼에서 JSON 페이로드만 안전하게 추출합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- parent에는 `scripts/route-budgets.mjs`가 없다는 사실을 확인해, subject의 `fix`를 이전 branch implementation 수정으로 오해하지 않습니다.
-- `parseClientReferenceManifest`의 assignment regex, source slicing, semicolon requirement와 `JSON.parse` 호출 순서를 추적합니다.
-- ordinary route와 `[...]` dynamic key가 regex에서 어떻게 처리되는지 후속 test fixture와 연결합니다.
-- missing assignment/terminator와 malformed JSON이 filename을 포함한 error 또는 JSON parse failure로 닫히는지 확인합니다.
+- 부모 커밋에는 `scripts/route-budgets.mjs`가 없다는 사실을 확인해, 제목의 `fix`를 이전 브랜치 구현 수정으로 오해하지 않습니다.
+- `parseClientReferenceManifest`의 대입문 정규식, 원본 문자열 잘라내기, 세미콜론 필수 조건과 `JSON.parse` 호출 순서를 추적합니다.
+- 일반 라우트와 `[...]` 동적 키가 정규식에서 어떻게 처리되는지 후속 테스트 입력과 연결합니다.
+- 누락된 할당문·종료 문자열과 잘못된 형식의 JSON이 파일 이름을 포함한 오류 또는 JSON 파싱 실패로 닫히는지 확인합니다.
 
 확인 원칙:
 
-- 먼저 `c2fb8a7c238d^`와 `c2fb8a7c238d`를 비교하고, 필요한 file은 `c2fb8a7c238d:<path>`의 resulting tree에서 읽습니다.
-- Final HEAD의 workflow, script, Dockerfile 또는 generated output을 이 commit에 소급하지 않습니다.
-- Commit subject나 body만으로 behavior를 추정하지 않고 실제 changed code/test/config를 기준으로 판단합니다.
-- 실제 실행하지 않은 command 결과는 code inspection과 분리합니다.
+- 먼저 `c2fb8a7c238d^`와 `c2fb8a7c238d`를 비교하고, 필요한 파일은 `c2fb8a7c238d:<path>`의 변경 후 파일 트리에서 읽습니다.
+- 최종 HEAD의 작업 정의·스크립트·Dockerfile·생성 산출물을 이 커밋의 구현으로 소급하지 않습니다.
+- 커밋 제목이나 본문만으로 동작을 추정하지 않고 실제 변경된 코드·테스트·설정을 기준으로 판단합니다.
+- 실행하지 않은 명령의 결과는 코드 정적 검토와 구분합니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 전달 상태와 부족함 | parent에는 route budget script나 manifest parser가 없습니다. commit body가 지적하는 위험은 generated JavaScript wrapper를 plain JSON으로 취급하거나 평가하는 접근이며, branch에서 그런 이전 implementation이 실제 commit돼 있었다고 볼 근거는 없습니다. |
-| 실제 변경 file/symbol/command/artifact | `scripts/route-budgets.mjs`와 declaration file을 추가했습니다. parser는 `globalThis.__RSC_MANIFEST[...] =` assignment를 line break를 포함해 찾고, 뒤 serialized value를 slice한 뒤 terminating semicolon을 요구해 제거하고 `JSON.parse`합니다. |
-| Build/runtime/resource owner와 lifetime | generated source 해석의 owner가 ad hoc caller가 아니라 pure parser function으로 모입니다. source string/filename은 caller가 소유하고 parser는 새 object를 반환하며 global state를 실행·변경하지 않습니다. |
-| Failure·missing output·cleanup 처리 | assignment가 없거나 semicolon로 끝나지 않으면 filename을 포함한 custom error가 발생합니다. payload가 JSON이 아니면 `JSON.parse` error가 전파됩니다. regex가 future Next output wrapper 형식을 이해하지 못해도 measurement를 계속하지 않고 실패합니다. |
-| 보장하는 것과 보장하지 않는 것 | expected webpack wrapper에서는 value만 JSON으로 해석하며 `eval`하지 않습니다. 모든 future manifest syntax, semantic schema validation, asset existence와 route accounting은 아직 보장하지 않습니다. |
-| 다음 delivery commit 또는 관련 test 연결 | `c24c350ce42c`이 compact/dynamic fixtures를 고정하고, `605b64512edf`가 actual build manifest collector에서 이 parser를 호출합니다. |
+| 직전 전달 상태와 부족함 | 부모 커밋에는 라우트 허용량 스크립트나 명세 파일 파서가 없습니다. 커밋 본문이 지적하는 위험은 생성된 JavaScript 래퍼를 일반 JSON으로 취급하거나 평가하는 접근이며, 브랜치에서 그런 이전 구현이 실제 커밋돼 있었다고 볼 근거는 없습니다. |
+| 실제 변경 파일·심볼·명령·산출물 | `scripts/route-budgets.mjs`와 선언 파일을 추가했습니다. 파서는 `globalThis.__RSC_MANIFEST[...] =` assignment를 줄 break를 포함해 찾고, 뒤 직렬화된 값을 잘라낸 뒤 terminating 세미콜론을 요구해 제거하고 `JSON.parse`합니다. |
+| 빌드·실행 시점·자원 소유 주체와 수명 | 생성된 원본 해석의 소유 주체가 ad hoc 호출자가 아니라 입력에만 의존하는 파서 함수으로 모입니다. 원본 문자열·파일 이름은 호출자가 소유하고 파서는 새 객체를 반환하며 전역 상태를 실행·변경하지 않습니다. |
+| 실패·누락된 산출물·정리 처리 | assignment가 없거나 세미콜론로 끝나지 않으면 파일 이름을 포함한 사용자 정의 오류가 발생합니다. 페이로드가 JSON이 아니면 `JSON.parse` 오류가 전파됩니다. 정규식이 향후 Next 출력 래퍼 형식을 이해하지 못해도 측정을 계속하지 않고 실패합니다. |
+| 보장하는 것과 보장하지 않는 것 | 예상한 webpack 래퍼에서는 값만 JSON으로 해석하며 `eval`하지 않습니다. 모든 향후 명세 파일 문법, 의미상 스키마 검증, 자산 존재 여부와 라우트 계산은 아직 보장하지 않습니다. |
+| 다음 전달 커밋 또는 관련 테스트 연결 | `c24c350ce42c`이 간결한·동적 테스트 입력을 고정하고, `605b64512edf`가 실제 빌드 명세 파일 collector에서 이 파서를 호출합니다. |
 
 #### 코드·실행 증거 기록
 
-- **변경 전 대응 코드:** Parent에는 두 `route-budgets` files와 parser가 없습니다.
+- **변경 전 대응 코드:** 부모 커밋에는 두 `route-budgets` 파일과 파서가 없습니다.
 - **해당 SHA 핵심 코드:** `c2fb8a7c238d355c717a14359ef805fb9cc7f6f7` · `scripts/route-budgets.mjs — parseClientReferenceManifest`
 
 ```text
@@ -964,45 +964,45 @@ if (!assignment || !serialized.endsWith(";")) {
 return JSON.parse(serialized.slice(0, -1));
 ```
 
-- **관찰 근거의 성격:** Exact-SHA new parser implementation과 parent absence를 직접 확인했습니다.
-- **실행·테스트 증거:** 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git checkout, npm dependency tree, Chromium 및 Docker daemon을 사용할 수 없었습니다. GitHub connector로 해당 SHA의 commit diff와 resulting source를 검사했으며, command 성공 결과는 주장하지 않습니다.
-- **다음 commit 연결:** `c24c350ce42c`이 compact/dynamic fixtures를 고정하고, `605b64512edf`가 actual build manifest collector에서 이 parser를 호출합니다.
+- **관찰 근거의 성격:** 해당 SHA new 파서 구현과 부모 커밋 누락을 직접 확인했습니다.
+- **실행·테스트 증거:** 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git 체크아웃, npm 의존성 파일 트리, Chromium 및 Docker 데몬을 사용할 수 없었습니다. GitHub 연결 도구로 해당 SHA의 커밋 변경 내용과 변경 후 원본을 검사했으며, 명령 성공 결과는 주장하지 않습니다.
+- **다음 커밋 연결:** `c24c350ce42c`이 간결한·동적 테스트 입력을 고정하고, `605b64512edf`가 실제 빌드 명세 파일 collector에서 이 파서를 호출합니다.
 
 ### 2. `c24c350ce42c` — test(build): compiler와 manifest parser 계약 검증
 
 - **Full SHA:** `c24c350ce42cdbfe35eff3c6dd3bebc62ab132aa`
 - **Importance:** A
 - **Tags:** VALIDATION, DEPLOY, TEST
-- **확장 thread에서의 역할:** deterministic contract test — webpack build script와 generated wrapper parser fixture를 함께 고정합니다.
+- **확장 개발 흐름에서의 역할:** 결정적인 규칙 테스트 — webpack 빌드 스크립트와 생성된 래퍼 파서 테스트 입력을 함께 고정합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `src/performance/build-manifest-contract.test.ts`가 `package.json`을 실제로 require해 exact build string을 검사하는지 확인합니다.
-- compact ordinary route fixture와 square bracket가 중첩된 dynamic route fixture를 parser에 직접 전달하는 test technique를 기록합니다.
-- fixture가 actual `.next` file을 읽는 integration test가 아니라 pure parser/config contract라는 점을 구분합니다.
-- parser가 malformed input, semicolon absence 또는 actual asset accounting을 이 SHA에서 test하는지 확인합니다.
+- `src/performance/build-manifest-contract.test.ts`가 `package.json`을 실제로 require해 정확한 빌드 문자열을 검사하는지 확인합니다.
+- 간결한 일반 라우트 테스트 입력과 square bracket가 중첩된 동적 라우트 테스트 입력을 파서에 직접 전달하는 테스트 방법을 기록합니다.
+- 테스트 입력이 실제 `.next` 파일을 읽는 통합 테스트가 아니라 입력에만 의존하는 파서·설정 규칙라는 점을 구분합니다.
+- 파서가 잘못된 형식의 입력, 세미콜론 누락 또는 실제 자산 계산을 이 SHA에서 테스트하는지 확인합니다.
 
 확인 원칙:
 
-- 먼저 `c24c350ce42c^`와 `c24c350ce42c`를 비교하고, 필요한 file은 `c24c350ce42c:<path>`의 resulting tree에서 읽습니다.
-- Final HEAD의 workflow, script, Dockerfile 또는 generated output을 이 commit에 소급하지 않습니다.
-- Commit subject나 body만으로 behavior를 추정하지 않고 실제 changed code/test/config를 기준으로 판단합니다.
-- 실제 실행하지 않은 command 결과는 code inspection과 분리합니다.
+- 먼저 `c24c350ce42c^`와 `c24c350ce42c`를 비교하고, 필요한 파일은 `c24c350ce42c:<path>`의 변경 후 파일 트리에서 읽습니다.
+- 최종 HEAD의 작업 정의·스크립트·Dockerfile·생성 산출물을 이 커밋의 구현으로 소급하지 않습니다.
+- 커밋 제목이나 본문만으로 동작을 추정하지 않고 실제 변경된 코드·테스트·설정을 기준으로 판단합니다.
+- 실행하지 않은 명령의 결과는 코드 정적 검토와 구분합니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 전달 상태와 부족함 | webpack build command와 parser는 존재했지만 compiler flag 제거 또는 dynamic route key handling regression을 결정적으로 잡는 test가 없었습니다. |
-| 실제 변경 file/symbol/command/artifact | `src/performance/build-manifest-contract.test.ts`를 추가해 `packageJson.scripts.build === "next build --webpack"`을 요구합니다. ordinary `/about/page`와 `/projects/[projectId]/page` wrapper string을 parser에 넣고 expected object를 비교합니다. |
-| Build/runtime/resource owner와 lifetime | Vitest가 package config와 pure parser contract를 소유합니다. fixture string은 test가 소유하며 filesystem-generated manifests, build process와 assets는 사용하지 않습니다. |
-| Failure·missing output·cleanup 처리 | compiler string drift, assignment regex가 compact wrapper 또는 dynamic brackets를 처리하지 못하면 assertion이 실패합니다. 실제 Next build format이 fixture와 함께 잘못 업데이트되는 경우, manifest file read/stat failure는 검출하지 못합니다. |
-| 보장하는 것과 보장하지 않는 것 | repository build command와 두 대표 wrapper syntax의 parser behavior가 결정적으로 보호됩니다. production build 성공, 모든 route key, malformed input, bundle size accuracy는 증명하지 않습니다. |
-| 다음 delivery commit 또는 관련 test 연결 | `605b64512edf`의 collector가 parser를 실제 manifest path에 적용합니다. `4e8f95249481`은 이 test를 broader performance gate test로 이동하면서 같은 assertions를 보존합니다. |
+| 직전 전달 상태와 부족함 | webpack 빌드 명령과 파서는 존재했지만 컴파일러 설정값 제거 또는 동적 라우트 키 처리 회귀를 결정적으로 잡는 테스트가 없었습니다. |
+| 실제 변경 파일·심볼·명령·산출물 | `src/performance/build-manifest-contract.test.ts`를 추가해 `packageJson.scripts.build === "next build --webpack"`을 요구합니다. 일반 `/about/page`와 `/projects/[projectId]/page` 래퍼 문자열을 파서에 넣고 예상한 객체를 비교합니다. |
+| 빌드·실행 시점·자원 소유 주체와 수명 | Vitest가 패키지 설정과 입력에만 의존하는 파서 규칙을 소유합니다. 테스트 입력 문자열은 테스트가 소유하며 파일 시스템이 생성한 명세 파일, 빌드 프로세스와 자산은 사용하지 않습니다. |
+| 실패·누락된 산출물·정리 처리 | 컴파일러 문자열 불일치, 대입문 정규식이 간결한 래퍼 또는 동적 brackets를 처리하지 못하면 단언문이 실패합니다. 실제 Next 빌드 형식이 테스트 입력과 함께 잘못 업데이트되는 경우, 명세 파일 읽기/stat 실패는 검출하지 못합니다. |
+| 보장하는 것과 보장하지 않는 것 | 저장소 빌드 명령과 두 대표 래퍼 문법의 파서 동작이 결정적으로 보호됩니다. 배포용 빌드 성공, 모든 라우트 키, 잘못된 형식의 입력, 번들 크기 accuracy는 증명하지 않습니다. |
+| 다음 전달 커밋 또는 관련 테스트 연결 | `605b64512edf`의 collector가 파서를 실제 명세 파일 경로에 적용합니다. `4e8f95249481`은 이 테스트를 더 넓은 성능 차단 기준 테스트로 이동하면서 같은 단언문을 보존합니다. |
 
 #### 코드·실행 증거 기록
 
-- **변경 전 대응 코드:** Parent에는 `src/performance/build-manifest-contract.test.ts`가 없습니다.
+- **변경 전 대응 코드:** 부모 커밋에는 `src/performance/build-manifest-contract.test.ts`가 없습니다.
 - **해당 SHA 핵심 코드:** `c24c350ce42cdbfe35eff3c6dd3bebc62ab132aa` · `src/performance/build-manifest-contract.test.ts`
 
 ```text
@@ -1014,45 +1014,45 @@ expect(parseClientReferenceManifest(source, "project.js")).toEqual({
 });
 ```
 
-- **관찰 근거의 성격:** Exact-SHA test file에서 직접 확인한 config/pure parser regression입니다.
-- **실행·테스트 증거:** 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git checkout, npm dependency tree, Chromium 및 Docker daemon을 사용할 수 없었습니다. GitHub connector로 해당 SHA의 commit diff와 resulting source를 검사했으며, command 성공 결과는 주장하지 않습니다.
-- **다음 commit 연결:** `605b64512edf`의 collector가 parser를 실제 manifest path에 적용합니다. `4e8f95249481`은 이 test를 broader performance gate test로 이동하면서 같은 assertions를 보존합니다.
+- **관찰 근거의 성격:** 해당 SHA 테스트 파일에서 직접 확인한 설정·입력에만 의존하는 파서 회귀입니다.
+- **실행·테스트 증거:** 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git 체크아웃, npm 의존성 파일 트리, Chromium 및 Docker 데몬을 사용할 수 없었습니다. GitHub 연결 도구로 해당 SHA의 커밋 변경 내용과 변경 후 원본을 검사했으며, 명령 성공 결과는 주장하지 않습니다.
+- **다음 커밋 연결:** `605b64512edf`의 collector가 파서를 실제 명세 파일 경로에 적용합니다. `4e8f95249481`은 이 테스트를 더 넓은 성능 차단 기준 테스트로 이동하면서 같은 단언문을 보존합니다.
 
 ### 3. `605b64512edf` — build(perf): route별 client asset 측정 추가
 
 - **Full SHA:** `605b64512edfdf416335ee500355fb1008100168`
 - **Importance:** A
 - **Tags:** ARCH, ROUTING, PERF
-- **확장 thread에서의 역할:** production measurement — app paths와 client-reference manifests를 join해 route별 uncompressed JS/CSS bytes를 계산합니다.
+- **확장 개발 흐름에서의 역할:** 배포 산출물 측정 — app 경로와 클라이언트 참조 명세 파일을 결합해 라우트별 압축하지 않은 JS/CSS 바이트를 계산합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `collectRouteBundleMeasurements`가 `server/app-paths-manifest.json`과 `build-manifest.json`을 어떤 순서로 읽는지 확인합니다.
-- `/page` → `/`, `/.../page` suffix 제거, `/_` skip과 sorted key iteration 규칙을 기록합니다.
-- root shared JS와 route `entryJSFiles`, non-inlined `entryCSSFiles`를 합치고 `Set`으로 route 내부 duplicate를 제거하는 byte accounting을 추적합니다.
-- missing manifest/asset, invalid JSON와 parser failure가 catch되지 않고 caller를 실패시키는 fail-closed behavior를 확인합니다.
+- `/page` → `/`, `/.../page` suffix 제거, `/_` 건너뛰기과 정렬된 키 재생 횟수 규칙을 기록합니다.
+- 최상위 공용 JS와 라우트 `entryJSFiles`, 인라인되지 않은 `entryCSSFiles`를 합치고 `Set`으로 라우트 내부 중복된를 제거하는 바이트 계산을 추적합니다.
+- 누락된 명세 파일·자산, 유효하지 않은 JSON와 파서 실패가 catch되지 않고 호출자를 실패시키는 실패 시 차단하는 동작을 확인합니다.
 
 확인 원칙:
 
-- 먼저 `605b64512edf^`와 `605b64512edf`를 비교하고, 필요한 file은 `605b64512edf:<path>`의 resulting tree에서 읽습니다.
-- Final HEAD의 workflow, script, Dockerfile 또는 generated output을 이 commit에 소급하지 않습니다.
-- Commit subject나 body만으로 behavior를 추정하지 않고 실제 changed code/test/config를 기준으로 판단합니다.
-- 실제 실행하지 않은 command 결과는 code inspection과 분리합니다.
+- 먼저 `605b64512edf^`와 `605b64512edf`를 비교하고, 필요한 파일은 `605b64512edf:<path>`의 변경 후 파일 트리에서 읽습니다.
+- 최종 HEAD의 작업 정의·스크립트·Dockerfile·생성 산출물을 이 커밋의 구현으로 소급하지 않습니다.
+- 커밋 제목이나 본문만으로 동작을 추정하지 않고 실제 변경된 코드·테스트·설정을 기준으로 판단합니다.
+- 실행하지 않은 명령의 결과는 코드 정적 검토와 구분합니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 전달 상태와 부족함 | parser만 존재했고 실제 production routes, shared chunks와 emitted file sizes를 수집하는 measurement path가 없었습니다. |
-| 실제 변경 file/symbol/command/artifact | `collectRouteBundleMeasurements`와 related types를 추가했습니다. app-paths manifest의 page entries를 public route pattern으로 바꾸고, 각 route의 client-reference manifest를 parse합니다. root shared JS + route JS와 non-inlined route CSS를 deduplicate한 뒤 `.next` 아래 실제 file의 `stat.size`를 합산합니다. |
-| Build/runtime/resource owner와 lifetime | Next generated manifests가 route→artifact mapping의 source of truth이고 collector가 join/accounting을 소유합니다. `assetBytes`는 caller의 build directory를 read-only로 stat하며 output object가 route별 byte state를 소유합니다. |
-| Failure·missing output·cleanup 처리 | manifest read/JSON parse/parser/stat 중 하나라도 실패하면 Promise가 reject합니다. framework-internal `/_`와 non-page entry는 의도적으로 제외됩니다. missing files를 0으로 처리하지 않아 false-green measurement를 만들지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | 측정 대상 route별로 shared + entry JS와 별도 transfer되는 CSS의 uncompressed bytes를 계산합니다. gzip/Brotli, runtime cache, lazy chunk의 모든 future fetch, concrete dynamic IDs, network transfer overhead는 측정하지 않습니다. |
-| 다음 delivery commit 또는 관련 test 연결 | `518ff5b51ec5`가 이 measurement와 baseline을 비교하고, `57a1b0876941`이 production build directory를 대상으로 CLI에서 호출합니다. |
+| 직전 전달 상태와 부족함 | 파서만 존재했고 실제 배포 환경 라우트, 공용 청크와 출력된 파일 크기를 수집하는 측정 경로가 없었습니다. |
+| 실제 변경 파일·심볼·명령·산출물 | `collectRouteBundleMeasurements`와 관련 타입을 추가했습니다. 앱 경로 명세 파일의 페이지 항목을 공개 라우트 패턴으로 바꾸고, 각 라우트의 클라이언트 참조 명세 파일을 파싱합니다. 최상위 공용 JS + 라우트 JS와 인라인되지 않은 라우트 CSS를 중복 제거한 뒤 `.next` 아래 실제 파일의 `stat.size`를 합산합니다. |
+| 빌드·실행 시점·자원 소유 주체와 수명 | Next 생성된 명세 파일이 라우트→산출물 대응의 기준 원본이고 collector가 결합·계산을 소유합니다. `assetBytes`는 호출자의 빌드 디렉터리를 읽기 전용으로 stat하며 출력 객체가 라우트별 바이트 상태를 소유합니다. |
+| 실패·누락된 산출물·정리 처리 | 명세 파일 읽기/JSON 파싱·파서·파일 상태 확인 중 하나라도 실패하면 Promise가 거부됩니다. 프레임워크 내부 `/_`와 페이지가 아닌 진입점은 의도적으로 제외됩니다. 누락된 파일을 0으로 처리하지 않아 잘못된 통과로 기록되는 측정을 만들지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 측정 대상 라우트별로 공용 + 진입점 JS와 별도 파일로 출력되는 CSS의 압축하지 않은 바이트를 계산합니다. gzip/Brotli, 실행 시점 캐시, 지연 로딩 청크의 모든 후속 요청, 구체적인 동적 ID, 네트워크 전송 부가 비용은 측정하지 않습니다. |
+| 다음 전달 커밋 또는 관련 테스트 연결 | `518ff5b51ec5`가 이 측정과 기준선을 비교하고, `57a1b0876941`이 배포용 빌드 디렉터리를 대상으로 CLI에서 호출합니다. |
 
 #### 코드·실행 증거 기록
 
-- **변경 전 대응 코드:** Parser만 있고 filesystem/manifests를 연결하는 collector와 byte types가 없습니다.
+- **변경 전 대응 코드:** 파서만 있고 파일 시스템·명세 파일을 연결하는 collector와 바이트 타입이 없습니다.
 - **해당 SHA 핵심 코드:** `605b64512edfdf416335ee500355fb1008100168` · `scripts/route-budgets.mjs — collectRouteBundleMeasurements`
 
 ```text
@@ -1075,45 +1075,45 @@ measurements[route] = {
 };
 ```
 
-- **관찰 근거의 성격:** Exact-SHA collector implementation에서 직접 확인한 build-output accounting입니다.
-- **실행·테스트 증거:** 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git checkout, npm dependency tree, Chromium 및 Docker daemon을 사용할 수 없었습니다. GitHub connector로 해당 SHA의 commit diff와 resulting source를 검사했으며, command 성공 결과는 주장하지 않습니다.
-- **다음 commit 연결:** `518ff5b51ec5`가 이 measurement와 baseline을 비교하고, `57a1b0876941`이 production build directory를 대상으로 CLI에서 호출합니다.
+- **관찰 근거의 성격:** 해당 SHA collector 구현에서 직접 확인한 빌드 산출물 계산입니다.
+- **실행·테스트 증거:** 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git 체크아웃, npm 의존성 파일 트리, Chromium 및 Docker 데몬을 사용할 수 없었습니다. GitHub 연결 도구로 해당 SHA의 커밋 변경 내용과 변경 후 원본을 검사했으며, 명령 성공 결과는 주장하지 않습니다.
+- **다음 커밋 연결:** `518ff5b51ec5`가 이 측정과 기준선을 비교하고, `57a1b0876941`이 배포용 빌드 디렉터리를 대상으로 CLI에서 호출합니다.
 
 ### 4. `518ff5b51ec5` — build(perf): route bundle 성장 예산 평가 추가
 
 - **Full SHA:** `518ff5b51ec54c4eb4fcca9bab5ff6ba8e70a67b`
 - **Importance:** A
 - **Tags:** ARCH, ROUTING, PERF
-- **확장 thread에서의 역할:** pure policy evaluator — committed route coverage와 JS/CSS별 최대 5% 성장을 structured violations로 판정합니다.
+- **확장 개발 흐름에서의 역할:** 입력에만 의존하는 규칙 계산 함수 — 커밋된 라우트 검증 범위와 JS/CSS별 최대 5% 성장을 구조화된 위반로 판정합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `BUDGET_GROWTH_FACTOR = 1.05`와 `Math.floor(expected * factor)`의 exact pass boundary를 계산합니다.
-- baseline route missing, asset overage와 measured new route without baseline이 서로 다른 `asset` category로 기록되는지 확인합니다.
-- evaluator가 process exit, logging, file read/write를 하지 않는 pure function인지 확인합니다.
-- type에 `schemaVersion`/`growthLimitPercent`가 있어도 evaluator 자체가 runtime value를 검증하는지 구분합니다.
+- `BUDGET_GROWTH_FACTOR = 1.05`와 `Math.floor(expected * factor)`의 정확한 통과 구분 지점을 계산합니다.
+- 기준선 라우트 누락된, 자산 초과량와 측정된 새 라우트 without 기준선이 서로 다른 `asset` 분류로 기록되는지 확인합니다.
+- 계산 함수가 프로세스 종료, logging, 파일 읽기/write를 하지 않는 입력에만 의존하는 함수인지 확인합니다.
+- 타입에 `schemaVersion`/`growthLimitPercent`가 있어도 계산 함수 자체가 실행 시점 값을 검증하는지 구분합니다.
 
 확인 원칙:
 
-- 먼저 `518ff5b51ec5^`와 `518ff5b51ec5`를 비교하고, 필요한 file은 `518ff5b51ec5:<path>`의 resulting tree에서 읽습니다.
-- Final HEAD의 workflow, script, Dockerfile 또는 generated output을 이 commit에 소급하지 않습니다.
-- Commit subject나 body만으로 behavior를 추정하지 않고 실제 changed code/test/config를 기준으로 판단합니다.
-- 실제 실행하지 않은 command 결과는 code inspection과 분리합니다.
+- 먼저 `518ff5b51ec5^`와 `518ff5b51ec5`를 비교하고, 필요한 파일은 `518ff5b51ec5:<path>`의 변경 후 파일 트리에서 읽습니다.
+- 최종 HEAD의 작업 정의·스크립트·Dockerfile·생성 산출물을 이 커밋의 구현으로 소급하지 않습니다.
+- 커밋 제목이나 본문만으로 동작을 추정하지 않고 실제 변경된 코드·테스트·설정을 기준으로 판단합니다.
+- 실행하지 않은 명령의 결과는 코드 정적 검토와 구분합니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 전달 상태와 부족함 | route별 bytes는 계산할 수 있었지만 accepted reference, 허용 성장률, route coverage mismatch를 판정하는 policy가 없었습니다. |
-| 실제 변경 file/symbol/command/artifact | `BUDGET_GROWTH_FACTOR = 1.05`, baseline/violation types와 `evaluateRouteBudgets`를 추가했습니다. 각 baseline route의 CSS/JS allowed bytes를 floor해 초과를 기록하고, expected route missing과 baseline 없는 measured route도 violation으로 반환합니다. |
-| Build/runtime/resource owner와 lifetime | pure evaluator가 policy calculation을 소유하고 caller가 measurement/baseline input과 violation 처리 lifecycle을 소유합니다. function은 input을 수정하거나 baseline을 update하지 않습니다. |
-| Failure·missing output·cleanup 처리 | function 자체는 throw/exit하지 않고 violations를 반환합니다. missing expected route는 `route`, new route는 `baseline`, overage는 `css`/`js`로 구분합니다. schema/growth field validity는 이 function에서 검사하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | exactly floor(105%)까지 허용하고 그 다음 byte부터 실패 대상으로 표시하며 route set drift도 false-green으로 두지 않습니다. baseline 값 자체의 적절성, absolute size quality, compression과 schema validation은 보장하지 않습니다. |
-| 다음 delivery commit 또는 관련 test 연결 | `57a1b0876941` CLI가 violations를 stderr/exit code로 승격하고, `4e8f95249481`이 exact 5%와 first-byte-over tests를 추가합니다. |
+| 직전 전달 상태와 부족함 | 라우트별 바이트는 계산할 수 있었지만 accepted 참조, 허용 성장률, 라우트 검증 범위 불일치를 판정하는 규칙이 없었습니다. |
+| 실제 변경 파일·심볼·명령·산출물 | `BUDGET_GROWTH_FACTOR = 1.05`, 기준선·위반 타입과 `evaluateRouteBudgets`를 추가했습니다. 각 기준선 라우트의 CSS/JS 허용된 바이트를 floor해 초과를 기록하고, 예상한 라우트 누락과 기준선 없는 측정된 라우트도 위반으로 반환합니다. |
+| 빌드·실행 시점·자원 소유 주체와 수명 | 입력에만 의존하는 계산 함수가 규칙 calculation을 소유하고 호출자가 측정·기준선 입력과 위반 처리 실행 주기를 소유합니다. 함수는 입력을 수정하거나 기준선을 update하지 않습니다. |
+| 실패·누락된 산출물·정리 처리 | 함수 자체는 예외 발생·종료하지 않고 위반을 반환합니다. 누락된 예상 라우트는 `route`, 새 라우트는 `baseline`, 초과량는 `css`/`js`로 구분합니다. 스키마·증가율 필드 유효성은 이 함수에서 검사하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | `floor(105%)`까지 정확히 허용하고 다음 1바이트부터 실패 대상으로 표시합니다. 라우트 집합 불일치도 잘못된 성공으로 처리하지 않습니다. 기준선 값 자체의 적절성, 절대 크기 품질, 압축과 스키마 검증은 보장하지 않습니다. |
+| 다음 전달 커밋 또는 관련 테스트 연결 | `57a1b0876941` CLI가 위반을 stderr·종료 코드로 승격하고, `4e8f95249481`이 정확한 5%와 첫 바이트 초과 테스트를 추가합니다. |
 
 #### 코드·실행 증거 기록
 
-- **변경 전 대응 코드:** Collector output을 비교하는 evaluator와 budget policy가 없습니다.
+- **변경 전 대응 코드:** Collector 출력을 비교하는 계산 함수와 허용량 규칙이 없습니다.
 - **해당 SHA 핵심 코드:** `518ff5b51ec54c4eb4fcca9bab5ff6ba8e70a67b` · `scripts/route-budgets.mjs — evaluateRouteBudgets`
 
 ```text
@@ -1131,45 +1131,45 @@ if (actual[property] > allowedBytes) {
 }
 ```
 
-- **관찰 근거의 성격:** Exact-SHA pure evaluator에서 직접 확인한 arithmetic/fail categories입니다.
-- **실행·테스트 증거:** 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git checkout, npm dependency tree, Chromium 및 Docker daemon을 사용할 수 없었습니다. GitHub connector로 해당 SHA의 commit diff와 resulting source를 검사했으며, command 성공 결과는 주장하지 않습니다.
-- **다음 commit 연결:** `57a1b0876941` CLI가 violations를 stderr/exit code로 승격하고, `4e8f95249481`이 exact 5%와 first-byte-over tests를 추가합니다.
+- **관찰 근거의 성격:** 해당 SHA 입력에만 의존하는 계산 함수에서 직접 확인한 arithmetic/fail 분류입니다.
+- **실행·테스트 증거:** 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git 체크아웃, npm 의존성 파일 트리, Chromium 및 Docker 데몬을 사용할 수 없었습니다. GitHub 연결 도구로 해당 SHA의 커밋 변경 내용과 변경 후 원본을 검사했으며, 명령 성공 결과는 주장하지 않습니다.
+- **다음 커밋 연결:** `57a1b0876941` CLI가 위반을 stderr·종료 코드로 승격하고, `4e8f95249481`이 정확한 5%와 첫 바이트 초과 테스트를 추가합니다.
 
 ### 5. `57a1b0876941` — build(perf): bundle budget CLI 연결
 
 - **Full SHA:** `57a1b0876941d2dc1e78f4439ef9dd4f4b9edb2a`
 - **Importance:** B
 - **Tags:** PERF, DEPLOY
-- **확장 thread에서의 역할:** operational split — baseline write와 routine check를 별도 package commands로 노출합니다.
+- **확장 개발 흐름에서의 역할:** operational 분리 — 기준선 write와 처리 검사를 별도 패키지 명령으로 노출합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `bundle:baseline`과 `bundle:check`의 argv 차이와 둘 다 existing `.next` measurement를 먼저 수행한다는 순서를 확인합니다.
-- `--write-baseline` branch가 directory 생성, formatted JSON write 후 return하고 comparison을 수행하지 않는다는 점을 기록합니다.
-- normal branch가 committed file을 읽고 `growthLimitPercent === 5`를 검사한 뒤 모든 violation을 출력하고 `process.exitCode = 1`로 끝나는지 확인합니다.
-- `isMain` guard가 test import 시 filesystem/process side effect를 막는지 확인합니다.
+- `bundle:baseline`과 `bundle:check`의 argv 차이와 둘 다 기존 `.next` 측정을 먼저 수행한다는 순서를 확인합니다.
+- `--write-baseline` 브랜치가 디렉터리 생성, formatted JSON write 후 반환하고 비교을 수행하지 않는다는 점을 기록합니다.
+- 일반 브랜치가 커밋된 파일을 읽고 `growthLimitPercent === 5`를 검사한 뒤 모든 위반을 출력하고 `process.exitCode = 1`로 끝나는지 확인합니다.
+- `isMain` 검사가 테스트 가져오기 시 파일 시스템·프로세스 side 효과를 막는지 확인합니다.
 
 확인 원칙:
 
-- 먼저 `57a1b0876941^`와 `57a1b0876941`를 비교하고, 필요한 file은 `57a1b0876941:<path>`의 resulting tree에서 읽습니다.
-- Final HEAD의 workflow, script, Dockerfile 또는 generated output을 이 commit에 소급하지 않습니다.
-- Commit subject나 body만으로 behavior를 추정하지 않고 실제 changed code/test/config를 기준으로 판단합니다.
-- 실제 실행하지 않은 command 결과는 code inspection과 분리합니다.
+- 먼저 `57a1b0876941^`와 `57a1b0876941`를 비교하고, 필요한 파일은 `57a1b0876941:<path>`의 변경 후 파일 트리에서 읽습니다.
+- 최종 HEAD의 작업 정의·스크립트·Dockerfile·생성 산출물을 이 커밋의 구현으로 소급하지 않습니다.
+- 커밋 제목이나 본문만으로 동작을 추정하지 않고 실제 변경된 코드·테스트·설정을 기준으로 판단합니다.
+- 실행하지 않은 명령의 결과는 코드 정적 검토와 구분합니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 전달 상태와 부족함 | collector/evaluator는 import 가능한 functions였지만 operator가 baseline을 만들거나 routine validation을 실행할 canonical package command와 exit behavior가 없었습니다. |
-| 실제 변경 file/symbol/command/artifact | `bundle:baseline`과 `bundle:check`를 추가했습니다. CLI는 measurement를 출력하고, explicit write mode에서는 schema/source/routes를 `performance/route-budgets.json`에 씁니다. normal mode에서는 committed baseline과 policy를 읽어 violations를 모두 출력하고 exit code 1을 설정합니다. |
-| Build/runtime/resource owner와 lifetime | operator가 어느 command를 선택하는지 소유하고, CLI가 filesystem path, serialization, diagnostics와 process exit state를 소유합니다. `isMain` guard 덕분에 imported functions는 CLI lifecycle을 시작하지 않습니다. |
-| Failure·missing output·cleanup 처리 | missing/invalid baseline JSON, growth limit가 5가 아님, measurement failure는 throw/reject합니다. violations는 전부 출력된 뒤 exit code 1입니다. write mode는 current numbers를 승인 여부 없이 overwrite할 수 있으므로 review process가 policy owner입니다. |
-| 보장하는 것과 보장하지 않는 것 | routine check는 baseline을 자동 갱신하지 않고 비교만 합니다. baseline 변경은 명시적 command와 diff를 남겨야 합니다. 누가 baseline update를 승인하는지, build 선행 여부, schemaVersion runtime validation은 강제하지 않습니다. |
-| 다음 delivery commit 또는 관련 test 연결 | `6ac1ea4b5055`가 최초 generated baseline을 commit하고 `abbd530368a0`이 only `bundle:check`를 CI에 연결합니다. |
+| 직전 전달 상태와 부족함 | collector·계산 함수는 가져오기 가능한 함수였지만 operator가 기준선을 만들거나 처리 검증을 실행할 기준 패키지 명령과 종료 동작이 없었습니다. |
+| 실제 변경 파일·심볼·명령·산출물 | `bundle:baseline`과 `bundle:check`를 추가했습니다. CLI는 측정을 출력하고, 명시적인 write 모드에서는 스키마·원본·라우트를 `performance/route-budgets.json`에 씁니다. 일반 모드에서는 커밋된 기준선과 규칙을 읽어 위반을 모두 출력하고 종료 코드 1을 설정합니다. |
+| 빌드·실행 시점·자원 소유 주체와 수명 | operator가 어느 명령을 선택하는지 소유하고, CLI가 파일 시스템 경로, 직렬화, 진단과 프로세스 종료 상태를 소유합니다. `isMain` 검사 덕분에 imported 함수는 CLI 실행 주기를 시작하지 않습니다. |
+| 실패·누락된 산출물·정리 처리 | 누락된·유효하지 않은 기준선 JSON, 증가 한도가 5가 아님, 측정 실패는 예외 발생·reject합니다. 위반는 전부 출력된 뒤 종료 코드 1입니다. write 모드는 현재 numbers를 승인 여부 없이 overwrite할 수 있으므로 검토 절차가 규칙 소유 주체입니다. |
+| 보장하는 것과 보장하지 않는 것 | 처리 검사는 기준선을 자동 갱신하지 않고 비교만 합니다. 기준선 변경은 명시적 명령과 변경 내용을 남겨야 합니다. 누가 기준선 update를 승인하는지, 빌드 선행 여부, schemaVersion 실행 시점 검증은 강제하지 않습니다. |
+| 다음 전달 커밋 또는 관련 테스트 연결 | `6ac1ea4b5055`가 최초 생성된 기준선을 커밋하고 `abbd530368a0`이만 `bundle:check`를 CI에 연결합니다. |
 
 #### 코드·실행 증거 기록
 
-- **변경 전 대응 코드:** package scripts와 CLI `main`/baseline path가 없습니다.
+- **변경 전 대응 코드:** 패키지 스크립트와 CLI `main`/기준선 경로가 없습니다.
 - **해당 SHA 핵심 코드:** `57a1b0876941d2dc1e78f4439ef9dd4f4b9edb2a` · `scripts/route-budgets.mjs — main`
 
 ```text
@@ -1191,41 +1191,41 @@ if (writeBaseline) {
 }
 ```
 
-- **관찰 근거의 성격:** Exact-SHA package script/CLI implementation에서 직접 확인했습니다.
-- **실행·테스트 증거:** 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git checkout, npm dependency tree, Chromium 및 Docker daemon을 사용할 수 없었습니다. GitHub connector로 해당 SHA의 commit diff와 resulting source를 검사했으며, command 성공 결과는 주장하지 않습니다.
-- **다음 commit 연결:** `6ac1ea4b5055`가 최초 generated baseline을 commit하고 `abbd530368a0`이 only `bundle:check`를 CI에 연결합니다.
+- **관찰 근거의 성격:** 해당 SHA 패키지 스크립트·CLI 구현에서 직접 확인했습니다.
+- **실행·테스트 증거:** 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git 체크아웃, npm 의존성 파일 트리, Chromium 및 Docker 데몬을 사용할 수 없었습니다. GitHub 연결 도구로 해당 SHA의 커밋 변경 내용과 변경 후 원본을 검사했으며, 명령 성공 결과는 주장하지 않습니다.
+- **다음 커밋 연결:** `6ac1ea4b5055`가 최초 생성된 기준선을 커밋하고 `abbd530368a0`이만 `bundle:check`를 CI에 연결합니다.
 
 ### 6. `6ac1ea4b5055` — chore(perf): route bundle 기준값 기록
 
 - **Full SHA:** `6ac1ea4b5055cad7e1eef05d8a8e7811b5cb8807`
 - **Importance:** B
 - **Tags:** ROUTING, PERF
-- **확장 thread에서의 역할:** reviewable operational state — 여덟 public route pattern의 accepted uncompressed byte baseline을 commit합니다.
+- **확장 개발 흐름에서의 역할:** reviewable operational 상태 — 여덟 공개 라우트 패턴의 accepted 압축하지 않은 바이트 기준선을 커밋합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `performance/route-budgets.json`의 schemaVersion, growthLimitPercent, source description과 route key set을 확인합니다.
-- 여덟 route가 모두 같은 `cssBytes: 169861`, `jsBytes: 425976`을 기록한다는 generated state를 그대로 기록합니다.
-- 이 file이 test result 증명서가 아니라 future checks의 accepted configuration이라는 ownership을 설명합니다.
-- baseline 값을 manual edit/write command로 낮추거나 높일 수 있고 review가 필요하다는 non-guarantee를 명시합니다.
+- `performance/route-budgets.json`의 schemaVersion, growthLimitPercent, 원본 설명과 라우트 키 집합을 확인합니다.
+- 여덟 라우트가 모두 같은 `cssBytes: 169861`, `jsBytes: 425976`을 기록한다는 생성된 상태를 그대로 기록합니다.
+- 이 파일이 테스트 결과 증명서가 아니라 향후 검사의 accepted 설정이라는 소유 주체를 설명합니다.
+- 기준선 값을 수동 edit/write 명령으로 낮추거나 높일 수 있고 검토가 필요하다는 보장하지 않는 범위를 명시합니다.
 
 확인 원칙:
 
-- 먼저 `6ac1ea4b5055^`와 `6ac1ea4b5055`를 비교하고, 필요한 file은 `6ac1ea4b5055:<path>`의 resulting tree에서 읽습니다.
-- Final HEAD의 workflow, script, Dockerfile 또는 generated output을 이 commit에 소급하지 않습니다.
-- Commit subject나 body만으로 behavior를 추정하지 않고 실제 changed code/test/config를 기준으로 판단합니다.
-- 실제 실행하지 않은 command 결과는 code inspection과 분리합니다.
+- 먼저 `6ac1ea4b5055^`와 `6ac1ea4b5055`를 비교하고, 필요한 파일은 `6ac1ea4b5055:<path>`의 변경 후 파일 트리에서 읽습니다.
+- 최종 HEAD의 작업 정의·스크립트·Dockerfile·생성 산출물을 이 커밋의 구현으로 소급하지 않습니다.
+- 커밋 제목이나 본문만으로 동작을 추정하지 않고 실제 변경된 코드·테스트·설정을 기준으로 판단합니다.
+- 실행하지 않은 명령의 결과는 코드 정적 검토와 구분합니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 전달 상태와 부족함 | CLI는 baseline path를 요구하지만 committed `performance/route-budgets.json`이 없어 normal check가 성공할 reference state가 없었습니다. |
-| 실제 변경 file/symbol/command/artifact | schema version 1, growth limit 5%, uncompressed client assets라는 source 설명과 8 route patterns를 가진 baseline을 추가했습니다. 각 route는 CSS 169,861 bytes, JS 425,976 bytes를 기록합니다. |
-| Build/runtime/resource owner와 lifetime | committed JSON이 accepted reference와 route coverage를 소유합니다. generator가 만들었더라도 merge review 이후 operational configuration으로 기능합니다. |
-| Failure·missing output·cleanup 처리 | file 누락/invalid JSON/policy drift는 CLI failure가 됩니다. 값이 부적절하게 높게 승인되면 evaluator는 그 기준을 신뢰하므로 absolute bloat를 막지 못합니다. |
-| 보장하는 것과 보장하지 않는 것 | future build가 비교할 explicit route set와 byte reference가 생깁니다. 이 숫자가 빠르거나 작은 artifact임을 독립적으로 증명하지 않습니다. |
-| 다음 delivery commit 또는 관련 test 연결 | `abbd530368a0`의 CI `bundle:check`가 이 file을 읽습니다. baseline update는 routine check가 아니라 별도 reviewable commit이어야 합니다. |
+| 직전 전달 상태와 부족함 | CLI는 기준선 경로를 요구하지만 커밋된 `performance/route-budgets.json`이 없어 일반 검사가 성공할 참조 상태가 없었습니다. |
+| 실제 변경 파일·심볼·명령·산출물 | 스키마 버전 1, 증가 한도 5%, 압축하지 않은 클라이언트 자산라는 원본 설명과 여덟 라우트 패턴를 가진 기준선을 추가했습니다. 각 라우트는 CSS 169,861 바이트, JS 425,976 바이트를 기록합니다. |
+| 빌드·실행 시점·자원 소유 주체와 수명 | 커밋된 JSON이 accepted 참조와 라우트 검증 범위를 소유합니다. generator가 만들었더라도 병합 검토 이후 operational 설정으로 기능합니다. |
+| 실패·누락된 산출물·정리 처리 | 파일 누락·유효하지 않은 JSON·규칙 불일치는 CLI 실패가 됩니다. 값이 부적절하게 높게 승인되면 계산 함수는 그 기준을 신뢰하므로 절대 bloat를 막지 못합니다. |
+| 보장하는 것과 보장하지 않는 것 | 향후 빌드가 비교할 명시적인 라우트 집합과 바이트 참조가 생깁니다. 이 숫자가 빠르거나 작은 산출물임을 독립적으로 증명하지 않습니다. |
+| 다음 전달 커밋 또는 관련 테스트 연결 | `abbd530368a0`의 CI `bundle:check`가 이 파일을 읽습니다. 기준선 update는 처리 검사가 아니라 별도 reviewable 커밋이어야 합니다. |
 
 #### 코드·실행 증거 기록
 
@@ -1247,45 +1247,45 @@ if (writeBaseline) {
 }
 ```
 
-- **관찰 근거의 성격:** Exact-SHA committed generated measurement입니다. 이 작업에서 재측정하지 않았습니다.
-- **실행·테스트 증거:** 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git checkout, npm dependency tree, Chromium 및 Docker daemon을 사용할 수 없었습니다. GitHub connector로 해당 SHA의 commit diff와 resulting source를 검사했으며, command 성공 결과는 주장하지 않습니다.
-- **다음 commit 연결:** `abbd530368a0`의 CI `bundle:check`가 이 file을 읽습니다. baseline update는 routine check가 아니라 별도 reviewable commit이어야 합니다.
+- **관찰 근거의 성격:** 해당 SHA 커밋된 생성된 측정입니다. 이 작업에서 재측정하지 않았습니다.
+- **실행·테스트 증거:** 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git 체크아웃, npm 의존성 파일 트리, Chromium 및 Docker 데몬을 사용할 수 없었습니다. GitHub 연결 도구로 해당 SHA의 커밋 변경 내용과 변경 후 원본을 검사했으며, 명령 성공 결과는 주장하지 않습니다.
+- **다음 커밋 연결:** `abbd530368a0`의 CI `bundle:check`가 이 파일을 읽습니다. 기준선 update는 처리 검사가 아니라 별도 reviewable 커밋이어야 합니다.
 
 ### 7. `1529ccf225c1` — build(perf): desktop Lighthouse 실행 경계 추가
 
 - **Full SHA:** `1529ccf225c10028607b6a8963c3280f4ab56a42`
 - **Importance:** A
 - **Tags:** PERF, DEPLOY
-- **확장 thread에서의 역할:** production lab gate definition — 10 URL desktop matrix, median aggregation과 release thresholds를 설정합니다.
+- **확장 개발 흐름에서의 역할:** 배포 환경 lab 검사 단계 정의 — 10 URL 데스크톱 조합표, 중앙값 집계 방식과 배포 기준값을 설정합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `lighthouserc.cjs`가 `src/content/projects.json`에서 첫 enabled project를 찾고 없으면 config load 단계에서 실패하는지 확인합니다.
-- 5 design IDs × home/project detail로 10 URLs를 구성하고 `start:performance` port 3300의 production server를 사용하는지 추적합니다.
-- 3 runs, desktop preset, performance/accessibility only, headless/no-sandbox와 median assertion 설정을 기록합니다.
-- performance 0.90, accessibility 0.95, LCP 2500ms, TBT 200ms, CLS 0.1의 exact threshold와 mobile/all-route non-coverage를 명시합니다.
+- `lighthouserc.cjs`가 `src/content/projects.json`에서 첫 활성화된 프로젝트를 찾고 없으면 설정 로딩 단계에서 실패하는지 확인합니다.
+- 다섯 디자인 ID × 홈·프로젝트 상세로 10 URLs를 구성하고 `start:performance` 포트 3300의 배포용 서버를 사용하는지 추적합니다.
+- 3 runs, 데스크톱 preset, 성능·접근성만, headless/no-sandbox와 중앙값 단언문 설정을 기록합니다.
+- 성능 0.90, 접근성 0.95, LCP 2500ms, TBT 200ms, CLS 0.1의 정확한 기준값과 모바일·모든 라우트 검증하지 않는 범위를 명시합니다.
 
 확인 원칙:
 
-- 먼저 `1529ccf225c1^`와 `1529ccf225c1`를 비교하고, 필요한 file은 `1529ccf225c1:<path>`의 resulting tree에서 읽습니다.
-- Final HEAD의 workflow, script, Dockerfile 또는 generated output을 이 commit에 소급하지 않습니다.
-- Commit subject나 body만으로 behavior를 추정하지 않고 실제 changed code/test/config를 기준으로 판단합니다.
-- 실제 실행하지 않은 command 결과는 code inspection과 분리합니다.
+- 먼저 `1529ccf225c1^`와 `1529ccf225c1`를 비교하고, 필요한 파일은 `1529ccf225c1:<path>`의 변경 후 파일 트리에서 읽습니다.
+- 최종 HEAD의 작업 정의·스크립트·Dockerfile·생성 산출물을 이 커밋의 구현으로 소급하지 않습니다.
+- 커밋 제목이나 본문만으로 동작을 추정하지 않고 실제 변경된 코드·테스트·설정을 기준으로 판단합니다.
+- 실행하지 않은 명령의 결과는 코드 정적 검토와 구분합니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 전달 상태와 부족함 | route byte budget은 정의됐지만 rendered production page의 lab performance/accessibility와 visual stability를 release threshold로 평가하는 command/config가 없었습니다. |
-| 실제 변경 file/symbol/command/artifact | `@lhci/cli`, `lighthouse:audit`, `start:performance`, `.lighthouseci` ignore와 `lighthouserc.cjs`를 추가했습니다. 첫 enabled project와 5 designs로 10 URLs를 만들고 production server에서 각 3회 desktop audit를 수행합니다. |
-| Build/runtime/resource owner와 lifetime | content JSON이 project ID availability를, Lighthouse config가 URL matrix/metrics/threshold를, LHCI가 server lifecycle과 Chrome audits를 소유합니다. raw reports는 ignored `.lighthouseci`에 ephemeral하게 남습니다. |
-| Failure·missing output·cleanup 처리 | enabled project가 없으면 config load가 throw합니다. server가 120초 안에 readiness pattern을 내지 않거나 median assertion이 threshold를 벗어나면 LHCI command가 실패합니다. browser sandbox는 CI compatibility를 위해 비활성화됩니다. |
-| 보장하는 것과 보장하지 않는 것 | production server의 5-design home/detail 대표 표본에 desktop median gate가 생깁니다. mobile, 다른 routes, field/RUM, network diversity, long interaction INP를 직접 보장하지 않으며 TBT가 interaction proxy입니다. |
-| 다음 delivery commit 또는 관련 test 연결 | `f1c72dfdd16a`가 raw reports를 reviewable summary로 만들고, `4e8f95249481`이 config rules를 unit-test하며, `abbd530368a0`이 CI에서 실행합니다. |
+| 직전 전달 상태와 부족함 | 라우트 바이트 허용량은 정의됐지만 렌더링된 배포 환경 페이지의 lab 성능·접근성와 시각 stability를 배포 기준값으로 평가하는 명령·설정이 없었습니다. |
+| 실제 변경 파일·심볼·명령·산출물 | `@lhci/cli`, `lighthouse:audit`, `start:performance`, `.lighthouseci` ignore와 `lighthouserc.cjs`를 추가했습니다. 첫 활성화된 프로젝트와 다섯 디자인으로 10 URLs를 만들고 배포용 서버에서 각 3회 데스크톱 검토를 수행합니다. |
+| 빌드·실행 시점·자원 소유 주체와 수명 | 콘텐츠 JSON이 프로젝트 ID 사용 가능 여부를, Lighthouse 설정이 URL 조합표·지표·기준값을, LHCI가 서버 실행 주기와 Chrome audits를 소유합니다. 원본 reports는 ignored `.lighthouseci`에 ephemeral하게 남습니다. |
+| 실패·누락된 산출물·정리 처리 | 활성화된 프로젝트가 없으면 설정 로딩이 예외를 던집니다. 서버가 120초 안에 배포 준비 상태 패턴을 내지 않거나 중앙값 단언문이 기준값을 벗어나면 LHCI 명령이 실패합니다. 브라우저 sandbox는 CI 호환성을 위해 비활성화됩니다. |
+| 보장하는 것과 보장하지 않는 것 | 배포용 서버의 다섯 디자인 홈·상세 대표 표본에 데스크톱 중앙값 검사 단계가 생깁니다. 모바일, 다른 라우트, 필드·RUM, 네트워크 diversity, 긴 상호작용 INP를 직접 보장하지 않으며 TBT가 상호작용 proxy입니다. |
+| 다음 전달 커밋 또는 관련 테스트 연결 | `f1c72dfdd16a`가 원본 reports를 reviewable 요약으로 만들고, `4e8f95249481`이 설정 규칙을 단위 테스트하며, `abbd530368a0`이 CI에서 실행합니다. |
 
 #### 코드·실행 증거 기록
 
-- **변경 전 대응 코드:** LHCI dependency, package commands, config와 ignored workspace가 없습니다.
+- **변경 전 대응 코드:** LHCI 의존성, 패키지 명령, 설정과 ignored workspace가 없습니다.
 - **해당 SHA 핵심 코드:** `1529ccf225c10028607b6a8963c3280f4ab56a42` · `lighthouserc.cjs`
 
 ```text
@@ -1307,45 +1307,45 @@ assert: {
 }
 ```
 
-- **관찰 근거의 성격:** Exact-SHA LHCI config/package diff에서 직접 확인한 release gate definition입니다.
-- **실행·테스트 증거:** 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git checkout, npm dependency tree, Chromium 및 Docker daemon을 사용할 수 없었습니다. GitHub connector로 해당 SHA의 commit diff와 resulting source를 검사했으며, command 성공 결과는 주장하지 않습니다.
-- **다음 commit 연결:** `f1c72dfdd16a`가 raw reports를 reviewable summary로 만들고, `4e8f95249481`이 config rules를 unit-test하며, `abbd530368a0`이 CI에서 실행합니다.
+- **관찰 근거의 성격:** 해당 SHA LHCI 설정·패키지 변경 내용에서 직접 확인한 배포 차단 기준 정의입니다.
+- **실행·테스트 증거:** 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git 체크아웃, npm 의존성 파일 트리, Chromium 및 Docker 데몬을 사용할 수 없었습니다. GitHub 연결 도구로 해당 SHA의 커밋 변경 내용과 변경 후 원본을 검사했으며, 명령 성공 결과는 주장하지 않습니다.
+- **다음 커밋 연결:** `f1c72dfdd16a`가 원본 reports를 reviewable 요약으로 만들고, `4e8f95249481`이 설정 규칙을 단위 테스트하며, `abbd530368a0`이 CI에서 실행합니다.
 
 ### 8. `f1c72dfdd16a` — build(perf): Lighthouse 결과 요약기 추가
 
 - **Full SHA:** `f1c72dfdd16a0be14f7c2a650bde9ee431ec27bf`
 - **Importance:** B
 - **Tags:** PERF, DEPLOY
-- **확장 thread에서의 역할:** measurement provenance — raw LHRs를 URL별 runs/median과 execution environment를 가진 JSON으로 요약합니다.
+- **확장 개발 흐름에서의 역할:** 측정 출처 — 원본 LHR 보고서를 URL별 실행값과 중앙값과 실행 환경 정보를 포함한 JSON으로 요약합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `scripts/summarize-lighthouse.mjs`가 `lhr-*.json`만 읽고 report가 0개면 실패하는지 확인합니다.
-- `resultFromReport`, `median`, `aggregate`가 다섯 metrics를 URL별로 계산하고 URL key를 정렬하는지 추적합니다.
-- `measuredAt`과 host environment가 output마다 달라질 수 있어 deterministic ordering과 byte-identical reproducibility를 구분합니다.
-- summary command가 threshold를 판정하는 gate가 아니라 generated evidence writer라는 점을 명시합니다.
+- `resultFromReport`, `median`, `aggregate`가 다섯 지표를 URL별로 계산하고 URL 키를 정렬하는지 추적합니다.
+- `measuredAt`과 호스트 환경이 출력마다 달라질 수 있어 결정적인 순서 결정과 바이트 단위로 동일한 재현성을 구분합니다.
+- 요약 명령이 기준값을 판정하는 검사 단계가 아니라 생성된 근거 writer라는 점을 명시합니다.
 
 확인 원칙:
 
-- 먼저 `f1c72dfdd16a^`와 `f1c72dfdd16a`를 비교하고, 필요한 file은 `f1c72dfdd16a:<path>`의 resulting tree에서 읽습니다.
-- Final HEAD의 workflow, script, Dockerfile 또는 generated output을 이 commit에 소급하지 않습니다.
-- Commit subject나 body만으로 behavior를 추정하지 않고 실제 changed code/test/config를 기준으로 판단합니다.
-- 실제 실행하지 않은 command 결과는 code inspection과 분리합니다.
+- 먼저 `f1c72dfdd16a^`와 `f1c72dfdd16a`를 비교하고, 필요한 파일은 `f1c72dfdd16a:<path>`의 변경 후 파일 트리에서 읽습니다.
+- 최종 HEAD의 작업 정의·스크립트·Dockerfile·생성 산출물을 이 커밋의 구현으로 소급하지 않습니다.
+- 커밋 제목이나 본문만으로 동작을 추정하지 않고 실제 변경된 코드·테스트·설정을 기준으로 판단합니다.
+- 실행하지 않은 명령의 결과는 코드 정적 검토와 구분합니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 전달 상태와 부족함 | LHCI는 raw reports와 pass/fail을 만들 수 있었지만 median values와 environment를 한 reviewable repository file로 정규화하는 command가 없었습니다. |
-| 실제 변경 file/symbol/command/artifact | `lighthouse:summarize`와 104-line summarizer를 추가했습니다. raw LHRs를 final URL로 group하고 performance/accessibility score, CLS, LCP, TBT의 모든 run과 median을 기록합니다. targets, measuredAt, Chrome UA, Node, platform, arch, CPU/core/memory도 output에 포함합니다. |
-| Build/runtime/resource owner와 lifetime | raw `.lighthouseci` reports가 input lifetime을, summarizer가 transformation/output path를, committed result review가 provenance 해석을 소유합니다. |
-| Failure·missing output·cleanup 처리 | input directory/read/JSON/required field failure가 전파되고 report 0개는 explicit error입니다. 첫 report의 environment를 전체 group 대표로 사용하며 run count가 실제로 3인지 별도 runtime validation하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | URL별 raw runs, median과 material host context가 stable key order로 보존됩니다. summary 자체는 threshold를 enforce하지 않고 timestamp/environment 때문에 동일 source에서 byte-identical하지 않습니다. |
-| 다음 delivery commit 또는 관련 test 연결 | `a39856cf734a`가 이 형식의 desktop result를 commit합니다. CI `abbd530368a0`은 `lighthouse:audit`만 실행하고 summarize/commit은 하지 않습니다. |
+| 직전 전달 상태와 부족함 | LHCI는 원본 reports와 통과·실패를 만들 수 있었지만 중앙값 값과 환경을 한 reviewable 저장소 파일로 정규화하는 명령이 없었습니다. |
+| 실제 변경 파일·심볼·명령·산출물 | `lighthouse:summarize`와 104-줄 요약기를 추가했습니다. 원본 LHR 보고서를 최종 URL로 그룹하고 성능·접근성 점수, CLS, LCP, TBT의 모든 실행과 중앙값을 기록합니다. 대상, measuredAt, Chrome 사용자 에이전트, Node, 플랫폼, 아키텍처, CPU·코어·메모리도 출력에 포함합니다. |
+| 빌드·실행 시점·자원 소유 주체와 수명 | 원본 `.lighthouseci` 보고서가 입력 수명을, 요약기가 변환·출력 경로를, 커밋된 결과 검토가 측정 출처 해석을 소유합니다. |
+| 실패·누락된 산출물·정리 처리 | 입력 디렉터리·read/JSON·필수 필드 실패가 전파되고 report 0개는 명시적인 오류입니다. 첫 report의 환경을 전체 그룹 대표로 사용하며 실행 개수가 실제로 3인지 별도 실행 시점 검증하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | URL별 원본 runs, 중앙값과 실질적인 호스트 맥락이 안정적인 키 순서로 보존됩니다. 요약 자체는 기준값을 enforce하지 않고 timestamp·환경 때문에 동일 원본에서 바이트 단위로 동일한하지 않습니다. |
+| 다음 전달 커밋 또는 관련 테스트 연결 | `a39856cf734a`가 이 형식의 데스크톱 결과를 커밋합니다. CI `abbd530368a0`은 `lighthouse:audit`만 실행하고 summarize·커밋은 하지 않습니다. |
 
 #### 코드·실행 증거 기록
 
-- **변경 전 대응 코드:** raw LHR을 repository JSON으로 요약하는 script/package command가 없습니다.
+- **변경 전 대응 코드:** 원본 LHR을 저장소 JSON으로 요약하는 스크립트·패키지 명령이 없습니다.
 - **해당 SHA 핵심 코드:** `f1c72dfdd16a0be14f7c2a650bde9ee431ec27bf` · `scripts/summarize-lighthouse.mjs`
 
 ```text
@@ -1363,45 +1363,45 @@ const routes = Object.fromEntries(
 );
 ```
 
-- **관찰 근거의 성격:** Exact-SHA summarizer implementation에서 직접 확인했습니다.
-- **실행·테스트 증거:** 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git checkout, npm dependency tree, Chromium 및 Docker daemon을 사용할 수 없었습니다. GitHub connector로 해당 SHA의 commit diff와 resulting source를 검사했으며, command 성공 결과는 주장하지 않습니다.
-- **다음 commit 연결:** `a39856cf734a`가 이 형식의 desktop result를 commit합니다. CI `abbd530368a0`은 `lighthouse:audit`만 실행하고 summarize/commit은 하지 않습니다.
+- **관찰 근거의 성격:** 해당 SHA 요약기 구현에서 직접 확인했습니다.
+- **실행·테스트 증거:** 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git 체크아웃, npm 의존성 파일 트리, Chromium 및 Docker 데몬을 사용할 수 없었습니다. GitHub 연결 도구로 해당 SHA의 커밋 변경 내용과 변경 후 원본을 검사했으며, 명령 성공 결과는 주장하지 않습니다.
+- **다음 커밋 연결:** `a39856cf734a`가 이 형식의 데스크톱 결과를 커밋합니다. CI `abbd530368a0`은 `lighthouse:audit`만 실행하고 summarize·커밋은 하지 않습니다.
 
 ### 9. `4e8f95249481` — test(perf): 배포 성능 gate 규칙 검증
 
 - **Full SHA:** `4e8f952494812b4da0125b19ce56518505392cad`
 - **Importance:** A
 - **Tags:** VALIDATION, PERF, TEST
-- **확장 thread에서의 역할:** policy regression suite — compiler/parser assertions를 보존하며 Lighthouse matrix와 budget arithmetic을 검증합니다.
+- **확장 개발 흐름에서의 역할:** 규칙 회귀 테스트 모음 — 컴파일러·파서 단언문을 보존하며 Lighthouse 조합표와 허용량 arithmetic을 검증합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- 기존 `build-manifest-contract.test.ts`가 제거되고 assertions가 `performance-gates.test.ts`로 이동·확장되는 ownership transfer를 확인합니다.
-- 실제 `lighthouserc.cjs`를 require해 production server, 3 runs, desktop, 10 URLs와 exact thresholds를 검사하는지 추적합니다.
-- 100/1000 baseline에서 105/1050은 통과하고 106/2101은 route+asset violation이 되는 boundary fixture를 계산합니다.
-- missing baseline routes는 test하지만 measured new route without baseline, CLI exit와 actual build/Lighthouse는 직접 test하지 않는 범위를 기록합니다.
+- 기존 `build-manifest-contract.test.ts`가 제거되고 단언문이 `performance-gates.test.ts`로 이동·확장되는 소유 주체 이전을 확인합니다.
+- 실제 `lighthouserc.cjs`를 require해 배포용 서버, 3 runs, 데스크톱, 10 URLs와 정확한 기준값을 검사하는지 추적합니다.
+- 100/1000 기준선에서 105/1050은 통과하고 106/2101은 라우트+자산 위반이 되는 구분 지점 테스트 입력을 계산합니다.
+- 누락된 기준선 라우트는 테스트하지만 측정된 새 라우트 without 기준선, CLI 종료와 실제 빌드·Lighthouse는 직접 테스트하지 않는 범위를 기록합니다.
 
 확인 원칙:
 
-- 먼저 `4e8f95249481^`와 `4e8f95249481`를 비교하고, 필요한 file은 `4e8f95249481:<path>`의 resulting tree에서 읽습니다.
-- Final HEAD의 workflow, script, Dockerfile 또는 generated output을 이 commit에 소급하지 않습니다.
-- Commit subject나 body만으로 behavior를 추정하지 않고 실제 changed code/test/config를 기준으로 판단합니다.
-- 실제 실행하지 않은 command 결과는 code inspection과 분리합니다.
+- 먼저 `4e8f95249481^`와 `4e8f95249481`를 비교하고, 필요한 파일은 `4e8f95249481:<path>`의 변경 후 파일 트리에서 읽습니다.
+- 최종 HEAD의 작업 정의·스크립트·Dockerfile·생성 산출물을 이 커밋의 구현으로 소급하지 않습니다.
+- 커밋 제목이나 본문만으로 동작을 추정하지 않고 실제 변경된 코드·테스트·설정을 기준으로 판단합니다.
+- 실행하지 않은 명령의 결과는 코드 정적 검토와 구분합니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 전달 상태와 부족함 | compiler/parser fixture는 test됐지만 Lighthouse configuration drift와 budget evaluator의 exact boundary/fail-closed behavior는 executable contract가 아니었습니다. |
-| 실제 변경 file/symbol/command/artifact | 기존 test를 broader `src/performance/performance-gates.test.ts`로 교체했습니다. compiler/parser tests를 보존하고, 5-design×2-route×3-run desktop config와 5 thresholds를 검사합니다. pure budget fixtures로 exactly 5% pass, first-byte over violation, expected route missing을 검증합니다. |
-| Build/runtime/resource owner와 lifetime | unit suite가 static config와 pure policy behavior를 소유합니다. actual build files, browser, network와 CLI process는 사용하지 않습니다. |
-| Failure·missing output·cleanup 처리 | config URL/threshold/command drift, compiler flag 제거, parser regression, arithmetic/fail-closed regression이 deterministic assertion failure가 됩니다. real performance variability나 stale committed baseline은 이 test가 검출하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | gate를 약화시키는 주요 config/pure evaluator 변화가 test failure 없이 들어가기 어렵습니다. LHCI/asset collector가 실제 environment에서 성공하거나 CLI가 expected exit code를 내는지는 증명하지 않습니다. |
-| 다음 delivery commit 또는 관련 test 연결 | Thread 2의 Tailwind transform fix가 이후 artifact correctness를 보강하고, `abbd530368a0`이 unit-tested rules를 actual CI commands로 활성화합니다. |
+| 직전 전달 상태와 부족함 | 컴파일러·파서 테스트 입력은 테스트됐지만 Lighthouse 설정 불일치와 허용량 계산 함수의 정확한 구분 지점·실패 시 차단하는 동작은 실행 가능한 규칙이 아니었습니다. |
+| 실제 변경 파일·심볼·명령·산출물 | 기존 테스트를 더 넓은 `src/performance/performance-gates.test.ts`로 교체했습니다. 컴파일러·파서 테스트를 보존하고, 다섯 디자인×2-라우트×3-실행 데스크톱 설정과 5 기준값을 검사합니다. 입력에만 의존하는 허용량 테스트 입력으로 정확히 5% 통과, 첫 바이트 over 위반, 예상 라우트 누락을 검증합니다. |
+| 빌드·실행 시점·자원 소유 주체와 수명 | 단위 테스트 모음이 정적 설정과 입력에만 의존하는 규칙 동작을 소유합니다. 실제 빌드 파일, 브라우저, 네트워크와 CLI 프로세스는 사용하지 않습니다. |
+| 실패·누락된 산출물·정리 처리 | 설정 URL·기준값·명령 불일치, 컴파일러 설정값 제거, 파서 회귀, arithmetic·실패 시 차단 동작의 회귀가 결정적인 단언문 실패가 됩니다. 실제 성능 variability나 오래된 커밋 기준선은 이 테스트가 검출하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 검사 단계를 약화시키는 주요 설정·입력에만 의존하는 계산 함수 변화가 테스트 실패 없이 들어가기 어렵습니다. LHCI·자산 collector가 실제 환경에서 성공하거나 CLI가 예상한 종료 코드를 내는지는 증명하지 않습니다. |
+| 다음 전달 커밋 또는 관련 테스트 연결 | 개발 흐름 2의 Tailwind 변환 수정이 이후 산출물의 정확성를 보강하고, `abbd530368a0`이 단위 테스트로 검증한 규칙을 실제 CI 명령으로 활성화합니다. |
 
 #### 코드·실행 증거 기록
 
-- **변경 전 대응 코드:** compiler/parser만 다루는 36-line test가 있고 performance gate policy fixtures는 없습니다.
+- **변경 전 대응 코드:** 컴파일러·파서만 다루는 36-줄 테스트가 있고 성능 차단 기준 규칙 테스트 입력은 없습니다.
 - **해당 SHA 핵심 코드:** `4e8f952494812b4da0125b19ce56518505392cad` · `src/performance/performance-gates.test.ts`
 
 ```text
@@ -1419,45 +1419,45 @@ expect(evaluateRouteBudgets(measurements, baseline)).toEqual([
 ]);
 ```
 
-- **관찰 근거의 성격:** Exact-SHA test replacement/fixtures에서 직접 확인한 deterministic regression coverage입니다.
-- **실행·테스트 증거:** 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git checkout, npm dependency tree, Chromium 및 Docker daemon을 사용할 수 없었습니다. GitHub connector로 해당 SHA의 commit diff와 resulting source를 검사했으며, command 성공 결과는 주장하지 않습니다.
-- **다음 commit 연결:** Thread 2의 Tailwind transform fix가 이후 artifact correctness를 보강하고, `abbd530368a0`이 unit-tested rules를 actual CI commands로 활성화합니다.
+- **관찰 근거의 성격:** 해당 SHA 테스트용 치환과 테스트 입력에서 직접 확인한 결정적인 회귀 검증 범위입니다.
+- **실행·테스트 증거:** 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git 체크아웃, npm 의존성 파일 트리, Chromium 및 Docker 데몬을 사용할 수 없었습니다. GitHub 연결 도구로 해당 SHA의 커밋 변경 내용과 변경 후 원본을 검사했으며, 명령 성공 결과는 주장하지 않습니다.
+- **다음 커밋 연결:** 개발 흐름 2의 Tailwind 변환 수정이 이후 산출물의 정확성를 보강하고, `abbd530368a0`이 단위 테스트로 검증한 규칙을 실제 CI 명령으로 활성화합니다.
 
 ### 10. `abbd530368a0` — ci: 검증된 bundle과 Lighthouse gate 활성화
 
 - **Full SHA:** `abbd530368a03b8dc40221d663377c1f45e254ee`
 - **Importance:** A
 - **Tags:** VALIDATION, PERF, DEPLOY
-- **확장 thread에서의 역할:** release integration — production build output에 standalone, bundle와 Lighthouse checks를 순차 적용합니다.
+- **확장 개발 흐름에서의 역할:** 배포 통합 — 배포용 빌드 산출물에 독립 실행형, 번들과 Lighthouse 검사를 순차 적용합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `test:e2e:ci`가 build 후 production config를 사용하되 `--grep-invert @visual`로 visual cases를 제외하는 정확한 scope를 확인합니다.
-- CI가 E2E build 후 `build:verify`, `bundle:check`, browser path export, `lighthouse:audit`을 순서대로 실행해 `.next`를 재사용하는지 추적합니다.
-- `CHROME_PATH`가 Playwright-installed Chromium executable에서 생성되어 `$GITHUB_ENV`로 전달되는 ownership을 기록합니다.
-- `lighthouse:summarize`와 mobile observation이 CI gate에 포함되는지 확인해 advisory/generated evidence와 enforced checks를 분리합니다.
+- `test:e2e:ci`가 빌드 후 배포 환경 설정을 사용하되 `--grep-invert @visual`로 시각 경우를 제외하는 정확한 범위를 확인합니다.
+- CI가 E2E 빌드 후 `build:verify`, `bundle:check`, 브라우저 경로 공개, `lighthouse:audit`을 순서대로 실행해 `.next`를 재사용하는지 추적합니다.
+- `CHROME_PATH`가 Playwright가 설치한 Chromium executable에서 생성되어 `$GITHUB_ENV`로 전달되는 소유 주체를 기록합니다.
+- `lighthouse:summarize`와 모바일 관찰 결과이 CI 검사 단계에 포함되는지 확인해 advisory·생성된 근거와 enforced 검사를 분리합니다.
 
 확인 원칙:
 
-- 먼저 `abbd530368a0^`와 `abbd530368a0`를 비교하고, 필요한 file은 `abbd530368a0:<path>`의 resulting tree에서 읽습니다.
-- Final HEAD의 workflow, script, Dockerfile 또는 generated output을 이 commit에 소급하지 않습니다.
-- Commit subject나 body만으로 behavior를 추정하지 않고 실제 changed code/test/config를 기준으로 판단합니다.
-- 실제 실행하지 않은 command 결과는 code inspection과 분리합니다.
+- 먼저 `abbd530368a0^`와 `abbd530368a0`를 비교하고, 필요한 파일은 `abbd530368a0:<path>`의 변경 후 파일 트리에서 읽습니다.
+- 최종 HEAD의 작업 정의·스크립트·Dockerfile·생성 산출물을 이 커밋의 구현으로 소급하지 않습니다.
+- 커밋 제목이나 본문만으로 동작을 추정하지 않고 실제 변경된 코드·테스트·설정을 기준으로 판단합니다.
+- 실행하지 않은 명령의 결과는 코드 정적 검토와 구분합니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 전달 상태와 부족함 | bundle/Lighthouse tooling과 tests는 local에 있었지만 CI workflow는 production E2E와 standalone verify까지만 수행했습니다. |
-| 실제 변경 file/symbol/command/artifact | CI E2E를 `test:e2e:ci`로 바꿔 build + non-visual production tests를 실행합니다. 이어 standalone verify, route bundle check, Playwright Chromium path export, production Lighthouse audit를 추가합니다. |
-| Build/runtime/resource owner와 lifetime | 한 CI workspace의 E2E build가 `.next` producer이고 artifact/bundle/Lighthouse steps가 순차 consumers입니다. Playwright installation이 browser binary를 소유하고 workflow가 path를 LHCI environment로 전달합니다. |
-| Failure·missing output·cleanup 처리 | 각 command non-zero가 후속 gate를 막습니다. visual snapshots는 `@visual` exclusion으로 general CI E2E에서 실행되지 않습니다. Lighthouse는 existing production build와 configured server가 준비되지 않으면 실패합니다. |
-| 보장하는 것과 보장하지 않는 것 | CI가 standalone layout, committed route growth budget와 enforced desktop Lighthouse thresholds를 자동 차단 조건으로 사용합니다. visual suite, summarize output commit, mobile Lighthouse, field performance와 hosting runtime은 이 gate에 포함되지 않습니다. |
-| 다음 delivery commit 또는 관련 test 연결 | `a39856cf734a`는 별도 local lab evidence를 기록하고, Thread 5의 `b94fa6dd0118`이 같은 workflow 끝에 container runtime check를 추가합니다. |
+| 직전 전달 상태와 부족함 | 번들·Lighthouse 도구와 테스트는 로컬에 있었지만 CI 작업 정의는 배포용 E2E와 독립 실행형 검증까지만 수행했습니다. |
+| 실제 변경 파일·심볼·명령·산출물 | CI E2E를 `test:e2e:ci`로 바꿔 빌드 + 비시각 배포 환경 테스트를 실행합니다. 이어 독립 실행형 검증, 라우트 번들 검사, Playwright Chromium 경로 공개, 배포 환경 Lighthouse 검토를 추가합니다. |
+| 빌드·실행 시점·자원 소유 주체와 수명 | 한 CI workspace의 E2E 빌드가 `.next` 생성 함수가고 산출물·번들·Lighthouse 단계가 순차 소비자입니다. Playwright installation이 브라우저 바이너리를 소유하고 작업 정의가 경로를 LHCI 환경으로 전달합니다. |
+| 실패·누락된 산출물·정리 처리 | 각 명령 0이 아닌가 후속 검사 단계를 막습니다. 시각 스냅샷은 `@visual` exclusion으로 일반 CI E2E에서 실행되지 않습니다. Lighthouse는 기존 배포용 빌드와 설정된 서버가 준비되지 않으면 실패합니다. |
+| 보장하는 것과 보장하지 않는 것 | CI가 독립 실행형 레이아웃, 커밋된 라우트 증가율 허용량과 enforced 데스크톱 Lighthouse 기준값을 자동 차단 조건으로 사용합니다. 시각 테스트 모음, summarize 출력 커밋, 모바일 Lighthouse, 필드 성능과 호스팅 실행 시점은 이 검사 단계에 포함되지 않습니다. |
+| 다음 전달 커밋 또는 관련 테스트 연결 | `a39856cf734a`는 별도 로컬 lab 근거를 기록하고, 개발 흐름 5의 `b94fa6dd0118`이 같은 작업 정의 끝에 컨테이너 실행 환경 검사를 추가합니다. |
 
 #### 코드·실행 증거 기록
 
-- **변경 전 대응 코드:** CI에는 bundle check, Lighthouse audit와 browser path handoff가 없고 production E2E가 visual cases까지 포함합니다.
+- **변경 전 대응 코드:** CI에는 번들 검사, Lighthouse 검토와 브라우저 경로 인계가 없고 배포용 E2E가 시각 경우까지 포함합니다.
 - **해당 SHA 핵심 코드:** `abbd530368a03b8dc40221d663377c1f45e254ee` · `.github/workflows/ci.yml 및 package.json`
 
 ```text
@@ -1471,44 +1471,44 @@ expect(evaluateRouteBudgets(measurements, baseline)).toEqual([
   run: npm run lighthouse:audit
 ```
 
-- **관찰 근거의 성격:** Exact-SHA package/workflow diff에서 직접 확인한 CI gate graph입니다.
-- **실행·테스트 증거:** 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git checkout, npm dependency tree, Chromium 및 Docker daemon을 사용할 수 없었습니다. GitHub connector로 해당 SHA의 commit diff와 resulting source를 검사했으며, command 성공 결과는 주장하지 않습니다.
-- **다음 commit 연결:** `a39856cf734a`는 별도 local lab evidence를 기록하고, Thread 5의 `b94fa6dd0118`이 같은 workflow 끝에 container runtime check를 추가합니다.
+- **관찰 근거의 성격:** 해당 SHA 패키지·작업 정의 변경 내용에서 직접 확인한 CI 검사 단계 참조 관계입니다.
+- **실행·테스트 증거:** 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git 체크아웃, npm 의존성 파일 트리, Chromium 및 Docker 데몬을 사용할 수 없었습니다. GitHub 연결 도구로 해당 SHA의 커밋 변경 내용과 변경 후 원본을 검사했으며, 명령 성공 결과는 주장하지 않습니다.
+- **다음 커밋 연결:** `a39856cf734a`는 별도 로컬 lab 근거를 기록하고, 개발 흐름 5의 `b94fa6dd0118`이 같은 작업 정의 끝에 컨테이너 실행 환경 검사를 추가합니다.
 
 ### 11. `a39856cf734a` — chore(perf): 최종 lab 성능 측정 결과 기록
 
 - **Full SHA:** `a39856cf734a309a32f5c7f239ba6bec90e1c259`
 - **Importance:** C
 - **Tags:** PERF
-- **확장 thread에서의 역할:** generated evidence snapshot — desktop enforced matrix와 별도 mobile observation의 측정 결과를 환경과 함께 보존합니다.
+- **확장 개발 흐름에서의 역할:** 생성된 근거 스냅샷 — 데스크톱 enforced 조합표와 별도 모바일 관찰 결과의 측정 결과를 환경과 함께 보존합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `performance/lighthouse-baseline.json`의 measuredAt, environment, 10 URL × 3 runs와 median values가 summarizer schema를 따르는지 확인합니다.
-- `performance/lighthouse-mobile-observation.json`의 `enforcement: observation-only`, 1 run과 pass-count summary를 desktop gate와 구분합니다.
-- recorded values를 이 작업에서 재실행한 결과로 표현하지 않고 historical generated evidence로만 기록합니다.
+- `performance/lighthouse-baseline.json`의 measuredAt, 환경, 10 URL × 3 runs와 중앙값 값이 요약기 스키마를 따르는지 확인합니다.
+- `performance/lighthouse-mobile-observation.json`의 `enforcement: observation-only`, 1 실행과 통과 항목 수 요약을 데스크톱 검사 단계와 구분합니다.
+- recorded 값을 이 작업에서 재실행한 결과로 표현하지 않고 변경 이력의 생성된 근거로만 기록합니다.
 
 확인 원칙:
 
-- 먼저 `a39856cf734a^`와 `a39856cf734a`를 비교하고, 필요한 file은 `a39856cf734a:<path>`의 resulting tree에서 읽습니다.
-- Final HEAD의 workflow, script, Dockerfile 또는 generated output을 이 commit에 소급하지 않습니다.
-- Commit subject나 body만으로 behavior를 추정하지 않고 실제 changed code/test/config를 기준으로 판단합니다.
-- 실제 실행하지 않은 command 결과는 code inspection과 분리합니다.
+- 먼저 `a39856cf734a^`와 `a39856cf734a`를 비교하고, 필요한 파일은 `a39856cf734a:<path>`의 변경 후 파일 트리에서 읽습니다.
+- 최종 HEAD의 작업 정의·스크립트·Dockerfile·생성 산출물을 이 커밋의 구현으로 소급하지 않습니다.
+- 커밋 제목이나 본문만으로 동작을 추정하지 않고 실제 변경된 코드·테스트·설정을 기준으로 판단합니다.
+- 실행하지 않은 명령의 결과는 코드 정적 검토와 구분합니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 전달 상태와 부족함 | measurement/summarizer와 CI gate는 있었지만 repository에 host context와 raw-run-derived desktop/mobile result snapshot이 없었습니다. |
-| 실제 변경 file/symbol/command/artifact | Apple M1, Node v24.18.0, HeadlessChrome 147 환경의 desktop 10 URL×3 run summary와 mobile 10 URL×1 run observation을 commit했습니다. mobile summary는 performance 9/10, accessibility 10/10, LCP 3/10, TBT 9/10, CLS 10/10 target pass를 기록하고 명시적으로 non-enforced입니다. |
-| Build/runtime/resource owner와 lifetime | JSON files가 historical measurement record를 소유합니다. CI threshold source는 여전히 `lighthouserc.cjs`이며 이 generated file이 gate input은 아닙니다. |
-| Failure·missing output·cleanup 처리 | 이 commit은 data를 추가할 뿐 command failure를 새로 만들지 않습니다. recorded result는 stale해질 수 있고 다른 hardware/network에 일반화되지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | 특정 시각·host에서 실행된 lab 결과와 mobile gap이 review 가능합니다. current build의 성능, mobile release pass 또는 CI 재현을 보장하지 않습니다. |
-| 다음 delivery commit 또는 관련 test 연결 | desktop file은 `f1c72dfdd16a` summary shape의 historical output이고, mobile file은 observation-only입니다. enforced gate는 `abbd530368a0`의 desktop LHCI command입니다. |
+| 직전 전달 상태와 부족함 | 측정·요약기와 CI 검사 단계는 있었지만 저장소에 호스트 맥락과 원본 실행에서 파생된 데스크톱·모바일 결과 스냅샷이 없었습니다. |
+| 실제 변경 파일·심볼·명령·산출물 | Apple M1, Node v24.18.0, HeadlessChrome 147 환경의 데스크톱 10 URL×3 실행 요약과 모바일 10 URL×1 실행 관찰 결과을 커밋했습니다. 모바일 요약은 성능 9/10, 접근성 10/10, LCP 3/10, TBT 9/10, CLS 10/10 대상 통과를 기록하고 명시적으로 강제하지 않는입니다. |
+| 빌드·실행 시점·자원 소유 주체와 수명 | JSON 파일이 변경 이력의 측정 레코드를 소유합니다. CI 기준값 원본은 여전히 `lighthouserc.cjs`이며 이 생성된 파일이 검사 단계 입력은 아닙니다. |
+| 실패·누락된 산출물·정리 처리 | 이 커밋은 데이터를 추가할 뿐 명령 실패를 새로 만들지 않습니다. 기록된 결과는 시간이 지나면 달라질 수 있고 다른 하드웨어·네트워크 환경에 일반화되지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 특정 시각·호스트에서 실행된 lab 결과와 모바일 부족한 부분이 검토 가능합니다. 현재 빌드의 성능, 모바일 배포 통과 또는 CI 재현을 보장하지 않습니다. |
+| 다음 전달 커밋 또는 관련 테스트 연결 | 데스크톱 파일은 `f1c72dfdd16a` 요약 형식의 변경 이력의 산출물이며, 모바일 파일은 관찰 관찰 결과일 뿐입니다. enforced 검사 단계는 `abbd530368a0`의 데스크톱 LHCI 명령입니다. |
 
 #### 코드·실행 증거 기록
 
-- **변경 전 대응 코드:** 두 performance result JSON files가 없습니다.
+- **변경 전 대응 코드:** 두 성능 결과 JSON 파일이 없습니다.
 - **해당 SHA 핵심 코드:** `a39856cf734a309a32f5c7f239ba6bec90e1c259` · `performance/lighthouse-mobile-observation.json`
 
 ```text
@@ -1526,148 +1526,148 @@ expect(evaluateRouteBudgets(measurements, baseline)).toEqual([
 }
 ```
 
-- **관찰 근거의 성격:** Exact-SHA committed measurement files에서 읽은 historical record입니다.
-- **실행·테스트 증거:** 재실행하지 않음. JSON에 기록된 2026-08-13 측정값은 repository의 historical generated evidence이며, 현재 작업이 생산한 runtime evidence로 취급하지 않습니다.
-- **다음 commit 연결:** desktop file은 `f1c72dfdd16a` summary shape의 historical output이고, mobile file은 observation-only입니다. enforced gate는 `abbd530368a0`의 desktop LHCI command입니다.
+- **관찰 근거의 성격:** 해당 SHA 커밋된 측정 파일에서 읽은 변경 이력의 레코드입니다.
+- **실행·테스트 증거:** 재실행하지 않음. JSON에 기록된 2026-08-13 측정값은 저장소의 변경 이력의 생성된 근거이며, 현재 작업이 생산한 실행 근거로 취급하지 않습니다.
+- **다음 커밋 연결:** 데스크톱 파일은 `f1c72dfdd16a` 요약 형식의 변경 이력의 산출물이며, 모바일 파일은 관찰 관찰 결과일 뿐입니다. enforced 검사 단계는 `abbd530368a0`의 데스크톱 LHCI 명령입니다.
 
-## 6. Invariant ledger
+## 6. 불변 조건 기록
 
-| Invariant | 이전 상태 | 도입·수정 | 검증·소비 | 남은 비보장 |
+| 불변 조건 | 이전 상태 | 도입·수정 | 검증·소비 | 남은 비보장 |
 | --- | --- | --- | --- | --- |
-| Manifest trust | generated JS를 직접 해석할 명시 경계 없음 | `c2fb8a7c238d`의 slice+JSON parser | `c24c350ce42c` fixtures와 collector가 소비 | future wrapper/schema |
-| Route byte accounting | source/estimate 중심 | `605b64512edf`가 actual manifests/files를 join | `518ff5b51ec5`가 route/asset policy 적용 | compression·lazy/network |
-| Baseline governance | accepted state 없음 | `57a1b0876941`이 write/check 분리 | `6ac1ea4b5055` committed reference + CI check | review quality·absolute cap |
-| Lab performance | manual/advisory | `1529ccf225c1` desktop matrix/threshold | `4e8f95249481` config test + `abbd530368a0` CI enforcement | mobile/field/all routes |
-| Measurement provenance | raw ignored reports | `f1c72dfdd16a` summary writer | `a39856cf734a` environment-bound desktop/mobile records | currentness·cross-machine equivalence |
+| 명세 파일 신뢰 | 생성된 JS를 직접 해석할 명시 경계 없음 | `c2fb8a7c238d`의 문자열 잘라내기 + JSON 파서 | `c24c350ce42c` 테스트 입력과 collector가 소비 | 향후 래퍼·스키마 |
+| 라우트 바이트 계산 | 원본이나 추정값 중심 | `605b64512edf`가 실제 명세 파일과 파일 시스템 정보를 결합 | `518ff5b51ec5`가 라우트·자산 규칙 적용 | 압축·지연 로딩·네트워크 비용 |
+| 기준선 governance | accepted 상태 없음 | `57a1b0876941`이 write·검사 분리 | `6ac1ea4b5055` 커밋된 참조 + CI 검사 | 검토 품질·절대 cap |
+| Lab 성능 | 수동·advisory | `1529ccf225c1` 데스크톱 조합표·기준값 | `4e8f95249481` 설정 테스트 + `abbd530368a0` CI 강제 적용 | 모바일·필드·모든 라우트 |
+| 측정 출처 | 무시되는 원본 보고서 | `f1c72dfdd16a` 요약 작성기 | `a39856cf734a` 환경 정보가 포함된 데스크톱·모바일 기록 | 최신성·머신 간 동일성 |
 
-## 7. Failure → Fix → Test 연결
+## 7. 실패 → 수정 → 테스트 연결
 
-| Failure 또는 위험 | Fix/decision | Test·gate evidence | 한계 |
+| 실패 또는 위험 | 수정·결정 | 테스트·검사 단계 근거 | 한계 |
 | --- | --- | --- | --- |
-| generated manifest를 plain JSON/eval로 오해 | slice + semicolon + JSON.parse | ordinary/dynamic fixtures | future syntax는 fail-closed |
-| route/asset가 사라져 낮은 숫자로 오인 | expected route missing/new baseline missing violations | missing route policy test | extra measured route test는 없음 |
-| routine check가 baseline을 자동 승인 | write/check commands 분리 | CI는 only `bundle:check` | manual baseline approval는 process 책임 |
-| Lighthouse config threshold가 약화 | exact config values | config contract test | real noise는 3-run median으로만 완화 |
-| local gate가 integration에서 누락 | CI sequential steps + browser handoff | command non-zero가 release 차단 | visual/mobile/field는 비차단 |
+| 생성된 명세 파일을 일반 JSON/eval로 오해 | 문자열 잘라내기 + 세미콜론 확인 + `JSON.parse` | 일반 입력과 동적 테스트 입력 | 향후 문법이 달라지면 실패하도록 차단하는 |
+| 라우트·자산이 사라져 낮은 숫자로 오인 | 예상 라우트 누락·new 기준선 누락된 위반 | 누락된 라우트 규칙 테스트 | 불필요한 측정된 라우트 테스트는 없음 |
+| 처리 검사가 기준선을 자동 승인 | write·검사 명령 분리 | CI는만 `bundle:check` | 수동 기준선 approval는 프로세스 책임 |
+| Lighthouse 설정 기준값이 약화 | 정확한 설정 값 | 설정 규칙 테스트 | 실제 noise는 3-실행 중앙값으로만 완화 |
+| 로컬 검사 단계가 통합에서 누락 | CI sequential 단계 + 브라우저 인계 | 명령 0이 아닌가 배포 차단 | 시각·모바일·필드는 비차단 |
 
-## 8. Ownership / state / responsibility 변화
+## 8. 소유 주체·상태·담당 작업 변화
 
-| 대상 | 이전 owner/state | 중간 변화 | 최종 owner/state |
+| 대상 | 이전 소유 주체·상태 | 중간 변화 | 최종 소유 주체·상태 |
 | --- | --- | --- | --- |
-| Generated manifest interpretation | 각 caller/암묵적 | `parseClientReferenceManifest` | collector가 consumer |
-| Route bytes | 없음 | Next manifests + collector | baseline/evaluator/CLI |
-| Accepted growth state | 없음 | committed JSON + review | CI routine read-only check |
-| Lab threshold | 없음 | `lighthouserc.cjs` | unit contract + LHCI CI process |
-| Browser binary | LHCI environment 가정 | Playwright install | workflow `$GITHUB_ENV` handoff |
-| Result history | ignored raw reports | summarizer + committed JSON | non-authoritative historical evidence |
+| Generated 명세 파일 해석 | 각 호출자·암묵적 | `parseClientReferenceManifest` | collector가 소비자 |
+| 라우트 바이트 | 없음 | Next 명세 파일 + collector | 기준선·계산 함수·CLI |
+| Accepted 증가율 상태 | 없음 | 커밋된 JSON + 검토 | CI 처리 읽기 전용 검사 |
+| Lab 기준값 | 없음 | `lighthouserc.cjs` | 단위 규칙 + LHCI CI 프로세스 |
+| 브라우저 바이너리 | LHCI 환경 가정 | Playwright 설치 | 작업 정의 `$GITHUB_ENV` 인계 |
+| 결과 이력 | 무시되는 원본 보고서 | 요약기와 커밋된 JSON | 기준으로 사용하지 않는 참고 이력 |
 
-## 9. Thread 최종 상태
+## 9. 개발 흐름 최종 상태
 
-webpack production artifact의 route별 uncompressed client JS/CSS가 explicit baseline에 대해 5% 성장 및 route coverage gate를 통과해야 합니다. production server의 5-design home/detail desktop matrix도 median performance/accessibility/LCP/TBT/CLS threshold를 통과해야 CI가 성공합니다. mobile JSON은 observation-only이며 field data, all-route coverage와 absolute bundle cap은 없습니다.
+webpack 배포 산출물의 라우트별 압축하지 않은 클라이언트 JS·CSS가 기준선 대비 5% 증가 한도와 라우트 범위 검사를 통과해야 합니다. 배포용 서버에서 다섯 디자인의 홈·상세를 검사하는 데스크톱 조합표도 중앙값 성능·접근성·LCP·TBT·CLS 기준값을 통과해야 CI가 성공합니다. 모바일 JSON은 관찰용일 뿐이며 실사용자 데이터, 모든 라우트 검증과 절대 번들 상한은 없습니다.
 
-## 10. 최종 product-delivery flow 정리
+## 10. 최종 제품 전달 순서
 
-`npm run build --webpack` → app/build/client-reference manifests 생성 → parser가 JSON payload 추출 → collector가 actual asset bytes 계산 → `bundle:check`가 committed baseline/5% policy와 비교 → CI가 standalone verify와 bundle check를 수행 → Playwright Chromium path를 LHCI에 전달 → port 3300 production server에서 10 URLs×3 desktop runs → median threshold failure가 CI를 차단합니다.
+`npm run build --webpack` → app·빌드·클라이언트 참조 명세 파일 생성 → 파서가 JSON 페이로드 추출 → collector가 실제 자산 바이트 계산 → `bundle:check`가 커밋된 기준선/5% 규칙과 비교 → CI가 독립 실행형 검증과 번들 검사를 수행 → Playwright Chromium 경로를 LHCI에 전달 → 포트 3300 배포용 서버에서 10 URLs×3 데스크톱 runs → 중앙값 기준값 실패가 CI를 차단합니다.
 
 ## 11. 학습 완료 자가 점검
 
-- [x] parser가 code execution 없이 generated wrapper payload만 해석하는 방식을 설명했습니다.
-- [x] route byte accounting의 shared/route/dedup/non-inlined 규칙과 비측정 범위를 기록했습니다.
-- [x] baseline write와 routine check의 ownership을 분리했습니다.
-- [x] desktop Lighthouse matrix/threshold와 mobile observation-only 상태를 구분했습니다.
-- [x] CI가 actual gate를 실행하지만 summary file을 자동 갱신하지 않는다고 기록했습니다.
-- [ ] Exact-SHA runtime command를 직접 실행해 결과를 기록했습니다. — 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git checkout, npm dependency tree, Chromium 및 Docker daemon을 사용할 수 없었습니다. GitHub connector로 해당 SHA의 commit diff와 resulting source를 검사했으며, command 성공 결과는 주장하지 않습니다.
+- [x] 파서가 코드 실행 없이 생성된 래퍼 페이로드만 해석하는 방식을 설명했습니다.
+- [x] 라우트 바이트 계산의 공용·라우트·중복 제거·인라인되지 않은 규칙과 비측정 범위를 기록했습니다.
+- [x] 기준선 write와 처리 검사의 소유 주체를 분리했습니다.
+- [x] 데스크톱 Lighthouse 조합표·기준값과 모바일 관찰 결과 전용 상태를 구분했습니다.
+- [x] CI가 실제 검사 단계를 실행하지만 요약 파일을 자동 갱신하지 않는다고 기록했습니다.
+- [ ] 해당 SHA 실행 명령을 직접 실행해 결과를 기록했습니다. — 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git 체크아웃, npm 의존성 파일 트리, Chromium 및 Docker 데몬을 사용할 수 없었습니다. GitHub 연결 도구로 해당 SHA의 커밋 변경 내용과 변경 후 원본을 검사했으며, 명령 성공 결과는 주장하지 않습니다.
 ===== END FILE: 04-release-performance-gates.md =====
 
 ===== BEGIN FILE: 05-container-packaging-and-runtime-verification.md =====
-# Thread: Container packaging and runtime verification
+# 개발 흐름: 컨테이너 패키징과 실행 검증
 
-> Project: 42 Archive Portfolio (`web/portfolio`)
+> 프로젝트: 42 Archive Portfolio (`web/portfolio`)
 >
-> 이 문서는 원본 Development Thread를 변경하지 않고, 같은 branch history에 product-delivery 관점을 추가한 확장 workbook입니다.
+> 이 문서는 원본 개발 흐름을 변경하지 않고, 같은 브랜치 이력에 제품 전달 관점을 추가한 확장 학습 문서입니다.
 
 ## 0. 분류 출처와 변경 가능 범위
 
-- Commit SHA, subject, importance, tags는 `commit/commit-importance.md`의 branch-scoped 분류를 사용합니다.
-- Phase 1 audit에서 category/thread grouping과 commit set을 실제 history에 대조한 뒤 이 문서를 freeze했습니다.
-- Phase 2는 freeze된 구조와 fixed metadata를 바꾸지 않고 learner-facing 기록만 완성합니다.
-- 다른 branch의 구현이나 final HEAD를 과거 SHA 설명에 소급하지 않습니다.
-- 실행하지 않은 build/test/CI/Docker 결과는 exact-SHA source inspection과 구분합니다.
+- 커밋 SHA·제목·중요도·태그는 `commit/commit-importance.md`의 브랜치별 분류를 사용합니다.
+- 1단계 검토에서 분류와 개발 흐름 묶음, 커밋 집합을 실제 이력과 대조한 뒤 이 문서를 고정했습니다.
+- 2단계는 고정된 구조와 고정된 메타데이터를 바꾸지 않고 학습자용 기록만 완성합니다.
+- 다른 브랜치의 구현이나 최종 HEAD를 과거 SHA 설명에 소급하지 않습니다.
+- 실행하지 않은 빌드·테스트·CI·Docker 결과는 해당 SHA의 원본 정적 검토와 구분합니다.
 
-## 1. Thread 목표
+## 1. 개발 흐름 목표
 
-verified standalone output을 최소 runtime image로 옮기고, public assets를 명시적으로 포함하며, non-root process·실제 HTTP routes·content-derived assets를 ephemeral container에서 검증한 뒤 같은 contract를 CI에 연결하는 과정을 복원합니다.
+검증된 독립 실행형 출력을 최소 실행 시점 이미지로 옮기고, 공개 자산을 명시적으로 포함하며, 비관리자 프로세스·실제 HTTP 라우트·콘텐츠에서 계산한 자산을 ephemeral 컨테이너에서 검증한 뒤 같은 규칙을 CI에 연결하는 과정을 복원합니다.
 
-### 계획된 핵심 invariant
+### 계획된 핵심 불변 조건
 
-- builder는 pinned Node/npm graph에서 production build와 standalone verification을 통과해야 runtime stage를 만들 수 있습니다.
-- runner는 standalone server, `.next/static`, `public`만 명시적으로 가져오고 `node` user로 실행합니다.
-- container test는 unique image/container name과 loopback ephemeral port를 사용하고 readiness를 bounded retry로 기다립니다.
-- content JSON이 참조하는 `/content`·`/template` assets는 200, non-empty body와 supported MIME contract를 만족해야 합니다.
-- 실패·성공 여부와 관계없이 started container와 temporary image cleanup을 시도합니다.
+- 빌드 단계는 고정된 Node/npm 참조 관계에서 배포용 빌드와 독립 실행형 검증을 통과해야 실행 시점 단계를 만들 수 있습니다.
+- 실행기는 독립 실행형 서버, `.next/static`, `public`만 명시적으로 가져오고 `node` 사용자로 실행합니다.
+- 컨테이너 테스트는 고유한 이미지·컨테이너 이름과 루프백 임시 포트를 사용하고 배포 준비 상태를 제한된 retry로 기다립니다.
+- 콘텐츠 JSON이 참조하는 `/content`·`/template` 자산은 200, 비어 있지 않은 본문과 지원 대상 MIME 규칙을 만족해야 합니다.
+- 실패·성공 여부와 관계없이 시작한 컨테이너와 임시 이미지 정리를 시도합니다.
 
-## 2. 이 Thread를 이해하기 위한 핵심 질문
+## 2. 이 개발 흐름을 이해하기 위한 핵심 질문
 
-- standalone output에 자동 포함되지 않는 `.next/static`과 `public`을 final image로 누가 복사하는가?
-- Docker multi-stage build에서 dependency install, build args, artifact verification과 runtime user의 ownership이 어떻게 분리되는가?
-- container verifier가 readiness, non-root identity, routes, dynamically discovered assets와 cleanup을 어떤 state machine으로 수행하는가?
-- default template-mode image test가 production content/origin, image security, multi-architecture와 orchestrator behavior에 대해 무엇을 보장하지 않는가?
+- 독립 실행형 출력에 자동 포함되지 않는 `.next/static`과 `public`을 최종 이미지로 누가 복사하는가?
+- Docker 다단계 빌드에서 의존성 설치, 빌드 인자, 산출물 검증과 실행 시점 사용자의 소유 주체가 어떻게 분리되는가?
+- 컨테이너 검증 스크립트가 배포 준비 상태, 비관리자 식별 정보, 라우트, 동적으로 찾은 자산과 정리를 어떤 상태 기계로 수행하는가?
+- 기본 템플릿 모드 컨테이너 이미지 테스트가 배포 콘텐츠·출처 URL, 이미지 보안, 여러 아키텍처와 orchestrator 동작에 대해 무엇을 보장하지 않는가?
 
 ## 3. 완료 기준
 
-- 각 SHA의 parent diff와 resulting tree에서 실제 변경 file, function, config, script와 workflow step을 확인했습니다.
-- Source, generated artifact, CI gate, container/runtime owner를 구분했습니다.
-- Missing artifact, portability failure, threshold violation, startup failure와 cleanup branch를 기록했습니다.
-- Test/CI command의 technique, production path, proves/does-not-prove와 실제 실행 여부를 구분했습니다.
-- 최종 product-delivery 흐름과 cross-thread handoff를 코드 없이 설명할 수 있습니다.
+- 각 SHA의 부모 커밋과의 차이와 변경 후 파일 트리에서 실제 변경 파일, 함수, 설정, 스크립트와 작업 단계를 확인했습니다.
+- 원본, 생성 산출물, CI 검사 단계, 컨테이너·실행 시점 소유 주체를 구분했습니다.
+- 누락된 산출물, 이식성 실패, 기준값 초과, 시작 실패와 정리 브랜치를 기록했습니다.
+- 테스트·CI 명령의 방법, 실제 코드 경로, 증명 범위와 증명하지 않는 범위와 실제 실행 여부를 구분했습니다.
+- 최종 제품 전달 흐름과 다른 개발 흐름으로 넘기는 지점을 코드 없이 설명할 수 있습니다.
 
-## 4. Commit map
+## 4. 커밋 목록
 
-| 순서 | Commit | Subject | Importance | Tags | 확장 thread에서 확인할 역할 |
-| ---: | --- | --- | :---: | --- | --- |
-| 1 | `b87a2b453741` | build(docker): public 자산을 포함한 비루트 standalone image 추가 | A | DEPLOY | deployable image boundary — verified standalone artifact, static/public assets와 non-root runtime을 multi-stage Dockerfile로 구성합니다. |
-| 2 | `b94fa6dd0118` | test(docker): runtime route와 public 자산 검증 자동화 | A | ARCH, VALIDATION, ROUTING | end-to-end runtime contract — image build부터 non-root identity, HTTP routes/assets와 cleanup까지 자동화하고 CI에 연결합니다. |
+| 순서 | 커밋 | 제목 | 중요도 | 태그 | 확장 개발 흐름에서 확인할 역할 |
+| ---: | --- | --- |:---: | --- | --- |
+| 1 | `b87a2b453741` | build(docker): public 자산을 포함한 비루트 standalone image 추가 | A | DEPLOY | 배포 가능한 이미지 구분 지점 — 검증된 독립 실행형 산출물, 정적·공개 자산과 비관리자 실행 시점을 다단계 Dockerfile로 구성합니다. |
+| 2 | `b94fa6dd0118` | test(docker): runtime route와 public 자산 검증 자동화 | A | ARCH, VALIDATION, ROUTING | 전체 과정 실행 시점 검증 규칙 — 이미지 빌드부터 비관리자 식별 정보, HTTP 라우트·자산과 정리까지 자동화하고 CI에 연결합니다. |
 
-## 5. Commit별 학습 기록
+## 5. 커밋별 학습 기록
 
-각 section은 반드시 해당 SHA의 tree와 parent diff를 기준으로 작성합니다. 다른 Thread의 later commit은 관계 설명에만 사용하고 과거 구현에 소급하지 않습니다.
+각 섹션은 반드시 해당 SHA의 파일 트리와 부모 커밋과의 차이를 기준으로 작성합니다. 다른 개발 흐름의 후속 커밋은 관계 설명에만 사용하고 과거 구현에 소급하지 않습니다.
 
 ### 1. `b87a2b453741` — build(docker): public 자산을 포함한 비루트 standalone image 추가
 
 - **Full SHA:** `b87a2b4537418771530ae520df448ca84142f80c`
 - **Importance:** A
 - **Tags:** DEPLOY
-- **확장 thread에서의 역할:** deployable image boundary — verified standalone artifact, static/public assets와 non-root runtime을 multi-stage Dockerfile로 구성합니다.
+- **확장 개발 흐름에서의 역할:** 배포 가능한 이미지 구분 지점 — 검증된 독립 실행형 산출물, 정적·공개 자산과 비관리자 실행 시점을 다단계 Dockerfile로 구성합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- dependencies/builder/runner 세 stage의 base image, npm pin, workdir, copy와 command ordering을 추적합니다.
-- `ARG PORTFOLIO_CONTENT_MODE=template`와 `ARG SITE_URL`이 builder environment에만 전달되고 final runtime environment에는 무엇이 남는지 확인합니다.
-- builder의 `npm run build && npm run build:verify`가 image assembly를 fail-closed로 막는지 확인합니다.
-- runner가 `USER node`와 `--chown=node:node` copy를 사용하고 standalone, static, public을 각각 별도 source에서 가져오는 이유를 기록합니다.
-- `.dockerignore`가 credentials/local output을 build context에서 제외하지만 supply-chain/image scan을 제공하지 않는다는 범위를 명시합니다.
+- 의존성·빌드 단계·실행기 세 단계의 기본 이미지, npm 버전 고정, workdir, 복사와 명령 순서 결정을 추적합니다.
+- `ARG PORTFOLIO_CONTENT_MODE=template`와 `ARG SITE_URL`이 빌드 단계 환경에만 전달되고 최종 실행 시점 환경에는 무엇이 남는지 확인합니다.
+- 빌드 단계의 `npm run build && npm run build:verify`가 이미지 조립을 검증에 실패하면 차단하도록 막는지 확인합니다.
+- 실행기가 `USER node`와 `--chown=node:node` 복사를 사용하고 독립 실행형, 정적, 공개를 각각 별도 원본에서 가져오는 이유를 기록합니다.
+- `.dockerignore`가 인증 정보·로컬 출력을 빌드 컨텍스트에서 제외하지만 공급망 순서·이미지 검사를 제공하지 않는다는 범위를 명시합니다.
 
 확인 원칙:
 
-- 먼저 `b87a2b453741^`와 `b87a2b453741`를 비교하고, 필요한 file은 `b87a2b453741:<path>`의 resulting tree에서 읽습니다.
-- Final HEAD의 workflow, script, Dockerfile 또는 generated output을 이 commit에 소급하지 않습니다.
-- Commit subject나 body만으로 behavior를 추정하지 않고 실제 changed code/test/config를 기준으로 판단합니다.
-- 실제 실행하지 않은 command 결과는 code inspection과 분리합니다.
+- 먼저 `b87a2b453741^`와 `b87a2b453741`를 비교하고, 필요한 파일은 `b87a2b453741:<path>`의 변경 후 파일 트리에서 읽습니다.
+- 최종 HEAD의 작업 정의·스크립트·Dockerfile·생성 산출물을 이 커밋의 구현으로 소급하지 않습니다.
+- 커밋 제목이나 본문만으로 동작을 추정하지 않고 실제 변경된 코드·테스트·설정을 기준으로 판단합니다.
+- 실행하지 않은 명령의 결과는 코드 정적 검토와 구분합니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 전달 상태와 부족함 | standalone artifact와 CI file-layout check는 있었지만 이를 실행 가능한 image로 조립하는 Dockerfile이 없었습니다. 특히 Next standalone trace에 자동 포함되지 않는 `public` directory와 generated static assets의 배치 owner가 정의되지 않았습니다. |
-| 실제 변경 file/symbol/command/artifact | Node 24.18.0 bookworm-slim 기반 3-stage Dockerfile과 `.dockerignore`를 추가했습니다. dependencies stage는 npm 11.16.0과 `npm ci`, builder는 content mode/origin args를 환경으로 전달하고 build+verify를 수행합니다. runner는 `USER node`, host 0.0.0.0, port 3100으로 standalone, `.next/static`, `public`을 `--chown=node:node`로 복사해 `node server.js`를 실행합니다. |
-| Build/runtime/resource owner와 lifetime | dependencies stage가 install graph를, builder stage가 source/build output을, runner stage가 deployable filesystem/process identity를 소유합니다. multi-stage boundary에서 development node_modules/source는 final image로 직접 복사되지 않습니다. |
-| Failure·missing output·cleanup 처리 | `npm ci`, content readiness/build 또는 `build:verify`가 실패하면 final image가 생성되지 않습니다. source path가 없으면 Docker COPY가 실패합니다. 이 SHA에는 built image를 실행하거나 UID/HTTP/assets를 검증하는 command가 없습니다. |
-| 보장하는 것과 보장하지 않는 것 | image recipe는 pinned runtime, verified standalone entry, generated static, public assets와 named non-root user를 명시합니다. image vulnerability/signature, exact numeric UID, production content mode, runtime response, multi-arch build와 orchestrator policy는 보장하지 않습니다. |
-| 다음 delivery commit 또는 관련 test 연결 | `b94fa6dd0118`이 actual image를 build/run하고 Config.User, routes와 content-derived assets를 검사합니다. |
+| 직전 전달 상태와 부족함 | 독립 실행형 산출물과 CI 파일 레이아웃 검사는 있었지만 이를 실행 가능한 이미지로 조립하는 Dockerfile이 없었습니다. 특히 Next 독립 실행형 trace에 자동 포함되지 않는 `public` 디렉터리와 생성된 정적 자산의 배치 소유 주체가 정의되지 않았습니다. |
+| 실제 변경 파일·심볼·명령·산출물 | Node 24.18.0 bookworm-slim 기반 3-단계 Dockerfile과 `.dockerignore`를 추가했습니다. 의존성 단계는 npm 11.16.0과 `npm ci`, 빌드 단계는 콘텐츠 모드·출처 URL 인자를 환경으로 전달하고 빌드+검증을 수행합니다. 실행기는 `USER node`, 호스트 0.0.0.0, 포트 3100으로 독립 실행형, `.next/static`, `public`을 `--chown=node:node`로 복사해 `node server.js`를 실행합니다. |
+| 빌드·실행 시점·자원 소유 주체와 수명 | 의존성 단계가 설치 참조 관계를, 빌드 단계 단계가 원본·빌드 산출물을, 실행기 단계가 배포 가능한 파일 시스템·프로세스 식별 정보를 소유합니다. 다단계 구분 지점에서 개발 node_modules·원본은 최종 이미지로 직접 복사되지 않습니다. |
+| 실패·누락된 산출물·정리 처리 | `npm ci`, 콘텐츠 배포 준비 상태·빌드 또는 `build:verify`가 실패하면 최종 이미지가 생성되지 않습니다. 원본 경로가 없으면 Docker 빌드가 실패합니다. 이 SHA에는 built 이미지를 실행하거나 UID/HTTP·자산을 검증하는 명령이 없습니다. |
+| 보장하는 것과 보장하지 않는 것 | 이미지 recipe는 고정된 실행 시점, 검증된 독립 실행형 진입점, 생성된 정적, 공개 자산과 이름이 있는 비관리자 사용자를 명시합니다. 이미지 취약점·파일 시그니처, 정확한 숫자 UID, 배포 콘텐츠 모드, 실행 시점 응답, 다중 아키텍처 빌드와 orchestrator 규칙은 보장하지 않습니다. |
+| 다음 전달 커밋 또는 관련 테스트 연결 | `b94fa6dd0118`이 실제 이미지를 빌드·실행하고 설정.User, 라우트와 콘텐츠에서 계산한 자산을 검사합니다. |
 
 #### 코드·실행 증거 기록
 
-- **변경 전 대응 코드:** Parent에는 `Dockerfile`과 `.dockerignore`가 없습니다.
+- **변경 전 대응 코드:** 부모 커밋에는 `Dockerfile`과 `.dockerignore`가 없습니다.
 - **해당 SHA 핵심 코드:** `b87a2b4537418771530ae520df448ca84142f80c` · `Dockerfile`
 
 ```text
@@ -1691,47 +1691,47 @@ COPY --from=builder --chown=node:node /app/public ./public
 CMD ["node", "server.js"]
 ```
 
-- **관찰 근거의 성격:** Exact-SHA Dockerfile/build-context diff에서 직접 확인한 image assembly contract입니다.
-- **실행·테스트 증거:** 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git checkout, npm dependency tree, Chromium 및 Docker daemon을 사용할 수 없었습니다. GitHub connector로 해당 SHA의 commit diff와 resulting source를 검사했으며, command 성공 결과는 주장하지 않습니다.
-- **다음 commit 연결:** `b94fa6dd0118`이 actual image를 build/run하고 Config.User, routes와 content-derived assets를 검사합니다.
+- **관찰 근거의 성격:** 해당 SHA Dockerfile·빌드 컨텍스트 변경 내용에서 직접 확인한 이미지 조립 규칙입니다.
+- **실행·테스트 증거:** 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git 체크아웃, npm 의존성 파일 트리, Chromium 및 Docker 데몬을 사용할 수 없었습니다. GitHub 연결 도구로 해당 SHA의 커밋 변경 내용과 변경 후 원본을 검사했으며, 명령 성공 결과는 주장하지 않습니다.
+- **다음 커밋 연결:** `b94fa6dd0118`이 실제 이미지를 빌드·실행하고 설정.User, 라우트와 콘텐츠에서 계산한 자산을 검사합니다.
 
 ### 2. `b94fa6dd0118` — test(docker): runtime route와 public 자산 검증 자동화
 
 - **Full SHA:** `b94fa6dd0118322ff57dc84b180b1c179ca8a867`
 - **Importance:** A
 - **Tags:** ARCH, VALIDATION, ROUTING
-- **확장 thread에서의 역할:** end-to-end runtime contract — image build부터 non-root identity, HTTP routes/assets와 cleanup까지 자동화하고 CI에 연결합니다.
+- **확장 개발 흐름에서의 역할:** 전체 과정 실행 시점 검증 규칙 — 이미지 빌드부터 비관리자 식별 정보, HTTP 라우트·자산과 정리까지 자동화하고 CI에 연결합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `scripts/verify-container-runtime.mjs`의 random suffix, image/container names와 `docker()` child-process wrapper의 capture/non-capture behavior를 추적합니다.
-- `discoverAssets`가 top-level `src/content/*.json`을 recursive value traversal해 `/content/`·`/template/` string만 deduplicate하는지 확인합니다.
-- build → detached run → ephemeral loopback port parse → 최대 60×1초 readiness → Config.User → two routes → every asset 순서를 state transition으로 기록합니다.
-- `verifyResponse`의 status 200, non-empty body, extension-based MIME checks와 supported extension set을 확인합니다.
-- `failed`/`containerStarted` flags, failure log, `finally`의 container/image removal과 cleanup error precedence를 설명합니다.
-- workflow 마지막 `npm run test:container`이 Docker availability를 CI precondition으로 만드는지 확인합니다.
+- `scripts/verify-container-runtime.mjs`의 임의 suffix, 이미지·컨테이너 이름과 `docker()` 하위 프로세스 래퍼의 포착·예외를 포착하지 않는 동작을 추적합니다.
+- `discoverAssets`가 최상위 `src/content/*.json`을 재귀적인 값 순회해 `/content/`·`/template/` 문자열만 중복 제거하는지 확인합니다.
+- 빌드 → 분리 실행 → 임시 루프백 포트 해석 → 최대 60회, 1초 간격의 준비 상태 확인 → `Config.User` 검사 → 두 라우트 검사 → 모든 자산 검사 순서로 상태 변화를 기록합니다.
+- `verifyResponse`의 상태 200, 비어 있지 않은 본문, extension-based MIME 검사와 지원 대상 extension 집합을 확인합니다.
+- `failed`/`containerStarted` 설정값, 실패 로그, `finally`의 컨테이너·이미지 제거과 정리 오류 precedence를 설명합니다.
+- 작업 정의 마지막 `npm run test:container`이 Docker 사용 가능 여부를 CI 선행 조건으로 만드는지 확인합니다.
 
 확인 원칙:
 
-- 먼저 `b94fa6dd0118^`와 `b94fa6dd0118`를 비교하고, 필요한 file은 `b94fa6dd0118:<path>`의 resulting tree에서 읽습니다.
-- Final HEAD의 workflow, script, Dockerfile 또는 generated output을 이 commit에 소급하지 않습니다.
-- Commit subject나 body만으로 behavior를 추정하지 않고 실제 changed code/test/config를 기준으로 판단합니다.
-- 실제 실행하지 않은 command 결과는 code inspection과 분리합니다.
+- 먼저 `b94fa6dd0118^`와 `b94fa6dd0118`를 비교하고, 필요한 파일은 `b94fa6dd0118:<path>`의 변경 후 파일 트리에서 읽습니다.
+- 최종 HEAD의 작업 정의·스크립트·Dockerfile·생성 산출물을 이 커밋의 구현으로 소급하지 않습니다.
+- 커밋 제목이나 본문만으로 동작을 추정하지 않고 실제 변경된 코드·테스트·설정을 기준으로 판단합니다.
+- 실행하지 않은 명령의 결과는 코드 정적 검토와 구분합니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 전달 상태와 부족함 | Dockerfile은 있었지만 image를 실제로 시작해 non-root user, standalone HTTP routes와 copied public assets를 검증하거나 temporary resources를 정리하는 automated contract가 없었습니다. |
-| 실제 변경 file/symbol/command/artifact | `test:container`, 203-line verifier와 CI step을 추가했습니다. script는 unique tag/name으로 image를 build하고 host loopback의 random published port로 container를 시작합니다. readiness 후 Docker inspect user가 `node`인지 확인하고 `/`, `/projects/example-project?view=classic`, 그리고 content JSON에서 발견한 모든 supported public asset을 요청합니다. |
-| Build/runtime/resource owner와 lifetime | test script가 temporary Docker resources의 full lifecycle을 소유합니다. `docker()`가 child process exit/stdout/stderr를, flags가 state를, `finally`가 cleanup을 관리합니다. content JSON은 asset set source of truth이고 MIME map은 supported serving contract를 소유합니다. |
-| Failure·missing output·cleanup 처리 | Docker command non-zero, asset set empty, port parse 실패, 60초 readiness timeout, root/empty user, non-200, empty body, MIME mismatch/unsupported extension이 test를 실패시킵니다. failure 시 container logs를 best-effort 출력합니다. started container와 image는 `finally`에서 제거하고, primary failure가 이미 있으면 cleanup error는 원인을 가리지 않도록 억제합니다. |
-| 보장하는 것과 보장하지 않는 것 | default Docker build로 만들어진 image가 named `node` user로 시작하고 두 HTML routes와 content-referenced public assets를 실제 HTTP로 제공합니다. default build는 template mode이며 production `SITE_URL` readiness, numeric UID/capabilities, image CVEs/signing, healthcheck, multi-arch, load/concurrency, redirect semantics과 orchestrator restart는 보장하지 않습니다. |
-| 다음 delivery commit 또는 관련 test 연결 | Thread 3의 standalone contract와 이 Thread의 Dockerfile을 actual runtime evidence로 연결하며, CI workflow의 마지막 gate가 됩니다. |
+| 직전 전달 상태와 부족함 | Dockerfile은 있었지만 이미지를 실제로 시작해 비관리자 사용자, 독립 실행형 HTTP 라우트와 copied 공개 자산을 검증하거나 임시 자원를 정리하는 자동화된 규칙이 없었습니다. |
+| 실제 변경 파일·심볼·명령·산출물 | `test:container`, 203-줄 검증 스크립트와 CI 단계를 추가했습니다. 스크립트는 고유한 태그·이름으로 이미지를 빌드하고 호스트 루프백의 임의 공개된 포트로 컨테이너를 시작합니다. 배포 준비 상태 후 Docker 설정 조회 사용자가 `node`인지 확인하고 `/`, `/projects/example-project?view=classic`, 그리고 콘텐츠 JSON에서 발견한 모든 지원 대상 공개 자산을 요청합니다. |
+| 빌드·실행 시점·자원 소유 주체와 수명 | 테스트 스크립트가 임시 Docker 자원의 전체 실행 주기를 소유합니다. `docker()`가 하위 프로세스 종료·stdout/stderr를, 설정값이 상태를, `finally`가 정리를 관리합니다. 콘텐츠 JSON은 자산 집합 기준 원본이고 MIME 맵은 지원 대상 제공 규칙을 소유합니다. |
+| 실패·누락된 산출물·정리 처리 | Docker 명령의 0이 아닌 종료 상태, 빈 자산 집합, 포트 해석 실패, 60초 준비 상태 시간 초과, root·빈 사용자, 200이 아닌 응답, 빈 본문, MIME 불일치와 지원하지 않는 확장자가 테스트를 실패시킵니다. 실패하면 가능한 범위에서 컨테이너 로그를 출력합니다. 시작한 컨테이너와 이미지는 `finally`에서 제거하며, 이미 주요 실패가 발생한 경우 정리 오류가 원인을 가리지 않도록 억제합니다. |
+| 보장하는 것과 보장하지 않는 것 | 기본값 Docker 빌드로 만들어진 이미지가 이름이 있는 `node` 사용자로 시작하고 두 HTML 라우트와 콘텐츠에서 참조한 공개 자산을 실제 HTTP로 제공합니다. 기본값 빌드는 템플릿 모드이며 배포 환경 `SITE_URL` 배포 준비 상태, 숫자 UID와 Linux 기능 권한, 이미지 CVE 검사·서명, 상태 확인, 다중 아키텍처, 로딩·동시 실행, 리디렉션 의미와 오케스트레이터 재시작은 보장하지 않습니다. |
+| 다음 전달 커밋 또는 관련 테스트 연결 | 개발 흐름 3의 독립 실행형 규칙과 이 개발 흐름의 Dockerfile을 실제 실행 근거로 연결하며, CI 작업 정의의 마지막 검사 단계가 됩니다. |
 
 #### 코드·실행 증거 기록
 
-- **변경 전 대응 코드:** Parent에는 container verification script/package command/CI step이 없습니다.
+- **변경 전 대응 코드:** 부모 커밋에는 컨테이너 검증 스크립트·패키지 명령·CI 단계가 없습니다.
 - **해당 SHA 핵심 코드:** `b94fa6dd0118322ff57dc84b180b1c179ca8a867` · `scripts/verify-container-runtime.mjs`
 
 ```text
@@ -1751,98 +1751,98 @@ CMD ["node", "server.js"]
 }
 ```
 
-- **관찰 근거의 성격:** Exact-SHA verifier/workflow implementation에서 직접 확인한 Docker E2E state machine입니다.
-- **실행·테스트 증거:** 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git checkout, npm dependency tree, Chromium 및 Docker daemon을 사용할 수 없었습니다. GitHub connector로 해당 SHA의 commit diff와 resulting source를 검사했으며, command 성공 결과는 주장하지 않습니다.
-- **다음 commit 연결:** Thread 3의 standalone contract와 이 Thread의 Dockerfile을 actual runtime evidence로 연결하며, CI workflow의 마지막 gate가 됩니다.
+- **관찰 근거의 성격:** 해당 SHA 검증 스크립트·작업 정의 구현에서 직접 확인한 Docker E2E 상태 기계입니다.
+- **실행·테스트 증거:** 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git 체크아웃, npm 의존성 파일 트리, Chromium 및 Docker 데몬을 사용할 수 없었습니다. GitHub 연결 도구로 해당 SHA의 커밋 변경 내용과 변경 후 원본을 검사했으며, 명령 성공 결과는 주장하지 않습니다.
+- **다음 커밋 연결:** 개발 흐름 3의 독립 실행형 규칙과 이 개발 흐름의 Dockerfile을 실제 실행 근거로 연결하며, CI 작업 정의의 마지막 검사 단계가 됩니다.
 
-## 6. Invariant ledger
+## 6. 불변 조건 기록
 
-| Invariant | 이전 상태 | 도입·수정 | 검증·소비 | 남은 비보장 |
+| 불변 조건 | 이전 상태 | 도입·수정 | 검증·소비 | 남은 비보장 |
 | --- | --- | --- | --- | --- |
-| Image assembly | artifact files만 local `.next`에 존재 | `b87a2b453741` multi-stage build가 verified output을 runtime stage로 copy | Docker build가 build+verify 실패를 차단 | supply-chain·multiarch |
-| Runtime identity | standalone process user 미검증 | Dockerfile `USER node` + chowned files | `b94fa6dd0118`이 Config.User를 actual container에서 확인 | numeric UID/capabilities |
-| Static/public delivery | standalone trace 외부 | static/public explicit copy | content-derived HTTP/MIME verification | JSON 밖 assets·unsupported types |
-| Temporary resource lifetime | manual Docker lifecycle | unique names + state flags | failure logs + finally removal | daemon-level leaked state on hard termination |
-| CI runtime gate | image recipe local-only | `test:container` package command | workflow last step에서 actual Docker contract 실행 | external registry/deployment |
+| Image 조립 | 산출물 파일만 로컬 `.next`에 존재 | `b87a2b453741` 다단계 빌드가 검증된 출력을 실행 시점 단계로 복사 | Docker 빌드가 빌드+검증 실패를 차단 | 공급망 순서·multi아키텍처 |
+| 실행 시점 식별 정보 | 독립 실행형 프로세스 사용자 미검증 | Dockerfile `USER node` + chowned 파일 | `b94fa6dd0118`이 설정.User를 실제 컨테이너에서 확인 | 숫자 UID와 Linux 기능 권한 |
+| 정적·공개 전달 | 독립 실행형 trace 외부 | 정적·공개 명시적으로 복사 | 콘텐츠에서 계산한 HTTP/MIME 검증 | JSON 밖 자산·지원하지 않는 타입 |
+| 임시 자원 수명 | 수동 Docker 실행 주기 | 고유한 이름 + 상태 설정값 | 실패 로그 + finally 제거 | 데몬 수준 강제 종료 시 남을 수 있는 상태 |
+| CI 실행 시점 검사 단계 | 이미지 recipe 로컬에서만 | `test:container` 패키지 명령 | 작업 정의 last 단계에서 실제 Docker 규칙 실행 | 외부 등록부·배포 상태 |
 
-## 7. Failure → Fix → Test 연결
+## 7. 실패 → 수정 → 테스트 연결
 
-| Failure 또는 위험 | Fix/decision | Test·gate evidence | 한계 |
+| 실패 또는 위험 | 수정·결정 | 테스트·검사 단계 근거 | 한계 |
 | --- | --- | --- | --- |
-| standalone image에 public/static 누락 | three explicit COPY boundaries | content-derived HTTP/MIME test | JSON이 참조하지 않는 public file은 미검사 |
-| container가 root로 실행 | `USER node` + chown | Docker inspect Config.User equality | numeric UID/capability policy 없음 |
-| server startup 지연/실패 | bounded 60-attempt readiness loop | last error를 포함해 timeout failure | dedicated health endpoint 없음 |
-| temporary image/container 누적 | random unique names + finally cleanup | primary error 보존, success cleanup failure는 표면화 | process kill/daemon crash는 제외 |
-| local-only image confidence | CI `npm run test:container` | build/run/routes/assets가 integration gate | registry push/orchestrator는 없음 |
+| 독립 실행형 이미지에 공개·정적 누락 | three 명시적인 문구 boundaries | 콘텐츠에서 계산한 HTTP/MIME 테스트 | JSON이 참조하지 않는 공개 파일은 미검사 |
+| 컨테이너가 root로 실행됨 | `USER node`와 소유권 변경 | Docker inspect에서 `Config.User`가 같은지 검사 | 숫자 UID와 Linux 기능 권한 규칙은 없음 |
+| 서버 시작 지연·실패 | 최대 60회 반복하는 준비 상태 확인 | 마지막 오류를 포함해 시간 제한 실패 | 전용 health 진입점 없음 |
+| 임시 이미지·컨테이너 누적 | 임의 고유한 이름 + finally 정리 | 주요 오류 보존, 성공 정리 실패는 표면화 | 프로세스 kill/daemon crash는 제외 |
+| 로컬에서만 이미지 confidence | CI `npm run test:container` | 빌드·실행·라우트·자산이 통합 검사 단계 | 등록부 push/orchestrator는 없음 |
 
-## 8. Ownership / state / responsibility 변화
+## 8. 소유 주체·상태·담당 작업 변화
 
-| 대상 | 이전 owner/state | 중간 변화 | 최종 owner/state |
+| 대상 | 이전 소유 주체·상태 | 중간 변화 | 최종 소유 주체·상태 |
 | --- | --- | --- | --- |
-| Dependency graph | host install | Docker dependencies stage | builder가 consume |
-| Build artifact | local `.next` | Docker builder + `build:verify` | runner에 selected copy |
-| Runtime process/files | 정의 없음 | runner stage + `node` user | container verifier가 observe |
-| Asset inventory | manual list 가능성 | authoritative content JSON traversal | MIME map + HTTP verifier |
-| Temporary resources | manual | test script flags/names | `finally` cleanup |
+| Dependency 참조 관계 | 호스트 설치 | Docker 의존성 단계 | 빌드 단계가 consume |
+| 빌드 산출물 | 로컬 `.next` | Docker 빌드 단계 + `build:verify` | 실행기에 선택한 복사 |
+| 실행 시점 프로세스·파일 | 정의 없음 | 실행기 단계 + `node` 사용자 | 컨테이너 검증 스크립트가 observe |
+| 자산 목록 | 수동 목록 가능성 | 기준이 되는 콘텐츠 JSON 순회 | MIME 맵 + HTTP 검증 스크립트 |
+| 임시 자원 | 수동 | 테스트 스크립트 설정값·이름 | `finally` 정리 |
 
-## 9. Thread 최종 상태
+## 9. 개발 흐름 최종 상태
 
-pinned runtime에서 build/verify된 standalone artifact, generated static과 public directory를 포함한 image가 named non-root `node` user로 실행됩니다. CI는 실제 image를 ephemeral loopback port에서 시작해 two routes와 content-derived assets의 200/non-empty/MIME contract를 검사하고 resources를 정리합니다. 이는 image runtime contract이지 production hosting, registry, security scan 또는 production content publication 증명은 아닙니다.
+고정된 실행 환경에서 빌드·검증된 독립 실행형 산출물과 생성된 정적·공개 디렉터리를 포함한 이미지를 비관리자 `node` 사용자로 실행합니다. CI는 실제 이미지를 임시 루프백 포트에서 시작하고 두 라우트와 콘텐츠에서 계산한 자산의 HTTP 200, 비어 있지 않은 응답, MIME 규칙을 검사한 뒤 자원을 정리합니다. 이는 이미지 실행 검증이지 운영 호스팅, 이미지 등록부, 보안 검사나 배포 콘텐츠의 실제 공개를 증명하는 것은 아닙니다.
 
-## 10. 최종 product-delivery flow 정리
+## 10. 최종 제품 전달 순서
 
-Docker context filtering → pinned Node/npm dependency stage의 `npm ci` → builder가 content args를 받고 production build + standalone verify → runner가 standalone/static/public만 chown-copy → unique image build → detached non-root container를 random loopback port에 publish → bounded readiness → user inspect → HTML routes → JSON-derived assets/MIME 검증 → failure log → container/image cleanup → CI exit status.
+Docker 빌드 문맥 필터링 → 고정된 Node·npm 의존성 단계에서 `npm ci` → 빌드 단계가 콘텐츠 인자를 받아 배포용 빌드와 독립 실행형 검증 수행 → 실행 이미지에 독립 실행형·정적·공개 파일만 소유권을 변경해 복사 → 고유한 이미지 빌드 → 비관리자 컨테이너를 분리 실행하고 임의의 루프백 포트에 공개 → 제한 시간 안에 준비 상태 확인 → 사용자 설정 검사 → HTML 라우트 검사 → JSON에서 계산한 자산과 MIME 검사 → 실패 로그 출력 → 컨테이너·이미지 정리 → CI 종료 상태로 이어집니다.
 
 ## 11. 학습 완료 자가 점검
 
-- [x] standalone, generated static과 public의 서로 다른 copy ownership을 설명했습니다.
-- [x] multi-stage build의 build-time args와 final runtime environment를 구분했습니다.
-- [x] container verifier의 state transition, retry, failure와 cleanup을 복원했습니다.
-- [x] content-derived asset discovery/MIME coverage와 누락 범위를 기록했습니다.
-- [x] template-mode CI image test와 production deployment 보장을 혼동하지 않았습니다.
-- [ ] Exact-SHA runtime command를 직접 실행해 결과를 기록했습니다. — 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git checkout, npm dependency tree, Chromium 및 Docker daemon을 사용할 수 없었습니다. GitHub connector로 해당 SHA의 commit diff와 resulting source를 검사했으며, command 성공 결과는 주장하지 않습니다.
+- [x] 독립 실행형, 생성된 정적과 공개의 서로 다른 복사 담당을 설명했습니다.
+- [x] 다단계 빌드의 빌드 시점 인자와 최종 실행 시점 환경을 구분했습니다.
+- [x] 컨테이너 검증 스크립트의 상태 전환, retry, 실패와 정리를 복원했습니다.
+- [x] 콘텐츠에서 계산한 자산 탐색 가능 여부·MIME 검증 범위와 누락 범위를 기록했습니다.
+- [x] 템플릿 모드 CI 컨테이너 이미지 테스트와 배포 상태 보장을 혼동하지 않았습니다.
+- [ ] 해당 SHA 실행 명령을 직접 실행해 결과를 기록했습니다. — 실행하지 않음. 현재 작업 환경에서는 `web/portfolio`의 Git 체크아웃, npm 의존성 파일 트리, Chromium 및 Docker 데몬을 사용할 수 없었습니다. GitHub 연결 도구로 해당 SHA의 커밋 변경 내용과 변경 후 원본을 검사했으며, 명령 성공 결과는 주장하지 않습니다.
 ===== END FILE: 05-container-packaging-and-runtime-verification.md =====
 
 ===== BEGIN FILE: README.md =====
-# Product delivery and runtime verification
+# 제품 전달과 실행 검증
 
 ## 범위
 
-재현 가능한 toolchain, production-server 검증, self-contained production build, standalone artifact, release performance gate와 non-root container runtime까지 실제 제품 전달 경로를 다룹니다.
+재현 가능한 개발 도구 버전, 배포용 서버 검증, 자체 완결형 배포 빌드, 독립 실행형 산출물, 배포 성능 차단 기준과 비관리자 컨테이너 실행까지 실제 제품 전달 경로를 다룹니다.
 
-외부 hosting/provider 설정, registry publication, orchestrator와 배포 후 운영 절차는 `web/portfolio` branch history에 근거가 없으므로 Thread를 만들지 않습니다.
+외부 호스팅 제공자 설정, 이미지 등록부 공개, 오케스트레이터와 배포 후 운영 절차는 `web/portfolio` 브랜치 이력에 근거가 없으므로 개발 흐름을 만들지 않습니다.
 
-## Phase 1 category audit 결과
+## 1단계 분류 검토 결과
 
-- Branch scope는 `web/portfolio`만 사용했습니다. `commit/commit-importance.md`가 이 branch의 독립 선형 history를 선언하고, 이 category의 24개 SHA는 모두 해당 분류에 존재합니다.
-- 가장 이른 `f66b880a8f97`과 가장 늦은 `b94fa6dd0118`은 모두 `web/portfolio`의 ancestor로 확인했습니다. 각 SHA는 exact commit object와 diff를 별도로 검사했습니다.
-- Category boundary와 5개 Thread는 유지했습니다. Commit 추가·삭제·이동·중복은 하지 않았습니다.
-- 원래 scaffold의 generic investigation 문구는 exact file, function, script, workflow, artifact, failure와 non-guarantee를 묻는 commit-specific 과제로 교체했습니다.
-- `5d903132306a`는 단순히 font/CSS fix에 끼워 넣지 않았습니다. Next/ESLint/SWC patch-line 정렬과 GNU·musl lockfile 조건을 다루는 framework/native portability 단계로 역할을 좁혀 Thread 2에 유지했습니다.
-- Tailwind fix 뒤의 broad visual regression은 결과를 간접 보호하지만 PostCSS config를 직접 격리한 test는 아닙니다. 따라서 이 category commit map에 중복 추가하지 않고 completed record에서 test gap으로 명시합니다.
-- Thread 2·3·4의 실제 commits는 history에서 일부 교차합니다. 문서 순서는 source → artifact → release gate → runtime이라는 학습 dependency 순서이며, 각 Thread 내부 commit 순서는 실제 branch 순서를 유지합니다.
+- 브랜치 범위는 `web/portfolio`로 한정했습니다. `commit/commit-importance.md`가 이 브랜치의 독립적인 선형 이력을 선언하며, 이 분류의 SHA 24개는 모두 해당 분류에 존재합니다.
+- 가장 이른 `f66b880a8f97`과 가장 늦은 `b94fa6dd0118`은 모두 `web/portfolio`의 조상 커밋으로 확인했습니다. 각 SHA의 정확한 커밋 객체와 변경 내용을 별도로 검사했습니다.
+- 분류 범위와 개발 흐름 5개는 유지했습니다. 커밋을 추가·삭제·이동하거나 중복 편입하지 않았습니다.
+- 기존 문서 틀의 일반적인 확인 문구는 정확한 파일·함수·스크립트·작업 정의·산출물·실패·보장하지 않는 범위를 묻는 커밋별 과제로 교체했습니다.
+- `5d903132306a`는 단순한 글꼴·CSS 수정에 포함하지 않았습니다. Next·ESLint·SWC의 패치 버전 계열 정렬과 GNU·musl 잠금 파일 조건을 다루는 프레임워크·네이티브 이식성 단계로 역할을 좁혀 개발 흐름 2에 유지했습니다.
+- Tailwind 수정 뒤의 광범위한 시각 회귀 테스트는 결과를 간접적으로 보호하지만 PostCSS 설정만을 격리한 테스트는 아닙니다. 따라서 커밋 목록에 중복 추가하지 않고 완료 기록에서 테스트 공백으로 명시합니다.
+- 개발 흐름 2·3·4의 실제 커밋은 이력에서 일부 교차합니다. 문서 순서는 원본 → 산출물 → 배포 차단 기준 → 실행 시점이라는 학습 의존성 순서이며, 각 개발 흐름 내부 커밋 순서는 실제 브랜치 순서를 유지합니다.
 
-## Thread 경계
+## 개발 흐름 경계
 
-1. [Reproducible toolchain and production-server verification](01-reproducible-toolchain-and-production-server-verification.md) — runtime pin, production E2E와 최초 CI gate
-2. [Self-contained production build and portability](02-self-contained-production-build-and-portability.md) — local fonts, compiler, framework/native dependency와 CSS transform
-3. [Standalone artifact contract and CI verification](03-standalone-artifact-contract-and-ci-verification.md) — standalone generation, minimum layout와 CI handoff
-4. [Release performance gates](04-release-performance-gates.md) — webpack manifest measurement, reviewable bundle baseline, desktop Lighthouse와 CI enforcement
-5. [Container packaging and runtime verification](05-container-packaging-and-runtime-verification.md) — multi-stage non-root image와 actual HTTP/public-asset verification
+1. [재현 가능한 개발 도구 버전과 배포용 서버 검증](01-reproducible-toolchain-and-production-server-verification.md) — 실행 환경 버전 고정, 배포용 E2E와 최초 CI 검사 단계
+2. [자체 완결형 배포 빌드와 이식성](02-self-contained-production-build-and-portability.md) — 로컬 글꼴, 컴파일러, 프레임워크·네이티브 의존성과 CSS 변환
+3. [독립 실행형 산출물 규칙과 CI 검증](03-standalone-artifact-contract-and-ci-verification.md) — 독립 실행형 산출물 생성, 최소 파일 배치와 CI 연결
+4. [배포 성능 차단 기준](04-release-performance-gates.md) — webpack 명세 파일 측정, 검토 가능한 번들 기준선, 데스크톱 Lighthouse와 CI 강제 적용
+5. [컨테이너 패키징과 실행 환경 검증](05-container-packaging-and-runtime-verification.md) — 다단계 비관리자 이미지와 실제 HTTP·공개 자산 검증
 
-## Cross-thread handoff
+## 개발 흐름 간 연결
 
-- Thread 1의 pinned toolchain과 production E2E가 이후 모든 build/CI path의 실행 기반입니다.
-- Thread 2의 webpack/CSS/font portability가 Thread 4의 measured artifact가 의미 있는 production output이 되게 합니다.
-- Thread 3의 standalone contract가 Thread 5 Docker builder의 입력이며, Thread 5가 Thread 3에서 검증하지 않은 `public`과 actual runtime을 확인합니다.
-- Thread 4의 CI activation 뒤 Thread 5가 container gate를 workflow 마지막 단계에 추가합니다.
+- 개발 흐름 1의 고정된 개발 도구 버전과 배포용 E2E가 이후 모든 빌드·CI 경로의 실행 기반입니다.
+- 개발 흐름 2의 webpack·CSS·글꼴 이식성이 개발 흐름 4에서 측정하는 산출물을 실제 배포 가능한 결과로 만듭니다.
+- 개발 흐름 3의 독립 실행형 규칙이 개발 흐름 5 Docker 빌드 단계의 입력이며, 개발 흐름 5가 개발 흐름 3에서 검증하지 않은 `public`과 실제 실행 시점을 확인합니다.
+- 개발 흐름 4의 CI 활성화 뒤 개발 흐름 5가 컨테이너 검사 단계를 작업 정의 마지막 단계에 추가합니다.
 
 ## 문서 사용법
 
-1. Thread 목표와 commit map을 먼저 읽습니다.
-2. 각 SHA를 parent와 비교하고 해당 SHA의 resulting tree를 확인합니다.
-3. build/test/CI/Docker command는 source inspection과 실제 실행 결과를 구분해 기록합니다.
-4. artifact ownership, failure mode, cleanup과 release blocker가 되는 조건을 연결합니다.
-5. 마지막에 source → build → artifact → verification → runtime의 최종 전달 흐름을 코드 없이 설명합니다.
+1. 개발 흐름 목표와 커밋 목록을 먼저 읽습니다.
+2. 각 SHA를 부모 커밋과 비교하고 해당 SHA의 변경 후 파일 트리를 확인합니다.
+3. 빌드·테스트·CI/Docker 명령은 원본 정적 검토와 실제 실행 결과를 구분해 기록합니다.
+4. 산출물 소유 주체, 실패 유형, 정리 과정과 배포를 차단하는 조건을 연결합니다.
+5. 마지막에 원본 → 빌드 → 산출물 → 검증 → 실행 시점의 최종 전달 흐름을 코드 없이 설명합니다.
 ===== END FILE: README.md =====
 

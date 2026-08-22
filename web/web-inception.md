@@ -129,7 +129,7 @@
 | 선택한 boundary / decision | entrypoint가 빈 volume과 이미 채워진 volume을 구분하고, 빈 경우에만 socket-only 임시 서버를 이용해 DB와 계정을 생성하도록 했습니다. |
 | 핵심 caller/callee 또는 configuration consumer | `srcs/requirements/mariadb/tools/docker-entrypoint.sh`의 `secret input / identifier validation`; `srcs/requirements/mariadb/tools/docker-entrypoint.sh`의 `first-run branch / temporary server`; `srcs/requirements/mariadb/tools/docker-entrypoint.sh`의 `hardening SQL / final exec` |
 | state / ownership / lifecycle 변화 | first run에서는 entrypoint가 데이터 디렉터리와 temporary server를 관리합니다. 재시작에서는 system directory 존재를 근거로 bootstrap을 건너뛰고 기존 DB state를 권위자로 취급합니다. |
-| 주요 failure branch | 임시 서버 start/readiness/SQL/shutdown 중 오류가 나면 entrypoint는 실패하지만, 데이터 디렉터리에 이미 쓰인 일부 상태가 남을 수 있습니다. 단순 system-directory 존재 검사는 이 partial state를 완료로 오인할 수 있습니다. |
+| 주요 failure branch | 임시 서버 start/readiness/SQL/shutdown 중 오류가 나면 entrypoint는 실패하지만, 데이터 디렉터리에 이미 쓰인 일부 상태가 남을 수 있습니다. 단순 system-directory 존재 검사는이 partial state를 완료로 오인할 수 있습니다. |
 | 이 commit의 보장 | 정상 종료된 첫 실행 뒤에는 hardened root account, application database/user/grant가 존재하고 같은 volume 재사용 시 중복 생성하지 않습니다. |
 | 한계와 다음 관련 commit | SIGKILL 등 cleanup trap을 실행하지 못하는 중단 뒤의 수렴, completion marker, staging publication은 보장하지 않습니다. `dc9601f5e670`이 partial persistent state 문제를 staging directory와 verified marker로 교정합니다. |
 
@@ -414,7 +414,7 @@
 - 정상 실행의 entry point와 완료 조건: Compose 또는 후속 `start_stack.py`가 서비스를 시작하고, MariaDB→WordPress→Nginx health gate가 모두 성공하면 정상 완료입니다.
 - failure 또는 interruption 뒤 retry/rollback/compensation 조건: 이 Thread의 초기 entrypoint만으로는 abrupt interruption 수렴이 충분하지 않으며 Thread 2의 marker/staging bootstrap이 재시도 조건을 정의합니다.
 - 이 Thread가 다른 Thread에 제공하는 전제: Thread 2의 bootstrap, Thread 3의 runtime/persistence test, Thread 4~6의 management transaction이 사용할 기본 topology와 state ownership을 제공합니다.
-- 이 Thread 단독으로는 증명하지 않는 것: 백업의 atomicity, restore rollback, credential compensation, supply-chain identity는 이 Thread만으로 증명하지 않습니다.
+- 이 Thread 단독으로는 증명하지 않는 것: 백업의 atomicity, restore rollback, credential compensation, supply-chain identity는이 Thread만으로 증명하지 않습니다.
 
 ## 최종 architecture 또는 execution flow 정리
 
@@ -575,7 +575,7 @@ Compose secret mount 기반의 초기 모델이 host-side secret validation, per
 | 항목 | 학습자 기록 |
 | --- | --- |
 | 직전 관련 상태와 문제 | `916391b9f8db`은 file mount를 사용했지만 host source가 symlink, 잘못된 owner/mode, hard link, multiline인지 공통으로 검증하지 않았습니다. |
-| 선택한 boundary / decision | rendered Compose metadata를 source of truth로 삼고, path resolution부터 descriptor inspection과 content policy까지 한 module에 모았습니다. |
+| 선택한 boundary / decision | rendered Compose metadata를 판단 기준로 삼고, path resolution부터 descriptor inspection과 content policy까지 한 module에 모았습니다. |
 | 핵심 caller/callee 또는 configuration consumer | `tools/stack_runtime.py`의 `secret_source_paths`; `tools/stack_runtime.py`의 `read_private_secret`; `tools/stack_runtime.py`의 `load_secret_values / secret_payload / service_environment` |
 | state / ownership / lifecycle 변화 | host management process가 secret file을 읽고 즉시 memory mapping을 소유합니다. 이후 caller는 raw path를 다시 열지 않고 검증된 mapping/payload를 사용합니다. |
 | 주요 failure branch | unsafe type, owner, mode, link count, parent permission, duplicate canonical path, size/multiline/password-shape 위반은 mutation 전에 실패합니다. |
@@ -1063,7 +1063,7 @@ Compose secret mount 기반의 초기 모델이 host-side secret validation, per
 
 #### 다음 연결
 
-- 이 commit 뒤에도 남아 있는 불충분한 보장: 특정 application request/data path나 container recreation 뒤 state 보존은 이 harness 도입만으로 증명하지 않습니다.
+- 이 commit 뒤에도 남아 있는 불충분한 보장: 특정 application request/data path나 container recreation 뒤 state 보존은이 harness 도입만으로 증명하지 않습니다.
 - 다음 관련 commit이 바꾸거나 검증하는 지점: `8c9b5b9adef2`와 `fb1a689cf969`이 같은 harness에 서로 다른 runtime properties를 추가합니다.
 - 이 commit을 제거했을 때 Thread 설명에서 생기는 공백: 각 scenario가 고유 project와 credentials로 실제 stack을 만들고 effective secret boundary를 검사할 수 있게 합니다.
 
@@ -1293,7 +1293,7 @@ MariaDB transactional dump와 WordPress filesystem archive를 하나의 신뢰 �
 - backup directory가 정확히 DB dump, WordPress archive, manifest의 완전한 set으로만 보이는 과정을 추적했습니다.
 - failure와 SIGINT/SIGTERM이 동일 cleanup/recovery 경로로 수렴하는지 확인했습니다.
 - negative test가 final output, temporary sibling, ready marker, lock, service health를 어떻게 검사하는지 기록했습니다.
-- large fixture와 signal-race test가 small happy path보다 추가로 증명하는 내용을 구분했습니다.
+- large fixture와 signal-race test가 small 정상 처리보다 추가로 증명하는 내용을 구분했습니다.
 
 ## Commit map
 
@@ -1401,7 +1401,7 @@ MariaDB transactional dump와 WordPress filesystem archive를 하나의 신뢰 �
 | 항목 | 학습자 기록 |
 | --- | --- |
 | 직전 관련 상태와 문제 | 비동기 signal은 cleanup code 어느 지점에서든 process를 끝내 test 재현성과 resource recovery를 불명확하게 만들 수 있었습니다. |
-| 선택한 boundary / decision | operator signal을 normal failure path로 변환하고, named stage/ready-file protocol로 deterministic interruption point를 만들었습니다. |
+| 선택한 boundary / decision | operator signal을 normal 실패 처리로 변환하고, named stage/ready-file protocol로 deterministic interruption point를 만들었습니다. |
 | 핵심 caller/callee 또는 configuration consumer | `tools/stack_backup.py`의 `operation_signal_handlers`; `tools/stack_backup.py`의 `pause/failure stage hook`; `tools/stack_backup.py`의 `signal masking around ready publication` |
 | state / ownership / lifecycle 변화 | management operation이 handler 설치부터 복원까지 signal state를 소유합니다. test ready marker는 해당 operation의 temporary control state입니다. |
 | 주요 failure branch | 첫 signal은 cancellation exception이 되고 finally가 service recovery와 temp cleanup을 수행합니다. ready-file publish 실패도 operation failure입니다. |
@@ -1746,7 +1746,7 @@ MariaDB transactional dump와 WordPress filesystem archive를 하나의 신뢰 �
 | fixture와 failure injection | 32 MiB filesystem file, 4 MiB DB value, collision Docker objects와 반복 signal run을 만듭니다. |
 | 실제 통과하는 production path | 실제 backup capture/publication 및 restore validation/injection/resource discovery 경로를 통과합니다. |
 | 핵심 assertion | source/restored length·digest, failure non-publication, pre-existing object 보존, cleanup outcome을 확인합니다. |
-| 이 테스트가 증명하는 것 | stream-oriented implementation과 broadened collision/signal contract가 작은 happy path를 넘어 유지됨을 증명합니다. |
+| 이 테스트가 증명하는 것 | stream-oriented implementation과 broadened collision/signal contract가 작은 정상 처리를 넘어 유지됨을 증명합니다. |
 | 이 테스트가 증명하지 않는 것 | 모든 data distribution·filesystem·scheduler interleaving은 증명하지 않습니다. |
 | 성격 | large boundary and race regression |
 | 막는 후속 regression | whole-buffer 구현, truncation, label-only collision lookup, ready/signal marker race 회귀를 막습니다. |
@@ -2032,7 +2032,7 @@ backup을 기존 state 위에 덮는 작업이 아니라 완전히 fresh한 Comp
 | 직전 관련 상태와 문제 | backup pathname을 단계마다 다시 열면 검증된 object와 실제 주입 object가 달라질 수 있고 malformed archive/checksum이 target을 일부 변경할 수 있었습니다. |
 | 선택한 boundary / decision | directory와 artifact descriptors를 restore lifetime 동안 유지하는 `VerifiedBackup` boundary를 만들고 모든 형식·checksum 검증을 mutation보다 앞에 배치했습니다. |
 | 핵심 caller/callee 또는 configuration consumer | `tools/stack_backup.py`의 `VerifiedBackup`; `tools/stack_backup.py`의 `openat-style artifact opens / shared locks`; `tools/stack_backup.py`의 `manifest/schema/checksum/archive validation` |
-| state / ownership / lifecycle 변화 | VerifiedBackup object가 directory/file descriptors, shared locks, stream positions를 소유하고 restore orchestration은 이 stable handles만 소비합니다. |
+| state / ownership / lifecycle 변화 | VerifiedBackup object가 directory/file descriptors, shared locks, stream positions를 소유하고 restore orchestration은이 stable handles만 소비합니다. |
 | 주요 failure branch | symlink, wrong owner/mode/link/type, extra/missing file, malformed manifest, size/digest mismatch, unsafe archive member는 target resource 생성 전에 실패합니다. |
 | 이 commit의 보장 | restore input이 private owner-controlled exact files의 checksummed structurally valid set이며 검증한 object와 사용하는 object가 같은 descriptor에 anchored됨을 보장합니다. |
 | 한계와 다음 관련 commit | backup이 application-consistent하게 생성됐는지는 manifest만으로 다시 증명하지 않으며 그 속성은 Thread 4 publication 과정에 의존합니다. `1250fcf7c006`이 retained streams를 fresh volumes에 직접 주입하고 `4f8eb9aff842`이 malformed/symlink input refusal을 검증합니다. |
@@ -2383,7 +2383,7 @@ backup을 기존 state 위에 덮는 작업이 아니라 완전히 fresh한 Comp
 - 정상 실행의 entry point와 완료 조건: lock 아래 input/freshness 검증, DB bootstrap/import, WordPress extraction, normal bootstrap/start, health가 모두 성공하면 완료입니다.
 - failure 또는 interruption 뒤 retry/rollback/compensation 조건: 예외/signal은 down --volumes와 independent labels/names enumeration으로 zero-owned-resource state를 요구하며 cleanup failure는 primary error와 함께 보고합니다.
 - 이 Thread가 다른 Thread에 제공하는 전제: credential rotation과 operations tests가 사용할 완전한 fresh project 생성 semantics를 제공합니다.
-- 이 Thread 단독으로는 증명하지 않는 것: daemon crash와 physical storage leak, non-cooperating external actor는 이 Thread 단독으로 완전 증명하지 않습니다.
+- 이 Thread 단독으로는 증명하지 않는 것: daemon crash와 physical storage leak, non-cooperating external actor는이 Thread 단독으로 완전 증명하지 않습니다.
 
 ## 최종 architecture 또는 execution flow 정리
 
@@ -2555,7 +2555,7 @@ host secret files, MariaDB accounts, WordPress users, `wp-config.php`에 분산�
 | 선택한 boundary / decision | application account와 root account를 별도 local-socket mutation primitive로 만들고 secret을 argv가 아닌 private input으로 전달했습니다. |
 | 핵심 caller/callee 또는 configuration consumer | `tools/rotate_secrets.py`의 `change_application_db_password`; `tools/rotate_secrets.py`의 `change_root_db_password`; `tools/rotate_secrets.py`의 `bounded subprocess / cleanup` |
 | state / ownership / lifecycle 변화 | MariaDB가 실제 authentication state를 소유하며 host helper는 command 실행과 temporary credential material을 잠시 소유합니다. |
-| 주요 failure branch | client nonzero/timeout이 mutation 전인지 후인지 이 commit만으로 구분되지 않습니다. command가 write 후 실패 status를 낼 수 있습니다. |
+| 주요 failure branch | client nonzero/timeout이 mutation 전인지 후인지이 commit만으로 구분되지 않습니다. command가 write 후 실패 status를 낼 수 있습니다. |
 | 이 commit의 보장 | DB application/root credentials를 순서 제어 가능한 primitive로 교체하고 process arguments에 password를 넣지 않습니다. |
 | 한계와 다음 관련 commit | WordPress config/users, host files, new/old authentication verification, ambiguous command result compensation은 보장하지 않습니다. `64844c583211`이 positive/negative probes를, `9934b478c79a`가 application-first/root-last ordering을 적용합니다. |
 
@@ -4249,7 +4249,7 @@ network least privilege, resource/shutdown policy, destructive-operation guard, 
 
 이 문서 세트는 `web/inception`의 실제 commit history와 각 SHA 시점의 코드를 직접 읽으며 설계, 구현, 실패 처리, 수정, 검증의 발전 과정을 복원하기 위한 기록 골격입니다.
 
-문서에 미리 작성된 SHA, subject, importance, tags, Thread 순서, Source-defined role과 분류 근거는 제공된 두 source 문서의 확정값입니다. 실제 함수 동작, 변경 전후 코드, ownership/lifetime, failure path, 테스트 실행 결과, 최종 설명은 학습자가 해당 SHA의 코드를 확인해 작성해야 합니다.
+문서에 미리 작성된 SHA, subject, importance, tags, Thread 순서, Source-defined role과 분류 근거는 제공된 두 source 문서의 확정값입니다. 실제 함수 동작, 변경 전후 코드, ownership/lifetime, 실패 처리, 테스트 실행 결과, 최종 설명은 학습자가 해당 SHA의 코드를 확인해 작성해야 합니다.
 
 ## 권장 학습 순서
 
@@ -4306,7 +4306,7 @@ git diff <previous-thread-sha> <current-sha> -- <path>
 
 ### A
 
-주요 subsystem, security/persistence/lifecycle boundary, integration point, non-trivial failure path를 이해할 수 있을 정도로 actual code와 설계 판단을 확인합니다. Test commit은 production invariant, injected failure, technique, traversed path, 증명 범위를 분리합니다.
+주요 subsystem, security/persistence/lifecycle boundary, integration point, non-trivial 실패 처리를 이해할 수 있을 정도로 actual code와 설계 판단을 확인합니다. Test commit은 production invariant, injected failure, technique, traversed path, 증명 범위를 분리합니다.
 
 ### B
 

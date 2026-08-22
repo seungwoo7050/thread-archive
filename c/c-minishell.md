@@ -3,21 +3,21 @@
 
 > 한국어 주제: **파싱 표현에서 조건부 실행까지**
 >
-> Project: `small-shell`  
-> Branch: `c/minishell`  
+> Project: `small-shell`
+> Branch: `c/minishell`
 > Development Thread order: 1/5
 
 ## 1. Thread 목표
 
-인용 의미가 보존된 token이 소유권이 명확한 command/pipeline 구조로 변환되고, pipe와 조건 연결자의 결합 규칙을 유지한 채 현재 status를 기준으로 선택된 pipeline만 확장·실행되는 과정을 복원합니다.
+인용 의미가 보존된 token이 소유권이 명확한 command/처리 단계 구조로 변환되고, pipe와 조건 연결자의 결합 규칙을 유지한 채 현재 status를 기준으로 선택된 처리 단계만 확장·실행되는 과정을 복원합니다.
 
 **Source-defined significance**
 
-> The progression separates three concerns that a shell must not conflate: lexical quote meaning, structural binding, and runtime control flow. The decisive commits are the ownership model, sequence representation, and delayed executor; the surrounding commits populate or integrate those choices. This thread explains why pipes bind within a pipeline, why conditional connectors link pipelines, and why expansion occurs only after a branch is selected.
+> The progression separates three concerns that a shell must not conflate: lexical quote meaning, structural binding, and runtime 제어 흐름. The decisive commits are the 소유권 model, sequence representation, and delayed executor; the surrounding commits populate or integrate those choices. This thread explains why pipes bind within a 처리 단계, why conditional connectors link 처리 단계, and why expansion occurs only after a branch is selected.
 
 **학습 관점**
 
-이 흐름은 lexical quote 의미, 구조적 결합, runtime control flow를 분리합니다. 핵심은 command tree ownership, complete pipeline 단위의 sequence 표현, 그리고 branch 선택 뒤에 수행되는 delayed expansion입니다.
+이 흐름은 lexical quote 의미, 구조적 결합, runtime control flow를 분리합니다. 핵심은 command tree 소유권, complete 처리 단계 단위의 sequence 표현, 그리고 branch 선택 뒤에 수행되는 delayed expansion입니다.
 
 ### SHA 고정 원칙
 
@@ -30,10 +30,10 @@
 ## 2. 이 Thread를 이해하기 위한 핵심 질문
 
 - 입력 줄이 해제된 뒤에도 quote 효과가 token에 남도록 하는 표현은 무엇입니까?
-- argv, redirection, command, pipeline은 각각 무엇을 소유하며 어느 cleanup 경로가 전체 구조를 해제합니까?
-- pipe가 command 내부 결합이 아니라 pipeline 구성 경계가 되는 코드는 어디입니까?
-- `;`, `&&`, `||`가 complete pipeline을 연결한다는 사실은 자료구조와 parser state에 어떻게 나타납니까?
-- 왜 전체 line을 먼저 확장하지 않고, connector gate를 통과한 pipeline만 현재 `$?`로 확장합니까?
+- argv, redirection, command, 처리 단계는 각각 무엇을 소유하며 어느 cleanup 경로가 전체 구조를 해제합니까?
+- pipe가 command 내부 결합이 아니라 처리 단계 구성 경계가 되는 코드는 어디입니까?
+- `;`, `&&`, `||`가 complete 처리 단계를 연결한다는 사실은 자료구조와 parser state에 어떻게 나타납니까?
+- 왜 전체 line을 먼저 확장하지 않고, connector gate를 통과한 처리 단계만 현재 `$?`로 확장합니까?
 - 한 줄 처리에서 token, parsed structure, expanded fields, persistent shell state의 수명은 어디서 나뉩니까?
 
 ## 3. 완료 기준
@@ -41,15 +41,15 @@
 - [x] 각 commit의 exact SHA에서 변경된 구조체와 핵심 함수의 caller/callee를 기록했습니다.
 - [x] `source line → token → command/pipeline list → selected pipeline expansion → execution → cleanup` 흐름을 코드 근거로 설명했습니다.
 - [x] pipe와 sequence connector의 binding 차이를 예제 입력과 parser 코드로 연결했습니다.
-- [x] skipped pipeline이 확장되지 않는 branch와 `$?`가 갱신되는 순서를 확인했습니다.
-- [x] S commit마다 ownership graph, failure path, 후속 연결을 작성했습니다.
+- [x] skipped 처리 단계가 확장되지 않는 branch와 `$?`가 갱신되는 순서를 확인했습니다.
+- [x] S commit마다 소유권 graph, 실패 처리, 후속 연결을 작성했습니다.
 
 > 실행 범위: exact SHA의 commit diff와 해당 시점 source를 GitHub repository에서 검사했습니다. 이 실행 환경에서는 branch checkout이 불가능해 binary build와 runtime command는 수행하지 않았습니다. 아래의 실행 결과 항목은 모두 이를 명시합니다.
 
 ## 4. Commit map
 
 | 순서 | SHA | Subject | Importance | Tags | Source-defined role |
-| ---: | --- | --- | :---: | --- | --- |
+| ---: | --- | --- |:---: | --- | --- |
 | 1 | `729a6d2a7d4a` | `feat(lexer): 인용 단어와 토큰 수명 관리` | A | `LEX_PARSE`, `EXPANSION`, `CORE` | Preserves quote effects in owned word tokens. |
 | 2 | `48670b845d7f` | `feat(parser): 명령 트리 소유권 모델 정의` | S | `ARCH`, `LEX_PARSE`, `CORE` | Establishes the command, redirection, pipeline, connector, and cleanup ownership hierarchy. |
 | 3 | `a209a95a84d3` | `feat(parser): 인자와 리다이렉션 구문 구성` | B | `LEX_PARSE`, `CORE` | Populates commands and ordered redirections inside that model. |
@@ -68,7 +68,7 @@
 - Importance: **A**
 - Tags: `LEX_PARSE`, `EXPANSION`, `CORE`
 - Source-defined role: Preserves quote effects in owned word tokens.
-- 학습 깊이: 주요 subsystem boundary, integration point 또는 failure path. 핵심 코드와 설계 판단을 확인합니다.
+- 학습 깊이: 주요 subsystem boundary, integration point 또는 실패 처리. 핵심 코드와 설계 판단을 확인합니다.
 
 #### Source에서 확정된 변화
 owned word token을 도입하고, quote delimiter를 제거한 뒤에도 single-quoted byte는 내부 literal marker로 보존합니다. token은 text와 source offset을 소유하며, unclosed quote에서는 이미 생성된 token list를 해제합니다.
@@ -76,7 +76,7 @@ owned word token을 도입하고, quote delimiter를 제거한 뒤에도 single-
 #### 설계·상태 변화 기록
 - 이 commit 직전 상태: scanner에는 operator token만 있었고, 인용된 단어를 입력 줄과 독립된 owned token으로 남기는 표현이 없었습니다.
 - 해결하려던 문제: quote delimiter를 제거한 뒤에도 single quote 안의 `$` 같은 byte가 later expansion에서 literal임을 알아야 하며, 입력 줄 해제 뒤에도 token text가 살아 있어야 했습니다.
-- 기존 표현·실행 순서가 충분하지 않았던 이유: 최종 text만 보관하면 single-quoted byte와 확장 가능한 byte가 같아지고, source line pointer만 참조하면 line lifetime에 종속됩니다.
+- 기존 표현·실행 순서가 충분하지 않았던 이유: 최종 text만 보관하면 single-quoted byte와 확장 가능한 byte가 같아지고, source line pointer만 참조하면 line 수명에 종속됩니다.
 - 선택한 결정: `TOK_WORD`와 owned `text`를 추가하고, single-quoted 각 byte를 `LITERAL_MARK('\001') + byte`로 인코딩합니다. Double quote는 delimiter만 제거하고 내부 byte는 marker 없이 둡니다.
 - publish 또는 state mutation이 일어나는 지점: `read_word`가 완성한 allocation을 token node의 `text`로 넘기고, node가 완성된 뒤 token list tail에 연결합니다. `start`에는 source offset을 기록합니다.
 - failure 뒤 cleanup 또는 상태: unclosed quote 또는 allocation failure면 current word를 해제하고 `tokenize_line`이 이미 연결한 token list를 `free_tokens`로 폐기합니다. Empty quoted word는 failure가 아니라 길이 0인 유효 word입니다.
@@ -93,7 +93,7 @@ owned word token을 도입하고, quote delimiter를 제거한 뒤에도 single-
 - token이 public list에 연결되는 publish 지점: node와 node-owned `text`가 모두 성공한 뒤 tail의 `next`를 갱신하는 append branch입니다.
 - single quote marker의 byte 표현과 생성 조건: `#define LITERAL_MARK '\001'`; `quote == '\''`인 동안 각 source byte 앞에 marker를 추가합니다.
 - double quote에서 expansion 가능성을 남기는 코드: `quote == '"'`인 branch는 delimiter만 건너뛰고 내부 byte를 marker 없이 append합니다.
-- unclosed quote failure path의 해제 순서: local word free → error set → caller의 `free_tokens(prefix)`입니다.
+- unclosed quote 실패 처리의 해제 순서: local word free → error set → caller의 `free_tokens(prefix)`입니다.
 - 확인한 변경 파일: `Makefile`, `include/shell.h`, `src/token.c`.
 - 핵심 caller → callee: `tokenize_line` → `read_word` → append helpers → token append; cleanup은 `free_tokens`입니다.
 - parent SHA와 비교한 최소 before/after snippet:
@@ -109,7 +109,7 @@ else
 - 해당 SHA에서 실행한 test 또는 수동 재현 결과: 실행하지 않았습니다. Exact SHA source와 diff로 `''`, `'$HOME'`, `"$HOME"`, unclosed quote의 branch와 cleanup만 검증했습니다.
 
 #### 보장 범위
-- 이 commit이 보장하는 것: quote delimiter가 사라진 뒤에도 later expansion이 single-quoted byte를 literal로 구분할 수 있고, token lifetime이 input line과 분리됩니다.
+- 이 commit이 보장하는 것: quote delimiter가 사라진 뒤에도 later expansion이 single-quoted byte를 literal로 구분할 수 있고, token 수명이 input line과 분리됩니다.
 - 아직 보장하지 않는 것: operator binding, parser hierarchy, runtime expansion은 아직 보장하지 않습니다. Heredoc의 모든 quote provenance는 later fix에서 별도 field로 보강됩니다.
 
 #### Thread 내 다음 연결
@@ -122,47 +122,47 @@ else
 - Subject: `feat(parser): 명령 트리 소유권 모델 정의`
 - Importance: **S**
 - Tags: `ARCH`, `LEX_PARSE`, `CORE`
-- Source-defined role: Establishes the command, redirection, pipeline, connector, and cleanup ownership hierarchy.
-- 학습 깊이: Architecture / invariant 핵심. 변경 전 가정, failure 가능성, 결정, core code, ownership/lifecycle, follow-up을 추적합니다.
+- Source-defined role: Establishes the command, redirection, 처리 단계, connector, and cleanup 소유권 hierarchy.
+- 학습 깊이: Architecture / 항상 유지해야 하는 조건 핵심. 변경 전 가정, failure 가능성, 결정, core code, 소유권/lifecycle, 후속 작업을 추적합니다.
 
 #### Source에서 확정된 변화
-pipeline → command → argv/redirection의 계층과 connector metadata를 정의하고, leaf부터 root까지 해제하는 recursive cleanup ownership을 확립합니다.
+처리 단계 → command → argv/redirection의 계층과 connector metadata를 정의하고, leaf부터 root까지 해제하는 recursive cleanup 소유권을 확립합니다.
 
 #### Source가 확정한 핵심 판단
-- **문제**: Raw tokens are insufficient for execution: the shell needs a stable representation of arguments, ordered redirections, command groups, connectors, and all associated ownership.
-- **결정**: Represent a line as pipelines containing commands, commands containing argv and redirections, and connectors attached to complete pipelines. Mirror that hierarchy with one recursive cleanup entry point.
-- **중요한 이유**: Every later parser, expander, heredoc entry, executor allocation, and failure cleanup assumes these ownership boundaries. The model is compact enough for the supported grammar while still making partial and complete destruction deterministic.
-- **확정된 변경 범위**: The commit introduced `t_redir`, `t_command`, `t_pipeline`, connector metadata, element counts, and leaf-to-root cleanup for argv strings, redirection targets, commands, and pipeline nodes.
+- **문제**: Raw tokens are insufficient for execution: the shell needs a stable representation of arguments, ordered redirections, command groups, connectors, and all associated 소유권.
+- **결정**: Represent a line as 처리 단계 containing commands, commands containing argv and redirections, and connectors attached to complete 처리 단계. Mirror that hierarchy with one recursive cleanup 진입점.
+- **중요한 이유**: Every later parser, expander, heredoc entry, executor allocation, and failure cleanup assumes these 소유권 boundaries. The model is compact enough for the supported grammar while still making partial and complete destruction deterministic.
+- **확정된 변경 범위**: The commit introduced `t_redir`, `t_command`, `t_pipeline`, connector metadata, element counts, and leaf-to-root cleanup for argv strings, redirection targets, commands, and 처리 단계 nodes.
 - **프로젝트 이해에서의 위치**: This is the data architecture of the shell. It explains what each phase owns, why later stages copy rather than retain tokens, and how errors can release an arbitrarily partial parse without subsystem-specific cleanup knowledge.
 
 #### 설계·상태 변화 기록
 - 이 commit 직전 상태: owned token list만 존재했고, 실행 단위·redirection order·connector를 보관할 parsed hierarchy가 없었습니다.
-- 해결하려던 문제: parser가 부분 생성 중 실패하더라도 argv string, vectors, redirection targets, commands, pipelines를 누락 없이 한 경로에서 해제해야 했습니다.
-- 기존 표현·실행 순서가 충분하지 않았던 이유: token list는 syntax 순서만 제공하고 어느 문자열이 argv인지, redirection target인지, 어느 command/pipeline이 소유하는지 표현하지 못합니다.
+- 해결하려던 문제: parser가 부분 생성 중 실패하더라도 argv string, vectors, redirection targets, commands, 처리 단계를 누락 없이 한 경로에서 해제해야 했습니다.
+- 기존 표현·실행 순서가 충분하지 않았던 이유: token list는 syntax 순서만 제공하고 어느 문자열이 argv인지, redirection target인지, 어느 command/처리 단계가 소유하는지 표현하지 못합니다.
 - 선택한 결정: `t_pipeline`이 command list와 `command_count`, connector/next를 소유하고, `t_command`가 null-terminated argv와 ordered redirection list를, `t_redir`가 target string을 소유하도록 계층을 정의했습니다.
 - publish 또는 state mutation이 일어나는 지점: 이후 parser가 완성된 child node를 각 parent list에 연결합니다. 이 commit에서는 zero-initialized nodes와 count fields가 안전한 publish 전 상태를 제공합니다.
-- failure 뒤 cleanup 또는 상태: `free_pipeline`이 pipeline sequence를 순회하며 command의 argv strings/vector, redirection target/nodes, command nodes, pipeline nodes를 leaf-to-root로 해제합니다. NULL field와 partial list도 허용합니다.
+- failure 뒤 cleanup 또는 상태: `free_pipeline`이 처리 단계 sequence를 순회하며 command의 argv strings/vector, redirection target/nodes, command nodes, 처리 단계 nodes를 leaf-to-root로 해제합니다. NULL field와 partial list도 허용합니다.
 
 #### `48670b845d7f`에서 확인할 실제 코드
 - `include/shell.h`의 `t_redir`, `t_command`, `t_pipeline`, connector enum과 각 owned pointer를 확인했습니다.
 - argv vector는 command-owned이며 각 element도 command hierarchy가 소유합니다.
 - redirection list의 node와 `target`은 command-owned입니다.
-- connector는 command가 아니라 왼쪽 complete pipeline의 metadata입니다.
-- `src/parser.c::free_pipeline`은 nested ownership을 한 entry에서 정리합니다.
+- connector는 command가 아니라 왼쪽 complete 처리 단계의 metadata입니다.
+- `src/parser.c::free_pipeline`은 nested 소유권을 한 entry에서 정리합니다.
 
 #### 학습자가 남길 코드 증거
 - 구조체별 owner/owned object 표:
 
 | Owner | Owned object | Non-owning/metadata |
 | --- | --- | --- |
-| `t_pipeline` | ordered `t_command` nodes, following pipeline chain | `command_count`, `next_op` |
+| `t_pipeline` | ordered `t_command` nodes, following 처리 단계 chain | `command_count`, `next_op` |
 | `t_command` | `argv[]`와 각 string, ordered `t_redir` nodes | `argc`, next command link |
 | `t_redir` | `target` string | redirection type, next link |
 
 - count field가 later executor allocation에 제공하는 값: `pipeline->command_count`는 PID table 크기와 `N - 1` pipe count 계산에 사용됩니다.
 - partial construction에서도 안전한 initial state: zero/NULL 초기화된 pointer, `argc == 0`, `command_count == 0`, empty lists입니다.
-- recursive cleanup entry와 내부 call order: `free_pipeline` → command loop → argv elements/vector → redirection target/node → command → pipeline.
-- token lifetime과 parsed lifetime이 갈리는 지점: later `parse_tokens`가 token text를 duplicate해 parsed field에 저장하므로 token list를 먼저 free할 수 있습니다.
+- recursive cleanup entry와 내부 call order: `free_pipeline` → command loop → argv elements/vector → redirection target/node → command → 처리 단계.
+- token 수명과 parsed 수명이 갈리는 지점: later `parse_tokens`가 token text를 duplicate해 parsed field에 저장하므로 token list를 먼저 free할 수 있습니다.
 - 확인한 변경 파일: `include/shell.h`, `src/parser.c` 및 build source list.
 - 핵심 caller → callee: later `parse_tokens`가 constructors/append helpers를 사용하고 모든 error/normal cleanup이 `free_pipeline`로 수렴합니다.
 - parent SHA와 비교한 최소 before/after snippet: parent에는 token types만 있었고, 이 SHA에서 `t_redir`, `t_command`, `t_pipeline`과 `free_pipeline(t_pipeline *)`가 새로 생깁니다.
@@ -170,7 +170,7 @@ pipeline → command → argv/redirection의 계층과 connector metadata를 정
 
 #### 보장 범위
 - 이 commit이 보장하는 것: published parsed tree 전체를 subsystem-specific knowledge 없이 하나의 hierarchy cleanup으로 폐기할 수 있습니다.
-- 아직 보장하지 않는 것: 이 commit은 representation과 destructor를 정의하며, argv/redirection population, pipeline/sequence parsing, execution은 후속 commit에 남습니다.
+- 아직 보장하지 않는 것: 이 commit은 representation과 destructor를 정의하며, argv/redirection population, 처리 단계/sequence parsing, execution은 후속 commit에 남습니다.
 
 #### Thread 내 다음 연결
 `a209a95a84d3`, `8624028b83bb`, `f297aaad70fe`가 동일 ownership model 안에 data와 binding을 채웁니다.
@@ -183,29 +183,29 @@ pipeline → command → argv/redirection의 계층과 connector metadata를 정
 - Importance: **B**
 - Tags: `LEX_PARSE`, `CORE`
 - Source-defined role: Populates commands and ordered redirections inside that model.
-- 학습 깊이: Thread 흐름에서 맡는 구현 역할과 필요한 state/ownership 변화를 확인합니다.
+- 학습 깊이: Thread 흐름에서 맡는 구현 역할과 필요한 state/소유권 변화를 확인합니다.
 
 #### Source에서 확정된 변화
 word token을 source order의 null-terminated argv로 복사하고, redirection operator와 뒤따르는 word를 ordered redirection list로 분리합니다. Redirection-only command는 보존하며 missing target은 syntax failure로 처리합니다.
 
 #### 설계·상태 변화 기록
 - 이 commit 직전 상태: hierarchy와 destructor만 있고 parser가 argv/redirection nodes를 채우지 않았습니다.
-- 해결하려던 문제: word와 redirection target을 같은 token stream에서 읽되 서로 다른 owned destination에 source order대로 publish해야 했습니다.
+- 해결하려던 문제: word와 redirection target을 같은 토큰열에서 읽되 서로 다른 owned destination에 source order대로 publish해야 했습니다.
 - 기존 표현·실행 순서가 충분하지 않았던 이유: operator 뒤 word를 일반 argv로도 넣으면 command semantics가 깨지고, append 중 실패하면 기존 vector나 partial node를 잃을 수 있습니다.
 - 선택한 결정: `add_arg`가 새 null-terminated vector를 준비해 기존 pointer들을 옮기고 새 string을 복제한 후 command에 publish하며, `add_redir`는 target을 duplicate한 complete node만 tail에 연결합니다.
 - publish 또는 state mutation이 일어나는 지점: argv는 새 vector와 새 string이 준비된 후 `command->argv/argc`가 바뀌고, redirection은 node와 target 성공 후 list tail에 연결됩니다.
-- failure 뒤 cleanup 또는 상태: missing target/unsupported operator는 syntax error로 전환되고 current command/pipeline을 hierarchy destructor로 정리합니다.
+- failure 뒤 cleanup 또는 상태: missing target/unsupported operator는 구문 오류로 전환되고 current command/처리 단계를 hierarchy destructor로 정리합니다.
 
 #### `a209a95a84d3`에서 확인할 실제 코드
 - `src/parser.c::parse_tokens`, `add_arg`, `add_redir`를 확인했습니다.
 - redirection operator branch가 다음 token을 target으로 소비해 main word branch를 건너뜁니다.
 - list append는 source order를 유지합니다.
 - argv가 없어도 redirection이 있으면 command는 유효합니다.
-- empty token stream은 syntax error가 아니라 no parse result입니다.
+- empty 토큰열은 구문 오류가 아니라 no parse result입니다.
 
 #### 학습자가 남길 코드 증거
 - argv append 전/후 구조: old `argv[0..argc-1]` → new `argv[0..argc]` + final NULL; old vector만 free하고 strings는 새 vector로 이동합니다.
-- redirection target ownership transfer: token text를 직접 보관하지 않고 duplicate한 `redir->target`을 node가 소유합니다.
+- redirection target 소유권 transfer: token text를 직접 보관하지 않고 duplicate한 `redir->target`을 node가 소유합니다.
 - redirection-only command 판정: `argc == 0`이어도 redirection list가 있으면 parser가 command를 유지합니다.
 - syntax failure가 반환되는 정확한 조건: redirection operator 뒤 word가 없거나 해당 시점에 지원하지 않는 operator가 나오는 경우입니다.
 - partial command cleanup 함수: `free_pipeline`의 nested command/redirection cleanup입니다.
@@ -228,40 +228,40 @@ word token을 source order의 null-terminated argv로 복사하고, redirection 
 - Subject: `feat(parser): pipe로 명령을 pipeline에 결합`
 - Importance: **A**
 - Tags: `LEX_PARSE`, `CORE`, `INTEGRATION`
-- Source-defined role: Defines a pipeline as an ordered command group and validates pipe boundaries.
-- 학습 깊이: 주요 subsystem boundary, integration point 또는 failure path. 핵심 코드와 설계 판단을 확인합니다.
+- Source-defined role: Defines a 처리 단계 as an ordered command group and validates pipe boundaries.
+- 학습 깊이: 주요 subsystem boundary, integration point 또는 실패 처리. 핵심 코드와 설계 판단을 확인합니다.
 
 #### Source에서 확정된 변화
-`|`를 만나면 current command를 pipeline에 append하고 새 command를 시작합니다. `after_pipe` 상태로 leading, repeated, trailing pipe를 거부하고 partial pipeline을 정리합니다.
+`|`를 만나면 current command를 처리 단계에 append하고 새 command를 시작합니다. `after_pipe` 상태로 leading, repeated, trailing pipe를 거부하고 partial 처리 단계를 정리합니다.
 
 #### 설계·상태 변화 기록
 - 이 commit 직전 상태: parser는 하나의 command만 채울 수 있었습니다.
-- 해결하려던 문제: `|` 좌우의 command를 독립 ownership node로 확정하고 source-order pipeline에 넣어야 했습니다.
+- 해결하려던 문제: `|` 좌우의 command를 독립 소유권 node로 확정하고 source-order 처리 단계에 넣어야 했습니다.
 - 기존 표현·실행 순서가 충분하지 않았던 이유: pipe를 일반 operator처럼 command 안에 남기면 stage boundary와 later FD topology를 계산할 `command_count`가 없습니다.
 - 선택한 결정: pipe를 current command publish 지점으로 사용하고 새 zero-initialized command를 시작하며 `after_pipe` state로 빈 stage를 거부합니다.
-- publish 또는 state mutation이 일어나는 지점: current command가 pipeline tail에 연결될 때 `command_count`가 증가하고 current pointer가 새 command로 교체됩니다.
+- publish 또는 state mutation이 일어나는 지점: current command가 처리 단계 tail에 연결될 때 `command_count`가 증가하고 current pointer가 새 command로 교체됩니다.
 - failure 뒤 cleanup 또는 상태: leading/repeated/trailing pipe에서 in-progress command와 already attached command list를 모두 hierarchy cleanup으로 폐기합니다.
 
 #### `8624028b83bb`에서 확인할 실제 코드
 - pipe token branch의 command finalize/append/new command 순서를 확인했습니다.
 - `after_pipe`가 pipe 직후 true가 되고 정상 word/redirection을 읽으면 해제됩니다.
-- leading `|`, `||`가 아닌 repeated `| |`, trailing `cmd |`가 empty-stage syntax error로 수렴합니다.
+- leading `|`, `||`가 아닌 repeated `| |`, trailing `cmd |`가 empty-stage 구문 오류로 수렴합니다.
 - redirection-only stage도 non-empty command로 유지됩니다.
 
 #### 학습자가 남길 코드 증거
 - pipe 직전 current command state: argv/redirection 중 하나 이상을 가진 local command입니다.
-- append 후 새 command initial state: old command는 pipeline-owned, `command_count++`; 새 command는 NULL/0 fields입니다.
+- append 후 새 command initial state: old command는 처리 단계-owned, `command_count++`; 새 command는 NULL/0 fields입니다.
 - 세 가지 malformed pipe input과 branch: `| a`는 current empty, `a | | b`는 `after_pipe`, `a |`는 end-of-input에서 `after_pipe`가 남아 error입니다.
 - command_count의 later consumer 후보: `a71f98de0d92`의 PID table과 `N - 1` pipe table 계산입니다.
-- failure cleanup이 보유한 두 ownership 영역: pipeline에 published prefix와 아직 local인 current command입니다.
+- failure cleanup이 보유한 두 소유권 영역: 처리 단계에 published prefix와 아직 local인 current command입니다.
 - 확인한 변경 파일: `src/parser.c`, `include/shell.h`의 existing count field 사용.
 - 핵심 caller → callee: `parse_tokens` pipe branch → command append helper → new command constructor; failure → shared cleanup.
-- parent SHA와 비교한 최소 before/after snippet: single command return에서 ordered command list construction과 `after_pipe` validation이 추가됐습니다.
+- parent SHA와 비교한 최소 before/after snippet: single command return에서 ordered command list construction과 `after_pipe` 검증이 추가됐습니다.
 - 해당 SHA에서 실행한 test 또는 수동 재현 결과: 실행하지 않았습니다. 세 malformed inputs와 `a | b`의 parser state를 exact code로 추적했습니다.
 
 #### 보장 범위
-- 이 commit이 보장하는 것: pipeline은 ordered command group으로 표현되고, 빈 stage를 가진 pipe syntax가 partial structure로 남지 않습니다.
-- 아직 보장하지 않는 것: `;`, `&&`, `||`로 여러 pipeline을 연결하는 sequence와 runtime short-circuit는 아직 없습니다.
+- 이 commit이 보장하는 것: 처리 단계는 ordered command group으로 표현되고, 빈 stage를 가진 pipe syntax가 partial structure로 남지 않습니다.
+- 아직 보장하지 않는 것: `;`, `&&`, `||`로 여러 처리 단계를 연결하는 sequence와 runtime short-circuit는 아직 없습니다.
 
 #### Thread 내 다음 연결
 `f297aaad70fe`가 complete pipeline을 connector-linked sequence unit으로 사용합니다.
@@ -273,36 +273,36 @@ word token을 source order의 null-terminated argv로 복사하고, redirection 
 - Subject: `feat(parser): 조건 연결자를 sequence로 결합`
 - Importance: **S**
 - Tags: `ARCH`, `LEX_PARSE`, `CORE`
-- Source-defined role: Extends the representation to a connector-linked sequence of complete pipelines.
-- 학습 깊이: Architecture / invariant 핵심. 변경 전 가정, failure 가능성, 결정, core code, ownership/lifecycle, follow-up을 추적합니다.
+- Source-defined role: Extends the representation to a connector-linked sequence of complete 처리 단계.
+- 학습 깊이: Architecture / 항상 유지해야 하는 조건 핵심. 변경 전 가정, failure 가능성, 결정, core code, 소유권/lifecycle, 후속 작업을 추적합니다.
 
 #### Source에서 확정된 변화
-`;`, `&&`, `||`에서 current pipeline을 끝내고 connector를 왼쪽 pipeline의 `next_op`에 저장한 뒤 새 pipeline을 시작합니다. Pipe는 pipeline 내부에 남아 더 강한 binding을 유지합니다.
+`;`, `&&`, `||`에서 current 처리 단계를 끝내고 connector를 왼쪽 처리 단계의 `next_op`에 저장한 뒤 새 처리 단계를 시작합니다. Pipe는 처리 단계 내부에 남아 더 강한 binding을 유지합니다.
 
 #### Source가 확정한 핵심 판단
-- **문제**: A single-pipeline parser cannot represent semicolon sequencing or conditional execution, and treating all operators alike would lose the stronger binding of pipes.
-- **결정**: Finish a pipeline at `;`, `&&`, or `||`, store the connector on its left pipeline, and link the resulting pipeline units in source order. Reject empty units and trailing conditionals while permitting a trailing semicolon.
+- **문제**: A single-처리 단계 parser cannot represent semicolon sequencing or conditional execution, and treating all operators alike would lose the stronger binding of pipes.
+- **결정**: Finish a 처리 단계 at `;`, `&&`, or `||`, store the connector on its left 처리 단계, and link the resulting 처리 단계 units in source order. Reject empty units and trailing conditionals while permitting a trailing semicolon.
 - **중요한 이유**: The representation preserves the project's grammar without introducing an unnecessarily general AST. It also gives the executor exactly the unit required for short-circuit decisions and keeps cleanup correct when parsing fails after a completed prefix.
-- **확정된 변경 범위**: The parser gained pipeline-list construction, connector translation, error handling for empty or incomplete operands, and cleanup of both the current pipeline and the already parsed sequence prefix.
+- **확정된 변경 범위**: The parser gained 처리 단계-list construction, connector translation, 오류 처리 for empty or incomplete operands, and cleanup of both the current 처리 단계 and the already parsed sequence prefix.
 - **프로젝트 이해에서의 위치**: It explains the shell's precedence model: pipes form one executable unit first; sequence and conditional operators then connect those units from left to right.
 
 #### 설계·상태 변화 기록
-- 이 commit 직전 상태: one pipeline에 여러 command를 넣을 수 있었지만 line-level sequence를 표현할 수 없었습니다.
+- 이 commit 직전 상태: one 처리 단계에 여러 command를 넣을 수 있었지만 line-level sequence를 표현할 수 없었습니다.
 - 해결하려던 문제: `a | b && c ; d`에서 pipe group을 먼저 완성한 뒤 `&&`와 `;`가 그 groups를 연결해야 했습니다.
 - 기존 표현·실행 순서가 충분하지 않았던 이유: 모든 operator를 같은 list level에 두면 pipe precedence와 connector의 left-result dependency가 사라집니다.
-- 선택한 결정: connector를 왼쪽 complete pipeline의 `next_op`에 저장하고 pipeline nodes를 source order로 연결합니다. General AST 대신 현재 grammar에 필요한 최소 linked sequence를 사용합니다.
-- publish 또는 state mutation이 일어나는 지점: connector를 만나면 current command를 current pipeline에 finalize하고, pipeline을 sequence tail에 연결한 후 `next_op`를 설정하고 새 pipeline을 시작합니다.
-- failure 뒤 cleanup 또는 상태: leading/empty/trailing conditional, pipe RHS 누락에서 current objects와 completed prefix를 모두 하나의 failure path로 해제합니다. Trailing `;`만 허용하고 final tail connector를 `CONN_NONE`으로 정규화합니다.
+- 선택한 결정: connector를 왼쪽 complete 처리 단계의 `next_op`에 저장하고 처리 단계 nodes를 source order로 연결합니다. General AST 대신 현재 grammar에 필요한 최소 linked sequence를 사용합니다.
+- publish 또는 state mutation이 일어나는 지점: connector를 만나면 current command를 current 처리 단계에 finalize하고, 처리 단계를 sequence tail에 연결한 후 `next_op`를 설정하고 새 처리 단계를 시작합니다.
+- failure 뒤 cleanup 또는 상태: leading/empty/trailing conditional, pipe RHS 누락에서 current objects와 completed prefix를 모두 하나의 실패 처리로 해제합니다. Trailing `;`만 허용하고 final tail connector를 `CONN_NONE`으로 정규화합니다.
 
 #### `f297aaad70fe`에서 확인할 실제 코드
-- pipeline node의 `next`와 `next_op`를 확인했습니다.
+- 처리 단계 node의 `next`와 `next_op`를 확인했습니다.
 - `a | b && c ; d`는 `[a,b] --AND--> [c] --SEQ--> [d]`가 됩니다.
-- connector token → internal enum 변환과 왼쪽 pipeline publish 순서를 확인했습니다.
+- connector token → internal enum 변환과 왼쪽 처리 단계 publish 순서를 확인했습니다.
 - leading connector, empty operand, trailing `&&/||`, pipe RHS 누락은 error입니다.
 - trailing semicolon은 accepted sequence termination입니다.
 
 #### 학습자가 남길 코드 증거
-- 예제 입력의 token → pipeline list 변환:
+- 예제 입력의 token → 처리 단계 list 변환:
 
 ```text
 WORD(a) PIPE WORD(b) AND WORD(c) SEMI WORD(d)
@@ -311,17 +311,17 @@ WORD(a) PIPE WORD(b) AND WORD(c) SEMI WORD(d)
   → pipeline#3 commands=[d],   next_op=NONE
 ```
 
-- 각 pipeline에 저장된 `next_op`: 다음 pipeline을 실행할 조건을 왼쪽 node가 보유합니다.
-- trailing semicolon normalization 전/후: parse 중 left pipeline에는 sequence 의미가 생기지만 새 empty tail을 publish하지 않고 최종 published tail은 `CONN_NONE`입니다.
-- completed prefix와 current object의 cleanup path: shared parse failure가 current command/current pipeline을 먼저 정리하고 sequence head에 `free_pipeline`을 적용합니다.
-- 이 표현이 executor에 제공하는 최소 control-flow 정보: ordered pipeline pointer와 left connector enum입니다.
+- 각 처리 단계에 저장된 `next_op`: 다음 처리 단계를 실행할 조건을 왼쪽 node가 보유합니다.
+- trailing semicolon normalization 전/후: parse 중 left 처리 단계에는 sequence 의미가 생기지만 새 empty tail을 publish하지 않고 최종 published tail은 `CONN_NONE`입니다.
+- completed prefix와 current object의 정리 과정: shared parse failure가 current command/current 처리 단계를 먼저 정리하고 sequence head에 `free_pipeline`을 적용합니다.
+- 이 표현이 executor에 제공하는 최소 control-flow 정보: ordered 처리 단계 pointer와 left connector enum입니다.
 - 확인한 변경 파일: `src/parser.c`, `include/shell.h`.
-- 핵심 caller → callee: `parse_tokens` → pipeline finalization/connector mapping/sequence append → `free_pipeline`.
-- parent SHA와 비교한 최소 before/after snippet: one `t_pipeline` return에서 linked pipeline list와 `next_op` assignment로 확장됐습니다.
+- 핵심 caller → callee: `parse_tokens` → 처리 단계 finalization/connector mapping/sequence append → `free_pipeline`.
+- parent SHA와 비교한 최소 before/after snippet: one `t_pipeline` return에서 linked 처리 단계 list와 `next_op` assignment로 확장됐습니다.
 - 해당 SHA에서 실행한 test 또는 수동 재현 결과: 실행하지 않았습니다. 위 예제와 malformed connector states를 source branch로 추적했습니다.
 
 #### 보장 범위
-- 이 commit이 보장하는 것: pipe가 먼저 complete executable unit을 만들고, sequence/conditional connector가 그 pipeline units를 왼쪽부터 연결합니다.
+- 이 commit이 보장하는 것: pipe가 먼저 complete executable unit을 만들고, sequence/conditional connector가 그 처리 단계 units를 왼쪽부터 연결합니다.
 - 아직 보장하지 않는 것: representation만으로 short-circuit나 delayed expansion이 실행되지는 않습니다.
 
 #### Thread 내 다음 연결
@@ -335,24 +335,24 @@ WORD(a) PIPE WORD(b) AND WORD(c) SEMI WORD(d)
 - Importance: **S**
 - Tags: `ARCH`, `EXPANSION`, `CORE`
 - Source-defined role: Executes that sequence with short-circuiting and status-correct delayed expansion.
-- 학습 깊이: Architecture / invariant 핵심. 변경 전 가정, failure 가능성, 결정, core code, ownership/lifecycle, follow-up을 추적합니다.
+- 학습 깊이: Architecture / 항상 유지해야 하는 조건 핵심. 변경 전 가정, failure 가능성, 결정, core code, 소유권/lifecycle, 후속 작업을 추적합니다.
 
 #### Source에서 확정된 변화
-pipeline list를 source order로 순회하면서 preceding connector와 previous status로 실행 여부를 결정하고, 선택된 pipeline만 현재 shell state로 확장한 뒤 dispatch합니다.
+처리 단계 list를 source order로 순회하면서 preceding connector와 previous status로 실행 여부를 결정하고, 선택된 처리 단계만 현재 shell state로 확장한 뒤 dispatch합니다.
 
 #### Source가 확정한 핵심 판단
-- **문제**: Expanding an entire parsed line before execution would evaluate skipped branches and would give later pipelines a stale value of `$?`.
-- **결정**: Carry the previous connector through the pipeline list, decide whether the next pipeline runs, and expand only that selected pipeline immediately before dispatch using current shell state.
-- **중요한 이유**: Control flow and expansion are semantically coupled. A skipped branch must produce no expansion side effects or allocation failures, and an executed branch must observe the status produced by the pipeline immediately before it.
-- **확정된 변경 범위**: The commit separated one-pipeline expansion and execution, temporarily detached a pipeline during expansion, implemented `&&` and `||` gating, propagated status after each executed unit, and stopped traversal when `exit` ended the shell.
+- **문제**: Expanding an entire parsed line before execution would evaluate skipped branches and would give later 처리 단계 a stale value of `$?`.
+- **결정**: Carry the previous connector through the 처리 단계 list, decide whether the next 처리 단계 runs, and expand only that selected 처리 단계 immediately before dispatch using current shell state.
+- **중요한 이유**: 제어 흐름 and expansion are semantically coupled. A skipped branch must produce no expansion side effects or allocation failures, and an executed branch must observe the status produced by the 처리 단계 immediately before it.
+- **확정된 변경 범위**: The commit separated one-처리 단계 expansion and execution, temporarily detached a 처리 단계 during expansion, implemented `&&` and `||` gating, propagated status after each executed unit, and stopped traversal when `exit` ended the shell.
 - **프로젝트 이해에서의 위치**: It explains why parsing can happen for the complete line while expansion remains runtime state-dependent. This timing decision is one of the project's most important shell-semantic judgments.
 
 #### 설계·상태 변화 기록
-- 이 commit 직전 상태: executor는 단일 pipeline을 받아 전체 대상에 expansion을 적용한 뒤 실행했습니다.
-- 해결하려던 문제: short-circuit로 skip될 pipeline을 미리 확장하면 불필요한 allocation failure가 발생하고, later `$?`가 직전 실행 결과가 아닌 stale status를 볼 수 있습니다.
+- 이 commit 직전 상태: executor는 단일 처리 단계를 받아 전체 대상에 expansion을 적용한 뒤 실행했습니다.
+- 해결하려던 문제: short-circuit로 skip될 처리 단계를 미리 확장하면 불필요한 allocation failure가 발생하고, later `$?`가 직전 실행 결과가 아닌 stale status를 볼 수 있습니다.
 - 기존 표현·실행 순서가 충분하지 않았던 이유: parser가 line 전체를 먼저 만드는 것은 가능하지만 runtime state-dependent expansion까지 parse 직후 일괄 수행하면 control flow와 timing이 어긋납니다.
-- 선택한 결정: previous connector와 current `shell->last_status`로 gate를 먼저 계산하고, 선택된 current pipeline만 list에서 임시 분리해 expand한 뒤 실행합니다.
-- publish 또는 state mutation이 일어나는 지점: 실행된 pipeline의 return status만 `shell->last_status`에 기록되고 다음 gate의 입력이 됩니다. Skipped pipeline은 parsed fields와 status를 변경하지 않습니다.
+- 선택한 결정: previous connector와 current `shell->last_status`로 gate를 먼저 계산하고, 선택된 current 처리 단계만 list에서 임시 분리해 expand한 뒤 실행합니다.
+- publish 또는 state mutation이 일어나는 지점: 실행된 처리 단계의 return status만 `shell->last_status`에 기록되고 다음 gate의 입력이 됩니다. Skipped 처리 단계는 parsed fields와 status를 변경하지 않습니다.
 - failure 뒤 cleanup 또는 상태: expansion failure는 dispatch 전에 status 1로 반환됩니다. Link는 restore되고, top-level hierarchy cleanup이 전체 parsed list를 해제합니다. `shell->running == 0`이면 traversal을 중단합니다.
 
 #### `13a70b408e89`에서 확인할 실제 코드
@@ -366,7 +366,7 @@ pipeline list를 source order로 순회하면서 preceding connector와 previous
 #### 학습자가 남길 코드 증거
 - connector gate truth table과 실제 branch:
 
-| Previous connector | Previous status | Current pipeline |
+| Previous connector | Previous status | Current 처리 단계 |
 | --- | ---: | --- |
 | `CONN_NONE` / sequence | any | execute |
 | `CONN_AND` | 0 | execute |
@@ -376,7 +376,7 @@ pipeline list를 source order로 순회하면서 preceding connector와 previous
 
 - gate → detach → expand → execute → relink 순서: gate가 false면 detach/expand 자체를 호출하지 않습니다. True면 current `next`를 임시 NULL로 만들고 expansion 후 원래 link를 복원한 뒤 dispatch합니다.
 - `$?`가 참조하는 status와 update line: `expand_pipeline`은 호출 시점의 `shell->last_status`를 읽고, `execute_one_pipeline` 반환 뒤 executor가 그 field를 갱신합니다.
-- skipped pipeline에 expansion allocation이 발생하지 않는 근거: gate false branch가 expansion call을 건너뜁니다.
+- skipped 처리 단계에 expansion allocation이 발생하지 않는 근거: gate false branch가 expansion call을 건너뜁니다.
 - `running` 변화가 loop를 중단하는 위치: executed parent builtin `exit`가 state를 clear한 뒤 list loop condition/branch가 remaining node로 진행하지 않습니다.
 - 확인한 변경 파일: `src/exec.c`와 executor declarations.
 - 핵심 caller → callee: `execute_pipeline_list_ctx` → gate → `expand_one_pipeline` → `expand_pipeline` → `execute_one_pipeline` → parent command 또는 forked execution.
@@ -392,7 +392,7 @@ pipeline->next = next;
 - 해당 SHA에서 실행한 test 또는 수동 재현 결과: 실행하지 않았습니다. `false && echo $?`, `true || echo $?`, `false || echo $?`의 gate/expansion order를 source로 추적했습니다.
 
 #### 보장 범위
-- 이 commit이 보장하는 것: connector decision은 직전 실행 status를 사용하고, skipped pipeline은 확장도 실행도 하지 않으며, 실행된 pipeline은 최신 `$?`를 봅니다.
+- 이 commit이 보장하는 것: connector decision은 직전 실행 status를 사용하고, skipped 처리 단계는 확장도 실행도 하지 않으며, 실행된 처리 단계는 최신 `$?`를 봅니다.
 - 아직 보장하지 않는 것: 이 commit만으로 top-level line/token/parsed cleanup 수명이 완전히 연결되지는 않으며 다음 integration commit에서 묶입니다.
 
 #### Thread 내 다음 연결
@@ -405,23 +405,23 @@ pipeline->next = next;
 - Subject: `feat(shell): 한 줄 해석과 실행 수명 연결`
 - Importance: **B**
 - Tags: `INTEGRATION`, `CORE`
-- Source-defined role: Connects the concrete parse and execution lifetime to each input line.
-- 학습 깊이: Thread 흐름에서 맡는 구현 역할과 필요한 state/ownership 변화를 확인합니다.
+- Source-defined role: Connects the concrete parse and execution 수명 to each input line.
+- 학습 깊이: Thread 흐름에서 맡는 구현 역할과 필요한 state/소유권 변화를 확인합니다.
 
 #### Source에서 확정된 변화
 `shell_process_line`에서 tokenization, parsing, execution, diagnostics, status update, parsed cleanup을 한 줄 단위로 묶습니다. Syntax failure는 status 258, empty parse는 이전 status 유지, valid parse는 실행 후 전체 해제입니다.
 
 #### 설계·상태 변화 기록
-- 이 commit 직전 상태: lexer, parser, list executor가 별도 API로 존재했지만 input loop의 transient object lifetime이 한 곳에 묶이지 않았습니다.
-- 해결하려던 문제: lexical/parse error, empty line, valid execution마다 token/pipeline/error allocation을 정확히 정리하고 status semantics를 달리해야 했습니다.
+- 이 commit 직전 상태: lexer, parser, list executor가 별도 API로 존재했지만 input loop의 transient object 수명이 한 곳에 묶이지 않았습니다.
+- 해결하려던 문제: lexical/구문 분석 오류, empty line, valid execution마다 token/처리 단계/error allocation을 정확히 정리하고 status semantics를 달리해야 했습니다.
 - 기존 표현·실행 순서가 충분하지 않았던 이유: 각 subsystem caller가 cleanup을 따로 책임지면 early return에서 누락되기 쉽고 다음 prompt에 transient state가 남을 수 있습니다.
-- 선택한 결정: `shell_process_line`을 line transaction entry로 두고 tokenize → parse → token free → execute → pipeline free 순서를 고정합니다.
-- publish 또는 state mutation이 일어나는 지점: lexical/parse error는 `last_status = 258`; valid execution은 executor가 status를 갱신합니다. Empty parse는 이전 status를 유지합니다.
+- 선택한 결정: `shell_process_line`을 line transaction entry로 두고 tokenize → parse → token free → execute → 처리 단계 free 순서를 고정합니다.
+- publish 또는 state mutation이 일어나는 지점: lexical/구문 분석 오류는 `last_status = 258`; valid execution은 executor가 status를 갱신합니다. Empty parse는 이전 status를 유지합니다.
 - failure 뒤 cleanup 또는 상태: error string, token prefix, parsed tree를 해당 branch에서 정리하며 persistent `t_shell`의 environment/status/running만 다음 input에 남깁니다.
 
 #### `91ded56b033d`에서 확인할 실제 코드
 - input loop가 owned line을 `shell_process_line`에 넘긴 뒤 해제하는 경계를 확인했습니다.
-- `shell_process_line`은 token list와 pipeline list의 acquisition/cleanup을 모두 포함합니다.
+- `shell_process_line`은 token list와 처리 단계 list의 acquisition/cleanup을 모두 포함합니다.
 - lexer/parser diagnostic branch는 258을 설정합니다.
 - `pipelines == NULL && error == NULL`인 empty parse는 executor를 호출하지 않습니다.
 - valid path는 executor 완료 뒤 `free_pipeline`을 호출합니다.
@@ -429,9 +429,9 @@ pipeline->next = next;
 #### 학습자가 남길 코드 증거
 - line owner와 derived representation owner: input loop가 line allocation을 소유하고, lexer가 별도 token text/list를, parser가 별도 hierarchy를 소유합니다.
 - syntax failure status path: diagnostic 출력 → error free → transient objects free → `last_status = 258`.
-- empty input status path: no parsed pipeline이면 기존 `last_status` 반환.
+- empty input status path: no parsed 처리 단계가면 기존 `last_status` 반환.
 - valid execution status path: `execute_pipeline_list`/context executor → parsed cleanup → current status 반환.
-- 다음 prompt 전에 반드시 해제되는 transient objects: input line, error text, token nodes/text, pipeline hierarchy와 expanded replacements입니다.
+- 다음 prompt 전에 반드시 해제되는 transient objects: input line, error text, token nodes/text, 처리 단계 hierarchy와 expanded replacements입니다.
 - 확인한 변경 파일: line processor가 있는 `src/exec.c`, caller input loop가 있는 `src/input.c`.
 - 핵심 caller → callee: `shell_loop` → `shell_process_line` → `tokenize_line` → `parse_tokens` → `free_tokens` → executor → `free_pipeline`.
 - parent SHA와 비교한 최소 before/after snippet: subsystem 호출이 한 line-scoped entry에 결합되고 error/empty/valid branches가 분리됐습니다.
@@ -442,13 +442,13 @@ pipeline->next = next;
 - 아직 보장하지 않는 것: later heredoc integration과 allocation/I/O hardening은 이 commit 이후의 별도 thread에서 추가됩니다.
 
 #### Thread 내 다음 연결
-이 Thread의 최종 integration 지점입니다. 이후 thread에서는 동일 parsed lifetime에 heredoc과 failure recovery가 결합됩니다.
+이 Thread의 최종 integration 지점입니다. 이후 thread에서는 동일 parsed 수명에 heredoc과 failure recovery가 결합됩니다.
 
-## 6. Invariant ledger
+## 6. 항상 유지해야 하는 조건 ledger
 
-Source가 명시한 invariant와 engineering difficulty를 유지하고 exact code 근거를 채웠습니다.
+Source가 명시한 항상 유지해야 하는 조건과 engineering difficulty를 유지하고 exact code 근거를 채웠습니다.
 
-| Invariant | Source에서 확정된 의미 | 처음 도입/표현 | 강화·복구·검증 | 학습자가 확인한 코드 근거 |
+| 항상 유지해야 하는 조건 | Source에서 확정된 의미 | 처음 도입/표현 | 강화·복구·검증 | 학습자가 확인한 코드 근거 |
 | --- | --- | --- | --- | --- |
 | Published parsed objects have one hierarchical cleanup owner. | 공개된 token, argv entry, redirection, command, pipeline의 소유권은 계층적으로 단일해야 합니다. | `48670b845d7f` | `f297aaad70fe` | `src/parser.c`의 node constructors/append와 `free_pipeline`; sequence parse failure도 completed prefix와 current objects를 같은 hierarchy cleanup으로 정리합니다. |
 | Quote effects survive until the stage that needs them. | quote delimiter가 제거된 뒤에도 expansion에 필요한 literal 의미는 남아야 합니다. | `729a6d2a7d4a` | `13a70b408e89`에서 runtime expansion과 결합 | `src/token.c::read_word`가 single-quoted byte에 `LITERAL_MARK`를 붙이고, selected pipeline의 `expand_word`가 marker pair를 literal byte로 소비합니다. Token text는 line과 별도 allocation입니다. |
@@ -469,14 +469,14 @@ Source가 명시한 invariant와 engineering difficulty를 유지하고 exact co
 | pipe와 connector를 같은 수준으로 처리하면 binding이 깨짐 | `8624028b83bb`의 pipeline 경계와 `f297aaad70fe`의 pipeline-linked sequence | 구조 자체가 문제를 예방하는 결정입니다. | source-defined Thread에는 test commit이 없으므로 parser code와 예제 입력으로 증거를 남깁니다. | `a | b && c ; d`가 `[a,b] --AND--> [c] --SEQ--> [d]`로 변환되는 state와 `next_op` assignment를 추적했습니다. |
 | 전체 line 선확장 시 skipped branch가 확장되고 `$?`가 stale해짐 | `13a70b408e89`의 gate 후 delayed expansion | 동일 commit에서 execution order를 변경합니다. | gate 전후 호출 순서와 status mutation을 exact SHA에서 확인합니다. | `execute_pipeline_list_ctx` gate → `expand_one_pipeline` → execute → `last_status` update 순서와 false gate에서 expansion call 부재를 확인했습니다. |
 
-## 8. Ownership / state / responsibility 변화
+## 8. 소유권 / state / responsibility 변화
 
 | 대상 | Owner / 책임 주체 | 책임 종료 시점 | 해당 SHA에서 확인할 내용 | 학습자 기록 |
 | --- | --- | --- | --- | --- |
 | 입력 줄 | `shell_loop` | line 처리 종료 | tokenization 완료 뒤에도 token text가 독립 소유인지 확인 | line과 token text는 별도 allocation이며 input loop가 line을 회수합니다. |
 | token text/list | lexer/token list cleanup | parse가 필요한 데이터를 복사한 뒤 | `free_tokens`와 parser copy 지점 기록 | parser가 argv/redirection target을 duplicate한 뒤 `shell_process_line`이 token list를 free합니다. |
-| argv/redirection/command/pipeline | parsed hierarchy | line execution 완료 또는 parse failure | `free_pipeline` 및 sequence cleanup의 leaf-to-root 순서 기록 | command-owned strings/nodes부터 pipeline list까지 하나의 hierarchy로 해제됩니다. |
-| expanded argv/redirection target | parsed field를 대체한 소유자 | pipeline 실행 후 parsed cleanup | old encoded string free와 new string publish 순서 기록 | selected pipeline에서 expansion 성공 후 field가 replacement를 소유하고, final `free_pipeline`이 해제합니다. Skipped fields는 encoded 상태 그대로 남았다가 같은 cleanup을 탑니다. |
+| argv/redirection/command/처리 단계 | parsed hierarchy | line execution 완료 또는 parse failure | `free_pipeline` 및 sequence cleanup의 leaf-to-root 순서 기록 | command-owned strings/nodes부터 처리 단계 list까지 하나의 hierarchy로 해제됩니다. |
+| expanded argv/redirection target | parsed field를 대체한 소유자 | 처리 단계 실행 후 parsed cleanup | old encoded string free와 new string publish 순서 기록 | selected 처리 단계에서 expansion 성공 후 field가 replacement를 소유하고, final `free_pipeline`이 해제합니다. Skipped fields는 encoded 상태 그대로 남았다가 같은 cleanup을 탑니다. |
 | `t_shell` status/running/environment | top-level shell | process 종료 | per-line transient data와 분리되는 경계 기록 | line cleanup 뒤에도 `last_status`, `running`, environment만 남아 다음 gate/expansion에 사용됩니다. |
 
 ## 9. Thread 최종 상태
@@ -493,18 +493,18 @@ t_pipeline(head)
   └─ next -> t_pipeline ...
 ```
 
-- 각 connector는 왼쪽 complete pipeline의 `next_op`에 저장됩니다.
-- `execute_pipeline_list_ctx`가 previous connector와 current `last_status`로 gate한 뒤 selected pipeline만 `expand_one_pipeline`에 전달합니다.
+- 각 connector는 왼쪽 complete 처리 단계의 `next_op`에 저장됩니다.
+- `execute_pipeline_list_ctx`가 previous connector와 current `last_status`로 gate한 뒤 selected 처리 단계만 `expand_one_pipeline`에 전달합니다.
 - syntax failure는 transient objects를 정리하고 258, empty parse는 이전 status 유지, valid execution은 실행 결과를 status로 남긴 뒤 hierarchy를 정리합니다.
 
 ### 최종 상태 기록
 
-- 최종적으로 유지되는 data/resource ownership: line, token list, parsed hierarchy는 각 단계에서 독립 allocation을 소유하고 한 line 종료 전에 해제됩니다. `t_shell`만 process lifetime을 가집니다.
-- 최종적으로 보장되는 execution 또는 recovery rule: pipe는 한 pipeline 내부에서 먼저 결합되고 connector는 complete pipelines를 연결합니다. Gate를 통과한 pipeline만 현재 shell state로 확장·실행됩니다.
+- 최종적으로 유지되는 data/자원 소유권: line, token list, parsed hierarchy는 각 단계에서 독립 allocation을 소유하고 한 line 종료 전에 해제됩니다. `t_shell`만 process 수명을 가집니다.
+- 최종적으로 보장되는 execution 또는 recovery rule: pipe는 한 처리 단계 내부에서 먼저 결합되고 connector는 complete 처리 단계를 연결합니다. Gate를 통과한 처리 단계만 현재 shell state로 확장·실행됩니다.
 - Thread가 해결한 가장 어려운 failure: completed prefix와 in-progress objects가 함께 존재하는 sequence parse failure, 그리고 short-circuit branch를 선확장하지 않도록 timing을 분리한 문제입니다.
 - Thread 밖에 남아 있는 보장 범위: heredoc provenance/input recovery, syscall·allocation failure, process/FD lifecycle, 성능 검증은 후속 Thread가 담당합니다.
 
-## 10. 최종 architecture 또는 execution flow 정리
+## 10. 최종 architecture 또는 실행 순서 정리
 
 ```text
 [source line: shell_loop가 line allocation 소유]
@@ -526,20 +526,20 @@ t_pipeline(head)
 
 - 핵심 entry function: `shell_process_line`.
 - 주요 caller → callee chain: `shell_loop` → `shell_process_line` → `tokenize_line` → `parse_tokens` → `free_tokens` → `execute_pipeline_list`/`execute_pipeline_list_ctx` → `expand_one_pipeline` → dispatch → `free_pipeline`.
-- state mutation 순서: token/pipeline local publish → connector gate → selected field expansion → command execution → `last_status` update → optional `running` clear → transient cleanup.
-- ownership transfer 순서: scanner local word → token node → parser duplicate to command/redirection → expanded replacement in parsed field → hierarchy destructor.
+- state mutation 순서: token/처리 단계 local publish → connector gate → selected field expansion → command execution → `last_status` update → optional `running` clear → transient cleanup.
+- 소유권 transfer 순서: scanner local word → token node → parser duplicate to command/redirection → expanded replacement in parsed field → hierarchy destructor.
 - failure convergence path: lexical/parse failure는 error allocation과 partial structures를 정리하고 258; expansion failure는 no dispatch/status 1; valid/skip path 모두 final hierarchy cleanup으로 수렴합니다.
-- regression evidence: 이 Thread에는 source-defined test commit이 없습니다. Exact branch order와 ownership cleanup을 code inspection으로 검증했으며 runtime test는 실행하지 않았습니다.
+- regression evidence: 이 Thread에는 source-defined test commit이 없습니다. Exact branch order와 소유권 cleanup을 code inspection으로 검증했으며 runtime test는 실행하지 않았습니다.
 
 ## 11. 학습 완료 자가 점검
 
 - [x] 모든 commit을 exact SHA에서 확인했고 final HEAD를 소급하지 않았습니다.
 - [x] Commit map의 SHA, subject, importance, tags, order를 변경하지 않았습니다.
-- [x] S commit은 problem, prior state, failure possibility, decision, core code, ownership/lifecycle, follow-up을 설명했습니다.
-- [x] A commit은 subsystem boundary 또는 failure path와 실제 핵심 code를 설명했습니다.
-- [x] B commit은 Thread 내 구현 역할과 state/ownership 변화를 설명했습니다.
+- [x] S commit은 problem, prior state, failure possibility, decision, core code, 소유권/lifecycle, 후속 작업을 설명했습니다.
+- [x] A commit은 subsystem boundary 또는 실패 처리와 실제 핵심 code를 설명했습니다.
+- [x] B commit은 Thread 내 구현 역할과 state/소유권 변화를 설명했습니다.
 - [x] 이 Thread의 fix/test 부재를 명시하고 code evidence를 임의의 later test로 대체하지 않았습니다.
-- [x] Invariant ledger의 각 행에 실제 file/function/branch 근거가 있습니다.
+- [x] 항상 유지해야 하는 조건 ledger의 각 행에 실제 file/function/branch 근거가 있습니다.
 - [x] 정상·실패 경로 모두에서 resource와 partial object의 terminal owner를 설명했습니다.
 - [x] 이 Thread의 설계 → 구현 → 실행 timing → integration 흐름을 commit history 순서로 재구성했습니다.
 ===== END FILE: 01-parsed-representation-to-conditional-execution.md =====
@@ -549,8 +549,8 @@ t_pipeline(head)
 
 > 한국어 주제: **저장된 입력에서 복구 가능한 cross-stage heredoc 의미까지**
 >
-> Project: `small-shell`  
-> Branch: `c/minishell`  
+> Project: `small-shell`
+> Branch: `c/minishell`
 > Development Thread order: 2/5
 
 ## 1. Thread 목표
@@ -588,7 +588,7 @@ Heredoc은 parser identity, quote provenance, 입력 소비 순서, expansion, d
 - [x] 한 line에 heredoc이 둘 이상 있는 입력을 사용해 parse node identity와 body entry를 연결했습니다.
 - [x] single, double, partial quote delimiter의 text와 provenance를 별도로 기록했습니다.
 - [x] parse → precollect → store → expand policy → temp stream → dup2 → cleanup 순서를 코드로 검증했습니다.
-- [x] quote provenance bug, temp stream failure, input-boundary failure의 각각에 대해 Fix → Regression Test를 연결했습니다.
+- [x] quote provenance bug, temp stream failure, input-boundary failure의 각각에 대해 Fix → 회귀 테스트를 연결했습니다.
 - [x] 정상 EOF warning, recoverable read failure, unrecoverable repeated failure를 구분했습니다.
 
 > 실행 범위: exact SHA의 commit diff와 해당 시점 source/test를 GitHub repository에서 검사했습니다. Branch checkout이 불가능해 test binary와 shell script는 실행하지 않았으며, 아래에서 코드 검토와 실제 실행을 구분합니다.
@@ -596,7 +596,7 @@ Heredoc은 parser identity, quote provenance, 입력 소비 순서, expansion, d
 ## 4. Commit map
 
 | 순서 | SHA | Subject | Importance | Tags | Source-defined role |
-| ---: | --- | --- | :---: | --- | --- |
+| ---: | --- | --- |:---: | --- | --- |
 | 1 | `e65591bb66f5` | `feat(heredoc): 구분자 정규화 버퍼 구현` | B | `HEREDOC`, `PRACTICAL` | Introduces delimiter dequoting support. |
 | 2 | `7c9692346824` | `feat(heredoc): 수집 본문 저장소 수명 관리` | A | `HEREDOC`, `ARCH`, `RISK` | Defines body storage keyed by the owning redirection node. |
 | 3 | `fc9c63a03db2` | `feat(heredoc): 구분자별 본문 순차 수집` | A | `HEREDOC`, `CORE`, `INTEGRATION` | Collects all pending bodies in source order. |
@@ -619,7 +619,7 @@ Heredoc은 parser identity, quote provenance, 입력 소비 순서, expansion, d
 - Importance: **B**
 - Tags: `HEREDOC`, `PRACTICAL`
 - Source-defined role: Introduces delimiter dequoting support.
-- 학습 깊이: Thread 흐름에서 맡는 구현 역할과 필요한 state/ownership 변화를 확인합니다.
+- 학습 깊이: Thread 흐름에서 맡는 구현 역할과 필요한 state/소유권 변화를 확인합니다.
 
 #### Source에서 확정된 변화
 lexer literal-marker encoding을 제거해 exact delimiter text를 만드는 전용 normalization buffer를 추가하되, ordinary variable expansion은 수행하지 않습니다.
@@ -641,7 +641,7 @@ lexer literal-marker encoding을 제거해 exact delimiter text를 만드는 전
 #### 학습자가 남길 코드 증거
 - encoded delimiter 입력 예와 normalized output: `E\001O\001F` → `EOF`; `$TAG` → `$TAG`로 유지됩니다.
 - marker pair 소비 branch: marker가 있고 following byte가 있으면 index를 2만큼 진행하고 following byte만 append합니다.
-- NUL/capacity invariant: initialized cap 64, `len` 위치에 항상 NUL, `len + 1`이 cap에 닿으면 grow합니다.
+- NUL/capacity 항상 유지해야 하는 조건: initialized cap 64, `len` 위치에 항상 NUL, `len + 1`이 cap에 닿으면 grow합니다.
 - failure cleanup: local buffer allocation을 free하고 NULL; source `redir->target`에는 mutation이 없습니다.
 - ordinary word expansion과 분리되는 API boundary: `dequote_runtime_word`는 shell/environment 인자를 받지 않고 encoded text만 받습니다.
 - 확인한 변경 파일: `src/heredoc.c`와 build source list.
@@ -675,7 +675,7 @@ if (word[i] == LITERAL_MARK && word[i + 1] != '\0') {
 - Importance: **A**
 - Tags: `HEREDOC`, `ARCH`, `RISK`
 - Source-defined role: Defines body storage keyed by the owning redirection node.
-- 학습 깊이: 주요 subsystem boundary, integration point 또는 failure path. 핵심 코드와 설계 판단을 확인합니다.
+- 학습 깊이: 주요 subsystem boundary, integration point 또는 실패 처리. 핵심 코드와 설계 판단을 확인합니다.
 
 #### Source에서 확정된 변화
 각 heredoc body와 해당 parsed redirection pointer를 pair로 저장하는 execution-context-owned repository를 추가합니다. delimiter text가 같아도 redirection identity로 구분하며, destructor가 body와 entry를 해제합니다.
@@ -685,20 +685,20 @@ if (word[i] == LITERAL_MARK && word[i + 1] != '\0') {
 - 해결하려던 문제: `cat <<EOF <<EOF`처럼 같은 text가 반복돼도 각 syntax occurrence가 별도 body를 가져야 합니다.
 - 기존 표현·실행 순서가 충분하지 않았던 이유: delimiter string을 key로 사용하면 duplicate text가 collision하고 source-order redirection identity가 사라집니다.
 - 선택한 결정: `heredoc_entry`가 non-owning `const t_redir *redir` key와 owned `char *body`를 pair로 보관하고 `exec_context`가 entry list를 소유합니다.
-- publish 또는 state mutation이 일어나는 지점: body는 collector local로 완성되고 entry allocation이 성공한 뒤 `entry->body`로 ownership이 이전되어 repository list에 연결됩니다.
+- publish 또는 state mutation이 일어나는 지점: body는 collector local로 완성되고 entry allocation이 성공한 뒤 `entry->body`로 소유권이 이전되어 repository list에 연결됩니다.
 - failure 뒤 cleanup 또는 상태: entry allocation 실패면 caller가 body를 계속 소유해 free할 수 있습니다. Repository destructor는 body를 먼저 free하고 node를 free합니다.
 
 #### `7c9692346824`에서 확인할 실제 코드
-- `src/exec_internal.h`의 execution context와 `src/heredoc.c`의 entry fields를 확인했습니다.
+- `src/exec_internal.h`의 execution 문맥과 `src/heredoc.c`의 entry fields를 확인했습니다.
 - lookup은 delimiter `strcmp`가 아니라 `entry->redir == redir` pointer equality를 사용합니다.
-- missing lookup은 NULL 대신 empty string fallback을 반환해 redirection caller가 read-only body contract를 유지합니다.
+- missing lookup은 NULL 대신 empty string 대체 처리를 반환해 redirection caller가 read-only body contract를 유지합니다.
 - repository가 key로 참조하는 parsed tree보다 먼저 해제되어야 합니다.
 
 #### 학습자가 남길 코드 증거
-- entry ownership graph: `exec_context → entry node → body allocation`; `entry->redir`는 parsed tree의 non-owning pointer입니다.
+- entry 소유권 graph: `exec_context → entry node → body allocation`; `entry->redir`는 parsed tree의 non-owning pointer입니다.
 - 동일 delimiter 두 개의 서로 다른 key: text가 모두 `EOF`여도 `&redir1 != &redir2`이므로 별도 entry가 선택됩니다.
 - lookup return contract: matching entry의 body, 없으면 `""`; caller는 free하지 않습니다.
-- repository와 parsed tree lifetime ordering: `exec_heredoc_entries_free(ctx.heredocs)`가 `free_pipeline(pipelines)`보다 먼저여야 dangling key traversal을 피합니다.
+- repository와 parsed tree 수명 ordering: `exec_heredoc_entries_free(ctx.heredocs)`가 `free_pipeline(pipelines)`보다 먼저여야 dangling key traversal을 피합니다.
 - execution context init/free 호출자: line executor가 `ctx.heredocs = NULL`로 시작하고 line execution 종료/준비 실패에서 repository destructor를 호출합니다.
 - 확인한 변경 파일: `src/exec_internal.h`, `src/heredoc.c`.
 - 핵심 caller → callee: preparation → `add_heredoc_entry`; redirection apply → body lookup; final cleanup → entry destructor.
@@ -720,16 +720,16 @@ if (word[i] == LITERAL_MARK && word[i + 1] != '\0') {
 - Importance: **A**
 - Tags: `HEREDOC`, `CORE`, `INTEGRATION`
 - Source-defined role: Collects all pending bodies in source order.
-- 학습 깊이: 주요 subsystem boundary, integration point 또는 failure path. 핵심 코드와 설계 판단을 확인합니다.
+- 학습 깊이: 주요 subsystem boundary, integration point 또는 실패 처리. 핵심 코드와 설계 판단을 확인합니다.
 
 #### Source에서 확정된 변화
-sequence의 pipeline, command, redirection을 source order로 순회하여 모든 heredoc body를 실행 전에 수집합니다. exact delimiter match까지 읽고 각 line에 newline을 붙여 identity-keyed repository에 저장합니다.
+sequence의 처리 단계, command, redirection을 source order로 순회하여 모든 heredoc body를 실행 전에 수집합니다. exact delimiter match까지 읽고 각 line에 newline을 붙여 identity-keyed repository에 저장합니다.
 
 #### 설계·상태 변화 기록
 - 이 commit 직전 상태: repository는 있었지만 parser graph를 순회해 stdin에서 body를 채우는 preparation phase가 없었습니다.
 - 해결하려던 문제: line 안의 모든 pending heredoc을 lexical order로 소비하고, connector에서 skip될 command의 body도 다음 command parsing 전에 제거해야 했습니다.
 - 기존 표현·실행 순서가 충분하지 않았던 이유: selected command 실행 시점에만 heredoc을 읽으면 source input 순서와 conditional gate가 뒤섞이고 body line이 다음 shell command로 해석될 수 있습니다.
-- 선택한 결정: top-level preparation이 pipeline → command → redirection 순으로 전부 순회하고 각 heredoc을 delimiter까지 읽어 repository에 저장합니다.
+- 선택한 결정: top-level preparation이 처리 단계 → command → redirection 순으로 전부 순회하고 각 heredoc을 delimiter까지 읽어 repository에 저장합니다.
 - publish 또는 state mutation이 일어나는 지점: delimiter match/EOF까지 body buffer가 local이고 `add_heredoc_entry` 성공 뒤 repository-owned가 됩니다.
 - failure 뒤 cleanup 또는 상태: allocation/read preparation failure는 partial local body를 discard하고 failure를 반환합니다. 이 SHA는 즉시 abort하므로 unread body/pending heredoc이 stdin에 남을 수 있으며 later fix 대상입니다.
 
@@ -742,7 +742,7 @@ sequence의 pipeline, command, redirection을 source order로 순회하여 모�
 - connector gate를 알기 전에 complete parsed line의 heredoc을 수집합니다.
 
 #### 학습자가 남길 코드 증거
-- 여러 heredoc의 실제 traversal order: pipeline list order, 각 pipeline의 command order, 각 command의 redirection list order입니다.
+- 여러 heredoc의 실제 traversal order: 처리 단계 list order, 각 처리 단계의 command order, 각 command의 redirection list order입니다.
 - line comparison에서 newline 제거/보존 처리: line reader가 newline 없는 logical line을 반환하고 delimiter와 exact compare하며, body line만 append 후 `\n`을 하나 추가합니다.
 - stored body의 newline policy: delimiter line은 저장하지 않고 각 accepted body line 끝에 정확히 하나의 newline을 저장합니다.
 - premature EOF warning과 return contract: warning 후 현재 body를 성공 결과로 publish하며 preparation 자체를 syntax failure로 만들지 않습니다.
@@ -767,7 +767,7 @@ sequence의 pipeline, command, redirection을 source order로 순회하여 모�
 - Importance: **A**
 - Tags: `HEREDOC`, `EXPANSION`, `CORE`
 - Source-defined role: Adds quote-dependent body expansion.
-- 학습 깊이: 주요 subsystem boundary, integration point 또는 failure path. 핵심 코드와 설계 판단을 확인합니다.
+- 학습 깊이: 주요 subsystem boundary, integration point 또는 실패 처리. 핵심 코드와 설계 판단을 확인합니다.
 
 #### Source에서 확정된 변화
 delimiter가 unquoted로 판단되면 body line에서 `$?`와 valid environment name을 확장하고, quoted로 판단되면 bytes를 그대로 보존합니다. 이 시점의 quote 판단은 delimiter의 literal marker 존재 여부에 의존합니다.
@@ -789,7 +789,7 @@ delimiter가 unquoted로 판단되면 body line에서 `$?`와 valid environment 
 
 #### 학습자가 남길 코드 증거
 - quote heuristic의 실제 condition: target bytes 중 `LITERAL_MARK` 발견 여부입니다.
-- body expansion state machine 또는 helper: `$?`는 decimal status, `$` 뒤 valid name은 environment value, unset은 empty, 그 외 `$`는 literal로 처리합니다.
+- body expansion 상태 머신 또는 helper: `$?`는 decimal status, `$` 뒤 valid name은 environment value, unset은 empty, 그 외 `$`는 literal로 처리합니다.
 - unset/unknown dollar 결과: unset valid name은 아무 byte도 append하지 않고, unknown form은 `$` 자체를 보존한 뒤 다음 byte를 normal scan합니다.
 - quoted body literal path: line을 expansion helper 없이 body buffer에 append합니다.
 - later fix가 필요한 hidden assumption: marker는 single-quoted literal byte를 나타낼 뿐, double quote 또는 partial double quote 참여를 항상 나타내지 않습니다.
@@ -812,24 +812,24 @@ delimiter가 unquoted로 판단되면 body line에서 `$?`와 valid environment 
 - Subject: `feat(redirection): heredoc을 stdin으로 연결`
 - Importance: **S**
 - Tags: `HEREDOC`, `FD_IO`, `INTEGRATION`
-- Source-defined role: Integrates heredoc syntax, precollection, lifetime, redirection order, and stdin installation.
-- 학습 깊이: Architecture / invariant 핵심. 변경 전 가정, failure 가능성, 결정, core code, ownership/lifecycle, follow-up을 추적합니다.
+- Source-defined role: Integrates heredoc syntax, precollection, 수명, redirection order, and stdin installation.
+- 학습 깊이: Architecture / 항상 유지해야 하는 조건 핵심. 변경 전 가정, failure 가능성, 결정, core code, 소유권/lifecycle, 후속 작업을 추적합니다.
 
 #### Source에서 확정된 변화
-`<<`를 first-class token/redirection으로 만들고, 실행 전에 모든 body를 수집한 뒤 ordinary redirection traversal에서 temporary stream을 stdin에 설치합니다. Body lifetime은 parsed line execution에 한정됩니다.
+`<<`를 first-class token/redirection으로 만들고, 실행 전에 모든 body를 수집한 뒤 ordinary redirection traversal에서 temporary stream을 stdin에 설치합니다. Body 수명은 parsed line execution에 한정됩니다.
 
 #### Source가 확정한 핵심 판단
 - **문제**: Heredoc requires more than recognizing `<<`: its body must be read before execution, associated with the correct parsed redirection, installed in source order, and released at the end of the line.
 - **결정**: Make heredoc a first-class token and redirection type, precollect all bodies into an execution context keyed by redirection identity, dequote rather than normally expand the delimiter, and install the selected body through the ordinary redirection traversal.
-- **중요한 이유**: Reusing ordered redirection application preserves interactions with incoming pipes and later input redirects. The line-scoped execution context also keeps body lifetime independent of child lifetime while retaining a stable link to parsed ownership.
+- **중요한 이유**: Reusing ordered redirection application preserves interactions with incoming pipes and later input redirects. The line-scoped execution context also keeps body 수명 independent of child 수명 while retaining a stable link to parsed 소유권.
 - **확정된 변경 범위**: Lexer and parser support, heredoc preparation, execution-context initialization, failure cleanup, temporary-stream installation on stdin, and post-execution body release were connected into the product path.
-- **프로젝트 이해에서의 위치**: This commit shows how a shell feature crosses every major phase. It is the clearest example of the repository's integration and ownership design.
+- **프로젝트 이해에서의 위치**: This commit shows how a shell feature crosses every major phase. It is the clearest example of the repository's integration and 소유권 design.
 
 #### 설계·상태 변화 기록
 - 이 commit 직전 상태: collector/repository helpers는 있었지만 lexer/parser가 `<<`를 first-class redirection으로 만들고 product execution에 연결하지 않았습니다.
-- 해결하려던 문제: syntax recognition, precollection, body identity/lifetime, pipe/redirection precedence, stdin installation을 한 line transaction으로 결합해야 했습니다.
+- 해결하려던 문제: syntax recognition, precollection, body identity/수명, pipe/redirection precedence, stdin installation을 한 line transaction으로 결합해야 했습니다.
 - 기존 표현·실행 순서가 충분하지 않았던 이유: heredoc을 ordinary `< file`처럼 처리할 수 없고, child가 실행할 때 stdin에서 body를 읽으면 multiple/conditional ordering과 parent input stream이 깨집니다.
-- 선택한 결정: `TOK_HEREDOC`/`REDIR_HEREDOC`을 추가하고 line processor가 context를 initialize해 모든 body를 먼저 수집하며, ordered redirection traversal이 repository body를 temporary stream으로 stage한 뒤 stdin에 `dup2`합니다.
+- 선택한 결정: `TOK_HEREDOC`/`REDIR_HEREDOC`을 추가하고 line processor가 문맥을 initialize해 모든 body를 먼저 수집하며, ordered redirection traversal이 repository body를 temporary stream으로 stage한 뒤 stdin에 `dup2`합니다.
 - publish 또는 state mutation이 일어나는 지점: parsed redirection node와 repository entry는 preparation 성공 후 stable identity로 연결됩니다. Staging은 temporary stream을 완성한 뒤 `dup2`에서 stdin을 바꿉니다.
 - failure 뒤 cleanup 또는 상태: preparation 실패는 status 1, repository free, parsed tree free로 수렴합니다. Per-redirection staging failure는 stream close 후 command redirection failure가 됩니다. 이 SHA에서는 `fflush`/rewind failure 결과를 충분히 확인하지 않습니다.
 
@@ -866,7 +866,7 @@ delimiter가 unquoted로 판단되면 body line에서 `$?`와 valid environment 
 - Importance: **S**
 - Tags: `HEREDOC`, `DEBUG`, `RISK`
 - Source-defined role: Replaces an insufficient text heuristic with explicit lexical quote provenance.
-- 학습 깊이: Architecture / invariant 핵심. 변경 전 가정, failure 가능성, 결정, core code, ownership/lifecycle, follow-up을 추적합니다.
+- 학습 깊이: Architecture / 항상 유지해야 하는 조건 핵심. 변경 전 가정, failure 가능성, 결정, core code, 소유권/lifecycle, 후속 작업을 추적합니다.
 
 #### Source에서 확정된 변화
 Delimiter text에서 quote 여부를 재구성하던 heuristic을 제거하고, token이 quote syntax 참여 여부를 기록해 parser의 `heredoc_quoted` field와 collector까지 전달합니다.
@@ -882,7 +882,7 @@ Delimiter text에서 quote 여부를 재구성하던 heuristic을 제거하고, 
 - 기존 가정: encoded target에 `LITERAL_MARK`가 있으면 quoted이고 없으면 unquoted라는 가정이었습니다.
 - 실제 failure 또는 위험을 드러내는 입력·상태: `cat <<"EOF"` 또는 `cat <<E"OF"`의 normalized delimiter는 `EOF`이고 encoded text에 single-quote marker가 없을 수 있어 body의 `$HD`가 잘못 확장됩니다.
 - root cause가 위치한 representation / lifecycle / ordering boundary: lexer가 quote delimiter를 제거한 뒤 final text만 보고 lexical participation을 복원하려 한 representation boundary입니다.
-- 수정된 invariant 또는 decision: delimiter matching text와 quote provenance를 서로 독립된 values로 보존합니다.
+- 수정된 항상 유지해야 하는 조건 또는 decision: delimiter matching text와 quote provenance를 서로 독립된 values로 보존합니다.
 - 변경 전 코드 증거: collector가 target bytes에서 marker presence를 scan해 `quoted`를 계산했습니다.
 - 변경 후 코드 증거: `t_token.quoted` → heredoc parse branch의 `t_redir.heredoc_quoted` → `read_heredoc`의 policy branch로 값이 전달됩니다.
 - 연결되는 regression test와 그 한계: `dce9e5c083fa`가 fully double-quoted와 partial double-quoted cases를 고정합니다. 모든 가능한 quote 조합이나 I/O failure는 다루지 않습니다.
@@ -893,14 +893,14 @@ Delimiter text에서 quote 여부를 재구성하던 heuristic을 제거하고, 
 - `src/token.c::read_word`는 single/double quote 어느 쪽이든 quote syntax 진입 시 flag를 set합니다.
 - `src/parser.c`는 heredoc operator의 target token에서만 quoted flag를 redirection field로 복사합니다.
 - `src/heredoc.c`는 normalized text는 matching에, `redir->heredoc_quoted`는 body expansion decision에 사용합니다.
-- Token list가 free돼도 copied redirection flag가 parsed lifetime 동안 유지됩니다.
+- Token list가 free돼도 copied redirection flag가 parsed 수명 동안 유지됩니다.
 
 #### 학습자가 남길 코드 증거
 - 기존 가정: marker presence ≈ quote participation.
 - 실제 failure input: `HD=expanded; cat <<"EOF"` body `$HD` 또는 `cat <<E"OF"` body `$HD`.
 - root cause가 text normalization 이후 정보 손실인 근거: 두 inputs의 matching text는 unquoted `EOF`와 같지만 body policy는 달라야 합니다.
 - token flag set → parser copy → collector branch 경로: `read_word(..., &quoted)` → token node `quoted` → heredoc target parse → `redir->heredoc_quoted` → `read_heredoc` literal/expand branch.
-- 수정된 semantic invariant: quote syntax가 delimiter의 어느 segment에라도 참여하면 body expansion을 억제합니다.
+- 수정된 semantic 항상 유지해야 하는 조건: quote syntax가 delimiter의 어느 segment에라도 참여하면 body expansion을 억제합니다.
 - 확인한 변경 파일: `include/shell.h`, `src/token.c`, `src/parser.c`, `src/heredoc.c`.
 - 핵심 caller → callee: `tokenize_line` → `parse_tokens` → `exec_prepare_heredocs` → `read_heredoc`.
 - parent SHA와 비교한 최소 before/after snippet:
@@ -930,13 +930,13 @@ quoted = redir->heredoc_quoted;
 - Importance: **A**
 - Tags: `TEST`, `HEREDOC`, `EDGE`
 - Source-defined role: Locks down double-quoted and partially quoted delimiters.
-- 학습 깊이: 주요 subsystem boundary, integration point 또는 failure path. 핵심 코드와 설계 판단을 확인합니다.
+- 학습 깊이: 주요 subsystem boundary, integration point 또는 실패 처리. 핵심 코드와 설계 판단을 확인합니다.
 
 #### Source에서 확정된 변화
 Fully double-quoted delimiter와 unquoted/double-quoted segment가 섞인 delimiter 모두에서 final terminator는 `EOF`로 dequote되지만 body의 `$HD`는 literal이어야 함을 검증합니다.
 
 #### Test commit 학습 기록
-- 대상 production invariant: delimiter text와 quote provenance는 독립이며 quote segment가 하나라도 있으면 body expansion을 억제합니다.
+- 대상 production 항상 유지해야 하는 조건: delimiter text와 quote provenance는 독립이며 quote segment가 하나라도 있으면 body expansion을 억제합니다.
 - 재현하는 failure 또는 boundary: marker가 없는 double/partial quote가 old heuristic에서 unquoted로 오인되는 boundary입니다.
 - 사용한 test technique: environment를 고정한 end-to-end deterministic regression입니다.
 - 실제 통과하는 production code path: input/tokenize → heredoc target parse/provenance copy → precollection → normalized `EOF` match → quoted literal body → temporary stdin → `cat`.
@@ -952,12 +952,12 @@ Fully double-quoted delimiter와 unquoted/double-quoted segment가 섞인 delimi
 - 두 cases 모두 production lexer/parser/collector/redirection/external command 경로를 통과합니다.
 
 #### 학습자가 남길 코드 증거
-- 대상 production invariant: any quote participation suppresses body expansion while dequoted matching text remains unchanged.
+- 대상 production 항상 유지해야 하는 조건: any quote participation suppresses body expansion while dequoted matching text remains unchanged.
 - 재현하는 failure/boundary: final text가 같아 provenance를 text에서 역산할 수 없는 경우입니다.
 - test technique: fixed environment + exact stdin fixture + expected stdout/status comparison.
 - 통과하는 production path: `shell_process_line` → heredoc preparation → `cat` stdin installation.
 - 증명하는 것: `<<"EOF"`와 `<<E"OF"` 모두 delimiter matching은 `EOF`, body policy는 literal입니다.
-- 증명하지 않는 것: 모든 quote 조합, all failure paths, resource leak 부재는 증명하지 않습니다.
+- 증명하지 않는 것: 모든 quote 조합, all failure paths, 자원 누수 부재는 증명하지 않습니다.
 - 막는 후속 회귀: lexical provenance field 또는 parser copy를 제거해 text heuristic으로 돌아가는 회귀입니다.
 - 확인한 변경 파일: `tests/smoke.sh`.
 - 핵심 caller → callee: test shell input → product `shell_process_line` → heredoc collector/redirection → external `cat`.
@@ -979,7 +979,7 @@ Fully double-quoted delimiter와 unquoted/double-quoted segment가 섞인 delimi
 - Importance: **A**
 - Tags: `HEREDOC`, `FD_IO`, `FAILURE`
 - Source-defined role: Propagates temporary-stream storage and positioning failures.
-- 학습 깊이: 주요 subsystem boundary, integration point 또는 failure path. 핵심 코드와 설계 판단을 확인합니다.
+- 학습 깊이: 주요 subsystem boundary, integration point 또는 실패 처리. 핵심 코드와 설계 판단을 확인합니다.
 
 #### Source에서 확정된 변화
 In-memory heredoc body를 temporary input stream으로 변환할 때 body write, flush, seek, descriptor lookup이 모두 성공한 뒤에만 `dup2`를 호출하도록 오류를 전파합니다.
@@ -988,7 +988,7 @@ In-memory heredoc body를 temporary input stream으로 변환할 때 body write,
 - 기존 가정: `fputs`가 성공하면 body가 readable stream에 완전히 저장됐다고 보고 `fflush`와 rewind/positioning result를 사실상 best-effort로 취급했습니다.
 - 실제 failure 또는 위험을 드러내는 입력·상태: buffered write 뒤 flush가 실패하거나 seek가 실패하면 empty/truncated stream 또는 end-position stream을 stdin으로 설치할 수 있습니다.
 - root cause가 위치한 representation / lifecycle / ordering boundary: memory body에서 stdio stream/descriptor로 변환하는 staging boundary에서 각 intermediate operation의 success가 publish condition에 포함되지 않았습니다.
-- 수정된 invariant 또는 decision: write → flush → seek-to-start → descriptor lookup이 모두 성공하기 전 stdin을 바꾸지 않습니다.
+- 수정된 항상 유지해야 하는 조건 또는 decision: write → flush → seek-to-start → descriptor lookup이 모두 성공하기 전 stdin을 바꾸지 않습니다.
 - 변경 전 코드 증거: `fflush` result가 무시되고 `rewind`는 failure를 반환하지 않는 API로 사용됐습니다.
 - 변경 후 코드 증거: operation-specific wrappers의 return을 검사하고 shared `heredoc_stream_error`로 수렴한 뒤, 마지막에만 `shell_dup2(fd, STDIN_FILENO)`를 호출합니다.
 - 연결되는 regression test와 그 한계: `2fbc4c73af2c`가 deterministic flush/seek failures를 검증합니다. 모든 possible write/fileno/dup2 조합을 단독 검증하지는 않습니다.
@@ -1004,7 +1004,7 @@ In-memory heredoc body를 temporary input stream으로 변환할 때 body write,
 #### 학습자가 남길 코드 증거
 - 기존 best-effort assumption: write request 반환만으로 readable staging completion을 간주했습니다.
 - 각 staging 단계의 성공 조건: `fputs != EOF`, `fflush == 0`, `fseek == 0`, `fileno >= 0`, 마지막 `dup2 >= 0`입니다.
-- shared error path와 saved errno: failed operation에서 `saved_errno = errno != 0 ? errno : EIO`; close/diagnostic 때문에 원인이 덮이지 않도록 보존합니다.
+- shared 오류 처리와 saved errno: failed operation에서 `saved_errno = errno != 0 ? errno : EIO`; close/diagnostic 때문에 원인이 덮이지 않도록 보존합니다.
 - stdin publish point: 모든 staging checks 뒤 `shell_dup2(temp_fd, STDIN_FILENO)`입니다.
 - 실패 뒤 following command가 가능한 resource state: temporary stream closed, stdin은 이 heredoc으로 교체되지 않으며 current command status 1로 돌아갑니다.
 - 확인한 변경 파일: `src/redirection.c`, runtime wrapper declarations/definitions.
@@ -1038,18 +1038,18 @@ if (fd < 0)
 - Importance: **A**
 - Tags: `TEST`, `HEREDOC`, `FAILURE`
 - Source-defined role: Verifies that such failures cannot silently truncate command input.
-- 학습 깊이: 주요 subsystem boundary, integration point 또는 failure path. 핵심 코드와 설계 판단을 확인합니다.
+- 학습 깊이: 주요 subsystem boundary, integration point 또는 실패 처리. 핵심 코드와 설계 판단을 확인합니다.
 
 #### Source에서 확정된 변화
 `fflush`와 `fseek` failure를 deterministic하게 주입하고, heredoc command가 status 1로 실패하며 `cat` payload를 출력하지 않고 following command는 계속 실행되는지 검증합니다.
 
 #### Test commit 학습 기록
-- 대상 production invariant: temporary stream staging이 완료되지 않으면 stdin publish와 command dispatch가 성공으로 진행돼서는 안 됩니다.
+- 대상 production 항상 유지해야 하는 조건: temporary stream staging이 완료되지 않으면 stdin publish와 command dispatch가 성공으로 진행돼서는 안 됩니다.
 - 재현하는 failure 또는 boundary: body write 이후의 flush failure와 rewind/seek failure입니다.
 - 사용한 test technique: `SMALL_SHELL_TESTING` runtime wrapper에서 operation별 selected call을 실패시키는 deterministic fault injection입니다.
 - 실제 통과하는 production code path: heredoc precollection 성공 → command redirection apply → temporary stream body write → injected `fflush` 또는 `fseek` failure → shared staging error → current status 1 → next line.
 - 이 테스트가 증명하는 것: payload가 partial/empty stdin으로 `cat`에 전달되지 않고 current command failure가 `$?`로 관찰되며 following command가 실행됩니다.
-- 이 테스트가 증명하지 않는 것: write, fileno, dup2의 모든 call position과 OS별 stdio behavior를 포괄하지 않습니다.
+- 이 테스트가 증명하지 않는 것: write, fileno, dup2의 모든 call position과 OS별 stdio 동작을 포괄하지 않습니다.
 - broad integration / deterministic regression / stress·probe 중 분류: operation-specific deterministic end-to-end regression입니다.
 - 후속 변경에서 막는 회귀: `fflush`/`fseek` result 무시, error를 success로 변환, failure 뒤 loop 중단/stream leak 회귀입니다.
 
@@ -1061,7 +1061,7 @@ if (fd < 0)
 - Temporary directory/isolated stdout·stderr files로 case side effect를 분리합니다.
 
 #### 학습자가 남길 코드 증거
-- 대상 production invariant: no stdin replacement before complete staging.
+- 대상 production 항상 유지해야 하는 조건: no stdin replacement before complete staging.
 - 재현하는 failure: flush completion failure, position reset failure.
 - injection technique: compile-time test branch + operation call counter + environment-selected failure occurrence.
 - 통과하는 production code path: `exec_apply_redirections`/heredoc apply → checked wrappers → `heredoc_stream_error`.
@@ -1088,7 +1088,7 @@ if (fd < 0)
 - Importance: **A**
 - Tags: `HEREDOC`, `FAILURE`, `RISK`
 - Source-defined role: Restores future command boundaries after heredoc preparation failure.
-- 학습 깊이: 주요 subsystem boundary, integration point 또는 failure path. 핵심 코드와 설계 판단을 확인합니다.
+- 학습 깊이: 주요 subsystem boundary, integration point 또는 실패 처리. 핵심 코드와 설계 판단을 확인합니다.
 
 #### Source에서 확정된 변화
 Delimiter dequote, body buffer init, body expansion 등이 실패한 뒤 즉시 return하지 않고, current heredoc remainder와 later pending heredoc을 모두 delimiter까지 소비한 후 failure를 반환합니다.
@@ -1103,15 +1103,15 @@ Delimiter dequote, body buffer init, body expansion 등이 실패한 뒤 즉시 
 #### Fix 재구성 기록
 - 기존 가정: local body allocation을 free하고 failure를 반환하면 heredoc preparation cleanup이 완료된다고 보았습니다.
 - 실제 failure 또는 위험을 드러내는 입력·상태: `cat <<ONE <<TWO`의 first body 중 allocation/read failure 후 `ONE`, second body, `TWO`가 stdin에 남으면 shell loop가 그 lines를 commands로 실행할 수 있습니다.
-- root cause가 위치한 representation / lifecycle / ordering boundary: memory ownership은 정리됐지만 stream cursor라는 외부 state가 original command boundary까지 복구되지 않았습니다.
-- 수정된 invariant 또는 decision: 첫 preparation failure를 기억하고 current heredoc의 remainder와 모든 later pending heredoc을 construction 없이 delimiter까지 소비한 후에만 caller로 돌아갑니다.
+- root cause가 위치한 representation / lifecycle / ordering boundary: memory 소유권은 정리됐지만 stream cursor라는 외부 state가 original command boundary까지 복구되지 않았습니다.
+- 수정된 항상 유지해야 하는 조건 또는 decision: 첫 preparation failure를 기억하고 current heredoc의 remainder와 모든 later pending heredoc을 construction 없이 delimiter까지 소비한 후에만 caller로 돌아갑니다.
 - 변경 전 코드 증거: dequote/init/append failure branch가 즉시 nonzero를 return했습니다.
 - 변경 후 코드 증거: `failed` state, `discard_heredoc`, allocation-free `delimiter_matches`가 추가되고 traversal은 remaining redirections까지 계속됩니다.
 - 연결되는 regression test와 그 한계: `7e2fdea3affd`가 read failure recovery와 repeated read failure forced stop을 검증하고 `476b082d55c7`가 allocation positions를 sweep합니다. 복구 read 자체가 불가능하면 boundary를 보장할 수 없어 shell을 중단합니다.
 
 #### `c30b39c0bcf8`에서 확인할 실제 코드
 - Parent의 early return branches와 새 failed-mode traversal을 비교했습니다.
-- `exec_prepare_heredocs`는 first failure 뒤에도 pipeline/command/redirection 순회를 계속하고 later heredoc은 `discard_heredoc`으로 처리합니다.
+- `exec_prepare_heredocs`는 first failure 뒤에도 처리 단계/command/redirection 순회를 계속하고 later heredoc은 `discard_heredoc`으로 처리합니다.
 - Current `read_heredoc` 실패도 자신의 delimiter까지 discard하려고 시도합니다.
 - `delimiter_matches`는 normal dequote allocation 없이 encoded target의 marker를 건너뛰며 exact line length/content를 비교합니다.
 - Body builder capacity growth에 `SIZE_MAX / 2` guard가 추가됩니다.
@@ -1133,7 +1133,7 @@ before: failure → free partial body → return immediately
  after: failure → failed=1 → discard current/later heredocs → return failure
 ```
 
-- 해당 SHA에서 실행한 test 또는 수동 재현 결과: 실행하지 않았습니다. Exact diff에서 failure flag, traversal continuation, no-publish behavior를 확인했습니다.
+- 해당 SHA에서 실행한 test 또는 수동 재현 결과: 실행하지 않았습니다. Exact diff에서 failure flag, traversal continuation, no-publish 동작을 확인했습니다.
 
 #### 보장 범위
 - 이 commit이 보장하는 것: heredoc preparation이 실패해도 body data와 pending delimiters가 future shell commands로 이동하지 않습니다.
@@ -1150,19 +1150,19 @@ Heredoc Thread에서는 `7e2fdea3affd`로 이어지고, allocation Thread에서�
 - Importance: **A**
 - Tags: `TEST`, `FAILURE`, `HEREDOC`
 - Source-defined role: Verifies read failure, recovery, continuation, and forced-stop behavior.
-- 학습 깊이: 주요 subsystem boundary, integration point 또는 failure path. 핵심 코드와 설계 판단을 확인합니다.
+- 학습 깊이: 주요 subsystem boundary, integration point 또는 실패 처리. 핵심 코드와 설계 판단을 확인합니다.
 
 #### Source에서 확정된 변화
-Low-level read/write failure를 주입해 top-level input, builtin output, heredoc collection의 서로 다른 recovery scope를 검증합니다. Heredoc read failure는 boundary를 복구하면 continuation, recovery read까지 반복 실패하면 shell stop이어야 합니다.
+Low-level read/write failure를 주입해 top-level input, builtin output, heredoc collection의 서로 다른 recovery 범위를 검증합니다. Heredoc read failure는 boundary를 복구하면 continuation, recovery read까지 반복 실패하면 shell stop이어야 합니다.
 
 #### Test commit 학습 기록
-- 대상 production invariant: I/O failure 뒤에도 status뿐 아니라 다음 input의 의미가 신뢰 가능해야 하며, 신뢰할 수 없으면 shell이 종료돼야 합니다.
+- 대상 production 항상 유지해야 하는 조건: I/O failure 뒤에도 status뿐 아니라 다음 input의 의미가 신뢰 가능해야 하며, 신뢰할 수 없으면 shell이 종료돼야 합니다.
 - 재현하는 failure 또는 boundary: top-level command read, builtin write, heredoc body read, recovery discard read의 failures입니다.
 - 사용한 test technique: runtime read/write wrappers의 call-index와 repeat mode를 이용한 deterministic failure injection입니다.
 - 실제 통과하는 production code path: input loop reader, builtin output helper, `read_heredoc`, `discard_heredoc`, `shell->running`/process termination branches입니다.
 - 이 테스트가 증명하는 것: top-level unread buffer가 실행되지 않고, builtin write failure는 status 1로 관찰되며, one-shot heredoc read failure는 delimiter recovery 후 continuation하고, repeated recovery failure는 residual input을 실행하지 않고 stop합니다.
 - 이 테스트가 증명하지 않는 것: 모든 libc buffering/platform interaction, allocation failure 전체, descriptor leak 전체는 증명하지 않습니다.
-- broad integration / deterministic regression / stress·probe 중 분류: 여러 recovery scope를 분리한 deterministic I/O failure regression suite입니다.
+- broad integration / deterministic regression / stress·probe 중 분류: 여러 recovery 범위를 분리한 deterministic I/O failure regression suite입니다.
 - 후속 변경에서 막는 회귀: recoverable failure에서 needless stop, unrecoverable failure에서 unsafe continuation, body line command execution, write failure status loss를 막습니다.
 
 #### `7e2fdea3affd`에서 확인할 실제 코드
@@ -1174,7 +1174,7 @@ Low-level read/write failure를 주입해 top-level input, builtin output, hered
 - Tests는 status, stdout, stderr/diagnostic, continuation을 별도 assertions로 다룹니다.
 
 #### 학습자가 남길 코드 증거
-- 대상 production invariant: continue only after reliable command boundary restoration.
+- 대상 production 항상 유지해야 하는 조건: continue only after reliable command boundary restoration.
 - 각 failure의 recovery scope: top-level read는 process input trust 상실로 stop; builtin write는 current command failure로 continue; heredoc read는 discard 성공 시 continue; discard read도 실패하면 stop입니다.
 - injection technique과 call position: test build wrapper, operation-specific call counter, exact selected call, optional repeat-from-position mode입니다.
 - heredoc recovery production path: body read failure → failed state → `discard_heredoc` → delimiter reached → preparation status 1 → next top-level command.
@@ -1191,13 +1191,13 @@ Low-level read/write failure를 주입해 top-level input, builtin output, hered
 - 아직 보장하지 않는 것: allocation failure sweep 전체를 대체하지 않으며, test 범위는 주입된 read/write paths에 한정됩니다.
 
 #### Thread 내 다음 연결
-Heredoc Thread의 마지막 검증입니다. 동일 input-boundary invariant는 allocation Thread에서 다른 failure source로 다시 학습합니다.
+Heredoc Thread의 마지막 검증입니다. 동일 input-boundary 항상 유지해야 하는 조건은 allocation Thread에서 다른 failure source로 다시 학습합니다.
 
-## 6. Invariant ledger
+## 6. 항상 유지해야 하는 조건 ledger
 
-Source가 명시한 invariant와 engineering difficulty를 유지하고 exact code 근거를 채웠습니다.
+Source가 명시한 항상 유지해야 하는 조건과 engineering difficulty를 유지하고 exact code 근거를 채웠습니다.
 
-| Invariant | Source에서 확정된 의미 | 처음 도입/표현 | 강화·복구·검증 | 학습자가 확인한 코드 근거 |
+| 항상 유지해야 하는 조건 | Source에서 확정된 의미 | 처음 도입/표현 | 강화·복구·검증 | 학습자가 확인한 코드 근거 |
 | --- | --- | --- | --- | --- |
 | Delimiter text and quote provenance remain independent. | delimiter는 비교를 위해 dequote할 수 있지만, body expansion 여부를 결정할 quote provenance는 별도로 남아야 합니다. | `aeb0d6cba9c1`의 초기 policy | `854f0f435c82`에서 explicit flag로 복구, `dce9e5c083fa`로 고정 | `read_word`의 token `quoted` set → parser의 `heredoc_quoted` copy → `read_heredoc` policy branch. Matching은 별도 normalized delimiter를 사용합니다. |
 | Heredoc bodies are keyed by owning redirection identity. | body는 delimiter text가 아니라 해당 parsed redirection의 주소로 식별됩니다. | `7c9692346824` | `d297bd2e8908`에서 normal redirection path와 통합 | `heredoc_entry.redir` pointer equality lookup; repository entry/body는 parsed tree보다 먼저 free됩니다. |
@@ -1206,7 +1206,7 @@ Source가 명시한 invariant와 engineering difficulty를 유지하고 exact co
 
 ### Ledger 작성 시 확인한 것
 
-- Body repository field는 `7c969...`에서 생기고 product path invariant는 `d297...`에서 완성됩니다.
+- Body repository field는 `7c969...`에서 생기고 product path 항상 유지해야 하는 조건은 `d297...`에서 완성됩니다.
 - `854f...`는 prior policy를 삭제한 것이 아니라 final text에 없던 lexical provenance를 별도 field로 보강합니다.
 - Test evidence는 각각 quote, staging, stream recovery production path와 연결했습니다.
 - Normal, staging failure, recoverable preparation failure는 entry/stream/local buffers가 해제되고 신뢰 가능한 stdin으로 수렴합니다. Recovery 자체 실패는 shell stop으로 수렴합니다.
@@ -1219,24 +1219,24 @@ Source가 명시한 invariant와 engineering difficulty를 유지하고 exact co
 | temp body write 뒤 flush/seek 실패를 무시하면 truncated input 또는 EOF가 설치됨 | `d297bd2e8908`의 temporary-stream installation | `9afdca85f5a5` — write/flush/seek/fileno 전체 성공 뒤에만 dup2 | `2fbc4c73af2c` — injected flush/seek failure, status 1, no payload, continuation | `src/redirection.c` staging order와 `src/runtime.c` wrappers, `tests/faults.sh` expected outputs를 연결했습니다. |
 | 준비 실패 뒤 unread body와 later delimiter가 stdin에 남아 command로 실행될 수 있음 | `fc9c63a03db2`의 early-abort path | `c30b39c0bcf8` — current와 pending heredoc을 delimiter까지 discard | `7e2fdea3affd` — read failure recovery와 recovery read 반복 실패 시 forced stop | `failed` traversal, `discard_heredoc`, `delimiter_matches`, next marker/stop assertions를 연결했습니다. |
 
-## 8. Ownership / state / responsibility 변화
+## 8. 소유권 / state / responsibility 변화
 
 | 대상 | Owner / 책임 주체 | 책임 종료 시점 | 해당 SHA에서 확인할 내용 | 학습자 기록 |
 | --- | --- | --- | --- | --- |
 | encoded delimiter string | parsed redirection | parsed tree cleanup | ordinary word expansion과 분리되는 지점 확인 | Parser-owned target은 matching normalization source로 유지되고 heredoc normal expansion에서 제외됩니다. |
 | normalized delimiter | collector local owner | 해당 heredoc collection 완료 | allocation·dequote failure cleanup 기록 | `dequote_runtime_word` 반환을 local이 free하며 entry에는 저장하지 않습니다. Failure면 partial buffer만 해제합니다. |
-| body buffer | collector → heredoc repository entry | execution context cleanup | partial buffer discard와 successful transfer 구분 | Delimiter/EOF까지 local; entry allocation/list append 성공 시 body pointer ownership 이전; failure면 local discard. |
+| body buffer | collector → heredoc repository entry | execution context cleanup | partial buffer discard와 successful transfer 구분 | Delimiter/EOF까지 local; entry allocation/list append 성공 시 body pointer 소유권 이전; failure면 local discard. |
 | redirection identity pointer | repository key로 참조 | repository가 parsed tree보다 먼저 해제되어야 함 | 실제 destructor order 확인 | Entry는 pointer를 free하지 않으며 line cleanup이 repository를 먼저 해제한 뒤 `free_pipeline`을 호출합니다. |
-| temporary stream / fd | redirection application | dup2 성공 또는 error path | write·flush·seek·fileno·dup2·fclose 순서 기록 | Local `FILE *` owner가 all stages를 관리하고 success/error 모두 `fclose`; stdin은 final dup에서만 mutate됩니다. |
+| temporary stream / fd | redirection application | dup2 성공 또는 오류 처리 | write·flush·seek·fileno·dup2·fclose 순서 기록 | Local `FILE *` owner가 all stages를 관리하고 success/error 모두 `fclose`; stdin은 final dup에서만 mutate됩니다. |
 | stdin stream position | collector/recovery path | 다음 command boundary 확보 시점 | 복구 실패 시 `running` 또는 종료 결정 기록 | Discard가 all delimiters를 소비하면 continue 가능; read가 반복 실패해 cursor 불명확하면 shell을 stop합니다. |
 
 ## 9. Thread 최종 상태
 
 Delimiter 관련 state는 다음처럼 분리됩니다.
 
-| State | 용도 | Owner/lifetime |
+| State | 용도 | Owner/수명 |
 | --- | --- | --- |
-| encoded target | parser representation, literal marker 보존 | `t_redir`, line parse lifetime |
+| encoded target | parser representation, literal marker 보존 | `t_redir`, line parse 수명 |
 | normalized delimiter text | exact input-line matching | collector local |
 | `heredoc_quoted` | body expansion policy | copied parser field |
 | body bytes | selected command stdin material | execution-context repository |
@@ -1246,12 +1246,12 @@ Delimiter 관련 state는 다음처럼 분리됩니다.
 
 ### 최종 상태 기록
 
-- 최종적으로 유지되는 data/resource ownership: parsed redirection은 encoded text와 provenance를, line context는 identity-keyed body entries를, redirection apply local은 temporary stream을 소유합니다.
+- 최종적으로 유지되는 data/자원 소유권: parsed redirection은 encoded text와 provenance를, line 문맥은 identity-keyed body entries를, redirection apply local은 temporary stream을 소유합니다.
 - 최종적으로 보장되는 execution 또는 recovery rule: all body input은 execution 전 source order로 소비되고, complete staging 후에만 stdin이 바뀌며, preparation failure도 next command boundary를 복구한 경우에만 continuation합니다.
 - Thread가 해결한 가장 어려운 failure: 이미 stdin 일부를 소비한 뒤 allocation/read failure가 발생했을 때 body를 future command로 실행하지 않도록 semantic cursor를 복구하는 문제입니다.
-- Thread 밖에 남아 있는 보장 범위: tests가 주입하지 않은 모든 OS/stdio failure 조합, descendant process lifecycle, allocator implementation 전체는 다른 Thread 또는 범위 밖입니다.
+- Thread 밖에 남아 있는 보장 범위: tests가 주입하지 않은 모든 OS/stdio failure 조합, descendant 프로세스 생성부터 종료까지의 처리, allocator implementation 전체는 다른 Thread 또는 범위 밖입니다.
 
-## 10. 최종 architecture 또는 execution flow 정리
+## 10. 최종 architecture 또는 실행 순서 정리
 
 ```text
 [parsed redirection: encoded target + heredoc_quoted + stable node identity]
@@ -1274,7 +1274,7 @@ Delimiter 관련 state는 다음처럼 분리됩니다.
 - 핵심 entry function: `exec_prepare_heredocs`와 heredoc redirection apply helper입니다.
 - 주요 caller → callee chain: `shell_process_line` → `exec_prepare_heredocs` → `read_heredoc`/`discard_heredoc` → repository → list executor → `exec_apply_redirections` → heredoc staging → `shell_dup2`.
 - state mutation 순서: token quote flag → parsed `heredoc_quoted`; body local construction → repository publish; staging complete → stdin replace; status/running update; repository/tree cleanup.
-- ownership transfer 순서: normalized delimiter remains local; body buffer local → entry; entry body freed by context; temporary stream remains local and is always closed.
+- 소유권 transfer 순서: normalized delimiter remains local; body buffer local → entry; entry body freed by context; temporary stream remains local and is always closed.
 - failure convergence path: semantic quote error is prevented by explicit provenance; staging failure closes stream without stdin publish; preparation failure discards current/later bodies; recovery failure stops shell.
 - regression evidence: `dce9e5c083fa`, `2fbc4c73af2c`, `7e2fdea3affd`의 test implementation과 production path를 연결했습니다. 실제 test command는 실행하지 않았습니다.
 
@@ -1282,23 +1282,23 @@ Delimiter 관련 state는 다음처럼 분리됩니다.
 
 - [x] 모든 commit을 exact SHA에서 확인했고 final HEAD를 소급하지 않았습니다.
 - [x] Commit map의 SHA, subject, importance, tags, order를 변경하지 않았습니다.
-- [x] S commit은 problem, prior state, failure possibility, decision, core code, ownership/lifecycle, follow-up을 설명했습니다.
-- [x] A commit은 subsystem boundary 또는 failure path와 실제 핵심 code를 설명했습니다.
-- [x] B commit은 Thread 내 구현 역할과 state/ownership 변화를 설명했습니다.
-- [x] Fix commit은 기존 가정 → failure → root cause → 수정 invariant → code → regression 순으로 연결했습니다.
-- [x] Test commit은 invariant, failure, technique, production path, prove/not prove를 구분했습니다.
-- [x] Invariant ledger의 각 행에 실제 file/function/branch 근거가 있습니다.
+- [x] S commit은 problem, prior state, failure possibility, decision, core code, 소유권/lifecycle, 후속 작업을 설명했습니다.
+- [x] A commit은 subsystem boundary 또는 실패 처리와 실제 핵심 code를 설명했습니다.
+- [x] B commit은 Thread 내 구현 역할과 state/소유권 변화를 설명했습니다.
+- [x] Fix commit은 기존 가정 → failure → root cause → 수정 항상 유지해야 하는 조건 → code → regression 순으로 연결했습니다.
+- [x] Test commit은 항상 유지해야 하는 조건, failure, technique, production path, prove/not prove를 구분했습니다.
+- [x] 항상 유지해야 하는 조건 ledger의 각 행에 실제 file/function/branch 근거가 있습니다.
 - [x] 정상·실패 경로 모두에서 resource와 partial object의 terminal owner를 설명했습니다.
 - [x] 이 Thread의 설계 → 구현 → 실패 → 수정 → 검증 흐름을 commit history 순서로 재구성했습니다.
 ===== END FILE: 02-heredoc-cross-stage-semantics.md =====
 
-===== BEGIN FILE: 03-pipeline-process-and-descriptor-ownership.md =====
-# Pipeline process and descriptor ownership under partial failure
+===== BEGIN FILE: 03-처리 단계-process-and-descriptor-소유권.md =====
+# 처리 단계 process and descriptor 소유권 under partial failure
 
-> 한국어 주제: **부분 실패에서의 pipeline process와 descriptor 소유권**
+> 한국어 주제: **부분 실패에서의 처리 단계 process와 descriptor 소유권**
 >
-> Project: `small-shell`  
-> Branch: `c/minishell`  
+> Project: `small-shell`
+> Branch: `c/minishell`
 > Development Thread order: 3/5
 
 ## 1. Thread 목표
@@ -1307,11 +1307,11 @@ single-command fork/exec에서 N-stage pipe graph로 확장되는 정상 경로�
 
 **Source-defined significance**
 
-> The normal pipeline mechanism is only half of the engineering problem. Once a parent records a PID or acquires a descriptor, it owns that resource even if later construction fails. This thread moves from normal execution to deterministic failure injection, root-cause cleanup, unrecoverable parent-state handling, and direct lifecycle observation. Supporting wrappers and tests remain below S because the decisive ownership guarantees are established by the pipe graph and partial-construction cleanup commits.
+> The normal 처리 단계 mechanism is only half of the engineering problem. Once a parent records a PID or acquires a descriptor, it owns that resource even if later construction fails. This thread moves from normal execution to deterministic failure injection, root-cause cleanup, unrecoverable parent-state handling, and direct lifecycle observation. Supporting wrappers and tests remain below S because the decisive 소유권 guarantees are established by the pipe graph and partial-construction cleanup commits.
 
 **학습 관점**
 
-정상 pipeline wiring만으로는 실행기가 완성되지 않습니다. Parent가 PID를 기록하거나 FD를 획득한 순간부터 후속 단계가 실패해도 그 자원을 종료·관찰·close할 책임이 생깁니다.
+정상 처리 단계 wiring만으로는 실행기가 완성되지 않습니다. Parent가 PID를 기록하거나 FD를 획득한 순간부터 후속 단계가 실패해도 그 자원을 종료·관찰·close할 책임이 생깁니다.
 
 ### SHA 고정 원칙
 
@@ -1333,7 +1333,7 @@ single-command fork/exec에서 N-stage pipe graph로 확장되는 정상 경로�
 
 ## 3. 완료 기준
 
-- [x] single command와 multi-stage pipeline의 parent/child responsibility를 표로 작성했습니다.
+- [x] single command와 multi-stage 처리 단계의 parent/child responsibility를 표로 작성했습니다.
 - [x] 각 process가 보유·dup·close하는 pipe end를 stage별로 그렸습니다.
 - [x] mid-fork failure에서 close → signal → reap 순서를 exact code로 확인했습니다.
 - [x] one-shot restore failure와 repeated unrecoverable restore failure의 status/running 변화를 구분했습니다.
@@ -1345,7 +1345,7 @@ single-command fork/exec에서 N-stage pipe graph로 확장되는 정상 경로�
 ## 4. Commit map
 
 | 순서 | SHA | Subject | Importance | Tags | Source-defined role |
-| ---: | --- | --- | :---: | --- | --- |
+| ---: | --- | --- |:---: | --- | --- |
 | 1 | `7c9646e7cd79` | `feat(exec): 단일 명령을 자식에서 실행` | A | `PROCESS`, `CORE`, `INTEGRATION` | Establishes fork/exec and child status mapping for a single command. |
 | 2 | `ae988017efd5` | `feat(exec): pipeline 자식 상태를 순서대로 회수` | B | `PROCESS`, `CORE` | Adds PID bookkeeping and ordered reaping for multiple commands. |
 | 3 | `a71f98de0d92` | `feat(exec): 다단 pipeline의 pipe FD 연결` | S | `PROCESS`, `FD_IO`, `CORE` | Connects the multi-stage pipe graph and defines parent/child descriptor closure. |
@@ -1368,7 +1368,7 @@ single-command fork/exec에서 N-stage pipe graph로 확장되는 정상 경로�
 - Importance: **A**
 - Tags: `PROCESS`, `CORE`, `INTEGRATION`
 - Source-defined role: Establishes fork/exec and child status mapping for a single command.
-- 학습 깊이: 주요 subsystem boundary, integration point 또는 failure path. 핵심 코드와 설계 판단을 확인합니다.
+- 학습 깊이: 주요 subsystem boundary, integration point 또는 실패 처리. 핵심 코드와 설계 판단을 확인합니다.
 
 #### Source에서 확정된 변화
 Single parsed command를 parent path 또는 forked child path로 dispatch하고, child에서 redirection/builtin/exec를 수행한 뒤 exact PID를 wait하여 normal, signal, 126, 127 status로 변환합니다.
@@ -1402,7 +1402,7 @@ Single parsed command를 parent path 또는 forked child path로 dispatch하고,
 | command not found (`ENOENT`) | 127 |
 | found but not executable/other exec error | 126 |
 
-- parent persistent state와 child copy state의 차이: parent builtin은 original `t_shell`을 mutate하고, pipeline/ordinary child builtin의 mutation은 fork copy에만 남습니다.
+- parent persistent state와 child copy state의 차이: parent builtin은 original `t_shell`을 mutate하고, 처리 단계/ordinary child builtin의 mutation은 fork copy에만 남습니다.
 - 확인한 변경 파일: `src/exec.c`, executor declarations, build source list.
 - 핵심 caller → callee: `execute_one_pipeline` → parent command helper 또는 `run_single_command` → `run_child`/`waitpid` → `status_from_wait`.
 - parent SHA와 비교한 최소 before/after snippet: direct/no execution state에서 fork/child dispatch and exact wait가 추가됐습니다.
@@ -1423,10 +1423,10 @@ Single parsed command를 parent path 또는 forked child path로 dispatch하고,
 - Importance: **B**
 - Tags: `PROCESS`, `CORE`
 - Source-defined role: Adds PID bookkeeping and ordered reaping for multiple commands.
-- 학습 깊이: Thread 흐름에서 맡는 구현 역할과 필요한 state/ownership 변화를 확인합니다.
+- 학습 깊이: Thread 흐름에서 맡는 구현 역할과 필요한 state/소유권 변화를 확인합니다.
 
 #### Source에서 확정된 변화
-Pipeline의 각 command를 fork하고 one PID slot per command에 기록한 뒤 exact PID 순서로 reap합니다. 완전 spawn이면 last command status, partial spawn이면 existing children을 reap한 뒤 status 1입니다.
+처리 단계의 각 command를 fork하고 one PID slot per command에 기록한 뒤 exact PID 순서로 reap합니다. 완전 spawn이면 last command status, partial spawn이면 existing children을 reap한 뒤 status 1입니다.
 
 #### 설계·상태 변화 기록
 - 이 commit 직전 상태: one child PID만 local로 wait했습니다.
@@ -1434,7 +1434,7 @@ Pipeline의 각 command를 fork하고 one PID slot per command에 기록한 뒤 
 - 기존 표현·실행 순서가 충분하지 않았던 이유: generic `wait`는 어느 result가 last stage인지 보장하지 않고, fork 중간 실패 시 생성된 child range를 알 수 없습니다.
 - 선택한 결정: `command_count` 크기의 PID table을 만들고 successful fork마다 동일 index slot에 기록하며 `spawned` count를 유지합니다.
 - publish 또는 state mutation이 일어나는 지점: successful fork 반환 직후 `pids[index] = pid`, `spawned++`입니다.
-- failure 뒤 cleanup 또는 상태: partial spawn이면 recorded range만 exact PID wait하고 status 1; complete spawn일 때만 final slot result를 pipeline status로 사용합니다.
+- failure 뒤 cleanup 또는 상태: partial spawn이면 recorded range만 exact PID wait하고 status 1; complete spawn일 때만 final slot result를 처리 단계 status로 사용합니다.
 
 #### `ae988017efd5`에서 확인할 실제 코드
 - PID table allocation이 `command_count * sizeof(pid_t)`입니다.
@@ -1447,15 +1447,15 @@ Pipeline의 각 command를 fork하고 one PID slot per command에 기록한 뒤 
 - PID table index ↔ command index mapping: `pids[0]`은 first command, `pids[N-1]`은 last command입니다.
 - recorded count mutation: fork 성공 뒤에만 `spawned`를 증가시켜 valid PID range를 정의합니다.
 - complete/partial status branch: full count면 last child status, otherwise all recorded children wait 후 1입니다.
-- wait ownership 종료 지점: each exact PID의 `waitpid` success 후 해당 slot lifecycle responsibility가 끝납니다.
+- wait 소유권 종료 지점: each exact PID의 `waitpid` success 후 해당 slot lifecycle responsibility가 끝납니다.
 - 아직 없는 descriptor topology: child들이 fork되지만 stdin/stdout pipe wiring은 없습니다.
 - 확인한 변경 파일: `src/exec.c`.
-- 핵심 caller → callee: pipeline dispatcher → `run_forked_commands` → fork loop → exact wait loop.
+- 핵심 caller → callee: 처리 단계 dispatcher → `run_forked_commands` → fork loop → exact wait loop.
 - parent SHA와 비교한 최소 before/after snippet: single PID local에서 command-count PID table + spawned count로 확장됐습니다.
 - 해당 SHA에서 실행한 test 또는 수동 재현 결과: 실행하지 않았습니다. Exact source에서 bookkeeping과 status branch를 검사했습니다.
 
 #### 보장 범위
-- 이 commit이 보장하는 것: parent는 child identity를 결정적으로 소유·관찰하고 pipeline status를 last stage에 연결할 bookkeeping을 갖습니다.
+- 이 commit이 보장하는 것: parent는 child identity를 결정적으로 소유·관찰하고 처리 단계 status를 last stage에 연결할 bookkeeping을 갖습니다.
 - 아직 보장하지 않는 것: child 사이 data flow와 mid-fork block/hang 회복은 아직 해결하지 않습니다.
 
 #### Thread 내 다음 연결
@@ -1469,15 +1469,15 @@ Pipeline의 각 command를 fork하고 one PID slot per command에 기록한 뒤 
 - Importance: **S**
 - Tags: `PROCESS`, `FD_IO`, `CORE`
 - Source-defined role: Connects the multi-stage pipe graph and defines parent/child descriptor closure.
-- 학습 깊이: Architecture / invariant 핵심. 변경 전 가정, failure 가능성, 결정, core code, ownership/lifecycle, follow-up을 추적합니다.
+- 학습 깊이: Architecture / 항상 유지해야 하는 조건 핵심. 변경 전 가정, failure 가능성, 결정, core code, 소유권/lifecycle, 후속 작업을 추적합니다.
 
 #### Source에서 확정된 변화
 N command에 대해 N-1 pipe를 만들고, child i의 stdin/stdout을 neighboring pipe에 연결한 뒤 모든 original pipe end를 닫고 explicit redirection을 나중에 적용합니다.
 
 #### Source가 확정한 핵심 판단
-- **문제**: Multiple forked commands do not form a pipeline unless each child receives the correct neighboring descriptors and every process closes all unused pipe ends.
+- **문제**: Multiple forked commands do not form a 처리 단계 unless each child receives the correct neighboring descriptors and every process closes all unused pipe ends.
 - **결정**: Allocate `N - 1` pipes for `N` commands, map the previous read end to stdin and the next write end to stdout in each child, close all original ends, then apply explicit command redirections afterward.
-- **중요한 이유**: The ordering defines both data flow and redirection precedence. Parent and child closure rules prevent readers from waiting forever on hidden writers, while child execution of pipeline builtins prevents state mutations from leaking into the parent shell.
+- **중요한 이유**: The ordering defines both 데이터 흐름 and redirection precedence. Parent and child closure rules prevent readers from waiting forever on hidden writers, while child execution of 처리 단계 builtins prevents state mutations from leaking into the parent shell.
 - **확정된 변경 범위**: The executor gained pipe-table creation and cleanup, per-stage descriptor duplication, one child per command, parent-side closure and reaping, last-stage status selection, and parent-only execution for a single stateful builtin.
 - **프로젝트 이해에서의 위치**: This is the defining process topology. It is the basis for every later fork-failure, descriptor-leak, timeout, and child-lifecycle correction.
 
@@ -1496,7 +1496,7 @@ N command에 대해 N-1 pipe를 만들고, child i의 stdin/stdout을 neighborin
 - Dup 후 child는 필요 여부와 상관없이 table의 all original FDs를 close합니다.
 - Explicit redirection은 pipe wiring 뒤 적용됩니다.
 - Parent는 all fork attempts 뒤 pipe ends를 close하고 waits합니다.
-- Single parent builtin만 parent path이고 pipeline builtin은 child path입니다.
+- Single parent builtin만 parent path이고 처리 단계 builtin은 child path입니다.
 
 #### 학습자가 남길 코드 증거
 - N-stage descriptor graph:
@@ -1514,7 +1514,7 @@ cmd0 --pipe0--> cmd1 --pipe1--> ... --pipe(N-2)--> cmd(N-1)
 | parent | none | all pipe table ends close after spawn loop |
 
 - pipe wiring vs explicit redirection order: pipe default first, then command redirections override stdio in source order.
-- pipeline builtin isolation: command count > 1이면 builtin도 child에서 실행되어 parent env/cwd에 반영되지 않습니다.
+- 처리 단계 builtin isolation: command count > 1이면 builtin도 child에서 실행되어 parent env/cwd에 반영되지 않습니다.
 - partial failure에 남은 위험: later fork failure 시 first stages가 incomplete graph에서 read/write/sleep block하고 parent의 simple wait가 끝나지 않을 수 있습니다.
 - 확인한 변경 파일: `src/exec.c`.
 - 핵심 caller → callee: `run_forked_commands` → pipe table init/create → fork loop → child pipe setup/close/redirections → parent close → wait loop.
@@ -1532,8 +1532,8 @@ apply_redirections(...);
 - 해당 SHA에서 실행한 test 또는 수동 재현 결과: 실행하지 않았습니다. 3-stage index mapping과 all-close loops를 exact source에서 검사했습니다.
 
 #### 보장 범위
-- 이 commit이 보장하는 것: multi-stage data flow, descriptor precedence, parent/child closure, last-stage status의 defining execution topology를 제공합니다.
-- 아직 보장하지 않는 것: later fork failure 시 already spawned child를 terminate하지 않아 block/hang할 수 있는 failure path가 남습니다.
+- 이 commit이 보장하는 것: multi-stage 데이터 흐름, descriptor precedence, parent/child closure, last-stage status의 defining execution topology를 제공합니다.
+- 아직 보장하지 않는 것: later fork failure 시 already spawned child를 terminate하지 않아 block/hang할 수 있는 실패 처리가 남습니다.
 
 #### Thread 내 다음 연결
 `915aa072298b`가 pipe/fork/wait failure를 재현할 seam을 만들고 `be2967a4b946`가 lifecycle invariant를 복구합니다.
@@ -1546,7 +1546,7 @@ apply_redirections(...);
 - Importance: **A**
 - Tags: `PROCESS`, `FAILURE`, `TEST`
 - Source-defined role: Introduces deterministic pipe, fork, and wait failure seams.
-- 학습 깊이: 주요 subsystem boundary, integration point 또는 failure path. 핵심 코드와 설계 판단을 확인합니다.
+- 학습 깊이: 주요 subsystem boundary, integration point 또는 실패 처리. 핵심 코드와 설계 판단을 확인합니다.
 
 #### Source에서 확정된 변화
 `pipe`, `fork`, `waitpid`를 runtime wrapper 뒤로 옮기고 selected call count에서 representative `errno`로 실패시키는 deterministic test seam을 추가합니다. Production wrapper는 transparent합니다.
@@ -1555,7 +1555,7 @@ apply_redirections(...);
 - 기존 abstraction 또는 cost/failure 관찰 한계: raw system calls의 rare later-call failure를 반복 재현할 수 없었습니다.
 - 새 boundary가 제공하는 contract: production에서는 raw call을 그대로 위임하고 test build에서 operation별 N번째 call을 deterministic하게 실패시킵니다.
 - production semantics가 유지된다는 코드 근거: `#ifdef SMALL_SHELL_TESTING` injection branch 외에는 wrapper가 arguments/return/errno를 raw call에 그대로 전달합니다.
-- ownership 또는 call-site responsibility 변화: executor의 cleanup policy는 변하지 않고 call site만 wrappers를 사용합니다. 따라서 seam 자체는 자원 owner가 아닙니다.
+- 소유권 또는 call-site responsibility 변화: executor의 cleanup policy는 변하지 않고 호출 지점만 wrappers를 사용합니다. 따라서 seam 자체는 자원 owner가 아닙니다.
 - 후속 fix/test가 이 seam을 사용하는 방식: second pipe/second fork/first wait failure로 partial acquisition/spawn states를 만들고 cleanup을 검증합니다.
 
 #### `915aa072298b`에서 확인할 실제 코드
@@ -1572,7 +1572,7 @@ apply_redirections(...);
 - 아직 unchanged인 cleanup policy: partial fork child를 terminate하지 않고 close/wait만 합니다.
 - 확인한 변경 파일: `src/runtime.c`, `src/runtime.h`, `src/exec.c`, build definitions.
 - 핵심 caller → callee: executor → `shell_pipe`/`shell_fork`/`shell_waitpid` → injection check or raw call.
-- parent SHA와 비교한 최소 before/after snippet: raw system call sites가 transparent wrappers로 치환됐습니다.
+- parent SHA와 비교한 최소 before/after snippet: raw system 호출 지점이 transparent wrappers로 치환됐습니다.
 - 해당 SHA에서 실행한 test 또는 수동 재현 결과: 실행하지 않았습니다. Test/production branches와 counters를 source로 확인했습니다.
 
 #### 보장 범위
@@ -1589,24 +1589,24 @@ apply_redirections(...);
 - Subject: `fix(exec): 부분 생성 파이프라인의 자식과 FD 회수`
 - Importance: **S**
 - Tags: `PROCESS`, `FD_IO`, `FAILURE`
-- Source-defined role: Terminates and reaps children after partial pipeline construction.
-- 학습 깊이: Architecture / invariant 핵심. 변경 전 가정, failure 가능성, 결정, core code, ownership/lifecycle, follow-up을 추적합니다.
+- Source-defined role: Terminates and reaps children after partial 처리 단계 construction.
+- 학습 깊이: Architecture / 항상 유지해야 하는 조건 핵심. 변경 전 가정, failure 가능성, 결정, core code, 소유권/lifecycle, 후속 작업을 추적합니다.
 
 #### Source에서 확정된 변화
-Later fork failure 시 parent-held pipe ends를 모두 닫고, 이미 기록된 child에 `SIGKILL`을 보낸 뒤 every PID를 reap하여 pipeline execution이 complete cleanup state로 수렴하도록 합니다.
+Later fork failure 시 parent-held pipe ends를 모두 닫고, 이미 기록된 child에 `SIGKILL`을 보낸 뒤 every PID를 reap하여 처리 단계 execution이 complete cleanup state로 수렴하도록 합니다.
 
 #### Source가 확정한 핵심 판단
 - **문제**: If a later fork failed, already spawned stages could remain blocked or running. Closing descriptors and waiting was insufficient and could hang indefinitely or leave zombies.
-- **결정**: On partial construction, close all parent-held pipe ends, send termination to every recorded child, tolerate children that already exited, and still reap every PID. Treat any wait failure as pipeline failure.
-- **중요한 이유**: Recording a PID transfers lifecycle responsibility to the parent even when the pipeline never becomes complete. The cleanup path must converge to the same terminal ownership state as successful execution.
+- **결정**: On partial construction, close all parent-held pipe ends, send termination to every recorded child, tolerate children that already exited, and still reap every PID. Treat any wait failure as 처리 단계 failure.
+- **중요한 이유**: Recording a PID transfers lifecycle responsibility to the parent even when the 처리 단계 never becomes complete. The 정리 과정 must converge to the same terminal 소유권 state as successful execution.
 - **확정된 변경 범위**: The executor gained child termination, structured wait retry and error reporting, status suppression when the last child was not observed cleanly, and complete cleanup after a short spawn sequence.
-- **프로젝트 이해에서의 위치**: This commit converts the pipeline from a normal-path mechanism into a reliable lifecycle owner. It explains the later fault-injection and leak-verification architecture.
+- **프로젝트 이해에서의 위치**: This commit converts the 처리 단계 from a normal-path mechanism into a reliable lifecycle owner. It explains the later fault-injection and leak-verification architecture.
 
 #### Fix 재구성 기록
-- 기존 가정: parent pipe ends를 닫고 recorded children을 ordinary wait하면 partial pipeline도 자연 종료한다고 보았습니다.
+- 기존 가정: parent pipe ends를 닫고 recorded children을 ordinary wait하면 partial 처리 단계도 자연 종료한다고 보았습니다.
 - 실제 failure 또는 위험을 드러내는 입력·상태: first child가 `sleep 30`이거나 incomplete pipe를 기다리는 상태에서 second fork가 실패하면 wait가 장시간 block합니다.
-- root cause가 위치한 representation / lifecycle / ordering boundary: PID가 recorded된 순간 parent ownership이 생겼지만 incomplete graph에서 child progress를 보장할 termination policy가 없었습니다.
-- 수정된 invariant 또는 decision: partial spawn이면 parent FDs close → every recorded child signal → every recorded PID reap 순서로 강제 수렴합니다.
+- root cause가 위치한 representation / lifecycle / ordering boundary: PID가 recorded된 순간 parent 소유권이 생겼지만 incomplete graph에서 child progress를 보장할 termination policy가 없었습니다.
+- 수정된 항상 유지해야 하는 조건 또는 decision: partial spawn이면 parent FDs close → every recorded child signal → every recorded PID reap 순서로 강제 수렴합니다.
 - 변경 전 코드 증거: `spawned < command_count`에서도 same wait loop만 사용했습니다.
 - 변경 후 코드 증거: `terminate_children`와 structured `wait_for_child`를 추가하고 partial branch가 kill/reap를 호출합니다.
 - 연결되는 regression test와 그 한계: `d611196b368e`가 mid-fork failure와 wait failure를 deterministic하게 검증하고 `b42e57eb7755`가 direct child probe를 추가합니다. Arbitrary descendants까지 증명하지 않습니다.
@@ -1617,12 +1617,12 @@ Later fork failure 시 parent-held pipe ends를 모두 닫고, 이미 기록된 
 - Recorded range만 `kill(pid, SIGKILL)`하며 already-exited child 오류를 허용합니다.
 - Signal 후 every PID를 `wait_for_child`로 관찰합니다.
 - Wait helper는 `EINTR`를 계속 retry하고 non-EINTR error 후 제한된 재시도를 하며 any error evidence를 남깁니다.
-- Any wait failure면 otherwise valid last-stage status를 버리고 pipeline status 1입니다.
+- Any wait failure면 otherwise valid last-stage status를 버리고 처리 단계 status 1입니다.
 - Success/partial paths 모두 pipe FDs closed, PIDs observed, tables freed terminal state로 수렴합니다.
 
 #### 학습자가 남길 코드 증거
 - 기존 가정: descriptor closure alone guarantees child exit.
-- block 가능한 concrete pipeline scenario: `sleep 30 | cat`에서 second fork failure 후 `sleep`은 own timer까지 살아 있고 parent wait가 block합니다.
+- block 가능한 concrete 처리 단계 scenario: `sleep 30 | cat`에서 second fork failure 후 `sleep`은 own timer까지 살아 있고 parent wait가 block합니다.
 - root cause: recorded child가 incomplete graph에서 살아 있음입니다.
 - close → signal → reap 순서: parent originals close → `SIGKILL` loop over `[0, spawned)` → exact wait loop over same range.
 - wait failure가 status를 override하는 조건: any PID가 cleanly observed되지 않았다는 flag가 있으면 last-stage result를 사용하지 않고 1입니다.
@@ -1643,10 +1643,10 @@ before: partial fork → close pipes → wait
  after: partial fork → close pipes → kill recorded PIDs → wait every PID
 ```
 
-- 해당 SHA에서 실행한 test 또는 수동 재현 결과: 실행하지 않았습니다. Exact parent/fix diff와 terminal ownership states를 검사했습니다.
+- 해당 SHA에서 실행한 test 또는 수동 재현 결과: 실행하지 않았습니다. Exact parent/fix diff와 terminal 소유권 states를 검사했습니다.
 
 #### 보장 범위
-- 이 commit이 보장하는 것: recorded PID는 pipeline 완성 여부와 무관하게 parent가 종료하거나 관찰하며, partial construction이 hang/zombie를 남기지 않습니다.
+- 이 commit이 보장하는 것: recorded PID는 처리 단계 완성 여부와 무관하게 parent가 종료하거나 관찰하며, partial construction이 hang/zombie를 남기지 않습니다.
 - 아직 보장하지 않는 것: descriptor save/restore failure와 direct lifecycle stress 검증은 후속 commits가 담당합니다.
 
 #### Thread 내 다음 연결
@@ -1660,17 +1660,17 @@ before: partial fork → close pipes → wait
 - Importance: **A**
 - Tags: `TEST`, `PROCESS`, `FAILURE`
 - Source-defined role: Reproduces pipe, mid-fork, and wait failure regressions.
-- 학습 깊이: 주요 subsystem boundary, integration point 또는 failure path. 핵심 코드와 설계 판단을 확인합니다.
+- 학습 깊이: 주요 subsystem boundary, integration point 또는 실패 처리. 핵심 코드와 설계 판단을 확인합니다.
 
 #### Source에서 확정된 변화
-`SMALL_SHELL_TESTING` fault binary로 later pipe creation, mid-pipeline fork, waitpid failure를 주입하고 각 failed pipeline이 status 1로 끝난 뒤 following `echo $?`가 이를 관찰하는지 검증합니다.
+`SMALL_SHELL_TESTING` fault binary로 later pipe creation, mid-처리 단계 fork, waitpid failure를 주입하고 각 failed 처리 단계가 status 1로 끝난 뒤 following `echo $?`가 이를 관찰하는지 검증합니다.
 
 #### Test commit 학습 기록
-- 대상 production invariant: partial acquisition/spawn과 wait observation failure가 hang, zombie, false last-stage success를 남기지 않아야 합니다.
+- 대상 production 항상 유지해야 하는 조건: partial acquisition/spawn과 wait observation failure가 hang, zombie, false last-stage success를 남기지 않아야 합니다.
 - 재현하는 failure 또는 boundary: second pipe creation, second fork, first waitpid failure입니다.
 - 사용한 test technique: production source를 `SMALL_SHELL_TESTING`으로 재build하고 runtime wrapper call counter를 environment로 선택하는 deterministic failure injection입니다.
 - 실제 통과하는 production code path: pipe table create cleanup, partial spawn close/kill/reap, wait error override, shell line continuation/status expansion입니다.
-- 이 테스트가 증명하는 것: 각 injected failure가 pipeline status 1로 귀결되고 same shell의 next `echo $?`가 1을 출력하며 test가 종료됩니다.
+- 이 테스트가 증명하는 것: 각 injected failure가 처리 단계 status 1로 귀결되고 same shell의 next `echo $?`가 1을 출력하며 test가 종료됩니다.
 - 이 테스트가 증명하지 않는 것: 장기간 FD 누수, all call positions, arbitrary child descendants, real kernel resource pressure는 증명하지 않습니다.
 - broad integration / deterministic regression / stress·probe 중 분류: operation/call-position-specific deterministic regression입니다.
 - 후속 변경에서 막는 회귀: partial child termination 제거, wait error 무시, partial pipe cleanup 누락, failure 뒤 status continuation 손실입니다.
@@ -1679,14 +1679,14 @@ before: partial fork → close pipes → wait
 - `Makefile`의 `small-shell-test`가 same production sources에 test definition만 추가합니다.
 - `tests/faults.sh`는 later call occurrence를 선택합니다.
 - Mid-fork fixture는 long-running first child를 사용해 kill/reap가 없으면 종료가 지연되도록 만듭니다.
-- Each input은 failed pipeline 뒤 `echo $?`를 같은 process에 제공합니다.
+- Each input은 failed 처리 단계 뒤 `echo $?`를 같은 process에 제공합니다.
 - Wait failure case는 otherwise successful last-stage result보다 status 1이 우선함을 검사합니다.
 
 #### 학습자가 남길 코드 증거
-- 대상 production invariant: every acquired FD/recorded PID reaches cleanup and only cleanly observed last-stage status is trusted.
+- 대상 production 항상 유지해야 하는 조건: every acquired FD/recorded PID reaches cleanup and only cleanly observed last-stage status is trusted.
 - 각 injected operation/call position: pipe #2, fork #2, waitpid #1입니다.
 - partial resource state: one pipe pair 또는 one child PID가 이미 parent-owned인 상태입니다.
-- production cleanup path: created pipe ends close; partial child kill/reap; tables free; wait error flag forces 1.
+- production 정리 과정: created pipe ends close; partial child kill/reap; tables free; wait error flag forces 1.
 - expected status/output: process remains able to read next line, `echo $?` outputs `1`.
 - 증명하는 것과 증명하지 않는 것: deterministic selected branches를 증명하지만 stress/exhaustion과 every errno는 증명하지 않습니다.
 - deterministic regression 근거: identical environment input selects the same wrapper call and expected exact output.
@@ -1710,7 +1710,7 @@ before: partial fork → close pipes → wait
 - Importance: **A**
 - Tags: `FD_IO`, `FAILURE`, `TEST`
 - Source-defined role: Extends the runtime boundary to descriptor duplication and opening.
-- 학습 깊이: 주요 subsystem boundary, integration point 또는 failure path. 핵심 코드와 설계 판단을 확인합니다.
+- 학습 깊이: 주요 subsystem boundary, integration point 또는 실패 처리. 핵심 코드와 설계 판단을 확인합니다.
 
 #### Source에서 확정된 변화
 `open`, `dup`, `dup2`를 `shell_open`, `shell_dup`, `shell_dup2` wrapper 뒤로 옮기고, selected position부터 반복 실패하는 repeat mode를 추가합니다.
@@ -1719,12 +1719,12 @@ before: partial fork → close pipes → wait
 - 기존 abstraction 또는 cost/failure 관찰 한계: parent stdio save/apply/restore의 특정 later call과 retry까지 연속 실패시키기 어려웠습니다.
 - 새 boundary가 제공하는 contract: one-shot N번째 failure와 N번째부터 계속 실패하는 repeat mode를 제공하고 production에서는 raw operation을 그대로 위임합니다.
 - production semantics가 유지된다는 코드 근거: test-only selector branch 외 wrapper arguments/return/errno는 raw `open`/`dup`/`dup2`와 동일합니다.
-- ownership 또는 call-site responsibility 변화: descriptor ownership은 executor/redirection caller에 남고 wrappers는 only call boundary입니다.
+- 소유권 또는 call-site responsibility 변화: descriptor 소유권은 executor/redirection caller에 남고 wrappers는 only call boundary입니다.
 - 후속 fix/test가 이 seam을 사용하는 방식: save failure, apply failure, one-shot restore failure, retry까지 실패하는 persistent restore failure를 별도로 재현합니다.
 
 #### `fd5c76c18c27`에서 확인할 실제 코드
-- `src/runtime.h/.c`의 new wrappers와 call sites를 확인했습니다.
-- Pipeline child wiring, file redirection, heredoc installation, parent stdio save/restore가 wrapper를 사용합니다.
+- `src/runtime.h/.c`의 new wrappers와 호출 지점을 확인했습니다.
+- 처리 단계 child wiring, file redirection, heredoc installation, parent stdio save/restore가 wrapper를 사용합니다.
 - One-shot mode는 selected call 한 번만 실패하고 repeat mode는 target 이후 matching operation을 계속 실패시킵니다.
 - Production build는 injection state를 포함하지 않습니다.
 - 이 commit은 error policy 자체를 바꾸지 않고 seam만 확장합니다.
@@ -1732,7 +1732,7 @@ before: partial fork → close pipes → wait
 #### 학습자가 남길 코드 증거
 - descriptor wrapper coverage map:
 
-| Wrapper | 주요 call site |
+| Wrapper | 주요 호출 지점 |
 | --- | --- |
 | `shell_open` | input/output/append file redirection |
 | `shell_dup` | parent stdin/stdout save |
@@ -1762,7 +1762,7 @@ before: partial fork → close pipes → wait
 - Importance: **A**
 - Tags: `FD_IO`, `FAILURE`, `RISK`
 - Source-defined role: Makes parent standard-stream restoration failure observable and fatal when unrecoverable.
-- 학습 깊이: 주요 subsystem boundary, integration point 또는 failure path. 핵심 코드와 설계 판단을 확인합니다.
+- 학습 깊이: 주요 subsystem boundary, integration point 또는 실패 처리. 핵심 코드와 설계 판단을 확인합니다.
 
 #### Source에서 확정된 변화
 Parent-executed command의 stdin/stdout restore를 독립적으로 retry하고, transient error도 status 1로 남기며, 어느 descriptor라도 복구 불가능하면 `running`을 clear해 shell을 중단합니다.
@@ -1771,7 +1771,7 @@ Parent-executed command의 stdin/stdout restore를 독립적으로 retry하고, 
 - 기존 가정: parent builtin 뒤 saved stdin/stdout `dup2` 복원은 실패하더라도 diagnostic만 내거나 결과를 무시해도 다음 command를 실행할 수 있다고 보았습니다.
 - 실제 failure 또는 위험을 드러내는 입력·상태: stdout이 redirected target에 남거나 stdin이 wrong source에 남으면 다음 prompt/command의 I/O가 예측 불가능합니다.
 - root cause가 위치한 representation / lifecycle / ordering boundary: process-persistent descriptors를 temporary command state로 바꾼 뒤 restoration success를 next-command precondition으로 취급하지 않았습니다.
-- 수정된 invariant 또는 decision: stdin과 stdout을 독립적으로 복원하고 `EINTR`는 retry, other one-shot failure도 한 번 더 시도합니다. Error가 한 번이라도 있었으면 status 1, final failure면 `running=0`입니다.
+- 수정된 항상 유지해야 하는 조건 또는 decision: stdin과 stdout을 독립적으로 복원하고 `EINTR`는 retry, other one-shot failure도 한 번 더 시도합니다. Error가 한 번이라도 있었으면 status 1, final failure면 `running=0`입니다.
 - 변경 전 코드 증거: restoration result를 caller-visible outcome에 반영하지 않았습니다.
 - 변경 후 코드 증거: `restore_one` tri-state와 `restore_stdio` aggregate result가 command status와 shell running을 결정합니다.
 - 연결되는 regression test와 그 한계: `13645f58d5e6`가 save/apply/open/restore and repeat failure를 분리합니다. Arbitrary close/flush errors 전체는 포괄하지 않습니다.
@@ -1783,7 +1783,7 @@ Parent-executed command의 stdin/stdout restore를 독립적으로 retry하고, 
 - Retry 성공도 prior error evidence 때문에 status 1입니다.
 - Final failure는 diagnostic 후 `shell->running = 0`입니다.
 - Saved copies는 outcome과 무관하게 close됩니다.
-- Redirection setup failure도 same restore cleanup path로 합류합니다.
+- Redirection setup failure도 same restore 정리 과정으로 합류합니다.
 - Builtin output flush는 original stdout restore 전에 확인됩니다.
 
 #### 학습자가 남길 코드 증거
@@ -1798,7 +1798,7 @@ Parent-executed command의 stdin/stdout restore를 독립적으로 retry하고, 
 
 - transient failure 후 recovered state/status: both descriptors 복원은 완료되지만 error evidence를 숨기지 않아 1입니다.
 - unrecoverable failure 후 descriptor/running state: target descriptor를 신뢰할 수 없으므로 remaining input을 실행하지 않고 stop합니다.
-- setup failure와 normal execution이 합류하는 cleanup path: both go to restore + close saved descriptors.
+- setup failure와 normal execution이 합류하는 정리 과정: both go to restore + close saved descriptors.
 - 확인한 변경 파일: `src/exec.c`/parent execution and restoration helpers.
 - 핵심 caller → callee: parent command executor → save stdio → apply redirections/builtin → flush → `restore_stdio` → `restore_one`.
 - parent SHA와 비교한 최소 before/after snippet:
@@ -1826,18 +1826,18 @@ restore result -1 → shell->running = 0, command status 1
 - Importance: **A**
 - Tags: `TEST`, `FD_IO`, `FAILURE`
 - Source-defined role: Exercises save, application, restoration, open, and persistent failure paths.
-- 학습 깊이: 주요 subsystem boundary, integration point 또는 failure path. 핵심 코드와 설계 판단을 확인합니다.
+- 학습 깊이: 주요 subsystem boundary, integration point 또는 실패 처리. 핵심 코드와 설계 판단을 확인합니다.
 
 #### Source에서 확정된 변화
 Parent redirection의 descriptor save, target open, replacement apply, original restore 각 phase에 failure를 주입하고, recoverable case의 continuation과 repeated restore failure의 forced stop을 검증합니다.
 
 #### Test commit 학습 기록
-- 대상 production invariant: parent command는 state mutation 전에 stdio setup이 성공해야 하고, command 뒤 stdio가 restored이거나 shell이 stopped여야 합니다.
+- 대상 production 항상 유지해야 하는 조건: parent command는 state mutation 전에 stdio setup이 성공해야 하고, command 뒤 stdio가 restored이거나 shell이 stopped여야 합니다.
 - 재현하는 failure 또는 boundary: stdin save dup, stdout save dup, output open, replacement dup2, stdin restore, stdout restore, persistent restore입니다.
 - 사용한 test technique: operation/call-position fault injection과 same-process next-command assertions입니다.
 - 실제 통과하는 production code path: parent command save → redirection open/apply → builtin → flush → restore retry/stop.
 - 이 테스트가 증명하는 것: setup failures suppress command payload/state effect, recoverable errors yield status 1 and continuation on normal stdout, repeated restore failure suppresses following command and exits status 1.
-- 이 테스트가 증명하지 않는 것: long-run descriptor exhaustion, all close errors, child pipeline redirection combinations은 별도입니다.
+- 이 테스트가 증명하지 않는 것: long-run descriptor exhaustion, all close errors, child 처리 단계 redirection combinations은 별도입니다.
 - broad integration / deterministic regression / stress·probe 중 분류: phase-specific deterministic regression matrix입니다.
 - 후속 변경에서 막는 회귀: save cleanup 누락, failure 후 builtin execution, restore error suppression, unsafe continuation입니다.
 
@@ -1849,7 +1849,7 @@ Parent redirection의 descriptor save, target open, replacement apply, original 
 - Test input은 exact parent-executed builtin path를 사용합니다.
 
 #### 학습자가 남길 코드 증거
-- 대상 production invariant: parent stdio lifecycle is transactional across save/apply/execute/restore.
+- 대상 production 항상 유지해야 하는 조건: parent stdio lifecycle is transactional across save/apply/execute/restore.
 - phase별 injected operation: save=`dup`, target acquisition=`open`, apply/restore=`dup2` with selected occurrence.
 - expected command execution 여부: save/open/apply failure에서는 command body를 실행하지 않습니다.
 - following command behavior: reliable restoration이면 executes on normal stdio; persistent restore failure이면 not executed.
@@ -1862,7 +1862,7 @@ Parent redirection의 descriptor save, target open, replacement apply, original 
 - 해당 SHA에서 실행한 test 또는 수동 재현 결과: 실행하지 않았습니다. Case matrix와 expected output/status를 source로 확인했습니다.
 
 #### 보장 범위
-- 이 commit이 보장하는 것: parent descriptor lifecycle의 negative behavior와 recovery behavior, unrecoverable stop decision을 regression으로 고정합니다.
+- 이 commit이 보장하는 것: parent descriptor lifecycle의 negative 동작과 recovery behavior, unrecoverable stop decision을 regression으로 고정합니다.
 - 아직 보장하지 않는 것: 장기 반복에서 FD 누적이 없는지와 direct child leak은 다음 lifecycle test가 검증합니다.
 
 #### Thread 내 다음 연결
@@ -1876,40 +1876,40 @@ Parent redirection의 descriptor save, target open, replacement apply, original 
 - Importance: **A**
 - Tags: `TEST`, `PROCESS`, `FD_IO`
 - Source-defined role: Directly checks for descriptor exhaustion and unreaped children.
-- 학습 깊이: 주요 subsystem boundary, integration point 또는 failure path. 핵심 코드와 설계 판단을 확인합니다.
+- 학습 깊이: 주요 subsystem boundary, integration point 또는 실패 처리. 핵심 코드와 설계 판단을 확인합니다.
 
 #### Source에서 확정된 변화
-48-descriptor limit 아래 parent redirection, three-stage pipeline, file I/O를 반복하고, test-only `waitpid(-1, ..., WNOHANG)` probe로 live/zombie direct child가 남는지 검사합니다.
+48-descriptor limit 아래 parent redirection, three-stage 처리 단계, file I/O를 반복하고, test-only `waitpid(-1, ..., WNOHANG)` probe로 live/zombie direct child가 남는지 검사합니다.
 
 #### Test commit 학습 기록
-- 대상 production invariant: repeated normal execution 뒤 FD count가 누적되지 않고 each direct child가 already reaped돼야 합니다.
+- 대상 production 항상 유지해야 하는 조건: repeated normal execution 뒤 FD count가 누적되지 않고 each direct child가 already reaped돼야 합니다.
 - 재현하는 failure 또는 boundary: single-run output으로 보이지 않는 descriptor leak과 unreaped/zombie child accumulation입니다.
-- 사용한 test technique: low FD limit stress workload + test-only post-pipeline direct child probe + timeout/process-group harness입니다.
+- 사용한 test technique: low FD limit stress workload + test-only post-처리 단계 direct child probe + timeout/process-group harness입니다.
 - 실제 통과하는 production code path: parent builtin redirection save/apply/restore, 3-stage pipe creation/fork/close/wait, file input/output redirection, timeout cleanup입니다.
 - 이 테스트가 증명하는 것: configured repeated workload가 descriptor exhaustion 없이 final marker에 도달하고 test process에 waitable/live direct child가 남지 않습니다.
-- 이 테스트가 증명하지 않는 것: all descendant grandchildren, unlimited workloads, every OS resource leak, production build에 probe가 존재함을 증명하지 않습니다.
+- 이 테스트가 증명하지 않는 것: all descendant grandchildren, unlimited workloads, every OS 자원 누수, production build에 probe가 존재함을 증명하지 않습니다.
 - broad integration / deterministic regression / stress·probe 중 분류: broad lifecycle stress와 deterministic direct-child probe의 결합입니다.
 - 후속 변경에서 막는 회귀: parent saved FD close 누락, pipe end close 누락, child reap 누락, timeout child orphaning입니다.
 
 #### `b42e57eb7755`에서 확인할 실제 코드
 - `tests/lifecycle.sh`가 subshell의 descriptor limit을 48로 설정합니다.
-- Workload는 60회 parent redirection, three-stage pipeline, temporary file write/read를 섞습니다.
+- Workload는 60회 parent redirection, three-stage 처리 단계, temporary file write/read를 섞습니다.
 - Expected stdout는 final `fd-ok` marker이고 stderr는 비어 있어야 합니다.
 - Test-only `shell_children_reaped`는 `waitpid(-1, ..., WNOHANG)`을 반복해 child가 있거나 probe가 직접 하나라도 reap하면 failure로 간주하고, `ECHILD`에서 only no-found success입니다.
-- Timeout fixture는 long-running pipeline이 timeout status 124가 되는지 확인합니다.
-- Timeout runner는 launched process group을 종료·회수해 orphan을 피합니다.
+- Timeout fixture는 long-running 처리 단계가 timeout status 124가 되는지 확인합니다.
+- Timeout runner는 launched 프로세스 그룹을 종료·회수해 orphan을 피합니다.
 - Probe는 `SMALL_SHELL_TESTING` 안에만 있습니다.
 
 #### 학습자가 남길 코드 증거
-- 대상 resource invariant: no cumulative parent FD ownership and no unreaped direct child after a pipeline returns.
+- 대상 resource 항상 유지해야 하는 조건: no cumulative parent FD 소유권 and no unreaped direct child after a 처리 단계 returns.
 - workload 반복 횟수/구성: 60 iterations, parent redirection + 3-stage pipe + file copy/read/write.
 - FD exhaustion 관찰 방식: `ulimit -n 48` 아래 final marker 도달; leak가 누적되면 later `open`/`pipe`/`dup`이 실패합니다.
 - direct child probe 결과 해석: `waitpid` returns child PID이면 leak/zombie; 0이면 live child; `-1/ECHILD` and no prior found만 success입니다.
-- timeout/process-group 관련 assertion: 30-second child pipeline을 short timeout으로 끊고 124를 요구하며 runner가 process group을 cleanup합니다.
+- timeout/process-group 관련 assertion: 30-second child 처리 단계를 short timeout으로 끊고 124를 요구하며 runner가 프로세스 그룹을 cleanup합니다.
 - broad stress와 deterministic probe의 역할 구분: FD는 exhaustion stress로 간접 관찰, child는 waitpid probe로 직접 관찰합니다.
 - 증명하지 않는 descendant 범위: direct children만 확인하며 grandchildren/external daemonization은 범위 밖입니다.
 - 확인한 변경 파일: `tests/lifecycle.sh`, test-only executor hook, `tests/timeout_runner.c`, `Makefile`.
-- 핵심 caller → callee: lifecycle script → test binary repeated workloads → executor cleanup → test-only child probe; timeout script → runner → process group cleanup.
+- 핵심 caller → callee: lifecycle script → test binary repeated workloads → executor cleanup → test-only child probe; timeout script → runner → 프로세스 그룹 cleanup.
 - parent SHA와 비교한 최소 before/after snippet: existing functional fault suite 옆에 long-run lifecycle suite와 direct probe가 추가됐습니다.
 - 해당 SHA에서 실행한 test 또는 수동 재현 결과: 실행하지 않았습니다. 반복 횟수, FD limit, probe result interpretation, timeout expectations를 source로 검사했습니다.
 
@@ -1928,7 +1928,7 @@ Parent redirection의 descriptor save, target open, replacement apply, original 
 - Importance: **B**
 - Tags: `FD_IO`, `FAILURE`, `DEBUG`
 - Source-defined role: Closes the remaining PID-table leak before any child is spawned.
-- 학습 깊이: Thread 흐름에서 맡는 구현 역할과 필요한 state/ownership 변화를 확인합니다.
+- 학습 깊이: Thread 흐름에서 맡는 구현 역할과 필요한 state/소유권 변화를 확인합니다.
 
 #### Source에서 확정된 변화
 PID table과 pipe table을 모두 할당한 뒤 pipe creation이 실패하는 return path에서 opened pipe ends, pipe table뿐 아니라 아직 local인 PID table도 해제합니다.
@@ -1937,10 +1937,10 @@ PID table과 pipe table을 모두 할당한 뒤 pipe creation이 실패하는 re
 - 기존 가정: pipe creation failure cleanup에서 pipe-related resources만 정리하면 된다고 보았습니다.
 - 실제 failure 또는 위험을 드러내는 입력·상태: prior allocation-order fix로 PID table을 pipe creation 전에 확보하므로 second/first pipe failure 시 unused PID table allocation이 live입니다.
 - root cause가 위치한 representation / lifecycle / ordering boundary: acquisition order가 바뀌었지만 old failure label의 cleanup list에 newly preallocated PID table이 추가되지 않았습니다.
-- 수정된 invariant 또는 decision: every local preparation allocation is listed in every exit after its acquisition, even before child spawn.
+- 수정된 항상 유지해야 하는 조건 또는 decision: every local preparation allocation is listed in every exit after its acquisition, even before child spawn.
 - 변경 전 코드 증거: partial pipe ends close + pipe table free + return, without `free(pids)`.
 - 변경 후 코드 증거: same branch에 PID table free 한 줄이 추가됩니다.
-- 연결되는 regression test와 그 한계: 이 commit에는 전용 test가 없습니다. Existing pipe fault seam, allocation sweep, later sanitizer path가 관찰 수단이지만 실제 실행 결과를 이 commit에 소급하지 않습니다.
+- 연결되는 회귀 테스트와 그 한계: 이 commit에는 전용 test가 없습니다. Existing pipe fault seam, allocation sweep, later sanitizer path가 관찰 수단이지만 실제 실행 결과를 이 commit에 소급하지 않습니다.
 
 #### `6dff1ba86ba6`에서 확인할 실제 코드
 - Executor는 PID table과 pipe table을 먼저 allocate하고 descriptor slots를 `-1`로 init한 뒤 `shell_pipe` loop를 시작합니다.
@@ -1956,7 +1956,7 @@ PID table과 pipe table을 모두 할당한 뒤 pipe creation이 실패하는 re
 - child count가 0인 근거: create-all-pipes loop가 fork loop보다 앞섭니다.
 - narrow leak의 관찰 방법: selected pipe failure를 repeated invocation하고 ASan/LSan 또는 allocation accounting으로 PID table leak를 관찰할 수 있습니다. 이 환경에서는 실행하지 않았습니다.
 - 확인한 변경 파일: `src/exec.c`.
-- 핵심 caller → callee: pipeline executor → table allocations → pipe creation loop → failure close/free branch.
+- 핵심 caller → callee: 처리 단계 executor → table allocations → pipe creation loop → failure close/free branch.
 - parent SHA와 비교한 최소 before/after snippet:
 
 ```c
@@ -1970,16 +1970,16 @@ return 1;
 
 #### 보장 범위
 - 이 commit이 보장하는 것: first child가 생기기 전 pipe creation failure에서도 preparation memory가 모두 회수됩니다.
-- 아직 보장하지 않는 것: project-wide ownership model을 바꾸지 않는 narrow cleanup fix입니다.
+- 아직 보장하지 않는 것: project-wide 소유권 model을 바꾸지 않는 narrow cleanup fix입니다.
 
 #### Thread 내 다음 연결
-Pipeline Thread의 마지막 commit입니다. 최종 ledger에서 모든 acquisition path가 terminal cleanup state로 수렴하는지 확인합니다.
+처리 단계 Thread의 마지막 commit입니다. 최종 ledger에서 모든 acquisition path가 terminal cleanup state로 수렴하는지 확인합니다.
 
-## 6. Invariant ledger
+## 6. 항상 유지해야 하는 조건 ledger
 
-Source가 명시한 invariant와 engineering difficulty를 유지하고 exact code 근거를 채웠습니다.
+Source가 명시한 항상 유지해야 하는 조건과 engineering difficulty를 유지하고 exact code 근거를 채웠습니다.
 
-| Invariant | Source에서 확정된 의미 | 처음 도입/표현 | 강화·복구·검증 | 학습자가 확인한 코드 근거 |
+| 항상 유지해야 하는 조건 | Source에서 확정된 의미 | 처음 도입/표현 | 강화·복구·검증 | 학습자가 확인한 코드 근거 |
 | --- | --- | --- | --- | --- |
 | Every recorded child PID remains parent-owned until termination or observation. | parent가 PID를 기록한 뒤에는 pipeline이 완성되지 않아도 해당 child를 종료하거나 wait로 관찰해야 합니다. | `ae988017efd5` | `be2967a4b946`, `d611196b368e`, `b42e57eb7755` | Fork success 직후 PID slot/`spawned` publish; partial branch close→kill→exact wait; wait fault status override; test-only no-child probe. |
 | Each process closes every pipe end it does not need. | 숨은 writer/read end가 EOF와 resource lifetime을 방해하지 않도록 parent와 child 모두 불필요한 pipe end를 닫아야 합니다. | `a71f98de0d92` | `be2967a4b946`, `b42e57eb7755` | Child dup formula 뒤 all originals close, parent spawn loop 뒤 all ends close, failure도 close before kill/reap; low-FD stress observes accumulation. |
@@ -1988,9 +1988,9 @@ Source가 명시한 invariant와 engineering difficulty를 유지하고 exact co
 
 ### Ledger 작성 시 확인한 것
 
-- PID slot은 `ae988...`에서 도입됐지만 incomplete graph ownership은 `be296...`에서 완성됐습니다.
+- PID slot은 `ae988...`에서 도입됐지만 incomplete graph 소유권은 `be296...`에서 완성됐습니다.
 - Pipe topology 결정은 `a71f...`, failure convergence는 `be296...`, observation evidence는 `d611...`/`b42e...`로 분리했습니다.
-- Test seam commits는 ownership policy를 만들지 않고 rare branch를 deterministic하게 관찰합니다.
+- Test seam commits는 소유권 policy를 만들지 않고 rare branch를 deterministic하게 관찰합니다.
 - Success, pipe failure, partial fork, wait failure, restore failure 모두 acquired FDs/tables/PIDs의 explicit terminal state를 가집니다.
 
 ## 7. Failure → Fix → Test 연결
@@ -2001,7 +2001,7 @@ Source가 명시한 invariant와 engineering difficulty를 유지하고 exact co
 | parent builtin redirection restore failure를 무시하면 persistent stdin/stdout이 손상됨 | `fd5c76c18c27`의 dup/open seam | `2ca9f4299c7f` — independent retry, status 1, unrecoverable stop | `13645f58d5e6` — save/apply/restore/open/repeated failure matrix | `restore_one` tri-state와 repeat-mode no-following-command assertion을 연결했습니다. |
 | pipe creation failure 전 preallocated PID table이 return path에 남음 | execution table을 먼저 할당하는 preparation order | `6dff1ba86ba6` — partial pipe cleanup에 PID table free 추가 | Thread 내 별도 전용 test commit은 없으므로 fault-injection 또는 sanitizer 실행 결과와 allocation/free code를 직접 기록합니다. | Exact diff에서 `free(pids)` 추가, fork-before/after ordering으로 child count 0을 확인했습니다. Runtime sanitizer는 실행하지 않았습니다. |
 
-## 8. Ownership / state / responsibility 변화
+## 8. 소유권 / state / responsibility 변화
 
 | 대상 | Owner / 책임 주체 | 책임 종료 시점 | 해당 SHA에서 확인할 내용 | 학습자 기록 |
 | --- | --- | --- | --- | --- |
@@ -2009,16 +2009,16 @@ Source가 명시한 invariant와 engineering difficulty를 유지하고 exact co
 | pipe table | parent 준비 단계 | parent close 후 table free | 각 slot `-1` 초기화와 partial creation cleanup 확인 | All entries `-1`; pipe success마다 pair가 live; success/failure 모두 close helper 후 memory free입니다. |
 | child inherited pipe ends | 각 child stage | dup2 뒤 모든 original end close | stage index별 필요한 end와 불필요한 end 기록 | previous read/current write만 stdio에 duplicate하고 table의 every original end를 close합니다. |
 | saved stdin/stdout | parent-command executor | restore attempts 완료 후 close | 둘을 독립적으로 복원하는 code 확인 | Acquisition failure cleanup, per-target restore retry, final close가 outcome과 무관하게 수행됩니다. |
-| external environment vector | child before exec | exec 성공 시 process image로 이전, 실패 시 child cleanup | serialization과 failure status 기록 | Child local owner; successful exec replaces image, failure path frees/terminates with 126/127 or allocation status. |
+| external environment vector | child before exec | exec 성공 시 process image로 이전, 실패 시 child cleanup | serialization과 failure status 기록 | Child local owner; successful exec replaces image, 실패 처리 frees/terminates with 126/127 or allocation status. |
 | last-stage wait result | parent status calculation | 모든 required wait가 clean할 때만 사용 | wait error override branch 기록 | Full spawn and no wait error일 때만 last recorded PID result를 사용합니다. |
 
 ## 9. Thread 최종 상태
 
-N-stage graph는 `N-1` pipe pairs를 사용합니다. Single stateful builtin만 parent에서 실행되고, multi-stage pipeline의 모든 commands/builtins는 child에서 실행됩니다.
+N-stage graph는 `N-1` pipe pairs를 사용합니다. Single stateful builtin만 parent에서 실행되고, multi-stage 처리 단계의 모든 commands/builtins는 child에서 실행됩니다.
 
 | Terminal path | Child/FD/table 결과 | Shell-visible result |
 | --- | --- | ---: |
-| normal complete pipeline | parent/children close unused ends; every PID exact wait; tables free | last clean stage status |
+| normal complete 처리 단계 | parent/children close unused ends; every PID exact wait; tables free | last clean stage status |
 | pipe creation failure | opened prefix close; both tables free; no child | 1 |
 | mid-fork failure | parent ends close; recorded children kill/reap; tables free | 1 |
 | wait failure | remaining waits attempted; tables free | 1, last status ignored |
@@ -2027,12 +2027,12 @@ N-stage graph는 `N-1` pipe pairs를 사용합니다. Single stateful builtin만
 
 ### 최종 상태 기록
 
-- 최종적으로 유지되는 data/resource ownership: executor local이 tables와 parent pipe FDs를, parent가 recorded PIDs를, each child가 inherited descriptors를 dup/close 시점까지 소유합니다. Parent command helper는 saved stdio를 소유합니다.
+- 최종적으로 유지되는 data/자원 소유권: executor local이 tables와 parent pipe FDs를, parent가 recorded PIDs를, each child가 inherited descriptors를 dup/close 시점까지 소유합니다. Parent command helper는 saved stdio를 소유합니다.
 - 최종적으로 보장되는 execution 또는 recovery rule: record/acquire한 자원은 graph 완성 여부와 무관하게 close·terminate·wait·free로 회수되며, parent stdio를 신뢰할 수 없으면 다음 command를 실행하지 않습니다.
-- Thread가 해결한 가장 어려운 failure: incomplete pipeline에서 이미 실행 중이거나 block된 child를 남기지 않고 deterministic terminal ownership으로 수렴시키는 문제입니다.
+- Thread가 해결한 가장 어려운 failure: incomplete 처리 단계에서 이미 실행 중이거나 block된 child를 남기지 않고 deterministic terminal 소유권으로 수렴시키는 문제입니다.
 - Thread 밖에 남아 있는 보장 범위: arbitrary descendants, all possible close errors/kernel failures, infinite workload는 test 범위 밖입니다.
 
-## 10. 최종 architecture 또는 execution flow 정리
+## 10. 최종 architecture 또는 실행 순서 정리
 
 ```text
 [command_count 확인]
@@ -2057,10 +2057,10 @@ N-stage graph는 `N-1` pipe pairs를 사용합니다. Single stateful builtin만
 
 ### 코드 기반 최종 설명
 
-- 핵심 entry function: pipeline dispatcher와 `run_forked_commands`; parent path의 parent-command executor입니다.
-- 주요 caller → callee chain: sequence executor → one-pipeline dispatcher → table/pipe setup → fork loop → child pipe setup/redirection/builtin-or-exec; parent close → `wait_for_child`; failure branch → `terminate_children`.
+- 핵심 entry function: 처리 단계 dispatcher와 `run_forked_commands`; parent path의 parent-command executor입니다.
+- 주요 caller → callee chain: sequence executor → one-처리 단계 dispatcher → table/pipe setup → fork loop → child pipe setup/redirection/builtin-or-exec; parent close → `wait_for_child`; failure branch → `terminate_children`.
 - state mutation 순서: memory allocations → live pipe slots → PID records → child stdio dup → parent closes → wait observations → result selection; parent builtin에서는 saved descriptors → temporary redirection → restore result → status/running.
-- ownership transfer 순서: pipe() returns to parent table and is inherited by child; child duplicates then closes originals; parent closes its copies; PID record stays parent-owned through wait; saved stdio stays local through restoration.
+- 소유권 transfer 순서: pipe() returns to parent table and is inherited by child; child duplicates then closes originals; parent closes its copies; PID record stays parent-owned through wait; saved stdio stays local through restoration.
 - failure convergence path: pre-fork pipe failure closes/free locals; mid-fork failure close/kill/reap; wait failure forces 1; permanent stdio restore failure stops shell.
 - regression evidence: process failure matrix, FD restoration matrix, low-FD lifecycle stress, direct child probe가 source에 존재합니다. 실제 commands는 실행하지 않았습니다.
 
@@ -2068,23 +2068,23 @@ N-stage graph는 `N-1` pipe pairs를 사용합니다. Single stateful builtin만
 
 - [x] 모든 commit을 exact SHA에서 확인했고 final HEAD를 소급하지 않았습니다.
 - [x] Commit map의 SHA, subject, importance, tags, order를 변경하지 않았습니다.
-- [x] S commit은 problem, prior state, failure possibility, decision, core code, ownership/lifecycle, follow-up을 설명했습니다.
-- [x] A commit은 subsystem boundary 또는 failure path와 실제 핵심 code를 설명했습니다.
-- [x] B commit은 Thread 내 구현 역할과 state/ownership 변화를 설명했습니다.
-- [x] Fix commit은 기존 가정 → failure → root cause → 수정 invariant → code → regression 순으로 연결했습니다.
-- [x] Test commit은 invariant, failure, technique, production path, prove/not prove를 구분했습니다.
-- [x] Invariant ledger의 각 행에 실제 file/function/branch 근거가 있습니다.
+- [x] S commit은 problem, prior state, failure possibility, decision, core code, 소유권/lifecycle, 후속 작업을 설명했습니다.
+- [x] A commit은 subsystem boundary 또는 실패 처리와 실제 핵심 code를 설명했습니다.
+- [x] B commit은 Thread 내 구현 역할과 state/소유권 변화를 설명했습니다.
+- [x] Fix commit은 기존 가정 → failure → root cause → 수정 항상 유지해야 하는 조건 → code → regression 순으로 연결했습니다.
+- [x] Test commit은 항상 유지해야 하는 조건, failure, technique, production path, prove/not prove를 구분했습니다.
+- [x] 항상 유지해야 하는 조건 ledger의 각 행에 실제 file/function/branch 근거가 있습니다.
 - [x] 정상·실패 경로 모두에서 resource와 partial object의 terminal owner를 설명했습니다.
 - [x] 이 Thread의 설계 → 구현 → 실패 → 수정 → 검증 흐름을 commit history 순서로 재구성했습니다.
-===== END FILE: 03-pipeline-process-and-descriptor-ownership.md =====
+===== END FILE: 03-처리 단계-process-and-descriptor-소유권.md =====
 
 ===== BEGIN FILE: 04-transactional-allocation-failure.md =====
 # From fatal allocation to transactional command failure
 
 > 한국어 주제: **Fatal allocation에서 transactional command failure로**
 >
-> Project: `small-shell`  
-> Branch: `c/minishell`  
+> Project: `small-shell`
+> Branch: `c/minishell`
 > Development Thread order: 4/5
 
 ## 1. Thread 목표
@@ -2110,9 +2110,9 @@ low-level allocation failure가 임의의 process exit로 끝나던 초기 모�
 ## 2. 이 Thread를 이해하기 위한 핵심 질문
 
 - allocation wrapper가 정책을 결정합니까, 아니면 caller가 recoverable/fatal 여부를 결정합니까?
-- environment replacement에서 새 value allocation이 성공하기 전에 기존 value를 해제하면 어떤 invariant가 깨집니까?
+- environment replacement에서 새 value allocation이 성공하기 전에 기존 value를 해제하면 어떤 항상 유지해야 하는 조건이 깨집니까?
 - lexer/parser append는 어느 시점에 partial object를 public structure에 연결합니까?
-- pipeline table allocation이 OS pipe 생성보다 앞서야 하는 이유는 무엇입니까?
+- 처리 단계 table allocation이 OS pipe 생성보다 앞서야 하는 이유는 무엇입니까?
 - heredoc allocation failure는 object cleanup 외에 어떤 input side effect를 복구해야 합니까?
 - phase·command·call-position scoped injection이 어떤 two coherent outcomes만 허용합니까?
 - persistent allocator failure에서 계속 loop를 돌면 왜 residual input 실행 위험이 생깁니까?
@@ -2130,7 +2130,7 @@ low-level allocation failure가 임의의 process exit로 끝나던 초기 모�
 ## 4. Commit map
 
 | 순서 | SHA | Subject | Importance | Tags | Source-defined role |
-| ---: | --- | --- | :---: | --- | --- |
+| ---: | --- | --- |:---: | --- | --- |
 | 1 | `0b2e76386678` | `refactor(runtime): 실행 경로의 동적 할당 래퍼 통합` | A | `ARCH`, `FAILURE`, `TEST` | Centralizes allocation and adds overflow-aware wrappers across execution paths. |
 | 2 | `0bb6f9de0947` | `fix(memory): 구조화 단계의 할당 실패를 명령 오류로 전파` | S | `ARCH`, `FAILURE`, `RISK` | Replaces process-terminating helpers with nullable, transactional construction and command-level propagation. |
 | 3 | `6d95776ede59` | `fix(memory): 실행 자원 할당 실패를 pipeline 오류로 전파` | A | `PROCESS`, `FAILURE`, `RISK` | Extends side-effect-free preparation ordering to executor resource tables. |
@@ -2147,24 +2147,24 @@ low-level allocation failure가 임의의 process exit로 끝나던 초기 모�
 - Importance: **A**
 - Tags: `ARCH`, `FAILURE`, `TEST`
 - Source-defined role: Centralizes allocation and adds overflow-aware wrappers across execution paths.
-- 학습 깊이: 주요 subsystem boundary, integration point 또는 failure path. 핵심 코드와 설계 판단을 확인합니다.
+- 학습 깊이: 주요 subsystem boundary, integration point 또는 실패 처리. 핵심 코드와 설계 판단을 확인합니다.
 
 #### Source에서 확정된 변화
-Pipeline setup, heredoc buffering, input growth, shared string utilities의 allocation을 runtime layer로 모으고, `shell_calloc`에 multiplication-overflow check를 추가합니다. Caller의 기존 fatal/recoverable policy는 아직 유지됩니다.
+처리 단계 setup, heredoc buffering, input growth, shared string utilities의 allocation을 runtime layer로 모으고, `shell_calloc`에 multiplication-overflow check를 추가합니다. Caller의 기존 fatal/recoverable policy는 아직 유지됩니다.
 
 #### Refactor 판단 기록
-- 기존 abstraction 또는 cost/failure 관찰 한계: raw `malloc`/`calloc`/`realloc`이 subsystem 곳곳에 있어 overflow behavior와 deterministic injection seam을 한 곳에서 관리할 수 없었습니다.
+- 기존 abstraction 또는 cost/failure 관찰 한계: raw `malloc`/`calloc`/`realloc`이 subsystem 곳곳에 있어 overflow 동작과 deterministic injection seam을 한 곳에서 관리할 수 없었습니다.
 - 새 boundary가 제공하는 contract: `shell_malloc`, `shell_calloc`, `shell_realloc`이 allocation request를 통과시키고, `shell_calloc`은 `count * size` overflow를 `ENOMEM` failure로 바꿉니다.
 - production semantics가 유지된다는 코드 근거: wrapper는 overflow case 외에는 libc allocator를 그대로 호출하고 caller return handling은 이 commit에서 그대로입니다.
-- ownership 또는 call-site responsibility 변화: returned pointer의 owner와 cleanup responsibility는 각 caller에 남습니다. Wrapper는 policy owner가 아니라 common call boundary입니다.
+- 소유권 또는 call-site responsibility 변화: returned pointer의 owner와 cleanup responsibility는 각 caller에 남습니다. Wrapper는 policy owner가 아니라 common call boundary입니다.
 - 후속 fix/test가 이 seam을 사용하는 방식: `0bb6...`가 nullable propagation을 project-wide로 만들고 `476b...`가 scope/call-position failure injection을 wrapper에 추가합니다.
 
 #### `0b2e76386678`에서 확인할 실제 코드
 - `src/runtime.h/.c`의 three allocation wrappers를 확인했습니다.
 - `shell_calloc`은 nonzero size에서 `count > SIZE_MAX / size`를 검사하고 `errno = ENOMEM`, NULL을 반환합니다.
-- Pipeline table/PID allocation, heredoc local buffers/entries, input growth, shared duplicate/join utilities가 wrappers로 이동합니다.
+- 처리 단계 table/PID allocation, heredoc local buffers/entries, input growth, shared duplicate/join utilities가 wrappers로 이동합니다.
 - Caller별로 NULL을 이미 처리하는 곳과 fatal helper에 의존하는 곳이 섞여 있습니다.
-- Production behavior는 centralization과 overflow guard 외에 변하지 않습니다.
+- Production 동작은 centralization과 overflow guard 외에 변하지 않습니다.
 
 #### 학습자가 남길 코드 증거
 - wrapper API map:
@@ -2173,7 +2173,7 @@ Pipeline setup, heredoc buffering, input growth, shared string utilities의 allo
 | --- | --- |
 | `shell_malloc(size)` | libc `malloc` delegation |
 | `shell_calloc(count,size)` | multiplication overflow면 `ENOMEM`/NULL, 아니면 `calloc` |
-| `shell_realloc(ptr,size)` | libc `realloc` delegation, old pointer ownership은 success 전 caller에 유지 |
+| `shell_realloc(ptr,size)` | libc `realloc` delegation, old pointer 소유권은 success 전 caller에 유지 |
 
 - overflow check expression: `size != 0 && count > SIZE_MAX / size`.
 - routed subsystem 목록: executor tables, heredoc buffers/repository, input buffer, string utilities.
@@ -2191,10 +2191,10 @@ if (size != 0 && count > SIZE_MAX / size) {
 return calloc(count, size);
 ```
 
-- 해당 SHA에서 실행한 test 또는 수동 재현 결과: 실행하지 않았습니다. Wrapper definitions와 routed call sites를 exact diff로 확인했습니다.
+- 해당 SHA에서 실행한 test 또는 수동 재현 결과: 실행하지 않았습니다. Wrapper definitions와 routed 호출 지점을 exact diff로 확인했습니다.
 
 #### 보장 범위
-- 이 commit이 보장하는 것: allocation behavior를 한 boundary에서 관찰·주입하고 overflow-aware zero allocation을 공통 사용하게 합니다.
+- 이 commit이 보장하는 것: allocation 동작을 한 boundary에서 관찰·주입하고 overflow-aware zero allocation을 공통 사용하게 합니다.
 - 아직 보장하지 않는 것: global failure model은 아직 바뀌지 않아 low-level fatal exit와 partial publication 문제가 남습니다.
 
 #### Thread 내 다음 연결
@@ -2208,23 +2208,23 @@ return calloc(count, size);
 - Importance: **S**
 - Tags: `ARCH`, `FAILURE`, `RISK`
 - Source-defined role: Replaces process-terminating helpers with nullable, transactional construction and command-level propagation.
-- 학습 깊이: Architecture / invariant 핵심. 변경 전 가정, failure 가능성, 결정, core code, ownership/lifecycle, follow-up을 추적합니다.
+- 학습 깊이: Architecture / 항상 유지해야 하는 조건 핵심. 변경 전 가정, failure 가능성, 결정, core code, 소유권/lifecycle, 후속 작업을 추적합니다.
 
 #### Source에서 확정된 변화
-Fatal allocation helpers를 nullable operation으로 바꾸고, environment, lexer, parser, expansion, public API, command loop까지 complete result만 publish하고 partial construction을 해제하도록 failure propagation을 재설계합니다.
+Fatal allocation helpers를 nullable operation으로 바꾸고, environment, lexer, parser, expansion, 공개 API, command loop까지 complete result만 publish하고 partial construction을 해제하도록 failure propagation을 재설계합니다.
 
 #### Source가 확정한 핵심 판단
-- **문제**: Fatal allocation helpers could terminate the shell from deep inside tokenization, parsing, environment mutation, or expansion, bypassing ownership cleanup and potentially exposing partial state.
+- **문제**: Fatal allocation helpers could terminate the shell from deep inside tokenization, parsing, environment mutation, or expansion, bypassing 소유권 cleanup and potentially exposing partial state.
 - **결정**: Make allocation helpers nullable and require each construction layer to publish only complete results, preserve existing state until replacements succeed, release partial prefixes, and propagate allocation failure through command or startup boundaries.
 - **중요한 이유**: This is a project-wide change from exception-like process termination to explicit transactional failure. It affects almost every owned representation and determines whether a running shell can diagnose one failed command and continue safely.
 - **확정된 변경 범위**: Utilities gained size checks and nullable returns; environment creation, replacement, import, and serialization became transactional; lexer and parser publishing became failure-aware; expansion and public APIs propagated allocation errors; and the loop distinguished syntax status from command-level memory failure.
-- **프로젝트 이해에서의 위치**: It is the central failure-architecture commit. It unifies the ownership lessons from parsing, environment state, execution, and heredoc into one invariant: no incomplete object escapes and no arbitrary helper owns process termination.
+- **프로젝트 이해에서의 위치**: It is the central failure-architecture commit. It unifies the 소유권 lessons from parsing, environment state, execution, and heredoc into one 항상 유지해야 하는 조건: no incomplete object escapes and no arbitrary helper owns process termination.
 
 #### Fix 재구성 기록
 - 기존 가정: allocation failure is unrecoverable anywhere, so `sh_xcalloc`/fatal duplicate helper may diagnose and call `exit` deep in the call graph.
 - 실제 failure 또는 위험을 드러내는 입력·상태: env replacement가 old value를 먼저 free한 뒤 new copy 실패, parser가 partial prefix를 publish한 뒤 deep exit, token creation failure가 already built list cleanup을 우회하는 상태입니다.
-- root cause가 위치한 representation / lifecycle / ordering boundary: low-level helper가 process lifetime policy를 소유하고 constructors의 publish/rollback protocol이 명시되지 않았습니다.
-- 수정된 invariant 또는 decision: allocation은 nullable; each layer keeps new work local until complete, publishes after all dependencies succeed, preserves old state until replacement ready, and propagates failure to command/startup boundary.
+- root cause가 위치한 representation / lifecycle / ordering boundary: low-level helper가 process 수명 policy를 소유하고 constructors의 publish/rollback protocol이 명시되지 않았습니다.
+- 수정된 항상 유지해야 하는 조건 또는 decision: allocation은 nullable; each layer keeps new work local until complete, publishes after all dependencies succeed, preserves old state until replacement ready, and propagates failure to command/startup boundary.
 - 변경 전 코드 증거: `sh_xcalloc`/old helpers가 NULL에서 diagnostic + `exit`; env replacement sequence may destroy old value before replacement is guaranteed.
 - 변경 후 코드 증거: `sh_calloc`/string utilities return NULL; env/token/parser/expand functions check and unwind; line loop distinguishes allocation failure status 1 from syntax 258.
 - 연결되는 regression test와 그 한계: `476b082d55c7`가 configured scopes/call positions를 sweep합니다. Unscoped startup/allocator internals 전체를 mathematically prove하지 않습니다.
@@ -2236,9 +2236,9 @@ Fatal allocation helpers를 nullable operation으로 바꾸고, environment, lex
 - `env_set` replacement는 new value duplicate가 성공한 뒤 old value를 free/publish합니다.
 - `env_from_environ`은 import prefix failure 시 whole partial list를 free합니다.
 - `env_to_environ`은 vector/each `KEY=VALUE` failure 시 created prefix를 free합니다.
-- Token node가 text ownership을 받을 수 없으면 text/list를 cleanup하고 publish하지 않습니다.
+- Token node가 text 소유권을 받을 수 없으면 text/list를 cleanup하고 publish하지 않습니다.
 - Parser append는 new argv/string or redirection node/target success 뒤 fields/list를 mutate합니다.
-- Shared parse failure는 current command/current pipeline/completed prefix를 정리합니다.
+- Shared parse failure는 current command/current 처리 단계/completed prefix를 정리합니다.
 - Expansion/dequote/public parser APIs propagate allocation failure separately from syntax diagnostic.
 - `shell_process_line`은 syntax status 258와 allocation status 1을 구분합니다.
 - Startup environment import failure는 usable shell state가 없으므로 diagnosed process return 경계입니다.
@@ -2256,8 +2256,8 @@ Fatal allocation helpers를 nullable operation으로 바꾸고, environment, lex
 | expansion | new string/buffer | complete result then replace field | preserve encoded old field |
 
 - environment replace-before-free transaction: allocate copy → on NULL return with old value intact → on success assign new pointer and free old.
-- parser single failure convergence: error label frees local command, local pipeline, already completed sequence prefix.
-- public API return/diagnostic ownership: NULL/error code communicates allocation; optional error string itself is checked/owned by caller.
+- parser single failure convergence: error label frees local command, local 처리 단계, already completed sequence prefix.
+- 공개 API return/diagnostic 소유권: NULL/오류 코드 communicates allocation; optional error string itself is checked/owned by caller.
 - loop의 status 258 vs 1: syntax/lexical grammar error gets 258; `ENOMEM`/allocation failure gets 1.
 - startup fatal boundary vs running-shell recoverable boundary: initial env import failure returns from `main`; per-command token/parse/expand failure diagnoses and leaves loop usable when other state/input is trustworthy.
 - 확인한 변경 파일: `include/shell.h`, `src/utils.c`, `src/env.c`, `src/token.c`, `src/parser.c`, `src/expand.c`, `src/exec.c`, `src/input.c`, `src/main.c`.
@@ -2286,22 +2286,22 @@ before: allocate failure → deep helper exit
 - Importance: **A**
 - Tags: `PROCESS`, `FAILURE`, `RISK`
 - Source-defined role: Extends side-effect-free preparation ordering to executor resource tables.
-- 학습 깊이: 주요 subsystem boundary, integration point 또는 failure path. 핵심 코드와 설계 판단을 확인합니다.
+- 학습 깊이: 주요 subsystem boundary, integration point 또는 실패 처리. 핵심 코드와 설계 판단을 확인합니다.
 
 #### Source에서 확정된 변화
-Pipeline pipe-end table과 PID table을 모두 OS pipe 생성 전에 overflow-aware `shell_calloc`으로 확보하여, allocation failure를 child/FD 없는 pure preparation error로 만듭니다.
+처리 단계 pipe-end table과 PID table을 모두 OS pipe 생성 전에 overflow-aware `shell_calloc`으로 확보하여, allocation failure를 child/FD 없는 pure preparation error로 만듭니다.
 
 #### Fix 재구성 기록
 - 기존 가정: table allocation과 pipe creation을 interleave하거나 one table 뒤 OS resource를 acquire해도 failure cleanup으로 처리할 수 있다고 보았습니다.
 - 실제 failure 또는 위험을 드러내는 입력·상태: some pipe FDs가 live인 뒤 PID table allocation이 실패하면 memory failure가 descriptor cleanup/side effect rollback까지 요구합니다.
 - root cause가 위치한 representation / lifecycle / ordering boundary: side-effect-free memory preparation과 externally visible OS acquisition이 섞여 있었습니다.
-- 수정된 invariant 또는 decision: both bookkeeping tables를 먼저 allocate/initialize한 뒤에만 first `pipe` call을 합니다.
+- 수정된 항상 유지해야 하는 조건 또는 decision: both bookkeeping tables를 먼저 allocate/initialize한 뒤에만 first `pipe` call을 합니다.
 - 변경 전 코드 증거: resource acquisition 전 all table success가 보장되지 않았습니다.
 - 변경 후 코드 증거: PID allocation → pipe table allocation → `-1` initialization → pipe creation 순서입니다.
-- 연결되는 regression test와 그 한계: `476b...`의 execute scope가 table allocation positions를 실패시킵니다. Pipe syscall failure cleanup은 process/FD Thread tests가 다룹니다.
+- 연결되는 회귀 테스트와 그 한계: `476b...`의 execute 범위가 table allocation positions를 실패시킵니다. Pipe syscall failure cleanup은 process/FD Thread tests가 다룹니다.
 
 #### `6d95776ede59`에서 확인할 실제 코드
-- Pipeline execution entry의 two allocation order를 확인했습니다.
+- 처리 단계 execution entry의 two allocation order를 확인했습니다.
 - Both success 전 `shell_pipe` call이 없습니다.
 - Each allocation failure는 status 1 and local memory cleanup only입니다.
 - Pipe slots를 explicit `-1`로 채워 later partial pipe cleanup이 unopened slots를 skip합니다.
@@ -2310,11 +2310,11 @@ Pipeline pipe-end table과 PID table을 모두 OS pipe 생성 전에 overflow-aw
 #### 학습자가 남길 코드 증거
 - preparation acquisition order: PID table → pipe table → initialize descriptors → OS pipes → children.
 - allocation failure 시 live OS resources: none.
-- status/cleanup path: first allocation failure는 no local free; second failure는 PID table free; both return 1.
+- status/정리 과정: first allocation failure는 no local free; second failure는 PID table free; both return 1.
 - `-1` initialization 필요성: zero is stdin and cannot represent unopened slot; close helper must skip only negative descriptors.
 - global transactional policy의 executor 적용점: all fallible memory preparation before external side effects.
 - 확인한 변경 파일: `src/exec.c`.
-- 핵심 caller → callee: pipeline dispatcher → `shell_calloc` twice → init loop → pipe creation.
+- 핵심 caller → callee: 처리 단계 dispatcher → `shell_calloc` twice → init loop → pipe creation.
 - parent SHA와 비교한 최소 before/after snippet:
 
 ```text
@@ -2341,7 +2341,7 @@ only then call pipe()
 - Importance: **A**
 - Tags: `HEREDOC`, `FAILURE`, `RISK`
 - Source-defined role: Protects heredoc stream boundaries when preparation fails after input consumption begins.
-- 학습 깊이: 주요 subsystem boundary, integration point 또는 failure path. 핵심 코드와 설계 판단을 확인합니다.
+- 학습 깊이: 주요 subsystem boundary, integration point 또는 실패 처리. 핵심 코드와 설계 판단을 확인합니다.
 
 #### Source에서 확정된 변화
 Delimiter dequote, body buffer init, body expansion 등이 실패한 뒤 즉시 return하지 않고, current heredoc remainder와 later pending heredoc을 모두 delimiter까지 소비한 후 failure를 반환합니다.
@@ -2357,14 +2357,14 @@ Delimiter dequote, body buffer init, body expansion 등이 실패한 뒤 즉시 
 - 기존 가정: partial heap objects를 free하고 NULL/failure를 return하면 transaction이 rollback됐다고 보았습니다.
 - 실제 failure 또는 위험을 드러내는 입력·상태: current body line과 later heredoc delimiters가 stdin에 남아 top-level shell commands로 실행됩니다.
 - root cause가 위치한 representation / lifecycle / ordering boundary: streaming input cursor는 heap object가 아니지만 command transaction의 semantic state입니다.
-- 수정된 invariant 또는 decision: first failure 후 construction을 멈추되 traversal/input consumption은 all pending delimiters까지 계속합니다.
+- 수정된 항상 유지해야 하는 조건 또는 decision: first failure 후 construction을 멈추되 traversal/input consumption은 all pending delimiters까지 계속합니다.
 - 변경 전 코드 증거: dequote/init/append allocation failure에서 immediate return.
 - 변경 후 코드 증거: failed flag, `discard_heredoc`, allocation-free `delimiter_matches`, no body publish in recovery mode.
-- 연결되는 regression test와 그 한계: `476b...` heredoc scope sweep가 allocation source로 이를 검증하고 I/O repeat failure는 Thread 2의 `7e2f...`가 다룹니다.
+- 연결되는 회귀 테스트와 그 한계: `476b...` heredoc scope sweep가 allocation source로 이를 검증하고 I/O repeat failure는 Thread 2의 `7e2f...`가 다룹니다.
 
 #### `c30b39c0bcf8`에서 확인할 실제 코드
 - Outer traversal은 failure 후에도 later pending redirections를 방문합니다.
-- Current failure path도 own delimiter까지 discard합니다.
+- Current 실패 처리도 own delimiter까지 discard합니다.
 - Encoded delimiter matching은 marker를 건너뛰어 no-allocation recovery가 가능합니다.
 - Buffer doubling overflow check `SIZE_MAX / 2`가 추가됩니다.
 - Recovery path는 body entry를 add하지 않습니다.
@@ -2396,13 +2396,13 @@ Allocation Thread에서는 `476b082d55c7` sweep으로 재검증됩니다.
 - Importance: **A**
 - Tags: `TEST`, `FAILURE`, `RISK`
 - Source-defined role: Sweeps allocation positions by phase and verifies cleanup, state atomicity, continuation, and persistent-failure termination.
-- 학습 깊이: 주요 subsystem boundary, integration point 또는 failure path. 핵심 코드와 설계 판단을 확인합니다.
+- 학습 깊이: 주요 subsystem boundary, integration point 또는 실패 처리. 핵심 코드와 설계 판단을 확인합니다.
 
 #### Source에서 확정된 변화
-Allocation wrapper에 phase와 command number scope를 추가하고 tokenization, parsing, heredoc input/body, expansion, execution의 successive call positions를 sweep하여 clean failure 또는 untouched normal completion만 허용합니다.
+Allocation wrapper에 phase와 command number 범위를 추가하고 tokenization, parsing, heredoc input/body, expansion, execution의 successive call positions를 sweep하여 clean failure 또는 untouched normal completion만 허용합니다.
 
 #### Test commit 학습 기록
-- 대상 production invariant: any injected allocation point must yield either fully normal command result or coherent status-1 rollback without partial state/side effect.
+- 대상 production 항상 유지해야 하는 조건: any injected allocation point must yield either fully normal command result or coherent status-1 rollback without partial state/side effect.
 - 재현하는 failure 또는 boundary: token, parser, expand, execute, heredoc body/input and persistent command-input allocation failures입니다.
 - 사용한 test technique: phase + command ordinal + Nth allocation + one-shot/repeat selector를 runtime wrapper에 설정하고 N을 increasing sweep하는 deterministic fault injection입니다.
 - 실제 통과하는 production code path: shell command boundary, each phase scope marker, environment mutation, external dispatch, heredoc recovery, input loop stop.
@@ -2430,7 +2430,7 @@ Allocation wrapper에 phase와 command number scope를 추가하고 tokenization
 - heredoc boundary recovery case: current/pending body allocations failure 뒤 body lines suppressed, next top-level command only executes.
 - persistent failure termination case: input/token allocation이 계속 실패하면 loop를 돌며 residual commands를 해석하지 않고 process exits 1.
 - test가 포괄하지 않는 startup/path: initial environment import와 configured maxima 밖 positions입니다.
-- 확인한 변경 파일: `src/runtime.c`, `src/runtime.h`, phase call sites across `src/input.c`, `src/token.c`, `src/parser.c`, `src/expand.c`, `src/exec.c`, `src/heredoc.c`, `tests/allocation.sh`.
+- 확인한 변경 파일: `src/runtime.c`, `src/runtime.h`, phase 호출 지점 across `src/input.c`, `src/token.c`, `src/parser.c`, `src/expand.c`, `src/exec.c`, `src/heredoc.c`, `tests/allocation.sh`.
 - 핵심 caller → callee: test sweep → fault binary → command begin/scope markers → allocation wrappers → subsystem rollback → output/status assertion.
 - parent SHA와 비교한 최소 before/after snippet:
 
@@ -2440,7 +2440,7 @@ SMALL_SHELL_FAIL_ALLOC=<N>
 [optional command number / repeat]
 ```
 
-- 해당 SHA에서 실행한 test 또는 수동 재현 결과: 실행하지 않았습니다. Injection state machine, sweep loops, accepted patterns를 source로 확인했습니다.
+- 해당 SHA에서 실행한 test 또는 수동 재현 결과: 실행하지 않았습니다. Injection 상태 머신, sweep loops, accepted patterns를 source로 확인했습니다.
 
 #### 보장 범위
 - 이 commit이 보장하는 것: recoverable-allocation architecture를 normal-path 추정이 아니라 systematic failure-position regression으로 검증합니다.
@@ -2449,11 +2449,11 @@ SMALL_SHELL_FAIL_ALLOC=<N>
 #### Thread 내 다음 연결
 Allocation Thread의 최종 검증입니다. 각 subsystem ledger의 publish point와 sweep case를 연결해 완료합니다.
 
-## 6. Invariant ledger
+## 6. 항상 유지해야 하는 조건 ledger
 
-Source가 명시한 invariant와 engineering difficulty를 유지하고 exact code 근거를 채웠습니다.
+Source가 명시한 항상 유지해야 하는 조건과 engineering difficulty를 유지하고 exact code 근거를 채웠습니다.
 
-| Invariant | Source에서 확정된 의미 | 처음 도입/표현 | 강화·복구·검증 | 학습자가 확인한 코드 근거 |
+| 항상 유지해야 하는 조건 | Source에서 확정된 의미 | 처음 도입/표현 | 강화·복구·검증 | 학습자가 확인한 코드 근거 |
 | --- | --- | --- | --- | --- |
 | Allocation failure publishes either a complete result or no result. | 이전 valid state는 유지되거나, partial construction 전체가 해제되어야 합니다. | `0b2e76386678`의 common allocation boundary | `0bb6f9de0947`에서 project-wide transactional policy로 확정 | Env copy-before-free, token/node append-after-complete, parser single cleanup path, expansion replacement-after-success를 확인했습니다. |
 | Low-level helpers do not terminate a running shell arbitrarily. | startup처럼 usable shell state가 없는 경계를 제외하면 allocation failure는 command-level status로 전파됩니다. | `0bb6f9de0947` | `476b082d55c7` failure sweep | Nullable utilities → subsystem returns → `shell_process_line` allocation branch status 1; startup import only returns from `main`. |
@@ -2463,7 +2463,7 @@ Source가 명시한 invariant와 engineering difficulty를 유지하고 exact co
 ### Ledger 작성 시 확인한 것
 
 - Wrapper introduction and failure policy completion을 구분했습니다.
-- `0bb6...`는 existing representations의 publish protocol을 바꾸고, `6d957...`/`c30b...`는 OS/input side effects까지 same invariant를 확장합니다.
+- `0bb6...`는 existing representations의 publish protocol을 바꾸고, `6d957...`/`c30b...`는 OS/input side effects까지 same 항상 유지해야 하는 조건을 확장합니다.
 - Sweep evidence는 actual phase markers와 production call graph를 통과합니다.
 - Success/failure 모두 local partial objects의 owner가 명확하며, continuation은 resource/input boundary가 trustworthy일 때만 허용됩니다.
 
@@ -2475,13 +2475,13 @@ Source가 명시한 invariant와 engineering difficulty를 유지하고 exact co
 | executor bookkeeping allocation이 OS resource acquisition 뒤 실패하면 cleanup state가 복잡해짐 | pipeline setup의 table allocation | `6d95776ede59` — both tables first, then pipe creation | `476b082d55c7` execution scope에서 side-effect-free failure를 확인 | Two `shell_calloc` success 전 `shell_pipe` 부재와 no external side effect assertion을 연결했습니다. |
 | heredoc construction failure 뒤 unread input이 future commands로 이동 | nullable dequote/buffer/expansion operations | `c30b39c0bcf8` — discard through every pending delimiter | `476b082d55c7`의 heredoc failure and continuation cases | Failed flag/discard traversal, heredoc allocation scope, body suppression/next marker assertions를 연결했습니다. |
 
-## 8. Ownership / state / responsibility 변화
+## 8. 소유권 / state / responsibility 변화
 
 | 대상 | Owner / 책임 주체 | 책임 종료 시점 | 해당 SHA에서 확인할 내용 | 학습자 기록 |
 | --- | --- | --- | --- | --- |
 | new allocation result | local constructor | all dependent fields가 성공할 때까지 local | public list/field에 연결되는 exact line 기록 | Env/token/parser/expander 모두 dependent allocations success 뒤에만 link/replace합니다. |
 | existing environment value/list | environment store | replacement allocation 성공 전까지 유지 | copy-before-free ordering 기록 | `env_set`는 new copy failure 시 old pointer/value를 그대로 둡니다. |
-| partial token/parser prefix | current construction scope | failure 시 단일 cleanup path | current object와 completed prefix 모두 포함되는지 확인 | Lexer prefix는 `free_tokens`, parser current + completed sequence는 hierarchy cleanup에 포함됩니다. |
+| partial token/parser prefix | current construction scope | failure 시 단일 정리 과정 | current object와 completed prefix 모두 포함되는지 확인 | Lexer prefix는 `free_tokens`, parser current + completed sequence는 hierarchy cleanup에 포함됩니다. |
 | PID/pipe tables | executor preparation | OS resource acquisition 전 모두 확보 | 실패 시 local memory만 free되는지 확인 | Both tables success and `-1` init 전 pipe/fork 없음; allocation failure side-effect-free입니다. |
 | heredoc input position | collector/recovery | pending delimiter consumption 완료 | memory cleanup과 stream recovery의 별도 책임 기록 | Heap rollback 후 discard traversal이 separate semantic cleanup을 담당합니다. |
 | startup environment import | program startup boundary | 실패 시 diagnosed process return | running shell command failure와 구분 | No usable `t_shell` env state이므로 `main`이 failure를 반환합니다. |
@@ -2494,7 +2494,7 @@ Subsystem별 transaction boundary는 다음과 같습니다.
 | --- | --- | --- | --- | --- |
 | environment replace | existing value | new copy | copy complete then swap | old value preserved |
 | lexer | token prefix | word/node | both complete then append | local + prefix cleanup, status 1 |
-| parser | completed prefix | current cmd/pipeline/argv/redir | complete node/list append | one hierarchy cleanup, status 1 |
+| parser | completed prefix | current cmd/처리 단계/argv/redir | complete node/list append | one hierarchy cleanup, status 1 |
 | expansion | encoded field | expanded result | full result then replace | old field preserved, no dispatch |
 | executor | no OS side effect | PID/pipe tables | after both allocations, begin pipes | memory only cleanup, status 1 |
 | heredoc | stdin at body cursor | partial body | entry after complete body | body cleanup + discard to boundary |
@@ -2503,12 +2503,12 @@ Syntax failure status 258와 allocation failure status 1은 line processor에서
 
 ### 최종 상태 기록
 
-- 최종적으로 유지되는 data/resource ownership: new allocations remain constructor-local until complete; old persistent state remains owner until successful replacement; executor/heredoc side effects have separate rollback rules.
+- 최종적으로 유지되는 data/자원 소유권: new allocations remain constructor-local until complete; old persistent state remains owner until successful replacement; executor/heredoc side effects have separate rollback rules.
 - 최종적으로 보장되는 execution 또는 recovery rule: allocation failure는 complete result 또는 no result만 publish하고, status 1 continuation은 memory/resource/input boundary가 신뢰 가능한 경우에만 허용됩니다.
 - Thread가 해결한 가장 어려운 failure: memory allocation failure가 이미 consumed stdin이라는 non-memory side effect를 가진 heredoc에서 unintended command execution으로 번지지 않도록 한 문제입니다.
 - Thread 밖에 남아 있는 보장 범위: configured scopes/maxima 밖 allocation, allocator internals, all startup paths와 arbitrary combined faults는 증명하지 않습니다.
 
-## 10. 최종 architecture 또는 execution flow 정리
+## 10. 최종 architecture 또는 실행 순서 정리
 
 ```text
 [allocation request through shell_malloc/calloc/realloc]
@@ -2528,7 +2528,7 @@ Syntax failure status 258와 allocation failure status 1은 line processor에서
 - 핵심 entry function: runtime allocation wrappers, subsystem constructors, `shell_process_line`, `exec_prepare_heredocs`.
 - 주요 caller → callee chain: input loop → command scope → tokenize → parse → heredoc prepare → expand → execute; each phase sets allocation scope and propagates NULL to line boundary.
 - state mutation 순서: allocate local → validate all dependencies → publish/link/swap → release previous state; executor memory completes before pipe/fork; heredoc failure restores stream cursor before return.
-- ownership transfer 순서: local allocation remains local until publish; old environment/field stays owned until replacement; successful body transfers to entry; failed body remains local and is freed.
+- 소유권 transfer 순서: local allocation remains local until publish; old environment/field stays owned until replacement; successful body transfers to entry; failed body remains local and is freed.
 - failure convergence path: subsystem rollback → explicit allocation error → status 1; unsafe persistent input/resource state → `running=0`/process stop.
 - regression evidence: `tests/allocation.sh`의 scoped sweeps와 coherent-outcome assertions를 source로 확인했습니다. 실제 sweep은 실행하지 않았습니다.
 
@@ -2536,11 +2536,11 @@ Syntax failure status 258와 allocation failure status 1은 line processor에서
 
 - [x] 모든 commit을 exact SHA에서 확인했고 final HEAD를 소급하지 않았습니다.
 - [x] Commit map의 SHA, subject, importance, tags, order를 변경하지 않았습니다.
-- [x] S commit은 problem, prior state, failure possibility, decision, core code, ownership/lifecycle, follow-up을 설명했습니다.
-- [x] A commit은 subsystem boundary 또는 failure path와 실제 핵심 code를 설명했습니다.
-- [x] Fix commit은 기존 가정 → failure → root cause → 수정 invariant → code → regression 순으로 연결했습니다.
-- [x] Test commit은 invariant, failure, technique, production path, prove/not prove를 구분했습니다.
-- [x] Invariant ledger의 각 행에 실제 file/function/branch 근거가 있습니다.
+- [x] S commit은 problem, prior state, failure possibility, decision, core code, 소유권/lifecycle, 후속 작업을 설명했습니다.
+- [x] A commit은 subsystem boundary 또는 실패 처리와 실제 핵심 code를 설명했습니다.
+- [x] Fix commit은 기존 가정 → failure → root cause → 수정 항상 유지해야 하는 조건 → code → regression 순으로 연결했습니다.
+- [x] Test commit은 항상 유지해야 하는 조건, failure, technique, production path, prove/not prove를 구분했습니다.
+- [x] 항상 유지해야 하는 조건 ledger의 각 행에 실제 file/function/branch 근거가 있습니다.
 - [x] 정상·실패 경로 모두에서 resource와 partial object의 terminal owner를 설명했습니다.
 - [x] 이 Thread의 wrapper → transactional policy → side-effect ordering → stream recovery → sweep 흐름을 commit history 순서로 재구성했습니다.
 ===== END FILE: 04-transactional-allocation-failure.md =====
@@ -2550,8 +2550,8 @@ Syntax failure status 258와 allocation failure status 1은 line processor에서
 
 > 한국어 주제: **점근적으로 안전하고 관찰 가능한 text construction**
 >
-> Project: `small-shell`  
-> Branch: `c/minishell`  
+> Project: `small-shell`
+> Branch: `c/minishell`
 > Development Thread order: 5/5
 
 ## 1. Thread 목표
@@ -2560,11 +2560,11 @@ Syntax failure status 258와 allocation failure status 1은 line processor에서
 
 **Source-defined significance**
 
-> The shared abstraction removes repeated whole-string copies while keeping overflow and partial-ownership rules explicit. Only the builder introduction is A because it makes the structural decision; the migrations are applications of that choice. The performance and sanitizer paths provide observable evidence without inflating those supporting commits to architecture-level importance.
+> The shared abstraction removes repeated whole-string copies while keeping overflow and partial-소유권 rules explicit. Only the builder introduction is A because it makes the structural decision; the migrations are applications of that choice. The performance and sanitizer paths provide observable evidence without inflating those supporting commits to architecture-level importance.
 
 **학습 관점**
 
-공통 builder는 성능만 개선한 것이 아니라 permanent NUL, overflow check, discard/take ownership protocol을 여러 text-processing stage에 통일합니다. Migration commit은 그 결정을 적용하고, performance와 sanitizer path는 결과를 관찰합니다.
+공통 builder는 성능만 개선한 것이 아니라 permanent NUL, overflow check, discard/take 소유권 protocol을 여러 text-processing stage에 통일합니다. Migration commit은 그 결정을 적용하고, performance와 sanitizer path는 결과를 관찰합니다.
 
 ### SHA 고정 원칙
 
@@ -2576,9 +2576,9 @@ Syntax failure status 258와 allocation failure status 1은 line processor에서
 
 ## 2. 이 Thread를 이해하기 위한 핵심 질문
 
-- builder의 data, length, capacity invariant와 permanent NUL terminator는 어느 함수에서 유지됩니까?
+- builder의 data, length, capacity 항상 유지해야 하는 조건과 permanent NUL terminator는 어느 함수에서 유지됩니까?
 - `length + extra + 1`과 capacity doubling의 overflow를 각각 어떻게 검사합니까?
-- `discard`와 `take`를 분리하면 failure와 success의 ownership이 어떻게 명확해집니까?
+- `discard`와 `take`를 분리하면 failure와 success의 소유권이 어떻게 명확해집니까?
 - lexer에서 single-quote marker와 character 두 byte를 append할 때 기존 representation이 보존됩니까?
 - expansion에서 `$?`, `$NAME`, unset value, literal marker, empty result semantics가 migration 전후 동일합니까?
 - 512 KiB end-to-end test가 실제로 증명하는 것과 수학적으로 증명하지 않는 것은 무엇입니까?
@@ -2598,7 +2598,7 @@ Syntax failure status 258와 allocation failure status 1은 line processor에서
 ## 4. Commit map
 
 | 순서 | SHA | Subject | Importance | Tags | Source-defined role |
-| ---: | --- | --- | :---: | --- | --- |
+| ---: | --- | --- |:---: | --- | --- |
 | 1 | `b8347c06b6c7` | `refactor(buffer): 가변 문자열 빌더 모듈 추가` | A | `ARCH`, `PERF`, `REFACTOR` | Defines the shared builder's growth, overflow, discard, and ownership-transfer contracts. |
 | 2 | `985f90b9cbc7` | `refactor(lexer): 단어 조립을 가변 버퍼로 전환` | B | `LEX_PARSE`, `PERF`, `REFACTOR` | Applies it to quote-aware lexer word construction. |
 | 3 | `89e1a06f06c9` | `refactor(expand): 확장 결과를 가변 버퍼로 조립` | B | `EXPANSION`, `PERF`, `REFACTOR` | Applies it to expansion and dequoting. |
@@ -2614,18 +2614,18 @@ Syntax failure status 258와 allocation failure status 1은 line processor에서
 - Subject: `refactor(buffer): 가변 문자열 빌더 모듈 추가`
 - Importance: **A**
 - Tags: `ARCH`, `PERF`, `REFACTOR`
-- Source-defined role: Defines the shared builder's growth, overflow, discard, and ownership-transfer contracts.
-- 학습 깊이: 주요 subsystem boundary, integration point 또는 failure path. 핵심 코드와 설계 판단을 확인합니다.
+- Source-defined role: Defines the shared builder's growth, overflow, discard, and 소유권-transfer contracts.
+- 학습 깊이: 주요 subsystem boundary, integration point 또는 실패 처리. 핵심 코드와 설계 판단을 확인합니다.
 
 #### Source에서 확정된 변화
-Initialization, append, discard, take를 가진 reusable string builder를 도입합니다. 항상 NUL을 유지하고 geometric growth와 overflow check를 수행하며 success/failure ownership을 분리합니다.
+Initialization, append, discard, take를 가진 reusable string builder를 도입합니다. 항상 NUL을 유지하고 geometric growth와 overflow check를 수행하며 success/failure 소유권을 분리합니다.
 
 #### Refactor 판단 기록
 - 기존 abstraction 또는 cost/failure 관찰 한계: `sh_strjoin_free` 방식은 문자나 substitution 하나를 추가할 때마다 old prefix 전체를 새 allocation으로 복사하고 old allocation을 free했습니다.
 - 새 boundary가 제공하는 contract: builder owns one growable allocation; `length`, `capacity`, terminal NUL을 유지하고 append reserve arithmetic을 검사하며 failure는 old builder state를 보존합니다.
-- production semantics가 유지된다는 코드 근거: 이 commit은 module과 build source만 추가하고 lexer/expander call sites는 아직 바꾸지 않습니다.
-- ownership 또는 call-site responsibility 변화: builder init 후 allocation owner는 builder; failure는 caller가 `discard`; success는 `take`에서 completed allocation을 caller로 이전합니다.
-- 후속 fix/test가 이 seam을 사용하는 방식: lexer와 expander가 repeated join을 append/take로 교체하고 performance/sanitizer suites가 observable behavior를 검사합니다.
+- production semantics가 유지된다는 코드 근거: 이 commit은 module과 build source만 추가하고 lexer/expander 호출 지점은 아직 바꾸지 않습니다.
+- 소유권 또는 call-site responsibility 변화: builder init 후 allocation owner는 builder; failure는 caller가 `discard`; success는 `take`에서 completed allocation을 caller로 이전합니다.
+- 후속 fix/test가 이 seam을 사용하는 방식: lexer와 expander가 repeated join을 append/take로 교체하고 performance/sanitizer suites가 observable 동작을 검사합니다.
 
 #### `b8347c06b6c7`에서 확인할 실제 코드
 - `src/string_builder.h`의 `t_string_builder { data, length, capacity }`를 확인했습니다.
@@ -2637,7 +2637,7 @@ Initialization, append, discard, take를 가진 reusable string builder를 도�
 - `discard`는 allocation free 후 all fields reset, `take`는 pointer를 return하고 builder를 reset합니다.
 
 #### 학습자가 남길 코드 증거
-- builder state invariant:
+- builder state 항상 유지해야 하는 조건:
 
 ```text
 initialized/successful state:
@@ -2651,8 +2651,8 @@ reset state after discard/take or failed init:
 
 - growth/overflow equation: first check `extra <= SIZE_MAX - length - 1`; then `needed = length + extra + 1`. While `new_capacity < needed`, double only when safe; otherwise set `new_capacity = needed`.
 - discard 전/후 state: before owns partial allocation/content; after allocation freed and fields zero.
-- take 전/후 owner: before builder owns `data`; return pointer becomes caller-owned and builder fields become reset, preventing double free.
-- allocation failure path: initial malloc leaves reset builder; realloc NULL leaves original allocation/content/metadata unchanged.
+- take 전/후 owner: before builder owns `data`; return pointer becomes caller-owned and builder fields become reset, preventing 이중 해제.
+- allocation 실패 처리: initial malloc leaves reset builder; realloc NULL leaves original allocation/content/metadata unchanged.
 - old/new copy pattern 비교: old append copies prefix length 1+2+...+N; builder copies each input byte once plus occasional geometric reallocation copies, amortized linear.
 - 확인한 변경 파일: `src/string_builder.c`, `src/string_builder.h`, `Makefile`.
 - 핵심 caller → callee: later lexer/expander → builder init → reserve/append → take or discard → runtime allocation wrappers.
@@ -2667,8 +2667,8 @@ needed = builder->length + extra + 1;
 - 해당 SHA에서 실행한 test 또는 수동 재현 결과: 실행하지 않았습니다. Exact module implementation과 Makefile source inclusion을 검사했습니다.
 
 #### 보장 범위
-- 이 commit이 보장하는 것: text construction이 overflow-safe geometric buffer와 explicit discard/take ownership protocol을 공유할 수 있습니다.
-- 아직 보장하지 않는 것: 이 commit은 abstraction만 도입하며 lexer/expansion behavior와 end-to-end performance는 아직 바꾸지 않습니다.
+- 이 commit이 보장하는 것: text construction이 overflow-safe geometric buffer와 explicit discard/take 소유권 protocol을 공유할 수 있습니다.
+- 아직 보장하지 않는 것: 이 commit은 abstraction만 도입하며 lexer/expansion 동작과 end-to-end performance는 아직 바꾸지 않습니다.
 
 #### Thread 내 다음 연결
 `985f90b9cbc7`와 `89e1a06f06c9`가 각각 lexer와 expansion을 migration합니다.
@@ -2681,16 +2681,16 @@ needed = builder->length + extra + 1;
 - Importance: **B**
 - Tags: `LEX_PARSE`, `PERF`, `REFACTOR`
 - Source-defined role: Applies it to quote-aware lexer word construction.
-- 학습 깊이: Thread 흐름에서 맡는 구현 역할과 필요한 state/ownership 변화를 확인합니다.
+- 학습 깊이: Thread 흐름에서 맡는 구현 역할과 필요한 state/소유권 변화를 확인합니다.
 
 #### Source에서 확정된 변화
 Lexer word construction을 shared builder로 전환하며 single-quoted character의 literal marker+byte encoding, unquoted/double-quoted semantics, token-level quoted flag를 유지합니다.
 
 #### Refactor 판단 기록
 - 기존 abstraction 또는 cost/failure 관찰 한계: source character마다 `sh_strjoin_free`가 current word 전체를 다시 allocate/copy했습니다.
-- 새 boundary가 제공하는 contract: one builder per word scan; each fragment appends into reserved capacity; only completed word is taken into token ownership.
+- 새 boundary가 제공하는 contract: one builder per word scan; each fragment appends into reserved capacity; only completed word is taken into token 소유권.
 - production semantics가 유지된다는 코드 근거: quote state branches, marker insertion, quoted flag set, empty quoted word and unclosed quote conditions are preserved in the diff.
-- ownership 또는 call-site responsibility 변화: local `char *word` ownership becomes local builder ownership; token receives allocation only through final `string_builder_take`.
+- 소유권 또는 call-site responsibility 변화: local `char *word` 소유권 becomes local builder 소유권; token receives allocation only through final `string_builder_take`.
 - 후속 fix/test가 이 seam을 사용하는 방식: performance fixture drives input → lexer builder and sanitizer suites exercise quote/error paths.
 
 #### `985f90b9cbc7`에서 확인할 실제 코드
@@ -2699,7 +2699,7 @@ Lexer word construction을 shared builder로 전환하며 single-quoted characte
 - Single-quote branch appends marker then character, preserving two-byte encoding.
 - Unquoted/double-quoted byte branch remains marker-free.
 - Quote syntax participation still sets token-level `quoted` flag.
-- If second append in marker+byte pair fails, builder may contain a local marker but error path discards it, so partial representation is never published.
+- If second append in marker+byte pair fails, builder may contain a local marker but 오류 처리 discards it, so partial representation is never published.
 - Allocation failure or unclosed quote discards builder; successful token is sole owner of taken buffer.
 
 #### 학습자가 남길 코드 증거
@@ -2708,7 +2708,7 @@ Lexer word construction을 shared builder로 전환하며 single-quoted characte
 - marker encoding equivalence: single-quoted byte still emits `[LITERAL_MARK, byte]` in exact order.
 - quoted flag equivalence: entering either single or double quote sets flag independent from encoded marker.
 - failure discard와 success take: any scan/append/unclosed quote error calls discard; success only calls take once.
-- token ownership after publish: taken pointer is node-owned and freed by `free_tokens`.
+- token 소유권 after publish: taken pointer is node-owned and freed by `free_tokens`.
 - 확인한 변경 파일: `src/token.c`, build/include references to builder.
 - 핵심 caller → callee: `tokenize_line` → `read_word` → `string_builder_init/append_char/take` or discard.
 - parent SHA와 비교한 최소 before/after snippet:
@@ -2735,7 +2735,7 @@ before: word = sh_strjoin_free(word, one_or_two_bytes)
 - Importance: **B**
 - Tags: `EXPANSION`, `PERF`, `REFACTOR`
 - Source-defined role: Applies it to expansion and dequoting.
-- 학습 깊이: Thread 흐름에서 맡는 구현 역할과 필요한 state/ownership 변화를 확인합니다.
+- 학습 깊이: Thread 흐름에서 맡는 구현 역할과 필요한 state/소유권 변화를 확인합니다.
 
 #### Source에서 확정된 변화
 Expanded/dequoted output을 `sh_strjoin_free` 반복 대신 builder append로 조립하여 amortized linear construction으로 바꾸고, literal marker, `$?`, `$NAME`, unset value, empty result semantics를 유지합니다.
@@ -2744,7 +2744,7 @@ Expanded/dequoted output을 `sh_strjoin_free` 반복 대신 builder append로 �
 - 기존 abstraction 또는 cost/failure 관찰 한계: ordinary byte와 each variable/status substitution을 append할 때 full accumulated output을 반복 복사했습니다.
 - 새 boundary가 제공하는 contract: one builder owns partial expanded output; branch-specific bytes/strings append; complete result만 take합니다.
 - production semantics가 유지된다는 코드 근거: old/new branch mapping for marker, ordinary char, `$?`, valid name, unset and unknown `$` remains equivalent.
-- ownership 또는 call-site responsibility 변화: partial expansion becomes builder-owned; caller field replacement happens only after successful take, preserving encoded source on failure.
+- 소유권 또는 call-site responsibility 변화: partial expansion becomes builder-owned; caller field replacement happens only after successful take, preserving encoded source on failure.
 - 후속 fix/test가 이 seam을 사용하는 방식: 512 KiB full-product deadline catches repeated copying/truncation and sanitizer suites run expansion/failure cases under instrumentation.
 
 #### `89e1a06f06c9`에서 확인할 실제 코드
@@ -2753,7 +2753,7 @@ Expanded/dequoted output을 `sh_strjoin_free` 반복 대신 builder append로 �
 - Literal marker consumes marker+next and appends only literal byte.
 - `$?` appends decimal current status; `$NAME` scans valid name and appends environment value; unset appends nothing.
 - Unknown/incomplete dollar retains literal behavior.
-- Environment name substring allocation can fail; error path frees substring if needed and discards builder.
+- Environment name substring allocation can fail; 오류 처리 frees substring if needed and discards builder.
 - Empty final output remains a valid owned empty string from initialized builder.
 - Caller publishes replacement only after whole expand succeeds.
 
@@ -2771,10 +2771,10 @@ Expanded/dequoted output을 `sh_strjoin_free` 반복 대신 builder append로 �
 
 - `$?`/`$NAME`/unset/empty semantics: same as parent; initialized empty buffer ensures all-unset input returns `""`, not NULL.
 - substring allocation failure cleanup: free temporary key if allocated, discard builder, return failure; old encoded field remains owned by caller.
-- take 후 ownership replacement: complete new string becomes parsed field; only then old encoded string is freed.
+- take 후 소유권 replacement: complete new string becomes parsed field; only then old encoded string is freed.
 - semantic equivalence evidence: each parent branch has one corresponding builder append branch; no connector/quote timing change in this commit.
 - 확인한 변경 파일: `src/expand.c`, builder headers/build dependencies.
-- 핵심 caller → callee: selected pipeline expansion → word/dequote helper → builder operations → take → field replacement.
+- 핵심 caller → callee: selected 처리 단계 expansion → word/dequote helper → builder operations → take → field replacement.
 - parent SHA와 비교한 최소 before/after snippet:
 
 ```text
@@ -2785,8 +2785,8 @@ before: result = sh_strjoin_free(result, fragment)
 - 해당 SHA에서 실행한 test 또는 수동 재현 결과: 실행하지 않았습니다. Exact semantic branch mapping and replacement order를 검사했습니다.
 
 #### 보장 범위
-- 이 commit이 보장하는 것: expansion과 dequoting이 complete-or-no-result ownership을 유지하면서 repeated whole-string copies를 제거합니다.
-- 아직 보장하지 않는 것: amortized behavior의 observable upper bound는 다음 end-to-end test가 제공하며 이 commit 자체가 시간 제한을 증명하지 않습니다.
+- 이 commit이 보장하는 것: expansion과 dequoting이 complete-or-no-result 소유권을 유지하면서 repeated whole-string copies를 제거합니다.
+- 아직 보장하지 않는 것: amortized 동작의 observable upper bound는 다음 end-to-end test가 제공하며 이 commit 자체가 시간 제한을 증명하지 않습니다.
 
 #### Thread 내 다음 연결
 `b36b9d324260`가 512 KiB word를 complete product path로 통과시켜 performance regression을 고정합니다.
@@ -2799,13 +2799,13 @@ before: result = sh_strjoin_free(result, fragment)
 - Importance: **B**
 - Tags: `TEST`, `PERF`
 - Source-defined role: Verifies a large word end to end under an explicit time bound.
-- 학습 깊이: Thread 흐름에서 맡는 구현 역할과 필요한 state/ownership 변화를 확인합니다.
+- 학습 깊이: Thread 흐름에서 맡는 구현 역할과 필요한 state/소유권 변화를 확인합니다.
 
 #### Source에서 확정된 변화
 512 KiB word를 input, tokenization, parsing, expansion, builtin output까지 통과시키고 five-second deadline, status 0, no diagnostics, exact payload length를 요구합니다.
 
 #### Test commit 학습 기록
-- 대상 production invariant: large single word must complete without pathological repeated-copy delay, truncation, error, or unexpected diagnostic.
+- 대상 production 항상 유지해야 하는 조건: large single word must complete without pathological repeated-copy delay, truncation, error, or unexpected diagnostic.
 - 재현하는 failure 또는 boundary: 524,288-byte payload that makes old per-character whole-prefix copying prohibitively expensive.
 - 사용한 test technique: generated end-to-end shell input + timeout runner + status/stderr/stdout-size assertions.
 - 실제 통과하는 production code path: input allocation/read → lexer builder → parser argv → selected expansion builder → builtin `echo` output.
@@ -2817,7 +2817,7 @@ before: result = sh_strjoin_free(result, fragment)
 #### `b36b9d324260`에서 확인할 실제 코드
 - `tests/performance.sh`가 exactly 524,288 `x` bytes를 shell `echo` input에 넣고 command newline을 추가합니다.
 - Product binary를 timeout runner through 5-second limit으로 실행합니다.
-- Exit status 0과 empty stderr를 별도 검사합니다.
+- 종료 상태 0과 empty stderr를 별도 검사합니다.
 - `wc -c`/equivalent output-length assertion은 payload 524,288 + echo newline 1을 요구합니다.
 - Exact length check catches truncation without comparing a huge expected string.
 
@@ -2849,7 +2849,7 @@ before: result = sh_strjoin_free(result, fragment)
 - Importance: **B**
 - Tags: `TEST`, `PRACTICAL`
 - Source-defined role: Runs the complete behavior, failure, lifecycle, and performance suites under sanitizers.
-- 학습 깊이: Thread 흐름에서 맡는 구현 역할과 필요한 state/ownership 변화를 확인합니다.
+- 학습 깊이: Thread 흐름에서 맡는 구현 역할과 필요한 state/소유권 변화를 확인합니다.
 
 #### Source에서 확정된 변화
 Production binary, fault-injection binary, source-level parser test에 별도 ASan/UBSan build graph를 만들고 existing smoke, failure, allocation, lifecycle, parser, performance suites를 instrumented artifacts로 실행합니다.
@@ -2882,24 +2882,24 @@ UBSan objects    ──> UBSan product / UBSan fault / UBSan parser test
 - 실행되는 suite 목록: `tests/smoke.sh`, `tests/faults.sh`, `tests/allocation.sh`, `tests/lifecycle.sh`, parser API executable, `tests/performance.sh`.
 - `env -i` option preservation: ASAN/UBSAN option environment is reintroduced so isolated test invocations keep sanitizer behavior.
 - container reproducibility boundary: pinned GCC 13 bookworm image, network none, read-only repository input, writable temp copy.
-- sanitizer가 증명하는 것과 증명하지 않는 것: exercised paths contain no sanitizer-detected address/undefined behavior under configured runtime; unexecuted paths/all bug classes/formal memory safety are not proven.
+- sanitizer가 증명하는 것과 증명하지 않는 것: exercised paths contain no sanitizer-detected address/정의되지 않은 동작 under configured runtime; unexecuted paths/all bug classes/formal memory safety are not proven.
 - 확인한 변경 파일: `Makefile`, `tests/container_sanitizers.sh`, environment setup in existing test scripts.
 - 핵심 caller → callee: make target → dedicated objects/binaries → complete shell/test suites under sanitizer runtime.
 - parent SHA와 비교한 최소 before/after snippet: ordinary graph remains and parallel sanitizer graphs/targets are added.
 - 해당 SHA에서 실행한 test 또는 수동 재현 결과: 실행하지 않았습니다. Make dependency graph, recipes, flags, suite list, container script를 source로 확인했습니다.
 
 #### 보장 범위
-- 이 commit이 보장하는 것: behavior와 fault seams가 sanitizer instrumentation 아래 동일하게 검증되고 incompatible object reuse를 피합니다.
-- 아직 보장하지 않는 것: sanitizer가 모든 memory/lifetime bug를 증명하지 않으며 configured compiler/runtime와 exercised paths에 한정됩니다.
+- 이 commit이 보장하는 것: 동작과 fault seams가 sanitizer instrumentation 아래 동일하게 검증되고 incompatible object reuse를 피합니다.
+- 아직 보장하지 않는 것: sanitizer가 모든 memory/수명 bug를 증명하지 않으며 configured compiler/runtime와 exercised paths에 한정됩니다.
 
 #### Thread 내 다음 연결
 Text-construction Thread의 마지막 validation layer입니다.
 
-## 6. Invariant ledger
+## 6. 항상 유지해야 하는 조건 ledger
 
-Source가 명시한 invariant와 engineering difficulty를 유지하고 exact code 근거를 채웠습니다.
+Source가 명시한 항상 유지해야 하는 조건과 engineering difficulty를 유지하고 exact code 근거를 채웠습니다.
 
-| Invariant | Source에서 확정된 의미 | 처음 도입/표현 | 강화·복구·검증 | 학습자가 확인한 코드 근거 |
+| 항상 유지해야 하는 조건 | Source에서 확정된 의미 | 처음 도입/표현 | 강화·복구·검증 | 학습자가 확인한 코드 근거 |
 | --- | --- | --- | --- | --- |
 | Builder output is always NUL-terminated. | 초기화와 모든 append 뒤 `data[length]`가 NUL이어야 합니다. | `b8347c06b6c7` | `985f90b9cbc7`, `89e1a06f06c9`에서 실제 사용 | Init `data[0]='\0'`; append copies bytes, updates length, writes final NUL; take/discard reset metadata. |
 | Growth arithmetic cannot wrap. | `length + extra + 1`과 geometric doubling 모두 `SIZE_MAX`를 넘기지 않아야 합니다. | `b8347c06b6c7` | runtime allocation failure injection과 sanitizer path | `extra > SIZE_MAX - length - 1` guard, safe doubling and exact-needed fallback, temporary realloc publish. |
@@ -2908,10 +2908,10 @@ Source가 명시한 invariant와 engineering difficulty를 유지하고 exact co
 
 ### Ledger 작성 시 확인한 것
 
-- Builder invariant is introduced before callers migrate.
+- Builder 항상 유지해야 하는 조건 is introduced before callers migrate.
 - Migration commits apply existing semantics rather than redefining quote/expansion policy.
 - Performance evidence and sanitizer evidence are observational, not formal complexity/memory proofs.
-- Failure path always leaves builder owner capable of one discard; success path transfers exactly once through take.
+- 실패 처리 always leaves builder owner capable of one discard; 정상 처리 transfers exactly once through take.
 
 ## 7. Failure → Fix → Test 연결
 
@@ -2920,7 +2920,7 @@ Source가 명시한 invariant와 engineering difficulty를 유지하고 exact co
 | character/substitution마다 whole output을 재할당·복사하여 긴 입력에서 비용이 누적됨 | 기존 `sh_strjoin_free` 중심 construction | `b8347c06b6c7` builder 도입 → `985f90b9cbc7`, `89e1a06f06c9` migration | `b36b9d324260` 512 KiB end-to-end deadline | Parent/new loops, builder reserve math, 524,288-byte fixture와 5-second/exact-length assertions를 연결했습니다. |
 | 성능 refactor가 marker encoding이나 ownership cleanup을 깨뜨릴 위험 | lexer/expansion의 기존 semantics | migration commit에서 동일 branch semantics와 discard/take protocol 유지 | `7d7dd7ad9d8a`의 complete suites under ASan/UBSan | Marker/quote/status/env/unset branch mapping과 instrumented suite graph를 연결했습니다. 실제 sanitizer는 실행하지 않았습니다. |
 
-## 8. Ownership / state / responsibility 변화
+## 8. 소유권 / state / responsibility 변화
 
 | 대상 | Owner / 책임 주체 | 책임 종료 시점 | 해당 SHA에서 확인할 내용 | 학습자 기록 |
 | --- | --- | --- | --- | --- |
@@ -2932,7 +2932,7 @@ Source가 명시한 invariant와 engineering difficulty를 유지하고 exact co
 
 ## 9. Thread 최종 상태
 
-Builder API ownership transition:
+Builder API 소유권 transition:
 
 | Operation | Input state | Success state | Failure state |
 | --- | --- | --- | --- |
@@ -2945,12 +2945,12 @@ Old complexity source was per-fragment whole-prefix join. New growth uses reserv
 
 ### 최종 상태 기록
 
-- 최종적으로 유지되는 data/resource ownership: one builder owns partial text; success transfers one completed allocation to token/parsed field, failure discards without publication.
+- 최종적으로 유지되는 data/자원 소유권: one builder owns partial text; success transfers one completed allocation to token/parsed field, failure discards without publication.
 - 최종적으로 보장되는 execution 또는 recovery rule: growth arithmetic is checked, terminal NUL is maintained, and lexer/expander preserve previous semantics while avoiding per-byte full-prefix copies.
 - Thread가 해결한 가장 어려운 failure: overflow or second append/allocation failure in a partially encoded/expanded word must not publish malformed text or lose the original field.
 - Thread 밖에 남아 있는 보장 범위: theoretical proof, all hardware latency, all sanitizer bug classes, unexercised paths are outside evidence.
 
-## 10. 최종 architecture 또는 execution flow 정리
+## 10. 최종 architecture 또는 실행 순서 정리
 
 ```text
 [builder init: reset fields → allocate cap 64 → data[0]=NUL]
@@ -2971,7 +2971,7 @@ Old complexity source was per-fragment whole-prefix join. New growth uses reserv
 - 핵심 entry function: string builder init/reserve/append/discard/take; lexer `read_word`; expansion/dequote helpers.
 - 주요 caller → callee chain: tokenization/selected expansion → builder APIs → runtime allocators → take/publish or discard.
 - state mutation 순서: reserve check → optional realloc temporary → append bytes → length update → terminal NUL; final take resets builder before caller publication.
-- ownership transfer 순서: builder local owns allocation throughout partial construction; take returns sole pointer; token/parsed hierarchy becomes owner.
+- 소유권 transfer 순서: builder local owns allocation throughout partial construction; take returns sole pointer; token/parsed hierarchy becomes owner.
 - failure convergence path: reserve/append/sub-allocation/unclosed quote → discard; realloc failure preserves existing builder until discard; original field remains until new complete result.
 - regression evidence: performance script and sanitizer build/suite graph were inspected. Their commands were not executed in this environment.
 
@@ -2979,10 +2979,10 @@ Old complexity source was per-fragment whole-prefix join. New growth uses reserv
 
 - [x] 모든 commit을 exact SHA에서 확인했고 final HEAD를 소급하지 않았습니다.
 - [x] Commit map의 SHA, subject, importance, tags, order를 변경하지 않았습니다.
-- [x] A commit은 subsystem boundary, growth/ownership contract, failure path와 핵심 code를 설명했습니다.
-- [x] B commit은 Thread 내 migration/test/build 역할과 state/ownership 변화를 설명했습니다.
-- [x] Test/build commit은 invariant, technique, production path, prove/not prove를 구분했습니다.
-- [x] Invariant ledger의 각 행에 실제 file/function/branch 근거가 있습니다.
+- [x] A commit은 subsystem boundary, growth/소유권 contract, 실패 처리와 핵심 code를 설명했습니다.
+- [x] B commit은 Thread 내 migration/test/build 역할과 state/소유권 변화를 설명했습니다.
+- [x] Test/build commit은 항상 유지해야 하는 조건, technique, production path, prove/not prove를 구분했습니다.
+- [x] 항상 유지해야 하는 조건 ledger의 각 행에 실제 file/function/branch 근거가 있습니다.
 - [x] 정상·실패 경로 모두에서 partial/completed text의 terminal owner를 설명했습니다.
 - [x] 이 Thread의 abstraction → migration → performance observation → sanitizer validation 흐름을 commit history 순서로 재구성했습니다.
 ===== END FILE: 05-asymptotically-safe-text-construction.md =====
@@ -3013,7 +3013,7 @@ Source of truth는 제공된 `commit-importance.md`와 `commit-bodies.md`뿐입�
 - 각 commit의 `Source에서 확정된 변화`는 전제로 사용합니다.
 - `확인할 실제 코드`에서 요구한 structure, function, caller/callee, state mutation, error branch, cleanup, test를 exact SHA에서 찾습니다.
 - 확인한 최소 code snippet, file path, symbol, before/after 차이, 실행 결과를 학습 기록란에 남깁니다.
-- Thread 끝에서 commit별 기록을 Invariant ledger와 Failure → Fix → Test 표로 다시 연결합니다.
+- Thread 끝에서 commit별 기록을 항상 유지해야 하는 조건 ledger와 Failure → Fix → Test 표로 다시 연결합니다.
 - 마지막 architecture/execution flow는 source 문장을 복사하는 대신 실제 code evidence로 완성합니다.
 
 ## 해당 SHA 코드 확인 원칙
@@ -3030,21 +3030,21 @@ Source of truth는 제공된 `commit-importance.md`와 `commit-bodies.md`뿐입�
 
 Final HEAD는 과거 commit의 code를 대신할 수 없습니다.
 
-- 과거 commit의 ownership, failure path, type field, function signature는 해당 SHA에서만 확정합니다.
+- 과거 commit의 소유권, 실패 처리, type field, function signature는 해당 SHA에서만 확정합니다.
 - Later refactor로 이름이 바뀐 function을 과거 SHA의 이름처럼 쓰지 않습니다.
-- Later regression test를 과거 feature commit의 이미 존재한 증거처럼 쓰지 않습니다.
+- Later 회귀 테스트를 과거 feature commit의 이미 존재한 증거처럼 쓰지 않습니다.
 - 비교가 필요하면 source가 연결한 later fix/test를 별도 SHA로 확인하고, 당시 feature가 보장하지 못한 범위를 구분합니다.
 
 ## S/A/B/C별 학습 깊이
 
 ### S
 
-Project architecture 또는 invariant를 설명하는 핵심 commit입니다.
+Project architecture 또는 항상 유지해야 하는 조건을 설명하는 핵심 commit입니다.
 
 - Problem과 commit 직전 상태
 - 기존 설계의 failure 가능성
 - 핵심 decision과 실제 중심 code
-- ownership, lifecycle, state transition
+- 소유권, lifecycle, 상태 전이
 - partial failure와 cleanup
 - 후속 fix 또는 regression evidence
 - 보장하는 것과 아직 보장하지 않는 것
@@ -3053,12 +3053,12 @@ Project architecture 또는 invariant를 설명하는 핵심 commit입니다.
 
 ### A
 
-주요 subsystem, boundary, integration point, failure path를 이해해야 합니다.
+주요 subsystem, boundary, integration point, 실패 처리를 이해해야 합니다.
 
 - 변경 전 assumption
 - 핵심 function과 caller/callee
 - state 또는 resource responsibility
-- failure handling
+- 실패 처리
 - 설계 판단과 test evidence
 
 를 확인합니다.
@@ -3082,22 +3082,22 @@ Thread 이해에 필요한 문맥일 때만 확인합니다. 같은 깊이의 �
 
 Code는 설명을 장식하기 위해 붙이지 않고, 다음 중 하나를 증명할 때만 최소 범위로 삽입합니다.
 
-- ownership을 획득·이전·해제하는 지점
+- 소유권을 획득·이전·해제하는 지점
 - state mutation 전후 순서
 - caller와 callee의 contract
 - pipe/redirection 같은 resource acquisition·replacement·cleanup
 - failure branch와 recovery branch
 - partial result의 publish point
 - retry, short read/write 또는 forced-stop 조건
-- regression test가 failure를 주입하고 production path를 통과하는 지점
+- 회귀 테스트가 failure를 주입하고 production path를 통과하는 지점
 
-각 snippet에는 exact SHA, file path, symbol, 왜 필요한 근거인지 적습니다. 긴 함수 전체보다 branch와 주변 context를 우선합니다.
+각 snippet에는 exact SHA, file path, symbol, 왜 필요한 근거인지 적습니다. 긴 함수 전체보다 branch와 주변 문맥을 우선합니다.
 
 ## Test commit 학습 방법
 
 각 test commit에서 다음을 분리해 기록합니다.
 
-- 대상 production invariant
+- 대상 production 항상 유지해야 하는 조건
 - 재현하는 failure 또는 boundary
 - fault injection, end-to-end, source-level API, stress, timeout, sanitizer 등 test technique
 - 실제 통과하는 production code path
@@ -3117,9 +3117,8 @@ Test script만 읽지 말고 injection seam과 production branch를 함께 연�
 - 모든 S/A/B commit의 학습 깊이가 구분되어 있습니다.
 - 실제 code를 읽지 않고 임의로 완성한 설명이 없습니다.
 - 각 중요한 commit에 exact SHA의 file/function/branch 근거가 있습니다.
-- Fix와 regression test가 기존 가정, failure, root cause, 수정 invariant를 통해 연결됩니다.
-- Invariant ledger에 도입, 강화, 실패 노출, fix, test evidence가 기록되어 있습니다.
+- Fix와 회귀 테스트가 기존 가정, failure, root cause, 수정 항상 유지해야 하는 조건을 통해 연결됩니다.
+- 항상 유지해야 하는 조건 ledger에 도입, 강화, 실패 노출, fix, test evidence가 기록되어 있습니다.
 - 각 Thread의 최종 architecture/execution flow를 commit history에 근거해 설명할 수 있습니다.
 - 별도의 프로젝트 재학습 없이 설계 → 구현 → 실패 → 수정 → 검증의 발전 과정을 재구성할 수 있습니다.
 ===== END FILE: README.md =====
-

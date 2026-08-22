@@ -17,10 +17,10 @@
 
 ## 완료 기준
 
-- [x] 각 단계에서 포인터, 크기, NUL 종료 문자의 관계를 실제 코드로 설명할 수 있다.
-- [x] 복사 생성과 대입에서 source/target allocation이 독립적임을 해당 SHA 코드와 테스트로 증명할 수 있다.
-- [x] 할당 실패 시 target 상태와 live-allocation baseline이 유지되는 경로를 추적할 수 있다.
-- [x] copy elision이 없어도 반환값과 copy-and-swap이 안전한 이유를 실제 호출 흐름으로 설명할 수 있다.
+- [x] 각 단계에서 포인터, 크기, NUL 종료 문자의 관계를 실제 코드로 설명할 수 있습니다.
+- [x] 복사 생성과 대입에서 source/target allocation이 독립적임을 해당 SHA 코드와 테스트로 증명할 수 있습니다.
+- [x] 할당 실패 시 target 상태와 live-allocation baseline이 유지되는 경로를 추적할 수 있습니다.
+- [x] copy elision이 없어도 반환값과 copy-and-swap이 안전한 이유를 실제 호출 흐름으로 설명할 수 있습니다.
 
 ## Source에 연결된 invariant / engineering difficulty
 
@@ -62,7 +62,7 @@
 - [x] const/mutable `at()`가 terminator 위치를 logical range에서 제외하는 branch와 `c_str()` 반환의 borrowed-lifetime 조건을 확인하세요.
 - [x] `swap()`이 pointer와 size를 함께 교환하며 throw하지 않도록 구성된 실제 코드를 찾으세요.
 - [x] 이 SHA에서 copy가 어떻게 금지되는지 public interface에서 확인하고, 왜 아직 regular value가 아닌지 기록하세요.
-- [x] 이 commit의 변경이 어떤 invariant/failure path/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
+- [x] 이 commit의 변경이 어떤 invariant/실패 처리/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
 - [x] 이 commit의 보장 범위를 넘는 항목은 무엇인지 source에 근거해 별도로 적으세요.
 
 #### 다음 관련 commit과 연결
@@ -73,7 +73,7 @@
 - 핵심 코드 발췌 위치: `aa3b5ba6c3c4:src/TextBuffer.cpp`에서 empty 값도 `new char[1]`로 만들고 `data_[0] = '\0'`을 기록합니다. 문자열 constructor는 `size_ + 1`을 할당해 terminator까지 복사하며, `swap()`은 `data_`와 `size_`를 함께 교환합니다.
 - 변경 전/후 차이: 이 commit에서 직접 소유하는 문자열 값이 처음 생겼습니다. null 입력과 default construction은 모두 non-null empty representation으로 정규화되지만, copy constructor와 assignment는 private이므로 독립 값 복사는 아직 제공되지 않습니다.
 - 직접 확인한 ownership/lifetime/state 관계: `TextBuffer` 한 객체가 `data_` 배열의 유일한 owner이고 destructor가 `delete[]` 합니다. `size_`는 terminator를 제외한 logical length이며 `data_[size_]`는 항상 NUL입니다. `c_str()`는 소유권을 넘기지 않는 borrowed pointer라 객체 파괴나 mutation 이후 사용할 수 없습니다.
-- 직접 확인한 failure path: constructor allocation이 실패하면 객체 construction 자체가 끝나지 않아 owner가 생기지 않습니다. `at(index)`는 `index >= size_`에서 예외를 던져 terminator 접근을 거부하며 state를 변경하지 않습니다. 이 시점에는 copy failure 경로가 API 밖입니다.
+- 직접 확인한 실패 처리: constructor allocation이 실패하면 객체 construction 자체가 끝나지 않아 owner가 생기지 않습니다. `at(index)`는 `index >= size_`에서 예외를 던져 terminator 접근을 거부하며 state를 변경하지 않습니다. 이 시점에는 copy failure 경로가 API 밖입니다.
 - 실행한 테스트와 결과: 미실행. 저장소 checkout 네트워크가 차단되어 command는 수행하지 않았고, 지정 SHA의 구현·Make target·test source만 검사했습니다.
 - 이 commit을 한 문장으로 설명: null 내부 상태 없이 NUL-terminated `char[]`를 단일 소유하는 최소 `TextBuffer` 표현을 확립했습니다.
 
@@ -112,7 +112,7 @@
 - 핵심 코드 발췌 위치: `0bc528c7d58e:src/TextBuffer.cpp`의 copy constructor는 `new char[other.size_ + 1]` 후 `std::memcpy(..., size_ + 1)`를 수행합니다. assignment의 핵심은 `TextBuffer copy(other); swap(copy); return *this;`입니다.
 - 변경 전/후 차이: 직전 SHA에서는 copy가 private이었습니다. 이후 source와 별도 저장소를 가진 deep copy가 public contract가 되었고 assignment가 target을 직접 덮지 않고 완성된 temporary와 교환합니다.
 - 직접 확인한 ownership/lifetime/state 관계: copy construction 성공 후 source와 copy는 서로 다른 `char[]` owner입니다. assignment 전에는 target이 기존 배열을, temporary가 새 배열을 소유합니다. `swap()` 뒤 target이 새 배열을, temporary가 이전 target 배열을 소유하고 scope 종료 시 temporary destructor가 이전 배열을 해제합니다.
-- 직접 확인한 failure path: temporary copy construction 중 `new[]`가 실패하면 `swap()`에 도달하지 않아 target의 pointer, size, bytes가 그대로입니다. self-assignment도 source가 곧 target이어도 먼저 독립 copy를 만들기 때문에 별도 alias branch 없이 안전합니다.
+- 직접 확인한 실패 처리: temporary copy construction 중 `new[]`가 실패하면 `swap()`에 도달하지 않아 target의 pointer, size, bytes가 그대로입니다. self-assignment도 source가 곧 target이어도 먼저 독립 copy를 만들기 때문에 별도 alias branch 없이 안전합니다.
 - 실행한 테스트와 결과: 미실행. 저장소 checkout 네트워크가 차단되어 command는 수행하지 않았고, 지정 SHA의 구현·Make target·test source만 검사했습니다.
 - 이 commit을 한 문장으로 설명: deep copy와 copy-and-swap으로 `TextBuffer`를 독립 ownership과 강한 대입 보장을 가진 값으로 바꿨습니다.
 
@@ -130,7 +130,7 @@
 - [x] self-concatenation에서 `other`가 `*this`와 alias여도 source bytes가 release 전에 모두 사용되는지 코드 순서로 확인하세요.
 - [x] non-member `operator+`가 copy + compound addition을 재사용하는 caller/callee 관계를 기록하세요.
 - [x] 비교 및 stream insertion이 allocation representation을 노출하지 않고 value semantics만 제공하는지 public API를 확인하세요.
-- [x] 이 commit의 변경이 어떤 invariant/failure path/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
+- [x] 이 commit의 변경이 어떤 invariant/실패 처리/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
 - [x] 이 commit의 보장 범위를 넘는 항목은 무엇인지 source에 근거해 별도로 적으세요.
 
 #### 다음 관련 commit과 연결
@@ -141,7 +141,7 @@
 - 핵심 코드 발췌 위치: `93faed0d67a2:src/TextBuffer.cpp`의 `operator+=`는 `other.size_ > max - size_ - 1`을 먼저 검사하고, `joined` 배열에 기존 bytes와 `other`의 terminator까지 복사한 다음에만 old `data_`를 해제하고 새 pointer/size를 게시합니다.
 - 변경 전/후 차이: 값 복사만 가능하던 상태에서 결합·비교·출력으로 확장되었습니다. 결합은 기존 저장소를 먼저 변경하는 대신 detached allocation을 완성한 뒤 commit합니다.
 - 직접 확인한 ownership/lifetime/state 관계: 새 배열은 함수 내부 candidate owner이고 모든 복사가 끝날 때까지 기존 `data_`가 source로 살아 있습니다. commit 뒤 `TextBuffer`가 candidate를 소유합니다. 비교와 stream insertion은 내부 pointer ownership을 노출하지 않고 bytes의 값만 관찰합니다.
-- 직접 확인한 failure path: 길이 합 overflow는 allocation 전에 거부됩니다. allocation 또는 복사 준비 단계의 예외에서는 old array가 해제되지 않습니다. `buffer += buffer`에서도 source bytes를 읽는 동안 old storage가 살아 있어 alias가 안전합니다. final destination stream failure의 rollback은 이 commit의 보장이 아닙니다.
+- 직접 확인한 실패 처리: 길이 합 overflow는 allocation 전에 거부됩니다. allocation 또는 복사 준비 단계의 예외에서는 old array가 해제되지 않습니다. `buffer += buffer`에서도 source bytes를 읽는 동안 old storage가 살아 있어 alias가 안전합니다. final destination stream failure의 rollback은이 commit의 보장이 아닙니다.
 - 실행한 테스트와 결과: 미실행. 저장소 checkout 네트워크가 차단되어 command는 수행하지 않았고, 지정 SHA의 구현·Make target·test source만 검사했습니다.
 - 이 commit을 한 문장으로 설명: allocate-before-commit을 결합 연산까지 확장해 overflow, allocation failure, self-alias를 처리했습니다.
 
@@ -159,7 +159,7 @@
 - [x] 각 실패 후 object state와 live-allocation baseline을 어떤 assertion으로 확인하는지 구분하세요.
 - [x] copy elision을 비활성화한 별도 build target/flags와 실행 test가 무엇인지 확인하세요.
 - [x] 이 테스트가 production code의 어떤 allocation/copy path를 통과하며, 일반 unit test가 놓치던 temporary lifetime을 무엇으로 드러내는지 적으세요.
-- [x] 이 commit의 변경이 어떤 invariant/failure path/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
+- [x] 이 commit의 변경이 어떤 invariant/실패 처리/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
 - [x] 이 commit의 보장 범위를 넘는 항목은 무엇인지 source에 근거해 별도로 적으세요.
 
 #### Test commit 학습 구분
@@ -176,7 +176,7 @@
 - 핵심 코드 발췌 위치: `47134f9e3b29:tests/failure/test_buffer_failure.cpp`의 construction/copy/assignment/aliased assignment/`+`/`+=` failure sweep과, `FailingNew`의 allocation-attempt 및 live-block counter. `Makefile`은 `-fno-elide-constructors`를 적용한 별도 binary를 구성합니다.
 - 변경 전/후 차이: production 동작은 바꾸지 않고, 정상 경로만 보던 검증에 관찰된 각 allocation attempt의 deterministic failure와 copy-elision 비활성화 실행 구성을 추가했습니다.
 - 직접 확인한 ownership/lifetime/state 관계: failure controller가 정확한 allocation attempt를 실패시키고 test는 예외 후 source/target text와 live block baseline을 비교합니다. no-elide build는 반환 temporary와 복사/destruction이 실제로 발생해도 owner가 중복 해제되지 않는지 노출합니다.
-- 직접 확인한 failure path: 각 연산을 한 번 성공시켜 allocation 횟수를 관찰한 뒤 1부터 그 횟수까지 실패 지점을 이동합니다. assignment와 `+=`는 기존 target 값 유지, constructor/`+`는 partial object leak 없음, 모든 case는 live block baseline 복구를 검사하도록 작성되어 있습니다. 관찰하지 않은 allocator 동작이나 실행 경로까지 증명하지는 않습니다.
+- 직접 확인한 실패 처리: 각 연산을 한 번 성공시켜 allocation 횟수를 관찰한 뒤 1부터 그 횟수까지 실패 지점을 이동합니다. assignment와 `+=`는 기존 target 값 유지, constructor/`+`는 partial object leak 없음, 모든 case는 live block baseline 복구를 검사하도록 작성되어 있습니다. 관찰하지 않은 allocator 동작이나 실행 경로까지 증명하지는 않습니다.
 - 실행한 테스트와 결과: 미실행. 저장소 checkout 네트워크가 차단되어 command는 수행하지 않았고, 지정 SHA의 구현·Make target·test source만 검사했습니다. 실행 대상으로 확인한 command는 `make failure-test`와 no-elide test target입니다.
 - 이 commit을 한 문장으로 설명: deterministic allocation failure와 no-elide 구성을 통해 `TextBuffer`의 강한 보장과 단일 해제를 회귀 계약으로 만들었습니다.
 
@@ -266,7 +266,7 @@
 - [x] final HEAD를 과거 commit 설명에 소급해서 사용하지 않았습니다.
 - [x] S/A/B importance에 맞는 깊이로 code/test evidence를 채웠습니다.
 - [x] source가 확정한 invariant와 제가 실제 코드에서 확인한 증거를 구분했습니다.
-- [x] failure path에서 state mutation 전후와 cleanup owner를 설명할 수 있습니다.
+- [x] 실패 처리에서 state mutation 전후와 cleanup owner를 설명할 수 있습니다.
 - [x] test commit마다 production invariant, technique, production path, 증명/비증명 범위를 구분했습니다.
 - [x] Thread 마지막 상태를 commit history에 근거해 처음부터 끝까지 설명할 수 있습니다.
 ===== END FILE: 01-direct-ownership-failure-safe-value.md =====
@@ -290,10 +290,10 @@
 
 ## 완료 기준
 
-- [x] prototype, clone, pipeline slot 각각의 owner와 lifetime을 commit별로 그릴 수 있다.
-- [x] pipeline copy constructor의 partial-construction cleanup과 assignment의 copy-and-swap을 구분해 설명할 수 있다.
-- [x] abstractness, virtual destruction, clone ownership이 각각 어떤 test/compile contract로 고정되는지 찾을 수 있다.
-- [x] clone failure sweep에서 source와 destination이 각각 어떤 상태로 남는지 실제 테스트를 근거로 설명할 수 있다.
+- [x] prototype, clone, pipeline slot 각각의 owner와 lifetime을 commit별로 그릴 수 있습니다.
+- [x] pipeline copy constructor의 partial-construction cleanup과 assignment의 copy-and-swap을 구분해 설명할 수 있습니다.
+- [x] abstractness, virtual destruction, clone ownership이 각각 어떤 test/compile contract로 고정되는지 찾을 수 있습니다.
+- [x] clone failure sweep에서 source와 destination이 각각 어떤 상태로 남는지 실제 테스트를 근거로 설명할 수 있습니다.
 
 ## Source에 연결된 invariant / engineering difficulty
 
@@ -301,7 +301,7 @@
 
 - polymorphically owned resource는 정확히 한 번 해제되고, copying은 dynamic object의 독립 ownership을 만든다.
 - 완성되지 않은 partial pipeline은 temporary/partial owner 내부에만 존재하며 publish되지 않는다.
-- strong guarantee가 적용되는 assignment는 clone 실패 시 destination observable state를 보존한다.
+- strong guarantee가 적용되는 assignment는 clone 실패 시 destination observable state를 보존합니다.
 
 ### Major engineering difficulty
 
@@ -358,7 +358,7 @@
 - 핵심 코드 발췌 위치: `835d87865762:include/cppf/Formatter.hpp`에서 `Formatter`는 virtual destructor와 pure virtual `clone()`, `apply()`, `name()`을 선언합니다. `src/Formatter.cpp`의 각 `clone()`은 `new <구체 타입>(*this)`를 반환하며 uppercase 변환은 `std::toupper(static_cast<unsigned char>(...))`를 사용합니다.
 - 변경 전/후 차이: parent에는 formatter 계층이 없었습니다. 이 commit에서 호출자가 구체 타입을 몰라도 base reference/pointer로 변환·복제·삭제할 수 있는 object-model contract가 생겼습니다.
 - 직접 확인한 ownership/lifetime/state 관계: `PrefixFormatter::prefix_`와 `SuffixFormatter::suffix_`는 각 formatter가 소유하는 `TextBuffer`입니다. `clone()` 성공 시 반환 pointer의 ownership은 호출자에게 이전되고, virtual destructor는 base pointer 삭제가 실제 dynamic destructor까지 도달하게 합니다.
-- 직접 확인한 failure path: `new` 또는 `TextBuffer` 복사가 실패하면 `clone()`은 pointer를 반환하지 않습니다. 이 SHA에는 여러 clone을 모아 관리하는 aggregate나 local guard가 아직 없으므로, 성공한 raw pointer를 누가 즉시 소유하는지는 caller protocol에 남아 있습니다.
+- 직접 확인한 실패 처리: `new` 또는 `TextBuffer` 복사가 실패하면 `clone()`은 pointer를 반환하지 않습니다. 이 SHA에는 여러 clone을 모아 관리하는 aggregate나 local guard가 아직 없으므로, 성공한 raw pointer를 누가 즉시 소유하는지는 caller protocol에 남아 있습니다.
 - 실행한 테스트와 결과: 미실행. 지정 SHA의 header와 implementation을 검사했으며 build/test command는 수행하지 않았습니다.
 - 이 commit을 한 문장으로 설명: virtual destruction과 virtual copying을 포함한 formatter 소유권 protocol을 정의했습니다.
 
@@ -398,7 +398,7 @@
 - 핵심 코드 발췌 위치: `62ed45f8adf9:src/FormatPipeline.cpp`의 `append()`는 capacity를 먼저 검사하고 `formatter.clone()`을 호출한 뒤 `steps_[size_]`에 저장하고 마지막에 `++size_` 합니다. destructor는 `[0, size_)`의 pointer만 `delete`합니다.
 - 변경 전/후 차이: formatter 객체 단위의 clone contract에서, 최대 8개 clone을 insertion order로 직접 소유하고 실행하는 aggregate가 추가되었습니다. copy constructor와 assignment는 여전히 private입니다.
 - 직접 확인한 ownership/lifetime/state 관계: `append()` 인자의 `Formatter&`는 호출자 소유의 borrowed prototype입니다. `clone()`이 반환된 순간 local `copy`가 미게시 owner가 되고, slot 저장과 size 증가가 끝나면 pipeline이 clone의 유일한 owner가 됩니다. 유효 상태는 `steps_[0..size_)`가 소유 pointer이고 나머지는 null인 prefix입니다.
-- 직접 확인한 failure path: capacity 초과는 clone 전에 거부됩니다. `clone()` 실패 시 slot과 `size_`가 변경되지 않습니다. 성공 뒤에는 destructor가 active prefix를 삭제합니다. 다만 pipeline 자체의 독립 deep copy와 복사 도중 부분 clone 정리는 아직 제공되지 않습니다.
+- 직접 확인한 실패 처리: capacity 초과는 clone 전에 거부됩니다. `clone()` 실패 시 slot과 `size_`가 변경되지 않습니다. 성공 뒤에는 destructor가 active prefix를 삭제합니다. 다만 pipeline 자체의 독립 deep copy와 복사 도중 부분 clone 정리는 아직 제공되지 않습니다.
 - 실행한 테스트와 결과: 미실행. 지정 SHA의 header와 implementation을 검사했으며 build/test command는 수행하지 않았습니다.
 - 이 commit을 한 문장으로 설명: borrowed formatter를 owned clone으로 바꾸어 순서대로 실행하는 bounded pipeline을 만들었습니다.
 
@@ -417,7 +417,7 @@
 - [x] 직전 관련 SHA `62ed45f8adf9`와 비교해 copy constructor와 assignment가 어떻게 열리는지 확인하세요.
 - [x] copy constructor 시작 시 pointer array 전체를 null-initialize하는 순서를 찾고, clone 성공 prefix의 representation을 기록하세요.
 - [x] 중간 `clone()` 실패 시 catch block이 이미 생성된 prefix를 직접 delete하고 rethrow하는 코드를 추적하세요.
-- [x] constructor가 완료되지 않으면 destructor가 호출되지 않는다는 사실이 왜 이 explicit cleanup을 필요로 하는지 실제 경로에 연결하세요.
+- [x] constructor가 완료되지 않으면 destructor가 호출되지 않는다는 사실이 왜이 explicit cleanup을 필요로 하는지 실제 경로에 연결하세요.
 - [x] assignment의 complete-copy → swap → old-state destruction 흐름과 destination preservation을 확인하세요.
 - [x] dynamic formatter type과 insertion order가 copy 후 유지되는지 clone/apply 경로로 확인하세요.
 
@@ -438,7 +438,7 @@
 - 핵심 코드 발췌 위치: `bf4d9bed705c:src/FormatPipeline.cpp`에서 copy constructor는 모든 `steps_`를 null로 초기화한 뒤 `append(*other.steps_[index])`를 반복합니다. catch block은 현재 `size_`만큼 직접 `delete`하고 rethrow하며, assignment는 `FormatPipeline copy(other); swap(copy);`입니다.
 - 변경 전/후 차이: 직전 SHA에서 복사가 금지됐지만, 이후 dynamic type과 insertion order를 유지하는 heterogeneous deep copy가 public contract가 되었습니다. 실패한 constructor와 실패한 assignment가 서로 다른 cleanup 경로를 사용합니다.
 - 직접 확인한 ownership/lifetime/state 관계: copy constructor의 성공 prefix는 아직 완성되지 않은 `this`가 임시로 소유합니다. construction 성공 뒤 새 pipeline이 모든 clone을 소유합니다. assignment에서는 완성된 local `copy`가 candidate이고 `swap()` 뒤 old destination clone들은 local object로 이동해 scope 종료 때 삭제됩니다.
-- 직접 확인한 failure path: copy constructor 중 clone 실패 시 객체 destructor가 호출되지 않으므로 catch가 이미 만든 prefix를 직접 삭제해야 합니다. assignment 중 같은 실패는 local `copy` construction에서 끝나 `swap()`에 도달하지 않으므로 destination의 size, step sequence, behavior가 보존됩니다.
+- 직접 확인한 실패 처리: copy constructor 중 clone 실패 시 객체 destructor가 호출되지 않으므로 catch가 이미 만든 prefix를 직접 삭제해야 합니다. assignment 중 같은 실패는 local `copy` construction에서 끝나 `swap()`에 도달하지 않으므로 destination의 size, step sequence, behavior가 보존됩니다.
 - 실행한 테스트와 결과: 미실행. 지정 SHA의 implementation과 후속 테스트가 겨냥하는 경로를 코드로 검사했으며 command는 수행하지 않았습니다.
 - 이 commit을 한 문장으로 설명: explicit partial-construction cleanup과 copy-and-swap으로 polymorphic aggregate를 failure-safe regular value로 만들었습니다.
 
@@ -456,7 +456,7 @@
 - [x] public header repeated inclusion/consumer-visible use를 검사하는 positive compile case를 확인하세요.
 - [x] pipeline CLI integration fixture가 실제 binary에서 virtual dispatch, archive linkage, step order를 어떤 transcript로 검증하는지 기록하세요.
 - [x] 이 test bundle이 output correctness와 별개로 non-virtual destruction/accidental concreteness/ownership leak를 각각 어떻게 겨냥하는지 분리하세요.
-- [x] 이 commit의 변경이 어떤 invariant/failure path/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
+- [x] 이 commit의 변경이 어떤 invariant/실패 처리/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
 - [x] 이 commit의 보장 범위를 넘는 항목은 무엇인지 source에 근거해 별도로 적으세요.
 
 #### Test commit 학습 구분
@@ -465,7 +465,7 @@
 - test technique: source가 확정한 방향은 **compile-fail + live-object counter + public-header compile + CLI fixture**입니다. 실제 test code/fixture를 읽고 구체적인 파일·case·assertion을 기록하세요.
 - 통과하는 production path: source가 확정한 방향은 **Formatter clone/delete and pipeline execution paths**입니다. 실제 test code/fixture를 읽고 구체적인 파일·case·assertion을 기록하세요.
 - 이 테스트가 증명하는 것: source가 확정한 방향은 **object-model contract가 runtime output 외에도 유지됨**입니다. 실제 test code/fixture를 읽고 구체적인 파일·case·assertion을 기록하세요.
-- 이 테스트가 증명하지 않는 것: source가 확정한 방향은 **모든 clone failure position까지는 이 commit 하나로 증명하지 않음**입니다. 실제 test code/fixture를 읽고 구체적인 파일·case·assertion을 기록하세요.
+- 이 테스트가 증명하지 않는 것: source가 확정한 방향은 **모든 clone failure position까지는이 commit 하나로 증명하지 않음**입니다. 실제 test code/fixture를 읽고 구체적인 파일·case·assertion을 기록하세요.
 - 성격: source가 확정한 방향은 **broad contract + integration**입니다. 실제 test code/fixture를 읽고 구체적인 파일·case·assertion을 기록하세요.
 
 #### 다음 관련 commit과 연결
@@ -476,7 +476,7 @@
 - 핵심 코드 발췌 위치: `0427713637b8`의 counted formatter tests는 clone·live·destroyed counters를 관찰하고 base pointer delete를 실행합니다. compile-fail translation unit은 `Formatter` 직접 생성을 시도하며, positive translation unit은 public headers를 반복 include합니다. CLI script는 실제 formatter pipeline binary의 transcript를 fixture와 비교합니다.
 - 변경 전/후 차이: production object model은 유지하고, runtime output만으로 드러나지 않던 abstractness, virtual destruction, clone ownership, header isolation, process integration을 별도 검증 층으로 추가했습니다.
 - 직접 확인한 ownership/lifetime/state 관계: counted formatter의 clone 증가와 pipeline scope 종료 후 live count 복구가 clone ownership을 관찰합니다. base pointer 삭제 뒤 derived destruction counter가 증가해야 virtual destructor contract가 성립합니다.
-- 직접 확인한 failure path: abstract base가 concrete가 되거나 destructor가 non-virtual이면 compile/runtime counter 검사가 실패하도록 작성되어 있습니다. CLI fixture는 step 순서나 archive linkage drift를 잡지만, clone 실패 위치를 하나씩 주입하지는 않습니다.
+- 직접 확인한 실패 처리: abstract base가 concrete가 되거나 destructor가 non-virtual이면 compile/runtime counter 검사가 실패하도록 작성되어 있습니다. CLI fixture는 step 순서나 archive linkage drift를 잡지만, clone 실패 위치를 하나씩 주입하지는 않습니다.
 - 실행한 테스트와 결과: 미실행. 실행 대상으로 `make test-contract`, unit test, CLI integration target을 확인했으나 현재 환경에서는 수행하지 않았습니다.
 - 이 commit을 한 문장으로 설명: formatter object-model contract를 compile, ownership counter, 실제 CLI의 세 층으로 고정했습니다.
 
@@ -494,7 +494,7 @@
 - [x] failed assignment 뒤 destination의 기존 step sequence와 behavior가 유지되는 assertion을 확인하세요.
 - [x] source pipeline이 failure sweep 전후 동일하게 살아 있는지 확인하는 증거를 기록하세요.
 - [x] production code에서 constructor catch cleanup과 assignment copy-and-swap 두 경로 중 어느 것을 각 test case가 통과하는지 매핑하세요.
-- [x] 이 commit의 변경이 어떤 invariant/failure path/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
+- [x] 이 commit의 변경이 어떤 invariant/실패 처리/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
 - [x] 이 commit의 보장 범위를 넘는 항목은 무엇인지 source에 근거해 별도로 적으세요.
 
 #### Test commit 학습 구분
@@ -511,7 +511,7 @@
 - 핵심 코드 발췌 위치: `2c99290b9268:tests/failure/test_pipeline_failure.cpp`는 source pipeline의 formatter 수를 기준으로 failure position을 이동하며 copy construction과 assignment를 각각 시도합니다. `TestFormatter`의 `failCloneOn()`/clone-attempt counter가 지정 clone에서 예외를 발생시킵니다.
 - 변경 전/후 차이: 앞선 broad contract 검증에, 복사 중 각 formatter 위치를 결정적으로 실패시키는 회귀가 추가되었습니다. production 코드는 바뀌지 않습니다.
 - 직접 확인한 ownership/lifetime/state 관계: failed copy construction 뒤 live count가 source만 남는 baseline으로 돌아오는지 확인합니다. failed assignment 뒤 destination의 기존 step sequence와 적용 결과, source pipeline의 결과가 모두 그대로인지 확인합니다.
-- 직접 확인한 failure path: constructor case는 `FormatPipeline` copy constructor의 catch cleanup을, assignment case는 local candidate construction 실패로 `swap()`을 건너뛰는 경로를 통과합니다. 이 테스트는 factory creation이나 일반 allocation 전체가 아니라 formatter clone failure 위치만 다룹니다.
+- 직접 확인한 실패 처리: constructor case는 `FormatPipeline` copy constructor의 catch cleanup을, assignment case는 local candidate construction 실패로 `swap()`을 건너뛰는 경로를 통과합니다. 이 테스트는 factory creation이나 일반 allocation 전체가 아니라 formatter clone failure 위치만 다룹니다.
 - 실행한 테스트와 결과: 미실행. failure injection 구현과 Make target은 검사했으나 test binary는 실행하지 않았습니다.
 - 이 commit을 한 문장으로 설명: 모든 clone 위치에서 부분 객체 정리와 failed assignment의 destination 보존을 deterministic regression으로 만들었습니다.
 
@@ -565,7 +565,7 @@
 
 마지막 Thread SHA 기준으로 caller는 concrete formatter를 stack이나 다른 owner에 둔 채 `FormatPipeline::append(const Formatter&)`에 borrowed reference를 전달합니다. `append()`가 virtual `clone()`으로 independent dynamic object를 만들고 pipeline slot이 이를 소유합니다. pipeline copy는 source의 각 dynamic object를 다시 clone하며, `apply()`는 insertion order로 virtual dispatch를 수행합니다.
 
-시작 시점과 비교하면 단일 virtual interface가 독립 복사 가능한 owning aggregate로 확장되었습니다. construction 실패와 assignment 실패의 cleanup 책임도 구분됩니다. 다만 raw-pointer clone protocol은 caller가 pipeline 밖에서 직접 사용할 때 즉시 ownership을 인수해야 하며, 후속 tests가 관찰하지 않은 allocator·factory failure는 이 Thread만으로 증명되지 않습니다.
+시작 시점과 비교하면 단일 virtual interface가 독립 복사 가능한 owning aggregate로 확장되었습니다. construction 실패와 assignment 실패의 cleanup 책임도 구분됩니다. 다만 raw-pointer clone protocol은 caller가 pipeline 밖에서 직접 사용할 때 즉시 ownership을 인수해야 하며, 후속 tests가 관찰하지 않은 allocator·factory failure는이 Thread만으로 증명되지 않습니다.
 
 ## 최종 architecture 또는 execution flow 정리
 
@@ -603,7 +603,7 @@
 - [x] final HEAD를 과거 commit 설명에 소급해서 사용하지 않았습니다.
 - [x] S/A/B importance에 맞는 깊이로 code/test evidence를 채웠습니다.
 - [x] source가 확정한 invariant와 제가 실제 코드에서 확인한 증거를 구분했습니다.
-- [x] failure path에서 state mutation 전후와 cleanup owner를 설명할 수 있습니다.
+- [x] 실패 처리에서 state mutation 전후와 cleanup owner를 설명할 수 있습니다.
 - [x] test commit마다 production invariant, technique, production path, 증명/비증명 범위를 구분했습니다.
 - [x] Thread 마지막 상태를 commit history에 근거해 처음부터 끝까지 설명할 수 있습니다.
 ===== END FILE: 02-polymorphic-cloning-owning-aggregate.md =====
@@ -627,18 +627,18 @@ factory가 반환한 raw owning pointer를 안전하게 넘기는 것과 기존 
 
 ## 완료 기준
 
-- [x] creator → local guard → pipeline clone의 ownership handoff를 실제 코드로 추적할 수 있다.
-- [x] fix 전 clear-and-append 경로와 fix 후 candidate-and-swap 경로를 관련 SHA끼리 비교할 수 있다.
-- [x] leak freedom과 strong state preservation이 서로 다른 보장임을 failure path로 설명할 수 있다.
-- [x] unknown formatter, null/count 오류, clone/allocation failure가 target에 미치는 영향을 테스트별로 구분할 수 있다.
+- [x] creator → local guard → pipeline clone의 ownership handoff를 실제 코드로 추적할 수 있습니다.
+- [x] fix 전 clear-and-append 경로와 fix 후 candidate-and-swap 경로를 관련 SHA끼리 비교할 수 있습니다.
+- [x] leak freedom과 strong state preservation이 서로 다른 보장임을 실패 처리로 설명할 수 있습니다.
+- [x] unknown formatter, null/count 오류, clone/allocation failure가 target에 미치는 영향을 테스트별로 구분할 수 있습니다.
 
 ## Source에 연결된 invariant / engineering difficulty
 
 ### Critical invariant
 
 - candidate는 완성되기 전 target에 publish되지 않는다.
-- strong guarantee가 적용되는 replacement는 creation/clone/allocation 실패 시 target observable state를 보존한다.
-- polymorphically owned resource는 정확히 한 번 해제된다.
+- strong guarantee가 적용되는 replacement는 creation/clone/allocation 실패 시 target observable state를 보존합니다.
+- polymorphically owned resource는 정확히 한 번 해제됩니다.
 
 ### Major engineering difficulty
 
@@ -672,8 +672,8 @@ factory가 반환한 raw owning pointer를 안전하게 넘기는 것과 기존 
 - [x] `FormatterCreator`가 abstract가 되는 선언과 virtual destructor를 확인하세요.
 - [x] `create()`의 반환 타입에서 raw owning pointer transfer가 어떻게 드러나는지 public signature를 확인하세요.
 - [x] factory가 생성하는 concrete dynamic types와 caller가 base pointer만 받는 관계를 추적하세요.
-- [x] `PipelineBuilder`가 이 시점에는 어떤 operation boundary만 선언하고 있는지 실제 public declaration을 확인하세요.
-- [x] 이 commit의 변경이 어떤 invariant/failure path/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
+- [x] `PipelineBuilder`가이 시점에는 어떤 operation boundary만 선언하고 있는지 실제 public declaration을 확인하세요.
+- [x] 이 commit의 변경이 어떤 invariant/실패 처리/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
 - [x] 이 commit의 보장 범위를 넘는 항목은 무엇인지 source에 근거해 별도로 적으세요.
 
 #### 다음 관련 commit과 연결
@@ -684,7 +684,7 @@ factory가 반환한 raw owning pointer를 안전하게 넘기는 것과 기존 
 - 핵심 코드 발췌 위치: `4c34654a4602:src/Factory.cpp`에서 empty specification은 `InvalidSpecification`, exact `upper`는 `UppercaseFormatter`, non-empty `prefix=`/`suffix=` payload는 해당 concrete formatter, 나머지는 `UnknownFormatter`로 분기됩니다.
 - 변경 전/후 차이: formatter를 코드에서 직접 생성하던 경계에 문자열 specification grammar와 polymorphic creator가 추가되었습니다. `FormatterCreator`는 virtual destructor와 pure virtual `create()`를 가지며 `PipelineBuilder`는 static replacement operation을 선언합니다.
 - 직접 확인한 ownership/lifetime/state 관계: `create()`의 반환형은 `Formatter *`이고 성공 시 heap object ownership이 caller에게 이전됩니다. caller는 구체 dynamic type을 알 필요가 없지만, 반환 직후 delete 책임을 인수해야 합니다.
-- 직접 확인한 failure path: empty key, payload 없는 `prefix=`/`suffix=`, unknown key는 pointer를 반환하기 전에 예외로 끝납니다. 이 SHA에는 여러 specification을 조립하는 구현이나 raw pointer를 보호하는 local owner가 아직 없습니다.
+- 직접 확인한 실패 처리: empty key, payload 없는 `prefix=`/`suffix=`, unknown key는 pointer를 반환하기 전에 예외로 끝납니다. 이 SHA에는 여러 specification을 조립하는 구현이나 raw pointer를 보호하는 local owner가 아직 없습니다.
 - 실행한 테스트와 결과: 미실행. 지정 SHA의 public declaration과 parser/factory implementation을 검사했으며 command는 수행하지 않았습니다.
 - 이 commit을 한 문장으로 설명: formatter 문자열 grammar와 raw-owning polymorphic creation boundary를 도입했습니다.
 
@@ -702,7 +702,7 @@ factory가 반환한 raw owning pointer를 안전하게 넘기는 것과 기존 
 - [x] null specification array/count consistency와 capacity를 work 시작 전에 검사하는 branch를 확인하세요.
 - [x] empty specification list가 target을 empty pipeline으로 바꾸는 경로를 확인하세요.
 - [x] 가장 중요하게, target을 먼저 clear/empty로 만들고 이후 직접 append하는 mutation 순서를 찾고 중간 failure 시 observable target이 무엇이 되는지 기록하세요.
-- [x] 이 commit의 변경이 어떤 invariant/failure path/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
+- [x] 이 commit의 변경이 어떤 invariant/실패 처리/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
 - [x] 이 commit의 보장 범위를 넘는 항목은 무엇인지 source에 근거해 별도로 적으세요.
 
 #### 다음 관련 commit과 연결
@@ -713,7 +713,7 @@ factory가 반환한 raw owning pointer를 안전하게 넘기는 것과 기존 
 - 핵심 코드 발췌 위치: `fc0b8b7a40a0:src/Factory.cpp`의 `FormatterOwner`는 creator raw pointer를 constructor에서 받아 destructor에서 `delete`합니다. `replace()`는 validation 후 `target.swap(empty)`로 기존 값을 먼저 비우고, 각 owner의 formatter를 `target.append()`에 전달합니다.
 - 변경 전/후 차이: creator 결과의 leak 방지와 specification list 조립이 구현되었습니다. 그러나 assembly destination이 target 자체라 replacement의 상태 변경은 시작 시 empty swap과 각 append에 분산됩니다.
 - 직접 확인한 ownership/lifetime/state 관계: creator 성공 직후 local `FormatterOwner`가 원본 dynamic object를 소유합니다. `target.append(formatter.get())`는 borrowed reference를 받아 별도 clone을 만들고 target이 clone을 소유합니다. loop iteration 종료 시 owner는 creator 원본을 삭제합니다.
-- 직접 확인한 failure path: null/count 불일치와 capacity 초과는 mutation 전에 거부됩니다. 이후 create 또는 append/clone이 실패하면 local owner와 현재 scope의 objects는 누수 없이 정리되지만, target은 이미 비워졌거나 성공한 앞 단계 clone만 가진 partial pipeline으로 남습니다. empty specification list는 target을 empty로 교체합니다.
+- 직접 확인한 실패 처리: null/count 불일치와 capacity 초과는 mutation 전에 거부됩니다. 이후 create 또는 append/clone이 실패하면 local owner와 현재 scope의 objects는 누수 없이 정리되지만, target은 이미 비워졌거나 성공한 앞 단계 clone만 가진 partial pipeline으로 남습니다. empty specification list는 target을 empty로 교체합니다.
 - 실행한 테스트와 결과: 미실행. 지정 SHA의 ownership handoff와 mutation 순서를 검사했으며 command는 수행하지 않았습니다.
 - 이 commit을 한 문장으로 설명: factory 결과 누수는 막았지만 target을 증분 변경해 강한 교체 보장은 만들지 못했습니다.
 
@@ -728,7 +728,7 @@ factory가 반환한 raw owning pointer를 안전하게 넘기는 것과 기존 
 - **기존 가정:** factory-created temporaries를 leak 없이 정리하면 replacement도 충분히 안전하다고 볼 수 있었다.
 - **실제 failure / 위험:** later specification의 create/clone 실패가 target을 이미 비웠거나 partial pipeline으로 남길 수 있었다.
 - **root cause:** multi-step operation의 commit point가 target 내부 여러 mutation으로 분산되어 있었다.
-- **수정된 invariant / decision:** 완전한 candidate만 one non-throwing swap으로 target에 publish한다.
+- **수정된 invariant / decision:** 완전한 candidate만 one non-throwing swap으로 target에 publish합니다.
 - **실제 코드 확인:** `fc0b8b7a40a0`과 `907bfbd5c37c`의 `PipelineBuilder::replace()`를 비교해 mutation destination과 final swap을 확인한다.
 - **regression test:** `466d7abdb60f`의 seeded target preservation, 이어서 `af4e35ca7d92`의 full failure sweep을 확인한다.
 
@@ -761,7 +761,7 @@ factory가 반환한 raw owning pointer를 안전하게 넘기는 것과 기존 
 - 핵심 코드 발췌 위치: `907bfbd5c37c:src/Factory.cpp`는 `FormatPipeline candidate`를 만들고 모든 `create()`/`candidate.append()`를 끝낸 뒤 마지막에 `target.swap(candidate)`를 한 번 호출합니다.
 - 변경 전/후 차이: 직전의 `target.swap(empty)`와 direct append가 제거되고, mutation destination이 local candidate로 이동했습니다. resource cleanup 방식은 유지되지만 object-state publication 지점은 final swap 하나로 축소되었습니다.
 - 직접 확인한 ownership/lifetime/state 관계: 각 iteration에서 creator object는 `FormatterOwner`, append가 만든 clone은 candidate가 소유합니다. final swap 전 target은 계속 old pipeline을 소유합니다. swap 후 target이 complete candidate를, local candidate가 old target을 소유하며 scope 종료 시 old target clones를 삭제합니다.
-- 직접 확인한 failure path: create, formatter construction, clone, candidate capacity/allocation 중 어느 단계에서 throw해도 local owner와 candidate destructor가 새 resources를 정리하고 `target.swap()`에는 도달하지 않습니다. 따라서 target size, step order, output behavior가 유지됩니다.
+- 직접 확인한 실패 처리: create, formatter construction, clone, candidate capacity/allocation 중 어느 단계에서 throw해도 local owner와 candidate destructor가 새 resources를 정리하고 `target.swap()`에는 도달하지 않습니다. 따라서 target size, step order, output behavior가 유지됩니다.
 - 실행한 테스트와 결과: 미실행. fix 전후 `Factory.cpp`를 직접 비교하고 후속 regression source를 검사했으며 command는 수행하지 않았습니다.
 - 이 commit을 한 문장으로 설명: 완성된 candidate만 non-throwing swap으로 게시해 leak freedom과 target atomicity를 함께 만족시켰습니다.
 
@@ -798,7 +798,7 @@ factory가 반환한 raw owning pointer를 안전하게 넘기는 것과 기존 
 - 핵심 코드 발췌 위치: `466d7abdb60f:tests/test_factory.cpp`는 기존 pipeline을 seed한 뒤 list 중간에 unknown formatter를 두거나 null/count 조합을 잘못 전달하고, exception 후 seed 적용 결과가 동일한지 확인합니다. CLI script는 invalid configuration의 nonzero status, expected stderr, empty stdout를 비교합니다.
 - 변경 전/후 차이: candidate-then-swap production fix 위에 대표적인 grammar/validation rejection과 process-level output atomicity 회귀가 추가되었습니다.
 - 직접 확인한 ownership/lifetime/state 관계: regression은 failure 전 target behavior를 baseline으로 저장하고 failure 뒤 같은 transformation을 재실행합니다. empty list success는 old target이 local candidate로 이동해 파괴되고 target이 zero-step pipeline이 되는 정상 commit도 확인합니다.
-- 직접 확인한 failure path: unknown middle item은 candidate에 앞 step clone이 이미 존재하는 상태에서 예외를 발생시켜 candidate destructor 경로를 통과합니다. null/count failure는 work 시작 전 validation 경로입니다. 고정 fixture 수만 확인하므로 모든 allocation/clone site는 sweep하지 않습니다.
+- 직접 확인한 실패 처리: unknown middle item은 candidate에 앞 step clone이 이미 존재하는 상태에서 예외를 발생시켜 candidate destructor 경로를 통과합니다. null/count failure는 work 시작 전 validation 경로입니다. 고정 fixture 수만 확인하므로 모든 allocation/clone site는 sweep하지 않습니다.
 - 실행한 테스트와 결과: 미실행. unit/CLI fixture와 expected assertions를 검사했지만 binary는 실행하지 않았습니다.
 - 이 commit을 한 문장으로 설명: 대표 rejection에서 seeded target과 CLI stdout이 보존되는지 고정한 회귀입니다.
 
@@ -816,7 +816,7 @@ factory가 반환한 raw owning pointer를 안전하게 넘기는 것과 기존 
 - [x] creator → local guard → pipeline clone → partial candidate destructor → final target까지 ownership transition별 live count assertion을 매핑하세요.
 - [x] 모든 injected exception 뒤 original target behavior가 유지되는 assertion을 확인하세요.
 - [x] 누수뿐 아니라 premature mutation도 검출하도록 어떤 baseline/state 비교를 함께 수행하는지 기록하세요.
-- [x] 이 commit의 변경이 어떤 invariant/failure path/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
+- [x] 이 commit의 변경이 어떤 invariant/실패 처리/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
 - [x] 이 commit의 보장 범위를 넘는 항목은 무엇인지 source에 근거해 별도로 적으세요.
 
 #### Test commit 학습 구분
@@ -833,7 +833,7 @@ factory가 반환한 raw owning pointer를 안전하게 넘기는 것과 기존 
 - 핵심 코드 발췌 위치: `af4e35ca7d92:tests/failure/test_factory_failure.cpp`는 create failure, clone failure, observed allocation attempt를 각각 지정해 `PipelineBuilder::replace()`를 반복 호출하고 live counters와 target output을 비교합니다.
 - 변경 전/후 차이: 대표 unknown/null rejection에 더해 creator → local guard → clone → partial candidate → final swap 전 구간의 결정적 failure injection이 추가되었습니다. production 코드는 변경되지 않습니다.
 - 직접 확인한 ownership/lifetime/state 관계: custom creator가 만든 formatter는 local `FormatterOwner`가 먼저 소유하고, append 성공 시 candidate가 별도 clone을 소유합니다. tests는 각 실패 뒤 formatter live count와 allocation live-block baseline이 복구되고 original target behavior가 동일한지 함께 확인합니다.
-- 직접 확인한 failure path: create 자체의 throw, returned object를 clone하는 throw, 문자열·container 등 관찰된 allocation 실패가 final swap 전에 발생하도록 failure index를 이동합니다. 누수만 검사하지 않고 target transformation 결과도 비교해 premature mutation을 검출합니다. stream transport failure는 범위 밖입니다.
+- 직접 확인한 실패 처리: create 자체의 throw, returned object를 clone하는 throw, 문자열·container 등 관찰된 allocation 실패가 final swap 전에 발생하도록 failure index를 이동합니다. 누수만 검사하지 않고 target transformation 결과도 비교해 premature mutation을 검출합니다. stream transport failure는 범위 밖입니다.
 - 실행한 테스트와 결과: 미실행. failure double과 sweep loop, Make target을 검사했으며 test executable은 실행하지 않았습니다.
 - 이 commit을 한 문장으로 설명: factory assembly의 모든 관찰 ownership handoff 실패에서 cleanup과 target 보존을 동시에 검증했습니다.
 
@@ -926,7 +926,7 @@ factory가 반환한 raw owning pointer를 안전하게 넘기는 것과 기존 
 - [x] final HEAD를 과거 commit 설명에 소급해서 사용하지 않았습니다.
 - [x] S/A/B importance에 맞는 깊이로 code/test evidence를 채웠습니다.
 - [x] source가 확정한 invariant와 제가 실제 코드에서 확인한 증거를 구분했습니다.
-- [x] failure path에서 state mutation 전후와 cleanup owner를 설명할 수 있습니다.
+- [x] 실패 처리에서 state mutation 전후와 cleanup owner를 설명할 수 있습니다.
 - [x] test commit마다 production invariant, technique, production path, 증명/비증명 범위를 구분했습니다.
 - [x] Thread 마지막 상태를 commit history에 근거해 처음부터 끝까지 설명할 수 있습니다.
 ===== END FILE: 03-factory-transaction-boundary.md =====
@@ -950,16 +950,16 @@ factory가 반환한 raw owning pointer를 안전하게 넘기는 것과 기존 
 
 ## 완료 기준
 
-- [x] character/integer/floating/special 분류가 projection 이전에 끝나는 실제 경로를 추적할 수 있다.
-- [x] float suffix, whitespace, trailing bytes, overflow, nonzero underflow 경계를 테스트와 parser 코드에서 대응시킬 수 있다.
-- [x] float/double projection에서 representability 판단과 canonical rendering을 구분할 수 있다.
-- [x] caller locale/format flags와 staged output의 관계를 테스트로 확인할 수 있다.
+- [x] character/integer/floating/special 분류가 projection 이전에 끝나는 실제 경로를 추적할 수 있습니다.
+- [x] float suffix, whitespace, trailing bytes, overflow, nonzero underflow 경계를 테스트와 parser 코드에서 대응시킬 수 있습니다.
+- [x] float/double projection에서 representability 판단과 canonical rendering을 구분할 수 있습니다.
+- [x] caller locale/format flags와 staged output의 관계를 테스트로 확인할 수 있습니다.
 
 ## Source에 연결된 invariant / engineering difficulty
 
 ### Critical invariant
 
-- accepted text는 complete ASCII grammar와 일치해야 하며 `LONG_MIN`, negative zero, finite overflow, nonzero underflow 같은 의미 경계를 보존한다.
+- accepted text는 complete ASCII grammar와 일치해야 하며 `LONG_MIN`, negative zero, finite overflow, nonzero underflow 같은 의미 경계를 보존합니다.
 - 완성되지 않은 report는 publish하지 않는다.
 - deterministic rendering은 locale과 caller stream formatting state의 영향을 받지 않는다.
 
@@ -995,7 +995,7 @@ factory가 반환한 raw owning pointer를 안전하게 넘기는 것과 기존 
 - [x] lone non-digit character가 character literal로 우선되는 precedence를 실제 branch order에서 확인하세요.
 - [x] parser가 즉시 출력하지 않고 normalized intermediate representation을 만드는 상태 필드/enum을 기록하세요.
 - [x] special value와 negative-zero recognition이 여러 projection에 중복되지 않고 parser 단계에 모이는지 call graph로 확인하세요.
-- [x] 이 commit의 변경이 어떤 invariant/failure path/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
+- [x] 이 commit의 변경이 어떤 invariant/실패 처리/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
 - [x] 이 commit의 보장 범위를 넘는 항목은 무엇인지 source에 근거해 별도로 적으세요.
 
 #### 다음 관련 commit과 연결
@@ -1006,7 +1006,7 @@ factory가 반환한 raw owning pointer를 안전하게 넘기는 것과 기존 
 - 핵심 코드 발췌 위치: `6a3d0461faab:src/ScalarLiteral.cpp`에서 입력 byte를 먼저 검사하고 special, lone printable non-digit character, finite grammar 순서로 분류합니다. 결과는 `kind`, `value`, `float_suffix`, `negative_zero`를 가진 intermediate object입니다.
 - 변경 전/후 차이: input text를 target별 출력 함수에서 즉석 해석하는 대신, source literal의 종류와 의미를 먼저 하나의 parser가 결정하는 내부 representation이 생겼습니다.
 - 직접 확인한 ownership/lifetime/state 관계: parser는 입력 `std::string`을 borrowed read-only source로 사용하고 값만 `ScalarLiteral`에 복사합니다. parser state는 호출 범위의 local value이며 아직 destination stream에 쓰지 않습니다.
-- 직접 확인한 failure path: empty text, NUL, non-ASCII, surrounding/embedded whitespace, incomplete number, trailing bytes는 `ScalarParseError`로 끝납니다. lone non-digit character branch가 finite parsing보다 먼저라 printable 단일 문자는 character로 고정됩니다. 이 시점의 numeric extraction 경계는 후속 hardening 전 상태입니다.
+- 직접 확인한 실패 처리: empty text, NUL, non-ASCII, surrounding/embedded whitespace, incomplete number, trailing bytes는 `ScalarParseError`로 끝납니다. lone non-digit character branch가 finite parsing보다 먼저라 printable 단일 문자는 character로 고정됩니다. 이 시점의 numeric extraction 경계는 후속 hardening 전 상태입니다.
 - 실행한 테스트와 결과: 미실행. 지정 SHA의 parser declaration과 implementation을 검사했으며 command는 수행하지 않았습니다.
 - 이 commit을 한 문장으로 설명: complete ASCII scalar grammar를 target projection 앞의 normalized semantic value로 분리했습니다.
 
@@ -1025,7 +1025,7 @@ factory가 반환한 raw owning pointer를 안전하게 넘기는 것과 기존 
 - [x] overflow와 silent nonzero underflow rejection이 stream extraction success 여부와 별도로 검사되는지 확인하세요.
 - [x] negative zero lexeme의 sign이 일반 `value == 0` 비교와 별도 상태로 보존되는 코드를 찾으세요.
 - [x] non-ASCII/malformed byte rejection과 printable single-character precedence가 충돌하지 않는 분기 순서를 확인하세요.
-- [x] 이 commit의 변경이 어떤 invariant/failure path/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
+- [x] 이 commit의 변경이 어떤 invariant/실패 처리/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
 - [x] 이 commit의 보장 범위를 넘는 항목은 무엇인지 source에 근거해 별도로 적으세요.
 
 #### 다음 관련 commit과 연결
@@ -1036,7 +1036,7 @@ factory가 반환한 raw owning pointer를 안전하게 넘기는 것과 기존 
 - 핵심 코드 발췌 위치: `a863f4899a93:src/ScalarLiteral.cpp`는 numeric stream에 `std::locale::classic()`을 적용하고 `input.fail() || !input.eof()`를 검사합니다. `f` suffix는 point나 exponent가 있을 때만 허용하며, nonzero mantissa가 extraction 후 `0.0`이면 underflow로 거부합니다.
 - 변경 전/후 차이: permissive numeric extraction에 의존하던 경계를 classic-locale complete parse, finite overflow, nonzero-underflow, suffix grammar, negative-zero 보존으로 강화했습니다.
 - 직접 확인한 ownership/lifetime/state 관계: lexeme의 sign과 mantissa-zero 여부는 machine `double`과 별도로 `negative_zero`에 보존됩니다. textual all-zero는 parser가 직접 `+0.0`/`-0.0`을 만들고, nonzero lexeme만 stream extraction을 거칩니다.
-- 직접 확인한 failure path: `42f`는 point/exponent가 없어 거부되고 `1e309` 같은 finite overflow는 fail/non-finite 검사로 거부됩니다. `1e-9999`처럼 nonzero digits가 machine zero가 되면 all-zero가 아니므로 거부됩니다. `-0`, `-0.0`, `-0e10`은 zero이면서 sign metadata를 유지합니다.
+- 직접 확인한 실패 처리: `42f`는 point/exponent가 없어 거부되고 `1e309` 같은 finite overflow는 fail/non-finite 검사로 거부됩니다. `1e-9999`처럼 nonzero digits가 machine zero가 되면 all-zero가 아니므로 거부됩니다. `-0`, `-0.0`, `-0e10`은 zero이면서 sign metadata를 유지합니다.
 - 실행한 테스트와 결과: 미실행. 지정 SHA의 grammar 및 numeric boundary code를 검사했으며 command는 수행하지 않았습니다.
 - 이 commit을 한 문장으로 설명: locale와 machine conversion이 source text의 overflow, underflow, negative-zero 의미를 바꾸지 못하게 했습니다.
 
@@ -1053,7 +1053,7 @@ factory가 반환한 raw owning pointer를 안전하게 넘기는 것과 기존 
 - [x] whitespace, embedded NUL/non-ASCII, trailing garbage, malformed exponent, overflow, nonzero-underflow rejection cases를 각각 production parser branch에 연결하세요.
 - [x] complete token 소비를 증명하는 test가 stream prefix-parse만 성공하는 잘못된 구현을 어떻게 잡는지 확인하세요.
 - [x] literal grammar failure와 numerical representability failure가 test expectation에서 구분되는지 기록하세요.
-- [x] 이 commit의 변경이 어떤 invariant/failure path/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
+- [x] 이 commit의 변경이 어떤 invariant/실패 처리/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
 - [x] 이 commit의 보장 범위를 넘는 항목은 무엇인지 source에 근거해 별도로 적으세요.
 
 #### Test commit 학습 구분
@@ -1071,9 +1071,9 @@ factory가 반환한 raw owning pointer를 안전하게 넘기는 것과 기존 
 #### 학습자 기록
 - 확인한 파일/심볼: `tests/test_scalar_literal.cpp`; test suite registration; literal parser 관련 expected exception helpers.
 - 핵심 코드 발췌 위치: `fc7faa10dc66:tests/test_scalar_literal.cpp`의 accepted tables/cases는 character, signed integer, point/exponent, `f` suffix, specials, negative zero를 다루고 rejected cases는 whitespace, NUL/non-ASCII, trailing garbage, malformed exponent, `42f`, overflow와 nonzero underflow를 포함합니다.
-- 변경 전/후 차이: parser implementation의 분기별 source-language boundary가 deterministic unit regression으로 고정되었습니다. 최종 4-line rendering과 CLI output은 아직 이 commit의 주 대상이 아닙니다.
+- 변경 전/후 차이: parser implementation의 분기별 source-language boundary가 deterministic unit regression으로 고정되었습니다. 최종 4-line rendering과 CLI output은 아직이 commit의 주 대상이 아닙니다.
 - 직접 확인한 ownership/lifetime/state 관계: tests는 반환 `ScalarLiteral`의 kind/value/suffix/sign metadata를 직접 비교하며 destination stream이나 외부 state를 만들지 않습니다.
-- 직접 확인한 failure path: prefix만 읽는 parser라면 통과할 `1.0x`, malformed exponent, embedded NUL을 expected rejection으로 둬 complete consumption을 검사합니다. overflow와 nonzero-underflow도 grammar success와 별개로 exception을 기대해 numerical boundary를 분리합니다.
+- 직접 확인한 실패 처리: prefix만 읽는 parser라면 통과할 `1.0x`, malformed exponent, embedded NUL을 expected rejection으로 둬 complete consumption을 검사합니다. overflow와 nonzero-underflow도 grammar success와 별개로 exception을 기대해 numerical boundary를 분리합니다.
 - 실행한 테스트와 결과: 미실행. test cases와 production branch mapping을 검사했으나 unit binary는 실행하지 않았습니다.
 - 이 commit을 한 문장으로 설명: scalar source language의 승인·거부 경계를 수치 한계까지 회귀 테스트로 고정했습니다.
 
@@ -1092,7 +1092,7 @@ factory가 반환한 raw owning pointer를 안전하게 넘기는 것과 기존 
 - [x] temporary rendering이 성공한 뒤 caller destination에 한 번에 bytes를 전달하는 publication point를 찾으세요.
 - [x] destination 자체가 final write 중 fail하는 경우까지 rollback하지 않는 boundary를 실제 write structure에서 확인하세요.
 - [x] caller locale/precision/flags를 읽거나 수정하지 않고 result가 고정되는지 implementation을 확인하세요.
-- [x] 이 commit의 변경이 어떤 invariant/failure path/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
+- [x] 이 commit의 변경이 어떤 invariant/실패 처리/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
 - [x] 이 commit의 보장 범위를 넘는 항목은 무엇인지 source에 근거해 별도로 적으세요.
 
 #### 다음 관련 commit과 연결
@@ -1103,7 +1103,7 @@ factory가 반환한 raw owning pointer를 안전하게 넘기는 것과 기존 
 - 핵심 코드 발췌 위치: `7cdcec341fb1:src/ScalarConverter.cpp`에서 float projection은 range를 검사하고 cast 결과가 zero가 되는 nonzero 값을 거부합니다. 네 projection은 classic-locale `std::ostringstream rendered`에 모두 기록된 뒤 `result` bytes가 destination에 한 번 `output.write()` 됩니다.
 - 변경 전/후 차이: normalized literal에 char/int/float/double representability와 canonical spelling을 적용하는 출력 계층이 추가되었습니다. caller stream에 line을 하나씩 직접 쓰지 않고 report 전체를 먼저 staging합니다.
 - 직접 확인한 ownership/lifetime/state 관계: parser result와 `rendered`/`result`는 local candidate state입니다. caller stream은 final write 전까지 변경되지 않습니다. caller의 locale, precision, flags는 읽거나 바꾸지 않고 temporary stream만 classic locale과 자체 precision을 사용합니다.
-- 직접 확인한 failure path: parse/projection/rendering 중 예외가 나면 destination write에 도달하지 않아 partial line이 없습니다. float overflow나 nonzero-underflow는 `impossible` projection으로 표현됩니다. 그러나 final `output.write()` 자체가 중간에 실패한 경우 destination bytes나 stream position을 rollback하는 코드는 없습니다.
+- 직접 확인한 실패 처리: parse/projection/rendering 중 예외가 나면 destination write에 도달하지 않아 partial line이 없습니다. float overflow나 nonzero-underflow는 `impossible` projection으로 표현됩니다. 그러나 final `output.write()` 자체가 중간에 실패한 경우 destination bytes나 stream position을 rollback하는 코드는 없습니다.
 - 실행한 테스트와 결과: 미실행. projection과 staged publication implementation을 검사했으며 command는 수행하지 않았습니다.
 - 이 commit을 한 문장으로 설명: source 의미를 target별로 투영해 classic-locale 4-line report를 완성한 뒤 한 번에 게시합니다.
 
@@ -1121,7 +1121,7 @@ factory가 반환한 raw owning pointer를 안전하게 넘기는 것과 기존 
 - [x] public-header compile test가 converter를 private parser 없이 사용할 수 있음을 어떻게 확인하는지 보세요.
 - [x] CLI invalid literal이 nonzero status와 empty stdout를 보장하는 fixture를 찾으세요.
 - [x] unit/compile/CLI 각각이 parser, projection, integration 중 어느 production path를 증명하는지 구분하세요.
-- [x] 이 commit의 변경이 어떤 invariant/failure path/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
+- [x] 이 commit의 변경이 어떤 invariant/실패 처리/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
 - [x] 이 commit의 보장 범위를 넘는 항목은 무엇인지 source에 근거해 별도로 적으세요.
 
 #### Test commit 학습 구분
@@ -1138,7 +1138,7 @@ factory가 반환한 raw owning pointer를 안전하게 넘기는 것과 기존 
 - 핵심 코드 발췌 위치: `afea789fd753:tests/test_scalar_converter.cpp`는 printable/control char, escapes, int bounds, finite/special float/double, negative zero, target별 impossible output의 정확한 네 줄을 비교합니다. caller stream locale/flags/precision을 변경한 뒤 output과 기존 state도 비교합니다.
 - 변경 전/후 차이: parser unit 경계 위에 projection correctness, byte-level canonical output, stream noninterference, public header visibility, invalid CLI behavior가 추가되었습니다.
 - 직접 확인한 ownership/lifetime/state 관계: tests는 동일 input의 report가 caller formatting state와 무관하고, `ScalarConverter` 내부 private parser를 외부 consumer가 알 필요 없음을 compile contract로 확인합니다.
-- 직접 확인한 failure path: invalid literal은 `InvalidScalar`를 기대하고 destination buffer가 empty인지 검사합니다. CLI fixture는 nonzero status와 empty stdout, diagnostic stderr를 비교합니다. 이 evidence도 destination의 final write failure rollback까지는 다루지 않습니다.
+- 직접 확인한 실패 처리: invalid literal은 `InvalidScalar`를 기대하고 destination buffer가 empty인지 검사합니다. CLI fixture는 nonzero status와 empty stdout, diagnostic stderr를 비교합니다. 이 evidence도 destination의 final write failure rollback까지는 다루지 않습니다.
 - 실행한 테스트와 결과: 미실행. exact expectations, compile units, CLI fixtures를 검사했으나 binary/command는 실행하지 않았습니다.
 - 이 commit을 한 문장으로 설명: scalar subsystem의 target별 표현 가능성, canonical bytes, public/process contract를 검증했습니다.
 
@@ -1227,7 +1227,7 @@ factory가 반환한 raw owning pointer를 안전하게 넘기는 것과 기존 
 - [x] final HEAD를 과거 commit 설명에 소급해서 사용하지 않았습니다.
 - [x] S/A/B importance에 맞는 깊이로 code/test evidence를 채웠습니다.
 - [x] source가 확정한 invariant와 제가 실제 코드에서 확인한 증거를 구분했습니다.
-- [x] failure path에서 state mutation 전후와 cleanup owner를 설명할 수 있습니다.
+- [x] 실패 처리에서 state mutation 전후와 cleanup owner를 설명할 수 있습니다.
 - [x] test commit마다 production invariant, technique, production path, 증명/비증명 범위를 구분했습니다.
 - [x] Thread 마지막 상태를 commit history에 근거해 처음부터 끝까지 설명할 수 있습니다.
 ===== END FILE: 04-scalar-text-target-projection.md =====
@@ -1251,17 +1251,17 @@ signed `long` 연산을 실행한 뒤 overflow를 검사하는 잘못된 접근�
 
 ## 완료 기준
 
-- [x] signed decimal token accumulation이 `LONG_MIN`까지 안전하게 도달하는 코드를 설명할 수 있다.
-- [x] +, -, *, / 각각의 precondition check와 실제 signed operation의 순서를 실제 코드로 증명할 수 있다.
-- [x] right-then-left pop과 non-commutative result를 테스트 케이스로 연결할 수 있다.
-- [x] overflow/underflow/division-by-zero/malformed stack의 regression coverage를 구분할 수 있다.
+- [x] signed decimal token accumulation이 `LONG_MIN`까지 안전하게 도달하는 코드를 설명할 수 있습니다.
+- [x] +, -, *, / 각각의 precondition check와 실제 signed operation의 순서를 실제 코드로 증명할 수 있습니다.
+- [x] right-then-left pop과 non-commutative result를 테스트 케이스로 연결할 수 있습니다.
+- [x] overflow/underflow/division-by-zero/malformed stack의 regression coverage를 구분할 수 있습니다.
 
 ## Source에 연결된 invariant / engineering difficulty
 
 ### Critical invariant
 
 - signed arithmetic은 실행 전에 검사되어 error detection 자체가 undefined overflow에 의존하지 않는다.
-- accepted integer token은 complete ASCII grammar와 `LONG_MIN`/`LONG_MAX` 경계를 보존한다.
+- accepted integer token은 complete ASCII grammar와 `LONG_MIN`/`LONG_MAX` 경계를 보존합니다.
 
 ### Major engineering difficulty
 
@@ -1293,7 +1293,7 @@ signed `long` 연산을 실행한 뒤 overflow를 검사하는 잘못된 접근�
 - [x] malformed number/unknown token을 operator 단계 전에 거부하는 branch를 확인하세요.
 - [x] evaluation stack push/pop과 expression 종료 시 exactly one result를 요구하는 구조적 validation을 기록하세요.
 - [x] locale-sensitive stream prefix parsing을 피하기 위해 manual parser가 사용되는 지점을 확인하세요.
-- [x] 이 commit의 변경이 어떤 invariant/failure path/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
+- [x] 이 commit의 변경이 어떤 invariant/실패 처리/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
 - [x] 이 commit의 보장 범위를 넘는 항목은 무엇인지 source에 근거해 별도로 적으세요.
 
 #### 다음 관련 commit과 연결
@@ -1304,7 +1304,7 @@ signed `long` 연산을 실행한 뒤 overflow를 검사하는 잘못된 접근�
 - 핵심 코드 발췌 위치: `57a25e8475ab:src/RpnEvaluator.cpp`의 `parseLong()`은 sign을 분리하고 `unsigned long magnitude`를 `(limit - digit) / 10`과 비교한 뒤 누적합니다. 음수 limit은 `LONG_MAX + 1`로 두어 `LONG_MIN`을 별도 branch에서 만듭니다.
 - 변경 전/후 차이: locale-sensitive stream extraction 대신 ASCII space tokenization과 complete signed-decimal parser가 도입되었고, evaluator가 local `std::vector<long>` stack의 구조를 직접 검증하게 되었습니다.
 - 직접 확인한 ownership/lifetime/state 관계: expression은 caller-owned borrowed string이고 token substring과 evaluation stack은 call-local state입니다. operand token은 완전히 파싱된 후에만 stack에 push되며 결과는 종료 시 stack에 정확히 하나 남을 때만 반환됩니다.
-- 직접 확인한 failure path: sign만 있는 token, unknown byte가 섞인 number, unknown operator/token, operand 부족, 종료 시 0개 또는 2개 이상 결과는 `invalid_argument` 또는 range exception으로 끝납니다. local stack은 외부 객체에 publish되지 않습니다. 이 SHA의 산술 operator에는 아직 모든 overflow precondition이 추가되기 전입니다.
+- 직접 확인한 실패 처리: sign만 있는 token, unknown byte가 섞인 number, unknown operator/token, operand 부족, 종료 시 0개 또는 2개 이상 결과는 `invalid_argument` 또는 range exception으로 끝납니다. local stack은 외부 객체에 publish되지 않습니다. 이 SHA의 산술 operator에는 아직 모든 overflow precondition이 추가되기 전입니다.
 - 실행한 테스트와 결과: 미실행. 지정 SHA의 tokenizer/parser/stack code를 검사했으며 command는 수행하지 않았습니다.
 - 이 commit을 한 문장으로 설명: `LONG_MIN`까지 안전하게 만드는 signed token parser와 RPN stack language를 확립했습니다.
 
@@ -1344,7 +1344,7 @@ signed `long` 연산을 실행한 뒤 overflow를 검사하는 잘못된 접근�
 - 핵심 코드 발췌 위치: `e1641a714172:src/RpnEvaluator.cpp`에서 add/subtract는 sign별 limit 식을 먼저 검사합니다. multiply는 `-(value + 1) + 1` 형태의 unsigned magnitude로 `LONG_MIN`을 처리하고 `left_magnitude > limit / right_magnitude`를 실제 곱셈 전에 검사합니다.
 - 변경 전/후 차이: 직전 parser/stack 구현 위에 모든 signed operator의 precondition-first arithmetic이 추가되었습니다. 결과를 계산한 뒤 overflow를 판정하는 방식은 사용하지 않습니다.
 - 직접 확인한 ownership/lifetime/state 관계: operator token 처리 시 stack에서 `right`를 먼저, `left`를 나중에 꺼내 `applyOperator(left, right, op)`에 전달합니다. checked helper가 성공한 값만 다시 local stack에 push하므로 실패 결과는 외부나 stack에 게시되지 않습니다.
-- 직접 확인한 failure path: addition/subtraction은 limit subtraction/addition으로 margin을 검사하고, multiplication은 sign에 따라 `LONG_MAX` 또는 `LONG_MAX + 1` magnitude limit을 사용합니다. division은 `right == 0`과 `LONG_MIN / -1`을 실제 `/` 전에 거부합니다. 모든 signed `+ - * /` expression은 해당 검사 뒤에만 평가됩니다.
+- 직접 확인한 실패 처리: addition/subtraction은 limit subtraction/addition으로 margin을 검사하고, multiplication은 sign에 따라 `LONG_MAX` 또는 `LONG_MAX + 1` magnitude limit을 사용합니다. division은 `right == 0`과 `LONG_MIN / -1`을 실제 `/` 전에 거부합니다. 모든 signed `+ - * /` expression은 해당 검사 뒤에만 평가됩니다.
 - 실행한 테스트와 결과: 미실행. 지정 SHA의 checked helper와 call order를 검사했으며 command는 수행하지 않았습니다.
 - 이 commit을 한 문장으로 설명: signed arithmetic을 실행하기 전에 모든 overflow와 invalid division 조건을 판정하도록 만들었습니다.
 
@@ -1362,7 +1362,7 @@ signed `long` 연산을 실행한 뒤 overflow를 검사하는 잘못된 접근�
 - [x] division by zero와 `LONG_MIN / -1` case가 별도 regression으로 존재하는지 확인하세요.
 - [x] malformed number, unknown token, insufficient/extra operands, spacing boundaries가 parser/stack grammar의 어느 branch를 통과하는지 매핑하세요.
 - [x] 테스트가 UB 발생 뒤 결과를 검사하는 것이 아니라 UB expression 자체가 실행되지 않도록 error path를 관찰하는 방식을 확인하세요.
-- [x] 이 commit의 변경이 어떤 invariant/failure path/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
+- [x] 이 commit의 변경이 어떤 invariant/실패 처리/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
 - [x] 이 commit의 보장 범위를 넘는 항목은 무엇인지 source에 근거해 별도로 적으세요.
 
 #### Test commit 학습 구분
@@ -1379,7 +1379,7 @@ signed `long` 연산을 실행한 뒤 overflow를 검사하는 잘못된 접근�
 - 핵심 코드 발췌 위치: `aa0cc5e3e063:tests/test_rpn_evaluator.cpp`는 normal operators와 `8 3 -`, `8 3 /` 같은 operand order, `LONG_MIN`/`LONG_MAX` literals, add/subtract/multiply 양방향 overflow, division by zero, `LONG_MIN -1 /`, malformed stack/token을 구분합니다.
 - 변경 전/후 차이: checked-arithmetic implementation의 각 branch와 parser/stack shape가 deterministic boundary unit suite로 고정되었습니다. production code는 변경되지 않습니다.
 - 직접 확인한 ownership/lifetime/state 관계: success case는 반환 `long`만 비교하고 failure case는 exception을 기대합니다. evaluator state는 매 호출마다 local stack이므로 실패 뒤 persistent target이나 partial result를 검사할 외부 객체는 없습니다.
-- 직접 확인한 failure path: overflow expression은 결과 값을 관찰하지 않고 exception path를 기대하므로 checked helper가 실제 undefined expression을 실행하지 않아야 test가 sanitizer/정상 실행에서도 끝납니다. tab/newline, malformed sign, extra/insufficient operands도 parser 또는 final-size branch에 연결됩니다. 모든 가능한 긴 expression을 exhaustive하게 다루지는 않습니다.
+- 직접 확인한 실패 처리: overflow expression은 결과 값을 관찰하지 않고 exception path를 기대하므로 checked helper가 실제 undefined expression을 실행하지 않아야 test가 sanitizer/정상 실행에서도 끝납니다. tab/newline, malformed sign, extra/insufficient operands도 parser 또는 final-size branch에 연결됩니다. 모든 가능한 긴 expression을 exhaustive하게 다루지는 않습니다.
 - 실행한 테스트와 결과: 미실행. boundary cases와 public compile units를 검사했으나 unit binary는 실행하지 않았습니다.
 - 이 commit을 한 문장으로 설명: token limit, operand order, 모든 산술 방향과 malformed stack을 UB 전 거부 계약으로 고정했습니다.
 
@@ -1463,7 +1463,7 @@ signed `long` 연산을 실행한 뒤 overflow를 검사하는 잘못된 접근�
 - [x] final HEAD를 과거 commit 설명에 소급해서 사용하지 않았습니다.
 - [x] S/A/B importance에 맞는 깊이로 code/test evidence를 채웠습니다.
 - [x] source가 확정한 invariant와 제가 실제 코드에서 확인한 증거를 구분했습니다.
-- [x] failure path에서 state mutation 전후와 cleanup owner를 설명할 수 있습니다.
+- [x] 실패 처리에서 state mutation 전후와 cleanup owner를 설명할 수 있습니다.
 - [x] test commit마다 production invariant, technique, production path, 증명/비증명 범위를 구분했습니다.
 - [x] Thread 마지막 상태를 commit history에 근거해 처음부터 끝까지 설명할 수 있습니다.
 ===== END FILE: 05-checked-rpn-undefined-arithmetic.md =====
@@ -1475,7 +1475,7 @@ signed `long` 연산을 실행한 뒤 overflow를 검사하는 잘못된 접근�
 
 random-access template abstraction을 vector/deque 두 표현에 적용하고, record parsing·중복 검사·RPN 계산·정렬·stream 완료 판정까지 하나의 delayed-publication transaction으로 통합하는 과정을 복원합니다.
 
-**Source significance:** generic containers, checked arithmetic, deterministic order, local candidates, delayed publication을 final subsystem에서 결합합니다. 후속 commit은 successful stream completion의 의미를 정교화하고, 어떤 협력 failure path도 partial batch를 publish하지 못함을 검증합니다.
+**Source significance:** generic containers, checked arithmetic, deterministic order, local candidates, delayed publication을 final subsystem에서 결합합니다. 후속 commit은 successful stream completion의 의미를 정교화하고, 어떤 협력 실패 처리도 partial batch를 publish하지 못함을 검증합니다.
 
 ## 이 Thread를 이해하기 위한 핵심 질문
 
@@ -1489,20 +1489,20 @@ random-access template abstraction을 vector/deque 두 표현에 적용하고, r
 
 ## 완료 기준
 
-- [x] template requirement와 vector/deque substitution을 public header와 tests에서 확인할 수 있다.
-- [x] batch replace의 candidate state, duplicate tracking, RPN result accumulation, final swap 위치를 그릴 수 있다.
-- [x] sorting/serialization이 deterministic external behavior를 만드는 근거를 실제 comparator와 staging 코드에서 확인할 수 있다.
-- [x] stream reader fix 전후에서 clean EOF/final unterminated line/failure의 분기를 비교할 수 있다.
-- [x] seeded prior state가 모든 rejection path 뒤 유지되는 regression/failure-sweep 구조를 설명할 수 있다.
+- [x] template requirement와 vector/deque substitution을 public header와 tests에서 확인할 수 있습니다.
+- [x] batch replace의 candidate state, duplicate tracking, RPN result accumulation, final swap 위치를 그릴 수 있습니다.
+- [x] sorting/serialization이 deterministic external behavior를 만드는 근거를 실제 comparator와 staging 코드에서 확인할 수 있습니다.
+- [x] stream reader fix 전후에서 clean EOF/final unterminated line/failure의 분기를 비교할 수 있습니다.
+- [x] seeded prior state가 모든 rejection path 뒤 유지되는 regression/failure-sweep 구조를 설명할 수 있습니다.
 
 ## Source에 연결된 invariant / engineering difficulty
 
 ### Critical invariant
 
 - 완성되지 않은 batch candidate는 publish되지 않는다.
-- strong guarantee replacement는 parse/arithmetic/stream-read preparation/allocation 실패 시 prior observable state를 보존한다.
-- batch output은 total `(value, name)` order를 가지며 input permutation과 repeated rendering에 불변이다.
-- signed arithmetic은 실행 전에 검사된다.
+- strong guarantee replacement는 parse/arithmetic/stream-read preparation/allocation 실패 시 prior observable state를 보존합니다.
+- batch output은 total `(value, name)` order를 가지며 input permutation과 repeated rendering에 불변입니다.
+- signed arithmetic은 실행 전에 검사됩니다.
 
 ### Major engineering difficulty
 
@@ -1563,7 +1563,7 @@ random-access template abstraction을 vector/deque 두 표현에 적용하고, r
 - 핵심 코드 발췌 위치: `708c025ef2a0:include/cppf/RandomAccessBatch.hpp`는 `Container = std::vector<T>`를 기본값으로 두고 container의 iterator/const_iterator를 그대로 노출합니다. `sort()`는 `std::sort(values_.begin(), values_.end(), compare)`를 호출하고 assignment는 complete copy 뒤 `swap()`합니다.
 - 변경 전/후 차이: concrete vector 사용 대신 random-access operations를 만족하는 container parameter를 교체할 수 있는 header-only batch abstraction과 서로 다른 range를 비교하는 helper가 생겼습니다.
 - 직접 확인한 ownership/lifetime/state 관계: `RandomAccessBatch`가 `Container values_`를 값으로 소유하며 iterator는 그 container lifetime과 mutation 규칙에 종속된 borrowed view입니다. copy는 underlying container의 독립 value copy이고 assignment commit은 container swap입니다.
-- 직접 확인한 failure path: element/container copy가 실패하면 copy constructor는 underlying container가 partial elements를 정리하고, assignment는 local copy construction 단계에서 target `values_`를 건드리지 않습니다. `at()`은 범위 밖을 거부합니다. `std::list`는 template 선언 자체가 아니라 `std::sort` instantiation의 random-access requirement에서 제외됩니다.
+- 직접 확인한 실패 처리: element/container copy가 실패하면 copy constructor는 underlying container가 partial elements를 정리하고, assignment는 local copy construction 단계에서 target `values_`를 건드리지 않습니다. `at()`은 범위 밖을 거부합니다. `std::list`는 template 선언 자체가 아니라 `std::sort` instantiation의 random-access requirement에서 제외됩니다.
 - 실행한 테스트와 결과: 미실행. 지정 SHA의 public template implementation을 검사했으며 command는 수행하지 않았습니다.
 - 이 commit을 한 문장으로 설명: vector/deque로 치환 가능한 random-access batch와 copy-and-swap value semantics를 정의했습니다.
 
@@ -1581,7 +1581,7 @@ random-access template abstraction을 vector/deque 두 표현에 적용하고, r
 - [x] throwing value type의 copy failure injection과 live-object counter가 어떻게 구성되는지 찾으세요.
 - [x] failed construction에서 partial copied values leak가 없는지, failed assignment에서 destination 보존이 되는지 각각의 assertion을 기록하세요.
 - [x] generic interface shape test와 exception guarantee test가 서로 어떤 production template instantiation을 사용하는지 구분하세요.
-- [x] 이 commit의 변경이 어떤 invariant/failure path/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
+- [x] 이 commit의 변경이 어떤 invariant/실패 처리/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
 - [x] 이 commit의 보장 범위를 넘는 항목은 무엇인지 source에 근거해 별도로 적으세요.
 
 #### Test commit 학습 구분
@@ -1601,7 +1601,7 @@ random-access template abstraction을 vector/deque 두 표현에 적용하고, r
 - 핵심 코드 발췌 위치: `aaeff163baf8:tests/test_random_access_batch.cpp`는 vector와 deque instantiation에서 iterator/const_iterator, standard algorithms, access, sort, equality, copy/assignment/self-assignment를 사용합니다. throwing element는 지정 copy에서 예외를 발생시키고 live count를 노출합니다.
 - 변경 전/후 차이: generic interface의 정상 치환만이 아니라 element copy failure에서 construction cleanup과 assignment target preservation을 확인하는 test layer가 추가되었습니다.
 - 직접 확인한 ownership/lifetime/state 관계: failed copy construction 뒤 성공했던 temporary elements가 사라져 live baseline으로 돌아와야 하고, failed assignment 뒤 destination values와 source values가 각각 유지되어야 합니다. iterator compile cases는 const batch의 mutation을 금지하는 public shape를 고정합니다.
-- 직접 확인한 failure path: vector/deque의 element copying 중 throw를 위치별로 제어하고, `std::list` sort 사용은 expected compile failure로 다룹니다. 따라서 non-random-access support를 증명하는 것이 아니라 요구사항 밖임을 명시합니다.
+- 직접 확인한 실패 처리: vector/deque의 element copying 중 throw를 위치별로 제어하고, `std::list` sort 사용은 expected compile failure로 다룹니다. 따라서 non-random-access support를 증명하는 것이 아니라 요구사항 밖임을 명시합니다.
 - 실행한 테스트와 결과: 미실행. unit/compile-contract source와 기대 조건을 검사했으며 command는 수행하지 않았습니다.
 - 이 commit을 한 문장으로 설명: container 치환, algorithm 사용, throwing element에서의 cleanup과 strong assignment를 검증했습니다.
 
@@ -1641,7 +1641,7 @@ random-access template abstraction을 vector/deque 두 표현에 적용하고, r
 - 핵심 코드 발췌 위치: `d0295f82614b:src/BatchEngine.cpp`는 각 line을 한 개의 `|`로 분리하고 field trim/name grammar를 검사합니다. local candidate와 `std::map<std::string, long> seen`에만 결과를 누적하고 complete non-empty input 뒤 `results_.swap(candidate)`를 호출합니다.
 - 변경 전/후 차이: generic container groundwork 위에 whole-stream parsing, duplicate rejection, checked RPN, persistent result replacement가 통합되었습니다. 기존 `results_`를 line마다 변경하지 않고 local state가 전체 입력을 소유합니다.
 - 직접 확인한 ownership/lifetime/state 관계: input stream은 borrowed source이고 parsed strings, seen map, candidate results는 call-local owners입니다. `JobResult`가 name/value를 값으로 소유하며 final swap 전 `results_`는 prior batch를 계속 소유합니다.
-- 직접 확인한 failure path: malformed/blank record, missing/extra separator, invalid name, duplicate name, RPN exception, stream failure, empty input은 final swap에 도달하지 않습니다. local containers가 partial records를 정리하므로 보상 mutation 없이 prior results가 유지됩니다. 이 시점의 line-loop EOF 판정은 후속 fix 전입니다.
+- 직접 확인한 실패 처리: malformed/blank record, missing/extra separator, invalid name, duplicate name, RPN exception, stream failure, empty input은 final swap에 도달하지 않습니다. local containers가 partial records를 정리하므로 보상 mutation 없이 prior results가 유지됩니다. 이 시점의 line-loop EOF 판정은 후속 fix 전입니다.
 - 실행한 테스트와 결과: 미실행. 지정 SHA의 parser, evaluator call, candidate publication을 검사했으며 command는 수행하지 않았습니다.
 - 이 commit을 한 문장으로 설명: 전체 입력을 local candidate에서 검증·계산한 뒤 한 번만 교체하는 batch transaction을 만들었습니다.
 
@@ -1659,7 +1659,7 @@ random-access template abstraction을 vector/deque 두 표현에 적용하고, r
 - [x] serialization이 classic-locale temporary stream에서 완성된 bytes를 만든 뒤 destination으로 쓰는 staging을 확인하세요.
 - [x] caller stream locale/flags를 덮어쓰지 않는지 implementation과 tests를 함께 확인하세요.
 - [x] formatting stage의 failure는 partial record sequence를 publish하지 않지만 final destination write failure는 rollback 대상이 아님을 실제 code boundary로 기록하세요.
-- [x] 이 commit의 변경이 어떤 invariant/failure path/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
+- [x] 이 commit의 변경이 어떤 invariant/실패 처리/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
 - [x] 이 commit의 보장 범위를 넘는 항목은 무엇인지 source에 근거해 별도로 적으세요.
 
 #### 다음 관련 commit과 연결
@@ -1670,7 +1670,7 @@ random-access template abstraction을 vector/deque 두 표현에 적용하고, r
 - 핵심 코드 발췌 위치: `42d411e42268:src/BatchEngine.cpp`의 comparator는 value를 먼저 비교하고 같으면 name을 비교합니다. candidate는 publication 전에 sort되고 `write()`는 classic-locale temporary stream에 모든 `value | name` row를 만든 뒤 destination에 한 번 씁니다.
 - 변경 전/후 차이: 입력 순서대로 저장하던 result set에 `(value, name)` total order와 deterministic serialization이 추가되었습니다. sorting과 formatting 모두 published state나 caller stream을 준비 중간에 직접 변경하지 않습니다.
 - 직접 확인한 ownership/lifetime/state 관계: sort 대상은 local candidate이며 성공 후 vector가 `results_`로 이동합니다. write candidate인 `ostringstream`와 string은 local owner이고 caller stream의 flags/locale는 수정하지 않습니다.
-- 직접 확인한 failure path: sort comparison/element operation이나 local formatting이 실패하면 result publication 또는 destination write 전입니다. final destination `write()` 실패는 이미 보낸 bytes를 rollback하지 않습니다. comparator는 equal value에 name tie-breaker를 두어 insertion permutation에 의존하지 않습니다.
+- 직접 확인한 실패 처리: sort comparison/element operation이나 local formatting이 실패하면 result publication 또는 destination write 전입니다. final destination `write()` 실패는 이미 보낸 bytes를 rollback하지 않습니다. comparator는 equal value에 name tie-breaker를 두어 insertion permutation에 의존하지 않습니다.
 - 실행한 테스트와 결과: 미실행. comparator와 staged serializer를 검사했으며 command는 수행하지 않았습니다.
 - 이 commit을 한 문장으로 설명: total order와 staged classic-locale serialization으로 batch 외부 결과를 결정적으로 만들었습니다.
 
@@ -1688,7 +1688,7 @@ random-access template abstraction을 vector/deque 두 표현에 적용하고, r
 - [x] `equal_ranges()` 또는 대응 비교가 disagreement를 detect하는 위치와 `logic_error` 발생 전 publication 상태를 확인하세요.
 - [x] 불일치 시 prior engine state가 유지되는 이유를 candidate lifetime과 final commit 순서로 설명하세요.
 - [x] 추가 memory/sort work가 deliberate verification이라는 사실이 코드 구조에서 어떻게 드러나는지 기록하세요.
-- [x] 이 commit의 변경이 어떤 invariant/failure path/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
+- [x] 이 commit의 변경이 어떤 invariant/실패 처리/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
 - [x] 이 commit의 보장 범위를 넘는 항목은 무엇인지 source에 근거해 별도로 적으세요.
 
 #### 다음 관련 commit과 연결
@@ -1699,7 +1699,7 @@ random-access template abstraction을 vector/deque 두 표현에 적용하고, r
 - 핵심 코드 발췌 위치: `af57a8f9c5fe:src/BatchEngine.cpp`는 각 accepted `JobResult`를 vector-backed와 deque-backed batch 양쪽에 추가하고 같은 `resultLess`로 독립 정렬합니다. range가 다르면 `batch container disagreement`를 throw하고, 같을 때만 vector range로 final candidate를 만들어 게시합니다.
 - 변경 전/후 차이: 단일 representation 계산에서 두 container가 같은 semantic result를 만드는지 production path에서 대조하는 구조로 확장되었습니다. 추가 memory와 sort work는 commit 전 검증에 사용됩니다.
 - 직접 확인한 ownership/lifetime/state 관계: vector/deque candidates와 final `std::vector` candidate는 모두 local owners입니다. `results_`는 두 sort와 equality, final vector construction이 끝날 때까지 prior state를 보유합니다.
-- 직접 확인한 failure path: 어느 container의 insertion/sort/allocation이나 equality 전 단계가 실패하거나 두 range가 불일치하면 final swap이 실행되지 않습니다. local destructors가 양쪽 candidate를 정리합니다. 같은 comparator 구현을 공유하므로 독립 oracle 자체는 아니지만 representation disagreement는 탐지합니다.
+- 직접 확인한 실패 처리: 어느 container의 insertion/sort/allocation이나 equality 전 단계가 실패하거나 두 range가 불일치하면 final swap이 실행되지 않습니다. local destructors가 양쪽 candidate를 정리합니다. 같은 comparator 구현을 공유하므로 독립 oracle 자체는 아니지만 representation disagreement는 탐지합니다.
 - 실행한 테스트와 결과: 미실행. dual-container implementation과 publication 순서를 검사했으며 command는 수행하지 않았습니다.
 - 이 commit을 한 문장으로 설명: vector와 deque 결과를 commit 전에 독립 정렬·대조해 representation disagreement를 거부했습니다.
 
@@ -1717,7 +1717,7 @@ random-access template abstraction을 vector/deque 두 표현에 적용하고, r
 - [x] vector/deque batch ranges가 동일함을 확인하는 assertion을 기록하세요.
 - [x] 동일 engine state를 여러 번 serialize해 byte-identical output을 비교하는 deterministic regression을 확인하세요.
 - [x] 이 테스트가 단순 sortedness가 아니라 permutation invariance까지 증명하도록 입력 구성이 어떻게 설계되었는지 적으세요.
-- [x] 이 commit의 변경이 어떤 invariant/failure path/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
+- [x] 이 commit의 변경이 어떤 invariant/실패 처리/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
 - [x] 이 commit의 보장 범위를 넘는 항목은 무엇인지 source에 근거해 별도로 적으세요.
 
 #### Test commit 학습 구분
@@ -1726,7 +1726,7 @@ random-access template abstraction을 vector/deque 두 표현에 적용하고, r
 - test technique: source가 확정한 방향은 **permutation regression + repeated-byte comparison**입니다. 실제 test code/fixture를 읽고 구체적인 파일·case·assertion을 기록하세요.
 - 통과하는 production path: source가 확정한 방향은 **comparator, vector/deque sorting, serialization**입니다. 실제 test code/fixture를 읽고 구체적인 파일·case·assertion을 기록하세요.
 - 이 테스트가 증명하는 것: source가 확정한 방향은 **입력 순서/representation에 독립적인 결과**입니다. 실제 test code/fixture를 읽고 구체적인 파일·case·assertion을 기록하세요.
-- 이 테스트가 증명하지 않는 것: source가 확정한 방향은 **stream failure rollback이나 allocation failure는 이 commit 단독 범위가 아님**입니다. 실제 test code/fixture를 읽고 구체적인 파일·case·assertion을 기록하세요.
+- 이 테스트가 증명하지 않는 것: source가 확정한 방향은 **stream failure rollback이나 allocation failure는이 commit 단독 범위가 아님**입니다. 실제 test code/fixture를 읽고 구체적인 파일·case·assertion을 기록하세요.
 - 성격: source가 확정한 방향은 **deterministic regression**입니다. 실제 test code/fixture를 읽고 구체적인 파일·case·assertion을 기록하세요.
 
 #### 다음 관련 commit과 연결
@@ -1737,7 +1737,7 @@ random-access template abstraction을 vector/deque 두 표현에 적용하고, r
 - 핵심 코드 발췌 위치: `9ba0e7c897ed:tests/test_batch_engine.cpp`는 동일 job set의 서로 다른 입력 순서를 하나의 expected `(value, name)` row sequence와 비교하고, equal value에서 `Alpha`, `alpha`, `beta`, `zeta` name order를 확인합니다. 같은 engine을 반복 serialize한 bytes도 비교합니다.
 - 변경 전/후 차이: sortedness 한 사례에서 입력 permutation 독립성, tie total order, vector/deque equality, repeated rendering의 byte determinism으로 검증 범위가 넓어졌습니다.
 - 직접 확인한 ownership/lifetime/state 관계: 각 permutation은 별도 engine/candidate에서 계산되며 결과 bytes만 공통 oracle과 비교됩니다. repeated write는 persistent `results_`를 변경하지 않아야 합니다.
-- 직접 확인한 failure path: name tie-breaker가 없거나 unstable/input-dependent order이면 equal-valued permutations이 다른 bytes를 만들어 실패합니다. 이 commit은 stream/allocation failure rollback을 직접 주입하지 않습니다.
+- 직접 확인한 실패 처리: name tie-breaker가 없거나 unstable/input-dependent order이면 equal-valued permutations이 다른 bytes를 만들어 실패합니다. 이 commit은 stream/allocation failure rollback을 직접 주입하지 않습니다.
 - 실행한 테스트와 결과: 미실행. deterministic cases와 expected bytes를 검사했으며 test command는 수행하지 않았습니다.
 - 이 commit을 한 문장으로 설명: canonical order가 입력 순서와 container 표현, 반복 출력에 독립적임을 고정했습니다.
 
@@ -1752,18 +1752,18 @@ random-access template abstraction을 vector/deque 두 표현에 적용하고, r
 - **기존 가정:** 일반적인 `getline` loop 종료를 clean input completion과 동일하게 취급할 수 있었다.
 - **실제 failure / 위험:** valid final unterminated line을 버리거나 실제 I/O fault를 EOF처럼 받아들일 수 있었다.
 - **root cause:** line extraction 종료 상태가 complete line / clean EOF / actual failure로 분류되지 않았다.
-- **수정된 invariant / decision:** record reader가 세 outcome을 구분하고 clean completion일 때만 batch transaction을 commit한다.
-- **실제 코드 확인:** 기존 reader/loop와 이 SHA의 reader helper를 비교해 stream flags와 return classification을 확인한다.
+- **수정된 invariant / decision:** record reader가 세 outcome을 구분하고 clean completion일 때만 batch transaction을 commit합니다.
+- **실제 코드 확인:** 기존 reader/loop와이 SHA의 reader helper를 비교해 stream flags와 return classification을 확인합니다.
 - **regression test:** `b4ddd78fb9aa`에서 stream failure 뒤 seeded state가 보존되는 경로를 확인한다.
 
 #### 핵심 설계 / failure boundary 확인
 - [x] 필요하면 직전 관련 SHA `9ba0e7c897ed`와 비교하여 책임, state mutation 순서, test boundary가 어떻게 달라졌는지 확인하세요.
-- [x] 직전 batch reader의 일반 `getline` loop와 이 SHA의 record-reader helper를 관련 code로 비교하세요.
+- [x] 직전 batch reader의 일반 `getline` loop와이 SHA의 record-reader helper를 관련 code로 비교하세요.
 - [x] reader가 complete line, final unterminated line + clean EOF, actual failure의 세 outcome을 어떤 stream flags로 구분하는지 확인하세요.
 - [x] trailing newline이 없는 마지막 record가 candidate에 포함되는 path를 추적하세요.
 - [x] `badbit` 또는 non-EOF failure가 transaction rejection으로 이어지고 final swap을 막는 branch를 확인하세요.
 - [x] fix가 syntax/arithmetic transaction에 transport-state success condition을 추가한 것임을 state publication 위치와 연결하세요.
-- [x] 이 commit의 변경이 어떤 invariant/failure path/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
+- [x] 이 commit의 변경이 어떤 invariant/실패 처리/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
 - [x] 이 commit의 보장 범위를 넘는 항목은 무엇인지 source에 근거해 별도로 적으세요.
 
 #### 다음 관련 commit과 연결
@@ -1774,7 +1774,7 @@ random-access template abstraction을 vector/deque 두 표현에 적용하고, r
 - 핵심 코드 발췌 위치: `ea23237ad506:src/BatchEngine.cpp`의 `readLine()`은 `input.get(value)`로 newline까지 누적합니다. extraction 종료 후 `!input.eof()`면 input failure를 throw하고, clean EOF에서는 `!line.empty()`를 반환해 newline 없는 final record를 한 번 더 처리합니다.
 - 변경 전/후 차이: 일반 `getline` loop 종료와 후속 flag 판정에 의존하던 reader를 complete line, clean EOF의 final unterminated line, non-EOF failure로 명시적으로 분리했습니다.
 - 직접 확인한 ownership/lifetime/state 관계: line은 local candidate record이고 read helper가 true를 반환한 경우에만 parse/RPN/vector/deque candidates로 전달됩니다. stream은 caller-owned이며 position을 consume하지만 engine state는 final swap 전까지 유지됩니다.
-- 직접 확인한 failure path: final line에 newline이 없어도 bytes가 있으면 정상 record로 처리합니다. initial/between-record read가 `badbit` 등 non-EOF failure로 끝나면 `invalid batch input`을 throw해 commit을 막습니다. input position이나 flags를 원상복구하지는 않습니다.
+- 직접 확인한 실패 처리: final line에 newline이 없어도 bytes가 있으면 정상 record로 처리합니다. initial/between-record read가 `badbit` 등 non-EOF failure로 끝나면 `invalid batch input`을 throw해 commit을 막습니다. input position이나 flags를 원상복구하지는 않습니다.
 - 실행한 테스트와 결과: 미실행. fix 전후 reader와 후속 bad-stream tests를 검사했으며 command는 수행하지 않았습니다.
 - 이 commit을 한 문장으로 설명: 성공한 input completion의 정의를 clean EOF, final unterminated record, 실제 read failure로 분리했습니다.
 
@@ -1788,11 +1788,11 @@ random-access template abstraction을 vector/deque 두 표현에 적용하고, r
 #### 핵심 설계 / failure boundary 확인
 - [x] 필요하면 직전 관련 SHA `ea23237ad506`와 비교하여 책임, state mutation 순서, test boundary가 어떻게 달라졌는지 확인하세요.
 - [x] known result로 engine을 seed하는 setup과 prior serialized bytes baseline을 확인하세요.
-- [x] malformed input, RPN arithmetic failure, stream failure를 각각 주입하는 test cases와 production failure path를 매핑하세요.
+- [x] malformed input, RPN arithmetic failure, stream failure를 각각 주입하는 test cases와 production 실패 처리를 매핑하세요.
 - [x] observed allocation failure point sweep이 parsing, duplicate tracking, evaluator stack, two candidates, sort/compare 중 어디를 통과하는지 기록하세요.
 - [x] 모든 rejection 후 result objects와 serialized bytes가 seed와 동일하고 live allocation baseline이 복구되는 assertions을 확인하세요.
 - [x] CLI failure cases에서 stdout이 비어 있음을 검사해 object-state atomicity가 process-output atomicity로 연결되는 지점을 확인하세요.
-- [x] 이 commit의 변경이 어떤 invariant/failure path/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
+- [x] 이 commit의 변경이 어떤 invariant/실패 처리/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
 - [x] 이 commit의 보장 범위를 넘는 항목은 무엇인지 source에 근거해 별도로 적으세요.
 
 #### Test commit 학습 구분
@@ -1809,7 +1809,7 @@ random-access template abstraction을 vector/deque 두 표현에 적용하고, r
 - 핵심 코드 발췌 위치: `b4ddd78fb9aa:tests/test_batch_engine.cpp`는 failure 전 serialized bytes와 첫 `JobResult` 주소를 저장하고 syntax/RPN overflow/division/bad stream 뒤 동일한지 검사합니다. `tests/failure/test_batch_failure.cpp`는 observed allocation count를 얻어 1..N failure sweep을 수행합니다.
 - 변경 전/후 차이: representative parsing tests에서 syntax, arithmetic, stream, allocation 협력 layer 전체를 대상으로 seeded prior state와 ownership baseline을 확인하는 회귀로 확장되었습니다.
 - 직접 확인한 ownership/lifetime/state 관계: engine을 `seed | 7`로 채운 뒤 replacement failure마다 size/value/output와 live-block baseline을 비교합니다. 주소 동일성 검사는 실패 중 `results_` vector 자체가 swap/reallocation되지 않았음을 관찰합니다.
-- 직접 확인한 failure path: malformed records/duplicates, RPN invalid/overflow, pre-set bad stream, parsing·map·RPN stack·dual candidates·sort/final candidate에서 관찰된 allocation failures가 모두 final publication 전에 예외로 끝납니다. CLI invalid cases는 empty stdout를 요구합니다. consumed input stream position은 rollback 대상이 아닙니다.
+- 직접 확인한 실패 처리: malformed records/duplicates, RPN invalid/overflow, pre-set bad stream, parsing·map·RPN stack·dual candidates·sort/final candidate에서 관찰된 allocation failures가 모두 final publication 전에 예외로 끝납니다. CLI invalid cases는 empty stdout를 요구합니다. consumed input stream position은 rollback 대상이 아닙니다.
 - 실행한 테스트와 결과: 미실행. unit failure helpers, allocation sweep, CLI fixtures, Make targets를 검사했으나 실행하지 않았습니다.
 - 이 commit을 한 문장으로 설명: batch transaction의 모든 관찰 협력 failure에서 prior objects, bytes, 주소, live allocations가 유지되는지 검증했습니다.
 
@@ -1905,7 +1905,7 @@ random-access template abstraction을 vector/deque 두 표현에 적용하고, r
 - [x] final HEAD를 과거 commit 설명에 소급해서 사용하지 않았습니다.
 - [x] S/A/B importance에 맞는 깊이로 code/test evidence를 채웠습니다.
 - [x] source가 확정한 invariant와 제가 실제 코드에서 확인한 증거를 구분했습니다.
-- [x] failure path에서 state mutation 전후와 cleanup owner를 설명할 수 있습니다.
+- [x] 실패 처리에서 state mutation 전후와 cleanup owner를 설명할 수 있습니다.
 - [x] test commit마다 production invariant, technique, production path, 증명/비증명 범위를 구분했습니다.
 - [x] Thread 마지막 상태를 commit history에 근거해 처음부터 끝까지 설명할 수 있습니다.
 ===== END FILE: 06-generic-containers-transactional-batch.md =====
@@ -1929,18 +1929,18 @@ random-access template abstraction을 vector/deque 두 표현에 적용하고, r
 
 ## 완료 기준
 
-- [x] 초기 ring representation과 logical index 변환을 해당 SHA에서 설명할 수 있다.
-- [x] 초기 direct assignment path와 fix의 detached-candidate path를 관련 SHA끼리 비교할 수 있다.
-- [x] slot content, `next_`, `size_`의 coupled invariant를 실패 시나리오로 설명할 수 있다.
-- [x] full-capacity failure regression이 실제 이전 취약 경로를 어떻게 재현하는지 확인할 수 있다.
+- [x] 초기 ring representation과 logical index 변환을 해당 SHA에서 설명할 수 있습니다.
+- [x] 초기 direct assignment path와 fix의 detached-candidate path를 관련 SHA끼리 비교할 수 있습니다.
+- [x] slot content, `next_`, `size_`의 coupled invariant를 실패 시나리오로 설명할 수 있습니다.
+- [x] full-capacity failure regression이 실제 이전 취약 경로를 어떻게 재현하는지 확인할 수 있습니다.
 
 ## Source에 연결된 invariant / engineering difficulty
 
 ### Critical invariant
 
 - 완성되지 않은 contact replacement candidate는 stored slot에 publish되지 않는다.
-- strong guarantee replacement는 allocation 실패 시 slot content와 ring metadata의 observable state를 보존한다.
-- 직접 소유 값의 실패가 logical order/cursor publication과 분리되어야 한다.
+- strong guarantee replacement는 allocation 실패 시 slot content와 ring metadata의 observable state를 보존합니다.
+- 직접 소유 값의 실패가 logical order/cursor publication과 분리되어야 합니다.
 
 ### Major engineering difficulty
 
@@ -1982,7 +1982,7 @@ random-access template abstraction을 vector/deque 두 표현에 적용하고, r
 - 핵심 코드 발췌 위치: `2f9b934b0825:src/ContactBook.cpp`에서 non-empty contact는 `contacts_[next_] = contact`로 selected slot에 직접 대입되고, 이후 `next_ = (next_ + 1) % capacity`, `size_` 증가가 실행됩니다. `at()`는 full이면 `first = next_`, 아니면 0을 사용합니다.
 - 변경 전/후 차이: 최대 8개 contact를 저장하고 capacity 이후 oldest physical slot을 덮는 circular representation이 추가되었습니다. logical observation은 physical 배열 순서와 분리되어 oldest-to-newest로 제공됩니다.
 - 직접 확인한 ownership/lifetime/state 관계: `ContactBook`이 fixed array의 각 `Contact` 값을 소유합니다. `next_`는 다음 insertion physical slot이고 `size_`는 유효 logical count입니다. `at()`가 반환하는 `const Contact&`는 book lifetime과 후속 replacement에 종속된 borrowed reference입니다.
-- 직접 확인한 failure path: empty contact는 아무 변경 없이 반환하고 out-of-range logical index는 예외입니다. full book에서 ordinary `Contact::operator=`가 여러 owned string을 복사하다 실패하면 committed slot 내부가 부분 변경될 수 있으므로, 뒤의 metadata가 아직 안 바뀌어도 slot/content/order transaction은 보장되지 않습니다.
+- 직접 확인한 실패 처리: empty contact는 아무 변경 없이 반환하고 out-of-range logical index는 예외입니다. full book에서 ordinary `Contact::operator=`가 여러 owned string을 복사하다 실패하면 committed slot 내부가 부분 변경될 수 있으므로, 뒤의 metadata가 아직 안 바뀌어도 slot/content/order transaction은 보장되지 않습니다.
 - 실행한 테스트와 결과: 미실행. 지정 SHA의 ring representation과 mutation 순서를 검사했으며 command는 수행하지 않았습니다.
 - 이 commit을 한 문장으로 설명: logical order를 보존하는 8-slot ring을 만들었지만 replacement는 throwing direct assignment에 의존했습니다.
 
@@ -1994,10 +1994,10 @@ random-access template abstraction을 vector/deque 두 표현에 적용하고, r
 - Source classification summary: Copies a contact into a detached candidate before swapping and advancing the ring.
 
 #### Failure → Fix → Test chain
-- **기존 가정:** fixed array slot에 `Contact`를 대입하고 ring metadata를 갱신하는 정상 경로면 충분했다.
+- **기존 가정:** fixed array slot에 `Contact`를 대입하고 ring metadata를 갱신하는 정상 경로면 충분했습니다.
 - **실제 failure / 위험:** `Contact` string copy allocation이 throw하면 stored slot과 logical cursor/size의 conceptual transaction이 깨질 수 있었다.
-- **root cause:** throwing value assignment를 committed slot에 직접 적용했다.
-- **수정된 invariant / decision:** detached replacement를 완성한 뒤 slot에 non-throwing swap하고, metadata는 그 뒤에 advance한다.
+- **root cause:** throwing value assignment를 committed slot에 직접 적용했습니다.
+- **수정된 invariant / decision:** detached replacement를 완성한 뒤 slot에 non-throwing swap하고, metadata는 그 뒤에 advance합니다.
 - **실제 코드 확인:** `2f9b934b0825`의 direct assignment와 이 SHA의 detached-copy/swap/update 순서를 비교한다.
 - **regression test:** `8930c4d17bc1`의 full-capacity allocation failure sweep을 확인한다.
 
@@ -2008,7 +2008,7 @@ random-access template abstraction을 vector/deque 두 표현에 적용하고, r
 - [x] replacement 완성 후 selected slot과 non-throwing `swap()`하는 commit point를 표시하세요.
 - [x] `next_`와 `size_` mutation이 slot swap 성공 뒤에만 실행되는 정확한 순서를 기록하세요.
 - [x] copy failure 시 slot content, logical oldest position, size가 모두 untouched인 이유를 before/after state로 설명하세요.
-- [x] 이 commit의 변경이 어떤 invariant/failure path/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
+- [x] 이 commit의 변경이 어떤 invariant/실패 처리/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
 - [x] 이 commit의 보장 범위를 넘는 항목은 무엇인지 source에 근거해 별도로 적으세요.
 
 #### 다음 관련 commit과 연결
@@ -2019,7 +2019,7 @@ random-access template abstraction을 vector/deque 두 표현에 적용하고, r
 - 핵심 코드 발췌 위치: `0ad14a57cab6:src/ContactBook.cpp`는 `Contact replacement; replacement = contact; contacts_[next_].swap(replacement);`를 실행한 뒤에만 cursor와 size를 갱신합니다.
 - 변경 전/후 차이: stored slot에 incoming value를 직접 대입하던 코드를 detached local replacement 완성 후 non-throwing slot swap으로 바꿨습니다. metadata update는 slot commit 뒤로 유지됩니다.
 - 직접 확인한 ownership/lifetime/state 관계: copy 준비 중에는 existing slot이 old contact resources를 계속 소유하고 local `replacement`가 새 copies를 소유합니다. swap 후 slot이 새 contact를, replacement가 old slot value를 소유하며 scope 종료 시 old resources를 파괴합니다.
-- 직접 확인한 failure path: `replacement = contact` 중 allocation이 실패하면 slot swap과 `next_`/`size_` update에 도달하지 않습니다. 따라서 physical slot bytes, logical oldest mapping, size/cursor가 모두 prior state로 남습니다. 성공 후 swap은 publication point이며 old value cleanup은 local replacement가 담당합니다.
+- 직접 확인한 실패 처리: `replacement = contact` 중 allocation이 실패하면 slot swap과 `next_`/`size_` update에 도달하지 않습니다. 따라서 physical slot bytes, logical oldest mapping, size/cursor가 모두 prior state로 남습니다. 성공 후 swap은 publication point이며 old value cleanup은 local replacement가 담당합니다.
 - 실행한 테스트와 결과: 미실행. fix 전후 `ContactBook::add()`를 비교하고 후속 failure test를 검사했으며 command는 수행하지 않았습니다.
 - 이 commit을 한 문장으로 설명: detached Contact를 완성한 뒤 slot swap과 metadata advance를 수행해 ring replacement를 transaction으로 만들었습니다.
 
@@ -2037,7 +2037,7 @@ random-access template abstraction을 vector/deque 두 표현에 적용하고, r
 - [x] 각 실패 후 size, logical order, field values, live-allocation count를 비교하는 assertions을 기록하세요.
 - [x] failure sweep 뒤 한 번의 successful insertion이 정상 ring advance를 확인하는 이유를 actual expected order와 연결하세요.
 - [x] 이 deterministic regression이 직접 throwing assignment를 stored slot에 다시 도입하는 변경을 어떻게 잡는지 production path를 매핑하세요.
-- [x] 이 commit의 변경이 어떤 invariant/failure path/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
+- [x] 이 commit의 변경이 어떤 invariant/실패 처리/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
 - [x] 이 commit의 보장 범위를 넘는 항목은 무엇인지 source에 근거해 별도로 적으세요.
 
 #### Test commit 학습 구분
@@ -2054,7 +2054,7 @@ random-access template abstraction을 vector/deque 두 표현에 적용하고, r
 - 핵심 코드 발췌 위치: `8930c4d17bc1:tests/failure/test_contact_failure.cpp`는 book을 capacity 8까지 채워 oldest-slot replacement 경로를 만들고, 성공 run에서 관찰한 allocation attempts를 1..N으로 순회해 각 지점에서 `std::bad_alloc`을 주입합니다.
 - 변경 전/후 차이: production fix 위에 full-capacity 취약 경로를 직접 반복하는 deterministic failure regression이 추가되었습니다. failure 뒤 상태 확인과 이후 정상 insertion 확인을 함께 수행합니다.
 - 직접 확인한 ownership/lifetime/state 관계: 각 failure 전 live-block baseline과 logical size/order/각 contact field를 저장합니다. exception 뒤 모두 동일해야 하며 outer scope 종료 후 전체 live count도 원래 baseline으로 돌아와야 합니다.
-- 직접 확인한 failure path: detached replacement copy의 각 관찰 allocation이 실패해도 slot/content/cursor가 바뀌지 않는지 검사합니다. sweep 뒤 한 번 성공 insertion을 수행해 oldest 하나만 제거되고 new contact가 newest로 추가되는 정상 advance를 확인합니다. 다른 Contact operation의 모든 failure는 범위 밖입니다.
+- 직접 확인한 실패 처리: detached replacement copy의 각 관찰 allocation이 실패해도 slot/content/cursor가 바뀌지 않는지 검사합니다. sweep 뒤 한 번 성공 insertion을 수행해 oldest 하나만 제거되고 new contact가 newest로 추가되는 정상 advance를 확인합니다. 다른 Contact operation의 모든 failure는 범위 밖입니다.
 - 실행한 테스트와 결과: 미실행. failure controller, sweep loop, expected order와 Make target을 검사했으나 binary는 실행하지 않았습니다.
 - 이 commit을 한 문장으로 설명: full ring replacement의 모든 관찰 allocation 실패에서 값·순서·크기·live blocks를 고정했습니다.
 
@@ -2142,7 +2142,7 @@ random-access template abstraction을 vector/deque 두 표현에 적용하고, r
 - [x] final HEAD를 과거 commit 설명에 소급해서 사용하지 않았습니다.
 - [x] S/A/B importance에 맞는 깊이로 code/test evidence를 채웠습니다.
 - [x] source가 확정한 invariant와 제가 실제 코드에서 확인한 증거를 구분했습니다.
-- [x] failure path에서 state mutation 전후와 cleanup owner를 설명할 수 있습니다.
+- [x] 실패 처리에서 state mutation 전후와 cleanup owner를 설명할 수 있습니다.
 - [x] test commit마다 production invariant, technique, production path, 증명/비증명 범위를 구분했습니다.
 - [x] Thread 마지막 상태를 commit history에 근거해 처음부터 끝까지 설명할 수 있습니다.
 ===== END FILE: 07-contactbook-replacement-guarantee.md =====
@@ -2167,18 +2167,18 @@ in-tree 기능 테스트만으로는 확인할 수 없는 public API shape, 외�
 
 ## 완료 기준
 
-- [x] verification layer별 입력, 실패 조건, 증명하는 계약, 증명하지 않는 범위를 구분할 수 있다.
-- [x] public header isolation과 external archive consumption을 실제 build commands/tests에서 확인할 수 있다.
-- [x] fixed seed, sanitizer, ABI assertion, CI matrix가 서로 중복되지 않는 증거를 제공하는 이유를 설명할 수 있다.
-- [x] portable target과 platform target의 포함 관계 및 host prerequisite를 실제 Makefile/CI에서 복원할 수 있다.
+- [x] verification layer별 입력, 실패 조건, 증명하는 계약, 증명하지 않는 범위를 구분할 수 있습니다.
+- [x] public header isolation과 external archive consumption을 실제 build commands/tests에서 확인할 수 있습니다.
+- [x] fixed seed, sanitizer, ABI assertion, CI matrix가 서로 중복되지 않는 증거를 제공하는 이유를 설명할 수 있습니다.
+- [x] portable target과 platform target의 포함 관계 및 host prerequisite를 실제 Makefile/CI에서 복원할 수 있습니다.
 
 ## Source에 연결된 invariant / engineering difficulty
 
 ### Critical invariant
 
-- public headers는 private include path 없이 compile되고 private representation은 inaccessible해야 한다.
-- 지원하는 C++98 LP64 platform assumptions는 명시적으로 executable하게 검증된다.
-- deterministic output과 owned-resource release는 process/release scope에서도 증거가 필요하다.
+- public headers는 private include path 없이 compile되고 private representation은 inaccessible해야 합니다.
+- 지원하는 C++98 LP64 platform assumptions는 명시적으로 executable하게 검증됩니다.
+- deterministic output과 owned-resource release는 process/release scope에서도 증거가 필요합니다.
 
 ### Major engineering difficulty
 
@@ -2214,7 +2214,7 @@ in-tree 기능 테스트만으로는 확인할 수 없는 public API shape, 외�
 - [x] private representation 접근을 의도적으로 시도해 compile-fail을 요구하는 negative contract를 확인하세요.
 - [x] real binary session fixture가 ADD/LIST/invalid/QUIT transcript 전체 bytes를 비교하는 방식을 기록하세요.
 - [x] 세 layer가 각각 domain behavior, API shape, process protocol 중 무엇을 검증하는지 구분하세요.
-- [x] 이 commit의 변경이 어떤 invariant/failure path/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
+- [x] 이 commit의 변경이 어떤 invariant/실패 처리/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
 - [x] 이 commit의 보장 범위를 넘는 항목은 무엇인지 source에 근거해 별도로 적으세요.
 
 #### Test commit 학습 구분
@@ -2234,7 +2234,7 @@ in-tree 기능 테스트만으로는 확인할 수 없는 public API shape, 외�
 - 핵심 코드 발췌 위치: `6e78ced59357`의 positive compile unit은 public contact header를 반복 include하고 exported API만 사용합니다. negative unit은 private representation 접근을 시도하며 harness는 compiler rejection을 success로 취급합니다. CLI script는 scripted ADD/LIST/invalid/QUIT session의 status와 exact bytes를 비교합니다.
 - 변경 전/후 차이: in-process domain unit test 하나에서 public header shape와 실제 process protocol까지 서로 다른 failure 조건으로 검사하는 세 층 구조가 생겼습니다.
 - 직접 확인한 ownership/lifetime/state 관계: unit layer는 `Contact`/`ContactBook` 값과 logical order를, compile layer는 const/private ownership boundary를, CLI layer는 app이 입력을 읽고 state를 갱신해 stdout/stderr로 내보내는 lifetime 전체를 관찰합니다.
-- 직접 확인한 failure path: private member가 public이 되거나 header가 self-contained하지 않으면 compile contract가, command parsing/output가 바뀌면 transcript가 실패하도록 작성되어 있습니다. 이 commit의 범위는 contact subsystem이며 repository 전체 archive packaging이나 sanitizer evidence는 아직 아닙니다.
+- 직접 확인한 실패 처리: private member가 public이 되거나 header가 self-contained하지 않으면 compile contract가, command parsing/output가 바뀌면 transcript가 실패하도록 작성되어 있습니다. 이 commit의 범위는 contact subsystem이며 repository 전체 archive packaging이나 sanitizer evidence는 아직 아닙니다.
 - 실행한 테스트와 결과: 미실행. target dependency, translation units, CLI fixture를 검사했으나 compiler/app command는 수행하지 않았습니다.
 - 이 commit을 한 문장으로 설명: contact behavior, public API shape, real CLI session을 분리해 검증하는 기본 패턴을 만들었습니다.
 
@@ -2251,8 +2251,8 @@ in-tree 기능 테스트만으로는 확인할 수 없는 public API shape, 외�
 - [x] abstract interface, protected/private construction, explicit conversion, const access, utility non-construction, list-backed sorting, pointer signature를 각각 어떤 negative file이 거부하는지 분류하세요.
 - [x] negative compile test가 "실행 결과"가 아니라 compiler rejection 자체를 expected success로 다루는 harness를 확인하세요.
 - [x] private include path 없이 archive와 public include만으로 contract가 성립하는지 build command를 기록하세요.
-- [x] runtime tests가 통과해도 API widening/encapsulation regression을 이 layer가 어떻게 잡는지 예시 하나를 실제 test와 연결하세요.
-- [x] 이 commit의 변경이 어떤 invariant/failure path/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
+- [x] runtime tests가 통과해도 API widening/encapsulation regression을이 layer가 어떻게 잡는지 예시 하나를 실제 test와 연결하세요.
+- [x] 이 commit의 변경이 어떤 invariant/실패 처리/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
 - [x] 이 commit의 보장 범위를 넘는 항목은 무엇인지 source에 근거해 별도로 적으세요.
 
 #### Test commit 학습 구분
@@ -2272,7 +2272,7 @@ in-tree 기능 테스트만으로는 확인할 수 없는 public API shape, 외�
 - 핵심 코드 발췌 위치: `4bbbfd191669:Makefile`의 positive commands는 `-Iinclude ... -fsyntax-only`만 사용하고, negative commands는 `@! $(CXX) ... -fsyntax-only <fail.cpp>`로 rejection을 기대합니다. public integration binary도 public include path와 archive만 링크합니다.
 - 변경 전/후 차이: contact 한 영역의 compile contract가 모든 installed public headers와 주요 ownership/API restrictions로 확대되었습니다.
 - 직접 확인한 ownership/lifetime/state 관계: compile suite는 `TextBuffer` 내부 storage/implicit conversion, formatter abstractness, creator/builder construction, scalar/RPN utility construction, runtime type access, serializer pointer/const shape, batch result mutability, template const iterator와 container requirement를 compiler-visible boundary로 고정합니다.
-- 직접 확인한 failure path: 허용 API가 빠지거나 private header가 필요하면 positive unit이 실패하고, 금지 API가 우연히 열리면 expected-fail unit이 성공해 Make target이 실패합니다. 이 layer는 compiler rejection을 증명할 뿐 runtime output, exception cleanup, leak freedom은 별도 evidence가 필요합니다.
+- 직접 확인한 실패 처리: 허용 API가 빠지거나 private header가 필요하면 positive unit이 실패하고, 금지 API가 우연히 열리면 expected-fail unit이 성공해 Make target이 실패합니다. 이 layer는 compiler rejection을 증명할 뿐 runtime output, exception cleanup, leak freedom은 별도 evidence가 필요합니다.
 - 실행한 테스트와 결과: 미실행. compile command와 positive/negative file set을 검사했으나 compiler는 실행하지 않았습니다.
 - 이 commit을 한 문장으로 설명: public include만으로 허용·금지 API shape를 repository 전체에서 compiler 계약으로 만들었습니다.
 
@@ -2290,7 +2290,7 @@ in-tree 기능 테스트만으로는 확인할 수 없는 public API shape, 외�
 - [x] consumer가 test-only helper 없이 실제 public objects를 사용하는 source를 확인하세요.
 - [x] working-directory assumption, private include, unarchived object가 있으면 어느 compile/link/run 단계에서 실패하는지 추적하세요.
 - [x] external location에서 executable을 실제 run하는 단계까지 포함되는지 확인하세요.
-- [x] 이 commit의 변경이 어떤 invariant/failure path/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
+- [x] 이 commit의 변경이 어떤 invariant/실패 처리/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
 - [x] 이 commit의 보장 범위를 넘는 항목은 무엇인지 source에 근거해 별도로 적으세요.
 
 #### Test commit 학습 구분
@@ -2310,7 +2310,7 @@ in-tree 기능 테스트만으로는 확인할 수 없는 public API shape, 외�
 - 핵심 코드 발췌 위치: `01271d795d58:tests/check_external_consumer.sh`는 `${TMPDIR:-/tmp}` 아래 `mktemp -d`로 외부 디렉터리를 만들고 consumer source를 복사합니다. compiler에는 `-I"$project_root/include"`, copied `main.cpp`, 전달받은 absolute archive만 주고 그 디렉터리에서 executable을 실행합니다.
 - 변경 전/후 차이: repository 내부 translation unit/link에서 실제 out-of-tree consumer compile/link/run으로 packaging 검증이 확장되었습니다.
 - 직접 확인한 ownership/lifetime/state 관계: cleanup trap이 copied source와 executable을 삭제하고 temporary directory를 제거합니다. consumer는 test support나 source object를 직접 소유·링크하지 않고 exported headers와 static archive만 사용합니다.
-- 직접 확인한 failure path: private include, working-directory-relative asset, archive에 빠진 symbol/object가 있으면 compile/link/run 중 실패합니다. compiler 존재와 argument/archive file은 script가 먼저 검사합니다. 한 compiler command/host의 consumer일 뿐 모든 downstream build system을 증명하지는 않습니다.
+- 직접 확인한 실패 처리: private include, working-directory-relative asset, archive에 빠진 symbol/object가 있으면 compile/link/run 중 실패합니다. compiler 존재와 argument/archive file은 script가 먼저 검사합니다. 한 compiler command/host의 consumer일 뿐 모든 downstream build system을 증명하지는 않습니다.
 - 실행한 테스트와 결과: 미실행. script의 exact command와 cleanup/run scope를 검사했으나 외부 consumer를 실제 컴파일하지 않았습니다.
 - 이 commit을 한 문장으로 설명: public headers와 정적 archive만으로 repository 밖 consumer가 실제 실행되는 packaging boundary를 검사합니다.
 
@@ -2328,12 +2328,12 @@ in-tree 기능 테스트만으로는 확인할 수 없는 public API shape, 외�
 - [x] bounded binary RPN expressions를 direct computation과 비교하는 oracle 구성과 overflow 회피 범위를 확인하세요.
 - [x] 4,096-job / 200KB 이상 batch의 생성, 독립 sort oracle, record-by-record comparison, repeated serialization 검증을 추적하세요.
 - [x] deterministic seed가 breadth를 늘리면서 flaky randomness를 피하는 구조를 실제 test inputs와 counterexample output에서 확인하세요.
-- [x] 이 commit의 변경이 어떤 invariant/failure path/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
+- [x] 이 commit의 변경이 어떤 invariant/실패 처리/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
 - [x] 이 commit의 보장 범위를 넘는 항목은 무엇인지 source에 근거해 별도로 적으세요.
 
 #### Test commit 학습 구분
 - 대상 production invariant: source가 확정한 방향은 **scalar/RPN/batch boundary breadth와 determinism**입니다. 실제 test code/fixture를 읽고 구체적인 파일·case·assertion을 기록하세요.
-- 재현 failure / boundary: source가 확정한 방향은 **generated edge cases and large allocation/sort/output growth**입니다. 실제 test code/fixture를 읽고 구체적인 파일·case·assertion을 기록하세요.
+- 재현 failure / boundary: source가 확정한 방향은 **generated 경계 조건s and large allocation/sort/output growth**입니다. 실제 test code/fixture를 읽고 구체적인 파일·case·assertion을 기록하세요.
 - test technique: source가 확정한 방향은 **fixed-seed property-style generation + large stress case**입니다. 실제 test code/fixture를 읽고 구체적인 파일·case·assertion을 기록하세요.
 - 통과하는 production path: source가 확정한 방향은 **scalar parser/render, RPN checked ops, batch parse/sort/serialize**입니다. 실제 test code/fixture를 읽고 구체적인 파일·case·assertion을 기록하세요.
 - 이 테스트가 증명하는 것: source가 확정한 방향은 **넓은 deterministic state-space에서 established invariants 유지**입니다. 실제 test code/fixture를 읽고 구체적인 파일·case·assertion을 기록하세요.
@@ -2348,7 +2348,7 @@ in-tree 기능 테스트만으로는 확인할 수 없는 public API shape, 외�
 - 핵심 코드 발췌 위치: `9e07d3bc86d3:tests/property/test_boundary_properties.cpp`는 seed `0x13579BDF`, LCG `state * 1103515245 + 12345`, first-counterexample text를 사용합니다. scalar 2,048개, bounded binary RPN 4,096개, 4,096-job·200KB 초과 batch를 생성합니다.
 - 변경 전/후 차이: hand-written boundaries를 대체하지 않고 reproducible generated breadth와 large allocation/sort/output growth를 추가했습니다.
 - 직접 확인한 ownership/lifetime/state 관계: scalar는 exact int line·4 newlines·repeatability·trailing `x` rejection/empty output을 확인합니다. RPN은 overflow를 피한 bounded direct arithmetic oracle와 비교하고, batch는 독립 `ExpectedJob` vector를 `std::sort`한 뒤 record-by-record 및 repeated bytes를 비교합니다.
-- 직접 확인한 failure path: 실패 시 fixed seed와 첫 counterexample을 출력해 재현 가능하게 합니다. timeout wrapper는 hang/과도한 runtime을 별도 failure로 만듭니다. fixed finite sample이므로 formal exhaustive proof나 임의 seed 다양성은 제공하지 않습니다.
+- 직접 확인한 실패 처리: 실패 시 fixed seed와 첫 counterexample을 출력해 재현 가능하게 합니다. timeout wrapper는 hang/과도한 runtime을 별도 failure로 만듭니다. fixed finite sample이므로 formal exhaustive proof나 임의 seed 다양성은 제공하지 않습니다.
 - 실행한 테스트와 결과: 미실행. generator, oracle, counts, timeout target을 검사했으나 property binary는 실행하지 않았습니다.
 - 이 commit을 한 문장으로 설명: 고정 seed 속성 검사와 4,096-job stress로 deterministic 검증 폭을 넓혔습니다.
 
@@ -2366,7 +2366,7 @@ in-tree 기능 테스트만으로는 확인할 수 없는 public API shape, 외�
 - [x] ASan과 host-specific release inspection이 별도 platform checks로 분리되는 이유를 prerequisites/commands에서 확인하세요.
 - [x] aggregate target이 unavailable host tool 때문에 portable checks까지 생략하지 않도록 구성된 branch/gating을 기록하세요.
 - [x] reconstruction, incremental no-op, deterministic artifact 검증이 어느 layer에서 실행되는지 찾으세요.
-- [x] 이 commit의 변경이 어떤 invariant/failure path/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
+- [x] 이 commit의 변경이 어떤 invariant/실패 처리/API boundary를 강화하는지 실제 코드와 test를 연결해 적으세요.
 - [x] 이 commit의 보장 범위를 넘는 항목은 무엇인지 source에 근거해 별도로 적으세요.
 
 
@@ -2379,7 +2379,7 @@ in-tree 기능 테스트만으로는 확인할 수 없는 public API shape, 외�
 - 핵심 코드 발췌 위치: `45e9bbfd6b75:Makefile`에서 `check-build`는 diff check, clean rebuild, `test`, deterministic CLI 두 번, incremental `make -q all`을 수행합니다. `check-portable`은 여기에 UBSan을 추가하고 `check-platform`은 archive/dependency/leak scripts만 실행합니다.
 - 변경 전/후 차이: 하나의 검사 묶음을 portable baseline과 host/tool-dependent release inspection으로 분리하고 ASan/UBSan binary/targets를 별도로 만들었습니다.
 - 직접 확인한 ownership/lifetime/state 관계: `test` 아래 unit, deterministic failure injection, no-elide, compile contract, CLI/public integration, external consumer, property test가 모입니다. UBSan은 `check-portable` dependency이고, ASan은 standalone `test-asan`/`test-sanitize`로 남아 host capability에 따라 선택됩니다.
-- 직접 확인한 failure path: portable checks는 host-specific `ar`/dependency/leak inspection 실패 때문에 생략되지 않고, timeout wrapper와 sanitizer halt options가 UB/memory error를 target failure로 만듭니다. **관찰된 차이:** scaffold 문구와 달리 이 SHA의 `check-platform`에는 ASan이 포함되지 않으며 aggregate `check`도 ASan을 호출하지 않습니다. ASan matrix 실행은 후속 CI commit에서 추가됩니다.
+- 직접 확인한 실패 처리: portable checks는 host-specific `ar`/dependency/leak inspection 실패 때문에 생략되지 않고, timeout wrapper와 sanitizer halt options가 UB/memory error를 target failure로 만듭니다. **관찰된 차이:** scaffold 문구와 달리이 SHA의 `check-platform`에는 ASan이 포함되지 않으며 aggregate `check`도 ASan을 호출하지 않습니다. ASan matrix 실행은 후속 CI commit에서 추가됩니다.
 - 실행한 테스트와 결과: 미실행. Make dependency graph와 commands를 검사했으나 sanitizer/host utility를 실행하지 않았습니다.
 - 이 commit을 한 문장으로 설명: portable regression·UBSan과 host-specific release inspection을 분리하고 ASan을 별도 capability target으로 제공했습니다.
 
@@ -2415,7 +2415,7 @@ in-tree 기능 테스트만으로는 확인할 수 없는 public API shape, 외�
 - 핵심 코드 발췌 위치: `ab441fa8737c:tests/portability/test_data_model.cpp`는 `CHAR_BIT == 8`, `sizeof(short)==2`, `sizeof(int)==4`, `sizeof(long)==8`, pointer/`size_t` 8을 `const bool lp64`로 계산하고 false면 diagnostic 후 `return 1` 합니다.
 - 변경 전/후 차이: 지원 data model 가정이 문서상의 전제에서 executable gate로 추가되어 `check-build`가 실제 binary를 실행하게 되었습니다.
 - 직접 확인한 ownership/lifetime/state 관계: 이 check는 scalar/RPN의 `long` 범위, `size_t`/pointer 크기 등 build가 전제한 host representation을 production 실행 전 verification 단계에서 판정합니다.
-- 직접 확인한 failure path: unsupported model은 test executable이 성공적으로 compile된 뒤 runtime에 exit 1로 끝납니다. **관찰된 차이:** scaffold에는 compile-time assertion/compile-time failure로 고정되어 있지만 해당 SHA의 실제 코드는 static/typedef assertion이 아니라 runtime `bool`과 exit status를 사용합니다. 고정 scaffold text는 유지하고 이 불일치를 여기에 기록합니다.
+- 직접 확인한 실패 처리: unsupported model은 test executable이 성공적으로 compile된 뒤 runtime에 exit 1로 끝납니다. **관찰된 차이:** scaffold에는 compile-time assertion/compile-time failure로 고정되어 있지만 해당 SHA의 실제 코드는 static/typedef assertion이 아니라 runtime `bool`과 exit status를 사용합니다. 고정 scaffold text는 유지하고이 불일치를 여기에 기록합니다.
 - 실행한 테스트와 결과: 미실행. source와 Make target을 검사했으나 data-model binary를 compile/run하지 않았습니다.
 - 이 commit을 한 문장으로 설명: LP64 전제를 executable runtime gate로 만들었으며, scaffold의 compile-time 설명과 실제 구현에는 차이가 있습니다.
 
@@ -2449,7 +2449,7 @@ in-tree 기능 테스트만으로는 확인할 수 없는 public API shape, 외�
 - 핵심 코드 발췌 위치: `50565bd67e03:.github/workflows/ci.yml`은 ubuntu-22.04 GCC, ubuntu-22.04 Clang, macOS latest Clang matrix를 정의하고 `fail-fast: false`, `timeout-minutes: 30`, `contents: read`를 설정합니다. 모든 job은 `make check-build`, UBSan을 실행하고 ASan은 Linux 두 job만 실행합니다.
 - 변경 전/후 차이: local executable checks를 compiler/OS matrix에서 반복 실행하는 workflow가 추가되었습니다. `check-build`에는 runtime LP64 gate가 포함됩니다.
 - 직접 확인한 ownership/lifetime/state 관계: 각 clean GitHub checkout이 독립 workspace를 소유하고 selected compiler를 `CXX`로 Make targets에 전달합니다. matrix job별 artifact/state는 공유하지 않으므로 compiler/OS-specific failure가 다른 evidence를 덮지 않습니다.
-- 직접 확인한 failure path: compiler 선택, build/regression/data-model, UBSan, Linux ASan 중 하나가 nonzero면 해당 job이 실패합니다. `fail-fast: false`라 다른 matrix job은 계속됩니다. **보장 경계:** workflow push trigger는 `main`만이며 PR에도 실행됩니다. 또한 CI는 `make check-platform`/`make check`를 호출하지 않아 archive/dependency/leak scripts는 이 matrix evidence에 포함되지 않습니다. 실제 workflow run 결과는 검사하지 않았습니다.
+- 직접 확인한 실패 처리: compiler 선택, build/regression/data-model, UBSan, Linux ASan 중 하나가 nonzero면 해당 job이 실패합니다. `fail-fast: false`라 다른 matrix job은 계속됩니다. **보장 경계:** workflow push trigger는 `main`만이며 PR에도 실행됩니다. 또한 CI는 `make check-platform`/`make check`를 호출하지 않아 archive/dependency/leak scripts는이 matrix evidence에 포함되지 않습니다. 실제 workflow run 결과는 검사하지 않았습니다.
 - 실행한 테스트와 결과: 미실행. workflow configuration과 호출 target만 검사했으며 GitHub Actions run 성공을 주장하지 않습니다.
 - 이 commit을 한 문장으로 설명: GCC/Clang Linux와 Clang macOS에서 build·regression·LP64·UBSan 및 Linux ASan을 반복하도록 구성했습니다.
 
@@ -2540,7 +2540,7 @@ in-tree 기능 테스트만으로는 확인할 수 없는 public API shape, 외�
 - [x] final HEAD를 과거 commit 설명에 소급해서 사용하지 않았습니다.
 - [x] S/A/B importance에 맞는 깊이로 code/test evidence를 채웠습니다.
 - [x] source가 확정한 invariant와 제가 실제 코드에서 확인한 증거를 구분했습니다.
-- [x] failure path에서 state mutation 전후와 cleanup owner를 설명할 수 있습니다.
+- [x] 실패 처리에서 state mutation 전후와 cleanup owner를 설명할 수 있습니다.
 - [x] test commit마다 production invariant, technique, production path, 증명/비증명 범위를 구분했습니다.
 - [x] Thread 마지막 상태를 commit history에 근거해 처음부터 끝까지 설명할 수 있습니다.
 ===== END FILE: 08-verification-supported-release-claims.md =====
@@ -2600,11 +2600,11 @@ Symbol / test case:
 
 ### S
 
-프로젝트의 핵심 architecture/invariant입니다. 직전 상태, problem, failure 가능성, decision, 핵심 코드, ownership/lifecycle/state transition, failure path, 보장/비보장 범위, 후속 fix/test까지 추적합니다.
+프로젝트의 핵심 architecture/invariant입니다. 직전 상태, problem, failure 가능성, decision, 핵심 코드, ownership/lifecycle/state transition, 실패 처리, 보장/비보장 범위, 후속 fix/test까지 추적합니다.
 
 ### A
 
-주요 subsystem, boundary, failure path, integration point입니다. 핵심 코드와 설계 판단, 전후 state 변화, test evidence까지 확인합니다.
+주요 subsystem, boundary, 실패 처리, integration point입니다. 핵심 코드와 설계 판단, 전후 state 변화, test evidence까지 확인합니다.
 
 ### B
 

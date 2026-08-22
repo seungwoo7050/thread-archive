@@ -1,15 +1,15 @@
-===== BEGIN FILE: 01-parallel-stack-state-and-operation-invariants.md =====
-# Thread: Parallel stack state and operation invariants
+===== BEGIN FILE: 01-parallel-stack-state-and-operation-항상 유지해야 하는 조건.md =====
+# Thread: Parallel stack state and operation 항상 유지해야 하는 조건
 
 ## 1. Thread 목표
 - **Source significance:** The thread progresses from representation to shared transition architecture, then to complete command semantics and two complementary levels of evidence. The decisive judgment is not any individual `memmove`; it is that original values and dense ranks remain one logical element across both stacks, allowing the sorter to reason about ranks while the checker and tests retain the original-value association.
 - **학습 목표:** 병렬 `values`/`ranks` 표현이 어떻게 하나의 논리 원소를 구성하고, 모든 명령이 그 결합과 전체 원소 보존을 유지하는지 실제 commit 코드로 복원합니다.
 
 ## 2. 이 Thread를 이해하기 위한 핵심 질문
-- `t_stack`의 live range, `size`, `capacity`, 두 버퍼의 ownership은 어떤 계약으로 묶여 있는가?
+- `t_stack`의 live range, `size`, `capacity`, 두 버퍼의 소유권은 어떤 계약으로 묶여 있는가?
 - silent primitive와 emit 가능한 wrapper의 경계가 generator와 checker의 공통 의미를 어떻게 만든는가?
 - `swap`, `push`, `rotate`, `reverse rotate`가 두 배열을 항상 같은 논리 이동으로 처리하는가?
-- 불충분한 stack에서 no-op이 되는 명령과 exact transition은 테스트에서 어떻게 분리 검증되는가?
+- 불충분한 stack에서 no-op이 되는 명령과 exact transition은 테스트에서 어떻게 분리 검증됩니까?
 - 보존 불변식 테스트와 exact-state 테스트가 각각 무엇을 증명하고 무엇을 놓치는가?
 
 ## 3. 완료 기준
@@ -30,8 +30,8 @@
 | 6 | `86364d27baac` | test(operation): 값과 순위의 보존 불변식을 검증 | A | TEST, STACK_STATE, RISK | Verifies pair association, element conservation, size bounds, and sequences across all commands. |
 | 7 | `7eb6890c2c13` | test(operation): 정확한 상태 전이와 no-op을 검증 | B | TEST, STACK_STATE, EDGE | Locks down exact states and insufficient-stack no-op behavior. |
 
-### Source에서 직접 연결된 invariant / engineering difficulty
-- **Critical invariants**
+### Source에서 직접 연결된 항상 유지해야 하는 조건 / engineering difficulty
+- **Critical 항상 유지해야 하는 조건**
   - `values[i]` and `ranks[i]` always describe the same logical element; operations must move them together.
   - Across A and B, every input pair is present exactly once, total active size is conserved, and each stack remains within capacity.
 - **Major engineering difficulties**
@@ -44,13 +44,13 @@
 ### `96b5324448e4` — feat(model): 배열 기반 스택 상태를 구현
 - **Importance:** S
 - **Tags:** ARCH, CORE, STACK_STATE
-- **Source-confirmed role:** Establishes the parallel value/rank stack representation, ownership model, and completion predicate.
-- **Classification summary:** Defines parallel value/rank arrays, stack ownership, capacity, and sorted-state predicates.
+- **Source-confirmed role:** Establishes the parallel value/rank stack representation, 소유권 model, and completion predicate.
+- **Classification summary:** Defines parallel value/rank arrays, stack 소유권, capacity, and sorted-state predicates.
 
 #### Source-confirmed context
 - **Problem:** The project needs one representation that can serve parsing, command generation, silent checker replay, sortedness checks, and resource cleanup. Sorting can use relative order, but the implementation must not lose the original integer associated with that order.
 - **Decision:** Represent each stack as parallel `values` and `ranks` arrays with explicit `size` and `capacity`, and make stack initialization, cleanup, sortedness, and complete-state checks part of the model boundary.
-- **Why it mattered:** Every later operation moves these arrays together, every sorter reads ranks, both executables own stacks through the same lifecycle, and the invariant tests are written around this representation. The decision determines both correctness obligations and the later physical cost of array-backed push and rotation.
+- **Why it mattered:** Every later operation moves these arrays together, every sorter reads ranks, both executables own stacks through the same lifecycle, and the 항상 유지해야 하는 조건 tests are written around this representation. The decision determines both correctness obligations and the later physical cost of array-backed push and rotation.
 - **What changed:** The commit adds `t_stack`, empty and allocated initialization, paired cleanup, rank-based sortedness, the A-sorted/B-empty completion predicate, and the first strict C99 build structure.
 
 #### 해당 SHA에서 확인할 코드
@@ -80,7 +80,7 @@ typedef struct s_stack
 }   t_stack;
 ```
 
-- **state / invariant / ownership / lifecycle 변화:** `stack_init_empty`는 두 포인터를 `NULL`, 두 정수를 0으로 만듭니다. `stack_init`은 먼저 empty 상태를 만든 뒤 capacity가 양수일 때 두 배열을 할당하고, 어느 한쪽이라도 실패하면 `stack_free`로 이미 얻은 버퍼까지 해제해 다시 empty 상태로 돌아갑니다. 성공하면 호출자가 두 버퍼를 소유하며 active range는 `[0, size)`이고 allocated range는 `[0, capacity)`입니다. `stack_free`는 두 버퍼를 모두 해제한 뒤 같은 empty 상태를 복원합니다.
+- **state / 항상 유지해야 하는 조건 / 소유권 / lifecycle 변화:** `stack_init_empty`는 두 포인터를 `NULL`, 두 정수를 0으로 만듭니다. `stack_init`은 먼저 empty 상태를 만든 뒤 capacity가 양수일 때 두 배열을 할당하고, 어느 한쪽이라도 실패하면 `stack_free`로 이미 얻은 버퍼까지 해제해 다시 empty 상태로 돌아갑니다. 성공하면 호출자가 두 버퍼를 소유하며 active range는 `[0, size)`이고 allocated range는 `[0, capacity)`입니다. `stack_free`는 두 버퍼를 모두 해제한 뒤 같은 empty 상태를 복원합니다.
 - **failure scenario:** 두 번째 배열 할당 실패 때 첫 번째 배열만 남기거나, 해제 후 필드를 초기화하지 않으면 이후 오류 경로에서 누수·중복 해제·stale capacity가 발생할 수 있습니다. 한편 `values`와 `ranks`를 다른 길이로 다루면 이후 operation이 같은 인덱스를 논리 원소로 취급할 수 없습니다.
 - **이 commit이 보장하는 것:** capacity가 양수인 정상 초기화에서는 동일 capacity의 두 버퍼를 한 `t_stack`이 소유하고, 실패 또는 해제 뒤에는 empty 상태가 됩니다. `stack_is_sorted`는 active `ranks`만 비내림차순인지 검사하며, `stack_is_complete_sorted`는 A 정렬과 B empty를 동시에 요구합니다. non-positive capacity는 할당 없는 valid empty stack으로 처리됩니다.
 - **아직 보장하지 않는 것:** parser가 실제 pair를 채우는 방법, 두 배열을 함께 이동하는 명령, capacity를 넘지 않는다는 동작 증거, allocation byte overflow 방어는 아직 없습니다. 후자는 `049ecd429548`에서 보강됩니다.
@@ -90,13 +90,13 @@ typedef struct s_stack
 ### `c0de1a1b18bb` — feat(operation): 스택 교환 연산을 구현
 - **Importance:** A
 - **Tags:** CORE, STACK_STATE, INTEGRATION
-- **Source-confirmed role:** Introduces pair-preserving state transitions and the emit/no-emit wrapper boundary.
+- **Source-confirmed role:** Introduces pair-preserving 상태 전이 and the emit/no-emit wrapper boundary.
 - **Classification summary:** Implements pair-preserving swap and introduces optionally emitting operation wrappers.
 
 #### Source-confirmed context
 - **Problem:** The generator must mutate stacks and emit commands, while the checker must replay the same command semantics without emitting them. Separate implementations would create an avoidable semantic divergence risk.
 - **Decision:** Split the silent stack transition from an operation wrapper controlled by an `emit` flag, beginning with `sa`, `sb`, and `ss`, while always moving value and rank entries together.
-- **Why it mattered:** The pattern becomes the integration boundary for every later command. `push_swap` uses the wrappers as state transition plus serialization, and checker uses the same wrappers as silent replay. Combined commands also remain one public instruction even when they apply two internal transitions.
+- **Why it mattered:** The pattern becomes the integration boundary for every later command. `push_swap` uses the wrappers as 상태 전이 plus serialization, and checker uses the same wrappers as silent replay. Combined commands also remain one public instruction even when they apply two internal transitions.
 - **What changed:** The commit adds `stack_swap`, optional command emission, and the single- and dual-stack swap wrappers, then registers the operation module as common code.
 
 #### 해당 SHA에서 확인할 코드
@@ -112,7 +112,7 @@ typedef struct s_stack
 #### 학습자가 복원할 핵심 기록 — A
 - **직전 관련 상태와 문제:** `96b5324448e4`에는 병렬 배열 model만 있고 명령 의미가 없었습니다. generator와 checker가 앞으로 각각 swap을 구현하면 동일 command가 서로 다른 상태 전이를 만들 위험이 있었습니다.
 - **주요 boundary/decision:** `c0de1a1b18bb:src/operations.c:stack_swap`은 출력 없는 state primitive이고, `op_sa`/`op_sb`/`op_ss`는 `emit`에 따라 command text를 추가하는 public wrapper입니다. `op_ss`는 A와 B에 primitive를 각각 적용한 뒤 `ss\n`을 한 번만 출력합니다.
-- **state / ownership / failure 변화:** `stack_swap`은 size가 2 미만이면 즉시 반환하며 소유권·size·capacity를 바꾸지 않습니다. 그 외에는 top 두 `values`와 top 두 `ranks`를 같은 순서로 교환합니다. 이 SHA의 wrapper와 출력 helper는 `void`라 출력 실패를 표현하지 못하며, no-op 상태에서도 `emit=1`이면 명령 문자열은 출력됩니다.
+- **state / 소유권 / failure 변화:** `stack_swap`은 size가 2 미만이면 즉시 반환하며 소유권·size·capacity를 바꾸지 않습니다. 그 외에는 top 두 `values`와 top 두 `ranks`를 같은 순서로 교환합니다. 이 SHA의 wrapper와 출력 helper는 `void`라 출력 실패를 표현하지 못하며, no-op 상태에서도 `emit=1`이면 명령 문자열은 출력됩니다.
 - **보장 / 비보장:** swap 계열은 active top pair의 정확한 교환과 combined command의 단일 emission을 보장합니다. 아직 push/rotate/reverse-rotate가 없고, exact postcondition이나 출력 실패는 검증되지 않았습니다.
 - **후속 검증 또는 수정 연결:** `73d2deb30224`~`68dfd1b1fb58`가 같은 wrapper 패턴을 전체 명령으로 확장합니다. `86364d27baac`과 `7eb6890c2c13`이 state semantics를 검증하고, 출력 실패 반환은 `315f4b91779b`에서 추가됩니다.
 - **Thread의 다음 관련 commit:** `73d2deb30224`의 cross-stack 이동은 두 배열과 두 `size`를 어떤 순서로 갱신해 전체 원소 수를 보존하는가?
@@ -135,7 +135,7 @@ typedef struct s_stack
 #### 학습자가 복원할 구현 기록 — B
 - **직전 관련 상태:** swap 계열만 존재하고 A/B 사이에 원소를 옮길 방법은 없었습니다.
 - **이 commit의 구현 역할:** `73d2deb30224:src/operations.c:stack_push`가 source top pair를 지역 변수에 보존하고, destination active prefix를 오른쪽으로 한 칸 민 뒤 index 0에 pair를 씁니다. source는 나머지 prefix를 왼쪽으로 당기고 `dst->size++`, `src->size--`로 마칩니다. `op_pa`는 B→A, `op_pb`는 A→B를 연결합니다.
-- **핵심 state transition 또는 boundary:** `values`와 `ranks`에 같은 길이·방향의 `memmove`를 적용하므로 pair가 분리되지 않고, 두 size의 합은 변하지 않습니다. operation 중 새 allocation은 없습니다.
+- **핵심 상태 전이 또는 boundary:** `values`와 `ranks`에 같은 길이·방향의 `memmove`를 적용하므로 pair가 분리되지 않고, 두 size의 합은 변하지 않습니다. operation 중 새 allocation은 없습니다.
 - **failure/no-op/edge:** `src->size == 0`이면 primitive는 상태를 그대로 둡니다. 다만 이 SHA의 emitting wrapper는 no-op 여부와 무관하게 합법 command를 출력합니다. destination capacity 검사는 없으며 두 스택이 전체 입력 크기의 buffer를 갖는다는 상위 전제를 사용합니다.
 - **이후 연결:** 회전 계열이 같은 배열 표현을 완성하고, `86364d27baac`이 모든 command에서 pair·원소 수·capacity 범위를 검사합니다.
 - **Thread의 다음 관련 commit:** `745ec72850d2`는 같은 스택 내부의 순환 이동에서 active prefix와 tail을 어떻게 보존하는가?
@@ -158,7 +158,7 @@ typedef struct s_stack
 #### 학습자가 복원할 구현 기록 — B
 - **직전 관련 상태:** top pair 교환과 A/B 간 push만 있고, top을 bottom으로 보내는 명령은 없었습니다.
 - **이 commit의 구현 역할:** `745ec72850d2:src/operations.c:stack_rotate`가 index 0의 value/rank를 저장하고 `[1, size)`를 `[0, size-1)`로 이동한 뒤 저장 pair를 `size - 1`에 복원합니다. `op_ra`, `op_rb`, `op_rr`가 이를 노출합니다.
-- **핵심 state transition 또는 boundary:** size와 capacity는 그대로이고 active pair의 순환 순서만 바뀝니다. `rr`는 두 primitive를 호출하지만 public output은 `rr\n` 한 줄입니다.
+- **핵심 상태 전이 또는 boundary:** size와 capacity는 그대로이고 active pair의 순환 순서만 바뀝니다. `rr`는 두 primitive를 호출하지만 public output은 `rr\n` 한 줄입니다.
 - **failure/no-op/edge:** size가 0 또는 1이면 primitive는 no-op입니다. 이 시점에는 출력 API가 실패를 반환하지 않습니다.
 - **이후 연결:** `68dfd1b1fb58`의 reverse rotate와 서로 역연산 관계를 이루며, 두 테스트 commit이 exact transition과 no-op을 잠급니다.
 - **Thread의 다음 관련 commit:** `68dfd1b1fb58`은 마지막 pair를 top으로 올릴 때 겹치는 이동 범위를 어떻게 계산하는가?
@@ -181,7 +181,7 @@ typedef struct s_stack
 #### 학습자가 복원할 구현 기록 — B
 - **직전 관련 상태:** forward rotate까지 있어 top→bottom은 가능하지만 bottom→top 명령이 없었습니다.
 - **이 commit의 구현 역할:** `68dfd1b1fb58:src/operations.c:stack_reverse_rotate`가 `size - 1`의 pair를 저장하고 `[0, size-1)`를 한 칸 오른쪽으로 이동한 뒤 index 0에 복원합니다. `op_rra`, `op_rrb`, `op_rrr`가 전체 명령 어휘를 완성합니다.
-- **핵심 state transition 또는 boundary:** 예를 들어 `[a,b,c]`에 rotate를 적용하면 `[b,c,a]`, 이어 reverse rotate를 적용하면 `[a,b,c]`가 됩니다. 두 배열에 같은 처리를 하므로 pair·size·capacity가 유지됩니다.
+- **핵심 상태 전이 또는 boundary:** 예를 들어 `[a,b,c]`에 rotate를 적용하면 `[b,c,a]`, 이어 reverse rotate를 적용하면 `[a,b,c]`가 됩니다. 두 배열에 같은 처리를 하므로 pair·size·capacity가 유지됩니다.
 - **failure/no-op/edge:** size 0/1에서는 no-op이며 command 자체는 합법입니다. 후속 checker의 exact dispatch는 이를 invalid command로 바꾸지 않고 silent no-op으로 재생합니다.
 - **이후 연결:** `86364d27baac`이 11개 command 전체의 보존 성질을, `7eb6890c2c13`이 정확한 배열 상태와 inactive entry 보존까지 확인합니다.
 - **Thread의 다음 관련 commit:** `86364d27baac`의 보존 검사는 exact ordering 오류까지 잡는가, 아니면 pair·개수·범위만 잡는가?
@@ -202,20 +202,20 @@ typedef struct s_stack
 - 코드 인용을 남길 때는 `SHA:path:symbol` 형식으로 위치를 기록하고, 설명에 필요한 최소 구문만 삽입합니다.
 
 #### Test commit 학습 기록
-- **대상 production invariant:** `values[i]`와 `ranks[i]`의 고정 대응, A/B 합계 5, 각 stack의 `0 <= size <= capacity`, rank 0..4의 정확히 한 번 존재입니다. fixture는 A에 `(40,4),(10,1),(30,3)`, B에 `(20,2),(0,0)`을 둡니다.
+- **대상 production 항상 유지해야 하는 조건:** `values[i]`와 `ranks[i]`의 고정 대응, A/B 합계 5, 각 stack의 `0 <= size <= capacity`, rank 0..4의 정확히 한 번 존재입니다. fixture는 A에 `(40,4),(10,1),(30,3)`, B에 `(20,2),(0,0)`을 둡니다.
 - **재현하는 failure/boundary:** 각 command를 초기 fixture에 독립 적용하고, 별도로 11개 command를 연속 적용해 겹치는 `memmove`, 양 stack size 변경, combined operation의 조합을 통과시킵니다.
-- **test technique:** C 함수 단위 invariant test입니다. `emit=0`으로 stdout을 배제하고 shared production operation을 직접 호출합니다.
+- **test technique:** C 함수 단위 항상 유지해야 하는 조건 test입니다. `emit=0`으로 stdout을 배제하고 shared production operation을 직접 호출합니다.
 - **통과하는 production path:** `tests/operation_invariants.c`의 command 적용 helper → `op_*` wrapper → `stack_swap`/`stack_push`/`stack_rotate`/`stack_reverse_rotate`입니다.
-- **이 테스트가 증명하는 것:** 각 관찰 지점에서 알려진 five-pair 집합이 유실·복제·오결합되지 않고 size/capacity 범위를 지키며, 단일 command와 한 복합 sequence가 invariant를 유지한다는 점입니다.
+- **이 테스트가 증명하는 것:** 각 관찰 지점에서 알려진 five-pair 집합이 유실·복제·오결합되지 않고 size/capacity 범위를 지키며, 단일 command와 한 복합 sequence가 항상 유지해야 하는 조건을 유지한다는 점입니다.
 - **이 테스트가 증명하지 않는 것:** 명령별 exact post-state, no-op에서 backing array가 전혀 바뀌지 않는지, 모든 가능한 state, emitted text, write failure는 증명하지 않습니다. production operation과 같은 C 구현을 호출하므로 독립 oracle도 아닙니다.
-- **성격:** 대표 fixture를 사용한 deterministic invariant regression입니다. exhaustive state-space test는 아닙니다.
+- **성격:** 대표 fixture를 사용한 deterministic 항상 유지해야 하는 조건 regression입니다. exhaustive state-space test는 아닙니다.
 - **막는 후속 회귀:** value만 이동하고 rank를 빠뜨리는 변경, push에서 size 한쪽만 갱신하는 변경, active 원소를 유실·복제하는 잘못된 `memmove`를 막습니다.
 
 #### 학습자가 복원할 핵심 기록 — A
 - **직전 관련 상태와 문제:** 11개 명령 구현은 완성됐지만 pair와 전체 원소 보존을 자동으로 확인하는 증거가 없었습니다.
-- **주요 boundary/decision:** exact 배열을 먼저 고정하지 않고, 어떤 합법 transition에서도 유지되어야 하는 집합·pair·size invariant를 공통 검사 함수로 분리했습니다.
-- **state / ownership / failure 변화:** production state나 ownership은 바뀌지 않습니다. Makefile에 operation test executable과 `test` 실행 경로가 추가되어 shared operation의 상태 변경을 출력 없이 관찰할 수 있게 됐습니다.
-- **보장 / 비보장:** 위 invariant는 대표 fixture의 모든 command와 한 sequence에서 검증되지만, 서로 다른 잘못된 순열처럼 보존 성질만 만족하는 오류는 통과할 수 있습니다.
+- **주요 boundary/decision:** exact 배열을 먼저 고정하지 않고, 어떤 합법 transition에서도 유지되어야 하는 집합·pair·size 항상 유지해야 하는 조건을 공통 검사 함수로 분리했습니다.
+- **state / 소유권 / failure 변화:** production state나 소유권은 바뀌지 않습니다. Makefile에 operation test executable과 `test` 실행 경로가 추가되어 shared operation의 상태 변경을 출력 없이 관찰할 수 있게 됐습니다.
+- **보장 / 비보장:** 위 항상 유지해야 하는 조건은 대표 fixture의 모든 command와 한 sequence에서 검증되지만, 서로 다른 잘못된 순열처럼 보존 성질만 만족하는 오류는 통과할 수 있습니다.
 - **후속 검증 또는 수정 연결:** `7eb6890c2c13`이 command별 exact-state/no-op 검사를 추가해 이 빈틈을 보완하고, Thread 4의 `5b7559278909`가 Python 독립 replay로 shared-implementation risk를 낮춥니다.
 - **Thread의 다음 관련 commit:** `7eb6890c2c13`은 보존 검사를 통과할 수 있는 잘못된 순서를 어떤 expected-state 비교로 잡는가?
 
@@ -235,7 +235,7 @@ typedef struct s_stack
 - 코드 인용을 남길 때는 `SHA:path:symbol` 형식으로 위치를 기록하고, 설명에 필요한 최소 구문만 삽입합니다.
 
 #### Test commit 학습 기록
-- **대상 production invariant:** 각 command의 정확한 `values`/`ranks` active 순서, 두 `size`, 변경되지 않는 capacity, insufficient-stack 명령의 완전한 no-op입니다.
+- **대상 production 항상 유지해야 하는 조건:** 각 command의 정확한 `values`/`ranks` active 순서, 두 `size`, 변경되지 않는 capacity, insufficient-stack 명령의 완전한 no-op입니다.
 - **재현하는 failure/boundary:** 11개 command의 expected A/B state를 table로 고정하고, capacity 2의 작은 fixture로 empty/single-element swap·rotate와 empty-source push를 실행합니다.
 - **test technique:** table-driven C unit regression입니다. command enum/name/application을 공통화하고 exact array comparison을 사용합니다.
 - **통과하는 production path:** command table → operation wrapper(`emit=0`) → 해당 primitive → `stack_has_exact_state` 또는 `small_stack_is_unchanged`입니다.
@@ -247,14 +247,14 @@ typedef struct s_stack
 #### 학습자가 복원할 구현 기록 — B
 - **직전 관련 상태:** `86364d27baac`은 pair·개수·범위는 잡지만 순서가 잘못돼도 같은 pair 집합이면 통과할 수 있었습니다.
 - **이 commit의 구현 역할:** command별 expected state와 작은 no-op fixture를 추가해 transition의 정확한 결과를 고정합니다.
-- **핵심 state transition 또는 boundary:** active 배열, size, capacity를 함께 비교하고, no-op 검사는 inactive slot까지 비교합니다.
+- **핵심 상태 전이 또는 boundary:** active 배열, size, capacity를 함께 비교하고, no-op 검사는 inactive slot까지 비교합니다.
 - **failure/no-op/edge:** A/B 모두 empty, 한쪽만 single-element인 push, single-element swap/rotate 등 불충분 state를 합법 no-op으로 확인합니다.
 - **이후 연결:** Thread 1의 state semantics는 이 commit으로 두 수준의 증거를 갖추지만, 독립 correctness와 I/O 실패는 Thread 4와 6이 맡습니다.
 - **Thread 내 다음 commit:** 없음. Thread 최종 상태에서 이 commit의 남은 역할을 정리합니다.
 
-## 6. Invariant ledger
+## 6. 항상 유지해야 하는 조건 ledger
 
-| Invariant / contract | 처음 도입 | 강화 | 부족함이 드러난 지점 | fix | regression / evidence | 학습자 확인 메모 |
+| 항상 유지해야 하는 조건 / contract | 처음 도입 | 강화 | 부족함이 드러난 지점 | fix | regression / evidence | 학습자 확인 메모 |
 | --- | --- | --- | --- | --- | --- | --- |
 | value-rank pairing | 96b5324448e4 | c0de1a1b18bb → 73d2deb30224 → 745ec72850d2 → 68dfd1b1fb58 | - | - | 86364d27baac, 7eb6890c2c13 | `96b5324448e4:include/push_swap.h:t_stack`에서 병렬 배열로 도입되고, 각 primitive가 동일 인덱스·동일 이동을 수행합니다. 첫 테스트는 pair 집합을, 둘째 테스트는 exact 배열을 확인합니다. |
 | A/B 전체 원소 보존과 capacity 범위 | 96b5324448e4 | 73d2deb30224 및 회전 계열에서 유지 | - | - | 86364d27baac, 7eb6890c2c13 | push는 두 size를 반대 방향으로 한 번씩 갱신하고 회전은 size를 바꾸지 않습니다. 테스트는 합계 5와 각 capacity bound 및 exact size를 확인합니다. |
@@ -267,7 +267,7 @@ typedef struct s_stack
 | push/rotation의 size 또는 active prefix 손상 | operation state transition 규칙 | - | 86364d27baac / 7eb6890c2c13 | push는 저장→destination shift/copy→source shift→두 size 갱신 순서이고, rotation은 size를 유지한 채 active prefix만 순환합니다. 합계·bounds·exact-state 검사가 이를 잠급니다. |
 | generator와 checker가 서로 다른 명령 의미를 가짐 | c0de1a1b18bb의 shared wrapper 경계 | - | 후속 independent oracle은 Thread 4의 5b7559278909 | 두 실행 파일이 같은 `op_*`를 emit on/off로 재사용합니다. 공유 결함 가능성은 남으므로 Python list model이 별도 oracle이 됩니다. |
 
-## 8. Ownership / state / responsibility 변화
+## 8. 소유권 / state / responsibility 변화
 
 | 대상 | 이 Thread 시작 시 | 변화 commit | 이 Thread 종료 시 | 실제 코드 근거 |
 | --- | --- | --- | --- | --- |
@@ -280,8 +280,8 @@ typedef struct s_stack
 - **Source 기준 최종 상태:** `7eb6890c2c13` 시점에는 A/B가 각각 `values`와 `ranks`의 병렬 buffer, `size`, `capacity`를 가지며 11개 command가 두 배열을 같은 논리 이동으로 처리합니다. push만 두 stack의 size를 반대 방향으로 바꾸고 나머지는 size를 유지합니다. shared wrapper의 `emit`은 generator의 serialization과 checker의 silent replay를 같은 transition에 연결합니다. 보존 invariant test와 exact-state/no-op test가 서로 다른 오류 범위를 담당합니다.
 - **남아 있는 한계 / 다른 Thread로 넘어가는 책임:** 이 Thread에는 fix commit이 없고 테스트는 shared C operation을 직접 사용합니다. 입력이 유효한 pair/rank를 만드는 책임은 Thread 2, 정렬 sequence의 독립 correctness는 Thread 4, allocation·read·write failure는 Thread 6에 남습니다. 이 작업 환경에서는 repository checkout이 불가능해 테스트 executable을 실행하지 않았으며, 실행 결과를 주장하지 않고 각 SHA의 코드와 assertion만 확인했습니다.
 
-## 10. 최종 architecture 또는 execution flow 정리
-- Source-derived flow anchor: ``t_stack` 생성 → pair-preserving primitive → `sa/sb/ss`, `pa/pb`, rotate 계열 wrapper → invariant test → exact transition/no-op test``
+## 10. 최종 architecture 또는 실행 순서 정리
+- Source-derived flow anchor: ``t_stack` 생성 → pair-preserving primitive → `sa/sb/ss`, `pa/pb`, rotate 계열 wrapper → 항상 유지해야 하는 조건 test → exact transition/no-op test``
 - **학습자 최종 flow:** `96b5324448e4:stack_init`가 두 병렬 buffer를 소유하는 empty/allocated state를 만듭니다 → `c0de1a1b18bb`~`68dfd1b1fb58:stack_*`가 active pair를 silent mutation합니다 → 같은 SHA들의 `op_*`가 `emit`에 따라 하나의 public command를 직렬화하거나 silent replay합니다 → `86364d27baac:tests/operation_invariants.c`가 pair·합계·bounds를 확인합니다 → `7eb6890c2c13:tests/operation_invariants.c`가 exact state와 backing-array no-op을 확인합니다.
 - **실제 코드 삽입:** 핵심 결정은 `t_stack`의 병렬 배열과 각 primitive의 동일 이동입니다. 예를 들어 `c0de1a1b18bb:src/operations.c:stack_swap`은 size 2 미만에서 반환한 뒤 `values[0/1]`과 `ranks[0/1]`을 각각 같은 방식으로 교환합니다. 이후 command도 이 pair 단위를 유지합니다.
 
@@ -290,13 +290,13 @@ typedef struct s_stack
 - [x] 모든 commit에서 지정된 SHA의 코드를 직접 확인했습니다.
 - [x] final HEAD를 과거 commit 설명에 소급 사용하지 않았습니다.
 - [x] Source-confirmed fact와 직접 코드 확인 결과를 구분했습니다.
-- [x] S/A commit은 decision, invariant, ownership/failure, 후속 evidence까지 추적했습니다.
+- [x] S/A commit은 decision, 항상 유지해야 하는 조건, 소유권/failure, 후속 evidence까지 추적했습니다.
 - [x] B commit은 Thread 흐름에서 맡는 구현 역할과 필요한 state/boundary만 충분히 확인했습니다.
-- [x] test commit마다 production invariant, failure/boundary, technique, production path, 증명/비증명 범위를 구분했습니다.
-- [x] fix commit은 기존 가정 → failure/risk → root cause → 수정 invariant → 실제 코드 → regression evidence 순서로 연결했습니다.
-- [x] Invariant ledger와 Failure → Fix → Test 표를 실제 코드 근거로 채웠습니다.
+- [x] test commit마다 production 항상 유지해야 하는 조건, failure/boundary, technique, production path, 증명/비증명 범위를 구분했습니다.
+- [x] fix commit은 기존 가정 → failure/risk → root cause → 수정 항상 유지해야 하는 조건 → 실제 코드 → regression evidence 순서로 연결했습니다.
+- [x] 항상 유지해야 하는 조건 ledger와 Failure → Fix → Test 표를 실제 코드 근거로 채웠습니다.
 - [x] 별도 프로젝트 재학습 없이 이 Thread의 설계 → 구현 → 실패/위험 → 수정/검증 흐름을 commit history에 근거해 설명할 수 있습니다.
-===== END FILE: 01-parallel-stack-state-and-operation-invariants.md =====
+===== END FILE: 01-parallel-stack-state-and-operation-항상 유지해야 하는 조건.md =====
 
 ===== BEGIN FILE: 02-input-grammar-coordinate-compression-and-size-safety.md =====
 # Thread: Input grammar, coordinate compression, and size safety
@@ -306,10 +306,10 @@ typedef struct s_stack
 - **학습 목표:** 입력 문자열이 strict integer grammar를 통과해 unique dense rank permutation으로 정규화되고, 그 과정의 allocation과 크기 계산이 안전하게 닫히는 과정을 복원합니다.
 
 ## 2. 이 Thread를 이해하기 위한 핵심 질문
-- 숫자 token의 sign, digit, `INT_MIN`/`INT_MAX` 경계는 어떤 계산 순서로 검증되는가?
+- 숫자 token의 sign, digit, `INT_MIN`/`INT_MAX` 경계는 어떤 계산 순서로 검증됩니까?
 - argv 내부 C whitespace tokenization이 왜 count pass와 fill pass로 나뉘며, 임시 substring을 만들지 않는가?
 - duplicate rejection과 lower-bound rank assignment가 `0..n-1` bijection을 어떻게 만든는가?
-- parser의 all-or-nothing ownership은 어느 failure branch에서 보장되는가?
+- parser의 all-or-nothing 소유권은 어느 failure branch에서 보장됩니까?
 - 049ecd429548이 logical token count와 allocation byte count 양쪽을 왜 따로 방어하는가?
 
 ## 3. 완료 기준
@@ -329,8 +329,8 @@ typedef struct s_stack
 | 5 | `44a4da8bc63d` | test(cli): 입력 경계와 무인자 실행을 검증 | B | TEST, INPUT, EDGE | Expands boundary evidence for signs, zero spellings, whitespace, integer endpoints, timeouts, and no-argument stdin behavior. |
 | 6 | `049ecd429548` | fix(parse): 토큰 수와 배열 크기 계산을 방어 | A | INPUT, EDGE, RISK | Hardens logical token counts and byte-size calculations against narrowing and overflow. |
 
-### Source에서 직접 연결된 invariant / engineering difficulty
-- **Critical invariants**
+### Source에서 직접 연결된 항상 유지해야 하는 조건 / engineering difficulty
+- **Critical 항상 유지해야 하는 조건**
   - After parsing unique input of size `n`, ranks form a bijection over `0..n-1` and preserve the ordering of original values.
   - Parser construction is all-or-nothing, and every owned allocation is released on every exit path.
 
@@ -357,7 +357,7 @@ typedef struct s_stack
 #### 학습자가 복원할 구현 기록 — B
 - **직전 관련 상태:** stack model과 operation은 있지만 argv를 `t_stack`으로 만드는 parser가 없었습니다.
 - **이 commit의 구현 역할:** `f36ad8899b5f:src/parser.c:parse_token`이 optional sign 뒤에 최소 한 자리 ASCII digit을 요구하고, 더 넓은 정수형 accumulator로 decimal magnitude를 누적합니다. 양수 한계는 `INT_MAX`, 음수 한계는 `INT_MAX + 1`이므로 `-2147483648`은 허용하고 그 밖의 범위 초과는 거절합니다.
-- **핵심 state transition 또는 boundary:** `parse_arguments`는 인자 수만큼 A를 한 번 할당하고 각 token을 `values[index]`와 `ranks[index]` 양쪽에 임시로 복사한 뒤 size를 채웁니다. 인자가 없으면 allocation 없는 empty stack 성공입니다.
+- **핵심 상태 전이 또는 boundary:** `parse_arguments`는 인자 수만큼 A를 한 번 할당하고 각 token을 `values[index]`와 `ranks[index]` 양쪽에 임시로 복사한 뒤 size를 채웁니다. 인자가 없으면 allocation 없는 empty stack 성공입니다.
 - **failure/no-op/edge:** `+`/`-`만 있는 문자열, 비 ASCII digit, suffix, 범위 초과가 실패합니다. allocation 뒤 어느 token에서든 실패하면 `stack_free`로 두 배열을 모두 해제하고 실패를 반환합니다.
 - **이후 연결:** `3bfb465ebdb1`이 한 argv 안의 복수 token을 허용하고, `e09cf45e21cd`가 mirror rank를 실제 dense rank로 교체합니다.
 - **Thread의 다음 관련 commit:** `3bfb465ebdb1`은 count pass와 fill pass가 같은 whitespace grammar를 공유해 exact capacity를 어떻게 보장하는가?
@@ -381,7 +381,7 @@ typedef struct s_stack
 #### 학습자가 복원할 구현 기록 — B
 - **직전 관련 상태:** 각 argv가 정확히 하나의 정수 token이어야 했습니다. 따라서 `"3 2"`처럼 quoted group이나 tab/newline을 포함한 입력을 처리하지 못했습니다.
 - **이 commit의 구현 역할:** `3bfb465ebdb1:src/parser.c:is_space`가 space, tab, newline, vertical tab, form feed, carriage return을 구분자로 정의합니다. 첫 pass는 각 argv의 `[start,end)` token span 수를 세고, 두 번째 pass는 같은 span을 `parse_token`에 직접 전달합니다.
-- **핵심 state transition 또는 boundary:** 전체 token 수를 먼저 얻어 A를 exact capacity로 한 번만 할당하며, substring을 별도로 소유하지 않습니다. 빈 argv는 다른 token이 있으면 무시되지만 제공된 모든 argv에서 token 수가 0이면 오류입니다.
+- **핵심 상태 전이 또는 boundary:** 전체 token 수를 먼저 얻어 A를 exact capacity로 한 번만 할당하며, substring을 별도로 소유하지 않습니다. 빈 argv는 다른 token이 있으면 무시되지만 제공된 모든 argv에서 token 수가 0이면 오류입니다.
 - **failure/no-op/edge:** token conversion 실패 시 이미 할당된 A를 `stack_free`합니다. 이 SHA의 count/index는 아직 `int`이므로 매우 큰 논리 token 수의 narrowing 위험은 남습니다.
 - **이후 연결:** `e09cf45e21cd`가 채워진 값에 uniqueness와 dense rank를 부여하고, `049ecd429548`이 count와 allocation byte 계산의 타입 범위를 보강합니다.
 - **Thread의 다음 관련 commit:** `e09cf45e21cd`는 arbitrary signed values를 원래 순서를 잃지 않고 `0..n-1` rank permutation으로 어떻게 바꾸는가?
@@ -419,7 +419,7 @@ typedef struct s_stack
 return ((*left > *right) - (*left < *right));
 ```
 
-- **state / invariant / ownership / lifecycle 변화:** parser 성공 후 `values`는 원본 정수를 유지하고 `ranks`는 `0..n-1`의 permutation이 됩니다. 임시 sorted buffer는 `assign_ranks`가 생성하고 성공·duplicate 실패 모두에서 해제합니다. `parse_arguments`는 rank assignment 실패를 받으면 A의 두 영구 buffer도 해제해 caller에 partial stack을 넘기지 않습니다.
+- **state / 항상 유지해야 하는 조건 / 소유권 / lifecycle 변화:** parser 성공 후 `values`는 원본 정수를 유지하고 `ranks`는 `0..n-1`의 permutation이 됩니다. 임시 sorted buffer는 `assign_ranks`가 생성하고 성공·duplicate 실패 모두에서 해제합니다. `parse_arguments`는 rank assignment 실패를 받으면 A의 두 영구 buffer도 해제해 caller에 partial stack을 넘기지 않습니다.
 - **failure scenario:** subtraction comparator는 `INT_MAX - INT_MIN`에서 overflow할 수 있고, duplicate 검사를 건너뛰면 같은 rank가 여러 원소에 배정될 수 있습니다. lower-bound가 잘못되면 value order와 rank order가 어긋나 radix가 rank를 정렬해도 원본 값은 정렬되지 않습니다.
 - **이 commit이 보장하는 것:** unique input 크기 `n`에 대해 각 rank가 정확히 한 번 나타나고 `values[i] < values[j]`이면 `ranks[i] < ranks[j]`입니다. 예를 들어 `[30,-5,10]`은 sorted copy `[-5,10,30]`, rank `[2,0,1]`이 됩니다.
 - **아직 보장하지 않는 것:** 이 SHA 자체에는 parser test가 없고, 거대한 token count와 `capacity * sizeof(int)`의 representability guard도 없습니다. sorting command의 correctness 역시 별도 Thread가 검증합니다.
@@ -442,7 +442,7 @@ return ((*left > *right) - (*left < *right));
 - 코드 인용을 남길 때는 `SHA:path:symbol` 형식으로 위치를 기록하고, 설명에 필요한 최소 구문만 삽입합니다.
 
 #### Test commit 학습 기록
-- **대상 production invariant:** accepted argv는 generator가 성공하고 그 command stream을 checker가 `OK`로 판정하며, invalid argv는 public error protocol을 지켜야 합니다.
+- **대상 production 항상 유지해야 하는 조건:** accepted argv는 generator가 성공하고 그 command stream을 checker가 `OK`로 판정하며, invalid argv는 public error protocol을 지켜야 합니다.
 - **재현하는 failure/boundary:** mixed `['3 2','1']`, no-argument success와 duplicate, int overflow, `12a`, sign-only `+`, zero-token argv, argv 경계를 넘는 duplicate를 사용합니다.
 - **test technique:** Python CLI integration test입니다. generator stdout을 그대로 product checker stdin에 연결합니다.
 - **통과하는 production path:** Python subprocess → `push_swap main` → `parse_arguments`/rank assignment → sort/output → `checker main` → 같은 parser와 command replay입니다.
@@ -454,7 +454,7 @@ return ((*left > *right) - (*left < *right));
 #### 학습자가 복원할 구현 기록 — B
 - **직전 관련 상태:** parser와 rank assignment는 있었지만 public executable 기준의 정상·오류 증거가 없었습니다.
 - **이 commit의 구현 역할:** `tests/run_tests.py`와 Make `test` 경로를 추가해 parser 결과를 generator와 checker를 통해 관찰합니다.
-- **핵심 state transition 또는 boundary:** valid 입력은 command stream을 생성하고 checker가 최종 state를 판정하며, invalid 입력은 sort/replay로 진입하지 않고 status 1·empty stdout·`Error\n`로 끝납니다.
+- **핵심 상태 전이 또는 boundary:** valid 입력은 command stream을 생성하고 checker가 최종 state를 판정하며, invalid 입력은 sort/replay로 진입하지 않고 status 1·empty stdout·`Error\n`로 끝납니다.
 - **failure/no-op/edge:** no-argument `push_swap`은 status 0과 빈 출력입니다. zero-token argument가 제공된 경우는 오류입니다.
 - **이후 연결:** `44a4da8bc63d`가 numeric/whitespace/no-values stdin 경계를 더 세밀하게 확장합니다.
 - **Thread의 다음 관련 commit:** `44a4da8bc63d`는 같은 grammar에서 허용되는 여러 zero/sign/whitespace 표기와 no-values checker behavior를 어떻게 분리하는가?
@@ -475,10 +475,10 @@ return ((*left > *right) - (*left < *right));
 - 코드 인용을 남길 때는 `SHA:path:symbol` 형식으로 위치를 기록하고, 설명에 필요한 최소 구문만 삽입합니다.
 
 #### Test commit 학습 기록
-- **대상 production invariant:** strict ASCII integer grammar, 여섯 C whitespace의 동일 tokenization, `INT_MIN`/`INT_MAX` 경계, no-values checker의 stdin non-consumption입니다.
+- **대상 production 항상 유지해야 하는 조건:** strict ASCII integer grammar, 여섯 C whitespace의 동일 tokenization, `INT_MIN`/`INT_MAX` 경계, no-values checker의 stdin non-consumption입니다.
 - **재현하는 failure/boundary:** `+7`, `-0`, leading zero, empty argv 혼합, 모든 C whitespace, exact endpoints를 허용하고, whitespace-only, 4096자리 decimal, non-ASCII digit, 반복·혼합 sign, 서로 다른 zero spelling duplicate를 거절합니다. no-values checker에는 `sa\n`이 든 seekable stdin을 줍니다.
 - **test technique:** timeout이 있는 deterministic CLI boundary test와 file-position observation입니다.
-- **통과하는 production path:** accepted helper는 generator→checker를 통과하고, rejected helper는 parser error path를 관찰합니다. no-values case는 checker `main`의 argc early return까지만 통과합니다.
+- **통과하는 production path:** accepted helper는 generator→checker를 통과하고, rejected helper는 parser 오류 처리를 관찰합니다. no-values case는 checker `main`의 argc early return까지만 통과합니다.
 - **이 테스트가 증명하는 것:** 나열된 lexical 경계와 no-values에서 stdin offset이 0으로 유지됨을 확인합니다. child timeout은 hang을 failure로 만듭니다.
 - **이 테스트가 증명하지 않는 것:** `INT_MAX`개 token이나 byte-size overflow처럼 현실적으로 거대한 입력, allocation/read/write fault, 모든 Unicode 입력을 exhaustively 다루지 않습니다.
 - **성격:** deterministic CLI edge regression입니다.
@@ -487,7 +487,7 @@ return ((*left > *right) - (*left < *right));
 #### 학습자가 복원할 구현 기록 — B
 - **직전 관련 상태:** 기본 accepted/rejected parser cases는 있었지만 여러 동치 표기와 정확한 외부 경계가 충분히 고정되지 않았습니다.
 - **이 commit의 구현 역할:** 허용되는 표기와 거절되는 표기를 확장하고 모든 subprocess에 timeout을 적용하며, no-values checker의 stdin consumption을 file position으로 검사합니다.
-- **핵심 state transition 또는 boundary:** no-values는 parser·reader allocation과 command loop 전에 정상 반환하므로 stdin이 그대로 남습니다.
+- **핵심 상태 전이 또는 boundary:** no-values는 parser·reader allocation과 command loop 전에 정상 반환하므로 stdin이 그대로 남습니다.
 - **failure/no-op/edge:** signed zero는 numeric value가 같으므로 두 spelling을 함께 주면 duplicate로 거절됩니다. 빈 argv 하나는 다른 token이 있으면 허용되지만 whitespace-only 전체 입력은 오류입니다.
 - **이후 연결:** `049ecd429548`은 이 테스트들이 직접 만들기 어려운 count/byte representability 위험을 코드 guard로 닫습니다.
 - **Thread의 다음 관련 commit:** `049ecd429548`은 lexical validity 이후 logical count와 allocation byte 수를 각각 어느 타입 경계에서 거절하는가?
@@ -505,14 +505,14 @@ return ((*left > *right) - (*left < *right));
 - aggregate token count가 stack model의 `int` size에 들어가는지 변환 전에 검증하는 branch를 확인합니다.
 - `stack_init`에서 `capacity * sizeof(int)`의 `size_t` representability를 두 buffer allocation 전에 검사하는지 확인합니다.
 - guard가 없던 이전 코드에서 wrapped count/byte size가 어떤 under-allocation으로 이어질 수 있는지 직접 계산 예로 기록합니다.
-- 이 SHA에 직접 regression test 변경이 있는지 `git show --name-only`와 test diff로 확인하고, 없다면 기존 boundary tests의 coverage 한계를 기록합니다.
+- 이 SHA에 직접 회귀 테스트 변경이 있는지 `git show --name-only`와 test diff로 확인하고, 없다면 기존 boundary tests의 coverage 한계를 기록합니다.
 - 코드 인용을 남길 때는 `SHA:path:symbol` 형식으로 위치를 기록하고, 설명에 필요한 최소 구문만 삽입합니다.
 
 #### Fix chain 복원
 - **기존 가정:** `3bfb465ebdb1` 계열 코드는 string index와 token count를 `int`로 누적하고, `stack_init`은 양수 capacity라면 곧바로 `capacity * sizeof(int)`를 allocation size로 사용했습니다.
 - **실제 failure 또는 위험:** 실제 token 수가 `INT_MAX`를 넘으면 count가 stack model의 `int`에 들어가지 않습니다. 또한 `capacity`가 표현 가능해도 byte 곱셈이 `size_t`를 넘으면 작은 크기로 wrap되어 이후 fill이 allocation 밖에 쓸 수 있습니다.
 - **root cause:** 논리 개수의 표현 범위(`int`)와 memory byte 수의 표현 범위(`size_t`)를 서로 다른 단계에서 검증하지 않고, narrow type로 scan/count한 뒤 곱셈을 신뢰한 것이 원인입니다.
-- **수정된 invariant/decision:** scan position과 per-argument count는 `size_t`로 유지하고, aggregate count는 `INT_MAX` 이하임을 확인한 뒤에만 `int` capacity로 변환합니다. `stack_init`은 두 allocation 전에 `capacity <= SIZE_MAX / sizeof(int)`를 확인합니다.
+- **수정된 항상 유지해야 하는 조건/decision:** scan position과 per-argument count는 `size_t`로 유지하고, aggregate count는 `INT_MAX` 이하임을 확인한 뒤에만 `int` capacity로 변환합니다. `stack_init`은 두 allocation 전에 `capacity <= SIZE_MAX / sizeof(int)`를 확인합니다.
 - **실제 수정 코드:** `049ecd429548:src/parser.c:count_arguments`는 `argument_count > (size_t)INT_MAX - count`를 실패 조건으로 사용합니다. `049ecd429548:src/stack.c:stack_init`의 핵심 guard는 다음과 같습니다.
 
 ```c
@@ -526,14 +526,14 @@ if ((size_t)capacity > (size_t)-1 / sizeof(int))
 #### 학습자가 복원할 핵심 기록 — A
 - **직전 관련 상태와 문제:** grammar와 ordinary boundary는 검증됐지만, 매우 큰 입력의 count/narrowing 및 allocation-size 산술은 별도 전제가 없었습니다.
 - **주요 boundary/decision:** parser의 logical token domain을 `size_t`로 세다가 model이 수용할 수 있는 `INT_MAX`에서 명시적으로 거절하고, model allocation은 byte 곱셈 representability를 다시 검사합니다.
-- **state / ownership / failure 변화:** 성공 state는 바뀌지 않습니다. 실패는 allocation 전에 발생하므로 partial buffer ownership이 생기지 않거나, 기존 all-or-nothing cleanup으로 종료됩니다.
-- **보장 / 비보장:** count cast와 `sizeof(int)` 곱셈 wrap으로 인한 under-allocation을 막습니다. 운영체제가 큰 정상 allocation을 거절하는 경우는 여전히 allocator failure로 처리하며, 이 SHA에는 direct regression test가 없습니다.
+- **state / 소유권 / failure 변화:** 성공 state는 바뀌지 않습니다. 실패는 allocation 전에 발생하므로 partial buffer 소유권이 생기지 않거나, 기존 all-or-nothing cleanup으로 종료됩니다.
+- **보장 / 비보장:** count cast와 `sizeof(int)` 곱셈 wrap으로 인한 under-allocation을 막습니다. 운영체제가 큰 정상 allocation을 거절하는 경우는 여전히 allocator failure로 처리하며, 이 SHA에는 direct 회귀 테스트가 없습니다.
 - **후속 검증 또는 수정 연결:** 별도 post-fix test는 source에 지정되지 않았습니다. Thread 6의 allocation fault sweep은 allocator가 `NULL`을 반환하는 cleanup을 다루지만 이 산술 guard 자체의 경계 입력을 대체하지 않습니다.
 - **Thread 내 다음 commit:** 없음. Thread 최종 상태에서 이 commit의 남은 역할을 정리합니다.
 
-## 6. Invariant ledger
+## 6. 항상 유지해야 하는 조건 ledger
 
-| Invariant / contract | 처음 도입 | 강화 | 부족함이 드러난 지점 | fix | regression / evidence | 학습자 확인 메모 |
+| 항상 유지해야 하는 조건 / contract | 처음 도입 | 강화 | 부족함이 드러난 지점 | fix | regression / evidence | 학습자 확인 메모 |
 | --- | --- | --- | --- | --- | --- | --- |
 | parser construction all-or-nothing | f36ad8899b5f | 3bfb465ebdb1, e09cf45e21cd | - | - | 4cc9783286c0, 44a4da8bc63d | token 실패는 `stack_free`, rank temporary는 성공·중복 실패 모두 free, rank 실패는 A까지 free합니다. CLI tests는 invalid input에서 빈 stdout과 `Error\n`을 확인합니다. |
 | dense rank bijection `0..n-1` | e09cf45e21cd | - | - | - | 4cc9783286c0 및 sorting verification으로 간접 확인 | sorted copy의 adjacent duplicate reject 후 각 원본 value의 lower-bound index를 rank로 사용하므로 unique input에서 permutation과 order preservation이 성립합니다. |
@@ -547,7 +547,7 @@ if ((size_t)capacity > (size_t)-1 / sizeof(int))
 | duplicate input | e09cf45e21cd의 sorted-copy duplicate rejection | - | 4cc9783286c0 / 44a4da8bc63d | 정렬된 임시 copy에서 인접 equality를 검사하므로 argv 경계나 zero spelling과 무관하게 같은 numeric value를 거절합니다. |
 | token 수 narrowing 또는 `capacity * sizeof(int)` overflow | 049ecd429548 | 049ecd429548 | 직접 regression coverage 존재 여부를 해당 SHA에서 확인 | 원인은 scan/count와 model/allocator의 타입 범위를 구분하지 않은 것입니다. fix는 `size_t` scan, `INT_MAX` aggregate guard, byte multiplication guard를 각각 둡니다. test 변경은 없습니다. |
 
-## 8. Ownership / state / responsibility 변화
+## 8. 소유권 / state / responsibility 변화
 
 | 대상 | 이 Thread 시작 시 | 변화 commit | 이 Thread 종료 시 | 실제 코드 근거 |
 | --- | --- | --- | --- | --- |
@@ -558,9 +558,9 @@ if ((size_t)capacity > (size_t)-1 / sizeof(int))
 
 ## 9. Thread 최종 상태
 - **Source 기준 최종 상태:** `049ecd429548` 시점의 parser는 모든 argv에서 여섯 C whitespace를 기준으로 token span을 두 번 순회하고, optional sign과 ASCII decimal 및 `int` 범위를 엄격히 검사합니다. 전체 token 수가 model의 `int` capacity에 들어가고 allocation byte가 `size_t`에 표현될 때만 A를 구성합니다. unique values는 sorted temporary와 lower-bound로 `0..n-1` dense rank가 되며, 어느 실패에서도 partial ownership을 반환하지 않습니다.
-- **남아 있는 한계 / 다른 Thread로 넘어가는 책임:** count/byte safety fix에는 직접 regression test가 없습니다. parser tests는 public grammar를 넓게 확인하지만 내부 rank permutation과 극단적 count branch를 직접 관찰하지 않습니다. 정렬 결과와 독립 replay는 Thread 3·4, allocator 실패 cleanup은 Thread 6이 담당합니다. 이 환경에서는 checkout 제한으로 테스트를 실행하지 않았고 코드·test assertion만 확인했습니다.
+- **남아 있는 한계 / 다른 Thread로 넘어가는 책임:** count/byte safety fix에는 직접 회귀 테스트가 없습니다. parser tests는 public grammar를 넓게 확인하지만 내부 rank permutation과 극단적 count branch를 직접 관찰하지 않습니다. 정렬 결과와 독립 replay는 Thread 3·4, allocator 실패 cleanup은 Thread 6이 담당합니다. 이 환경에서는 checkout 제한으로 테스트를 실행하지 않았고 코드·test assertion만 확인했습니다.
 
-## 10. 최종 architecture 또는 execution flow 정리
+## 10. 최종 architecture 또는 실행 순서 정리
 - Source-derived flow anchor: `argv/whitespace scan → signed integer parse → exact-size stack allocation → duplicate rejection → dense rank assignment → size-safety hardening`
 - **학습자 최종 flow:** `049ecd429548:src/parser.c`의 count pass가 `size_t`로 token 수를 계산하고 `INT_MAX`를 넘으면 거절합니다 → `stack_init`이 byte 곱셈을 검증하고 A의 두 buffer를 할당합니다 → fill pass가 각 `[start,end)`를 `parse_token`으로 읽어 original values를 채웁니다 → `e09cf45e21cd:assign_ranks`가 sorted copy를 만들고 duplicate를 거절한 뒤 lower-bound rank를 씁니다 → temporary를 해제하고 완성 A를 caller에 넘기거나 모든 owned buffer를 정리합니다.
 - **실제 코드 삽입:** 핵심 코드는 overflow 없는 comparator, lower-bound rank assignment, `argument_count > INT_MAX - count`, `capacity > SIZE_MAX / sizeof(int)`의 두 단계 크기 guard입니다. 후자의 최소 구문은 `049ecd429548:src/stack.c:stack_init`에 위와 같이 기록했습니다.
@@ -570,11 +570,11 @@ if ((size_t)capacity > (size_t)-1 / sizeof(int))
 - [x] 모든 commit에서 지정된 SHA의 코드를 직접 확인했습니다.
 - [x] final HEAD를 과거 commit 설명에 소급 사용하지 않았습니다.
 - [x] Source-confirmed fact와 직접 코드 확인 결과를 구분했습니다.
-- [x] S/A commit은 decision, invariant, ownership/failure, 후속 evidence까지 추적했습니다.
+- [x] S/A commit은 decision, 항상 유지해야 하는 조건, 소유권/failure, 후속 evidence까지 추적했습니다.
 - [x] B commit은 Thread 흐름에서 맡는 구현 역할과 필요한 state/boundary만 충분히 확인했습니다.
-- [x] test commit마다 production invariant, failure/boundary, technique, production path, 증명/비증명 범위를 구분했습니다.
-- [x] fix commit은 기존 가정 → failure/risk → root cause → 수정 invariant → 실제 코드 → regression evidence 순서로 연결했습니다.
-- [x] Invariant ledger와 Failure → Fix → Test 표를 실제 코드 근거로 채웠습니다.
+- [x] test commit마다 production 항상 유지해야 하는 조건, failure/boundary, technique, production path, 증명/비증명 범위를 구분했습니다.
+- [x] fix commit은 기존 가정 → failure/risk → root cause → 수정 항상 유지해야 하는 조건 → 실제 코드 → regression evidence 순서로 연결했습니다.
+- [x] 항상 유지해야 하는 조건 ledger와 Failure → Fix → Test 표를 실제 코드 근거로 채웠습니다.
 - [x] 별도 프로젝트 재학습 없이 이 Thread의 설계 → 구현 → 실패/위험 → 수정/검증 흐름을 commit history에 근거해 설명할 수 있습니다.
 ===== END FILE: 02-input-grammar-coordinate-compression-and-size-safety.md =====
 
@@ -583,14 +583,14 @@ if ((size_t)capacity > (size_t)-1 / sizeof(int))
 
 ## 1. Thread 목표
 - **Source significance:** The thread separates bounded small-state optimization from the scalable general mechanism. Tiny sorting minimizes avoidable setup for at most five elements, while radix sorting supplies deterministic `Θ(n log n)` command behavior for larger inputs. The final integration commit is important operationally but does not duplicate the algorithmic significance of the radix decision.
-- **학습 목표:** 작은 입력의 bounded case analysis와 큰 입력의 stable LSD binary radix가 어떻게 분리되고, 최종 `push_swap` 실행 흐름에서 하나의 command-generation 경로로 연결되는지 복원합니다.
+- **학습 목표:** 작은 입력의 bounded case analysis와 큰 입력의 stable LSD binary radix가 어떻게 분리되고, 최종 `push_swap` 실행 순서에서 하나의 command-generation 경로로 연결되는지 복원합니다.
 
 ## 2. 이 Thread를 이해하기 위한 핵심 질문
-- 2~3개 입력의 각 unsorted rank pattern이 어떤 최소 command sequence로 매핑되는가?
-- 4~5개 입력에서 최소 rank를 B로 옮기는 순서와 짧은 회전 방향 선택은 어떻게 구현되는가?
-- radix pass에서 one-bit group과 zero-bit group의 상대 순서가 왜 보존되는가?
-- 각 bit round의 시작 A size를 고정해서 정확히 그 수만큼 검사하는 이유는 무엇인가?
-- `push_swap` main이 A/B ownership, sort invocation, command emission, cleanup을 어떤 순서로 조합하는가?
+- 2~3개 입력의 각 unsorted rank pattern이 어떤 최소 command sequence로 매핑됩니까?
+- 4~5개 입력에서 최소 rank를 B로 옮기는 순서와 짧은 회전 방향 선택은 어떻게 구현됩니까?
+- radix pass에서 one-bit group과 zero-bit group의 상대 순서가 왜 보존됩니까?
+- 각 bit round의 시작 A size를 고정해서 정확히 그 수만큼 검사하는 이유는 무엇입니까?
+- `push_swap` main이 A/B 소유권, sort invocation, command emission, cleanup을 어떤 순서로 조합하는가?
 
 ## 3. 완료 기준
 - 2~5개 입력의 대표 state를 실제 명령과 stack 변화로 손으로 추적했습니다.
@@ -608,7 +608,7 @@ if ((size_t)capacity > (size_t)-1 / sizeof(int))
 | 3 | `1463a193a4f9` | feat(sort): 큰 입력을 기수 정렬로 처리 | S | CORE, SORT, HARD | Introduces stable LSD binary radix sorting for the general case. |
 | 4 | `cf07495c97f7` | feat(push_swap): 정렬 명령 생성 흐름을 연결 | B | CORE, INTEGRATION | Integrates parsing, B allocation, sorting, emission, and cleanup into `push_swap`. |
 
-### Source에서 직접 연결된 invariant / engineering difficulty
+### Source에서 직접 연결된 항상 유지해야 하는 조건 / engineering difficulty
 - **Major engineering difficulties**
   - Designing a stable radix partition using only the permitted stack operations and proving that lower-bit order survives later passes.
 
@@ -635,7 +635,7 @@ if ((size_t)capacity > (size_t)-1 / sizeof(int))
 #### 학습자가 복원할 구현 기록 — B
 - **직전 관련 상태:** parser가 dense ranks를 만들고 11개 operation이 존재하지만, 정렬 command를 선택하는 함수는 없었습니다.
 - **이 commit의 구현 역할:** `caa54cb306ad:src/sort.c:sort_two`는 두 rank가 역순일 때 `sa` 한 번을 호출합니다. `sort_three`는 3개 rank의 다섯 unsorted permutation을 직접 분기해 모두 emitting wrapper로 바꿉니다.
-- **핵심 state transition 또는 boundary:** 세 rank를 `(top,middle,bottom)`으로 쓰면 `1 0 2 → sa`, `2 1 0 → sa,rra`, `2 0 1 → ra`, `0 2 1 → sa,ra`, `1 2 0 → rra`입니다. size 0/1 또는 이미 정렬이면 command가 없습니다.
+- **핵심 상태 전이 또는 boundary:** 세 rank를 `(top,middle,bottom)`으로 쓰면 `1 0 2 → sa`, `2 1 0 → sa,rra`, `2 0 1 → ra`, `0 2 1 → sa,ra`, `1 2 0 → rra`입니다. size 0/1 또는 이미 정렬이면 command가 없습니다.
 - **failure/no-op/edge:** 이 SHA의 sorter는 size가 3을 넘으면 아무 일반 알고리즘도 수행하지 않습니다. operation/output API도 아직 실패를 반환하지 않습니다.
 - **이후 연결:** `160d1fb8d824`가 4~5개를 3개 문제로 축소하고, Thread 4의 `5b7559278909`가 size 2~5의 모든 152개 permutation을 독립 replay합니다.
 - **Thread의 다음 관련 commit:** `160d1fb8d824`는 최소 rank를 어떤 회전 방향으로 top에 올리고 B에 쌓아 3개 정렬을 재사용하는가?
@@ -658,8 +658,8 @@ if ((size_t)capacity > (size_t)-1 / sizeof(int))
 #### 학습자가 복원할 구현 기록 — B
 - **직전 관련 상태:** 직접 case analysis는 최대 3개만 처리했습니다.
 - **이 commit의 구현 역할:** `160d1fb8d824:src/sort.c:find_rank_index`로 다음 최소 rank의 위치를 찾고, `move_index_to_top`이 `index <= size / 2`이면 `ra`를 index회, 아니면 `rra`를 `size-index`회 호출합니다. A가 3개가 될 때까지 target rank를 증가시키며 `pb`합니다.
-- **핵심 state transition 또는 boundary:** size 4는 rank 0 하나를 B로 보내고, size 5는 rank 0 뒤 rank 1을 B로 보냅니다. 두 번째 push 뒤 B top은 1, 그 아래는 0입니다. 남은 3개를 정렬한 뒤 `pa`를 반복하면 1이 먼저, 0이 나중에 top에 올라 최종 A의 prefix가 `0,1`이 됩니다.
-- **failure/no-op/edge:** target은 dense rank라 반드시 A에서 발견된다는 parser invariant를 사용합니다. 이 SHA에서도 operation failure를 표현하지 않습니다.
+- **핵심 상태 전이 또는 boundary:** size 4는 rank 0 하나를 B로 보내고, size 5는 rank 0 뒤 rank 1을 B로 보냅니다. 두 번째 push 뒤 B top은 1, 그 아래는 0입니다. 남은 3개를 정렬한 뒤 `pa`를 반복하면 1이 먼저, 0이 나중에 top에 올라 최종 A의 prefix가 `0,1`이 됩니다.
+- **failure/no-op/edge:** target은 dense rank라 반드시 A에서 발견된다는 parser 항상 유지해야 하는 조건을 사용합니다. 이 SHA에서도 operation failure를 표현하지 않습니다.
 - **이후 연결:** `1463a193a4f9`가 bounded case를 넘어서는 general mechanism을 추가하며, exhaustive tiny test가 이 축소 논리를 검증합니다.
 - **Thread의 다음 관련 commit:** `1463a193a4f9`는 각 bit round에서 zero/one group의 상대 순서를 어떤 두 stack operation 조합으로 안정적으로 유지하는가?
 
@@ -707,7 +707,7 @@ while (b->size > 0)
     op_pa(a, b, 1);
 ```
 
-- **state / invariant / ownership / lifecycle 변화:** 새로운 allocation이나 ownership은 없습니다. 한 pass에서 bit 1 원소는 A 내부 rotate 순서로 유지됩니다. bit 0 원소는 `pb`로 B에 들어갈 때 한 번 역순이 되고, B 전체를 `pa`할 때 다시 역순이 되어 원래 상대 순서를 회복합니다. pass 종료마다 B는 empty이고 A는 해당 bit까지 stable-sorted 상태입니다.
+- **state / 항상 유지해야 하는 조건 / 소유권 / lifecycle 변화:** 새로운 allocation이나 소유권은 없습니다. 한 pass에서 bit 1 원소는 A 내부 rotate 순서로 유지됩니다. bit 0 원소는 `pb`로 B에 들어갈 때 한 번 역순이 되고, B 전체를 `pa`할 때 다시 역순이 되어 원래 상대 순서를 회복합니다. pass 종료마다 B는 empty이고 A는 해당 bit까지 stable-sorted 상태입니다.
 - **failure scenario:** loop 조건을 현재 `a->size`로 두면 `pb` 때 size가 줄어 일부 시작 원소를 검사하지 못합니다. zero group을 한 번만 reverse하거나 B를 완전히 비우지 않으면 낮은 bit 정렬이 무너집니다. bit 수를 값의 32비트로 잡으면 불필요한 pass가 생기고, 너무 적게 잡으면 최대 rank를 구분하지 못합니다.
 - **이 commit이 보장하는 것:** 유효한 dense unique ranks와 정상 operation을 전제로 size>5에서 bit별 stable partition을 수행하고, 마지막에 B empty/A rank ascending 상태에 도달하는 algorithm을 제공합니다. command 수는 각 bit마다 A 검사 `n`회와 zero 복원 최대 `n`회이므로 `Θ(n log n)`입니다.
 - **아직 보장하지 않는 것:** 이 SHA 자체에는 독립 correctness, command budget, resource movement, I/O failure 증거가 없습니다. 배열 기반 `pb`/`pa`/rotate는 각 command 내부에서 `memmove`하므로 logical command complexity가 곧 CPU memory movement complexity는 아닙니다.
@@ -723,24 +723,24 @@ while (b->size > 0)
 #### 해당 SHA에서 확인할 코드
 - 먼저 `git show --name-only cf07495c97f7`로 이 commit이 실제로 건드린 파일을 확정합니다.
 - 아래 항목은 반드시 `cf07495c97f7` 시점의 파일에서 확인합니다. final HEAD의 같은 함수로 대체하지 않습니다.
-- `main`의 parse A → allocate B → `sort_stack` → free A/B 순서를 success path에서 추적합니다.
-- parse failure와 B allocation failure에서 canonical error, exit status, 이미 소유한 A cleanup을 확인합니다.
-- empty/already-sorted input도 동일한 stack lifetime cleanup을 거치는지 확인합니다.
+- `main`의 parse A → allocate B → `sort_stack` → free A/B 순서를 정상 처리에서 추적합니다.
+- parse failure와 B allocation failure에서 canonical error, 종료 상태, 이미 소유한 A cleanup을 확인합니다.
+- empty/already-sorted input도 동일한 stack 수명 cleanup을 거치는지 확인합니다.
 - common objects와 generator-specific control flow가 Makefile에서 어떻게 링크되는지 확인합니다.
 - 이 SHA의 output helper가 write failure를 아직 반환하지 않는다는 한계를 실제 API signature/caller에서 확인하고, 후속 `315f4b91779b`와 연결합니다.
 - 코드 인용을 남길 때는 `SHA:path:symbol` 형식으로 위치를 기록하고, 설명에 필요한 최소 구문만 삽입합니다.
 
 #### 학습자가 복원할 구현 기록 — B
-- **직전 관련 상태:** model, parser, operation, sorter는 개별 모듈로 존재하지만 generator executable의 top-level lifetime이 없었습니다.
+- **직전 관련 상태:** model, parser, operation, sorter는 개별 모듈로 존재하지만 generator executable의 top-level 수명이 없었습니다.
 - **이 commit의 구현 역할:** `cf07495c97f7:src/push_swap.c:main`이 A를 parse하고 A capacity와 같은 empty B를 할당한 뒤 `sort_stack(&a,&b)`을 호출하고 두 stack을 해제합니다. Makefile은 common objects와 generator main을 `push_swap`으로 링크합니다.
-- **핵심 state transition 또는 boundary:** parse 실패는 아직 stack ownership이 caller에 확정되지 않은 오류이고, B allocation 실패는 이미 소유한 A를 해제한 뒤 `Error\n`과 status 1로 종료합니다. 정상·empty·already-sorted 모두 최종적으로 A/B를 free합니다.
+- **핵심 상태 전이 또는 boundary:** parse 실패는 아직 stack 소유권이 caller에 확정되지 않은 오류이고, B allocation 실패는 이미 소유한 A를 해제한 뒤 `Error\n`과 status 1로 종료합니다. 정상·empty·already-sorted 모두 최종적으로 A/B를 free합니다.
 - **failure/no-op/edge:** 이 SHA의 `sort_stack`과 `ps_putstr_fd`는 `void`입니다. 따라서 private stack이 정렬됐더라도 stdout write가 실패한 사실을 main이 알 수 없고 status 0을 반환할 수 있습니다.
 - **이후 연결:** Thread 4가 executable output의 correctness/cost를 검증하고, `315f4b91779b`가 output failure를 operation→sorter→main 끝까지 전파합니다.
 - **Thread 내 다음 commit:** 없음. Thread 최종 상태에서 이 commit의 남은 역할을 정리합니다.
 
-## 6. Invariant ledger
+## 6. 항상 유지해야 하는 조건 ledger
 
-| Invariant / contract | 처음 도입 | 강화 | 부족함이 드러난 지점 | fix | regression / evidence | 학습자 확인 메모 |
+| 항상 유지해야 하는 조건 / contract | 처음 도입 | 강화 | 부족함이 드러난 지점 | fix | regression / evidence | 학습자 확인 메모 |
 | --- | --- | --- | --- | --- | --- | --- |
 | tiny sort 후 A 정렬 / B 최종 비움 | caa54cb306ad | 160d1fb8d824 | - | - | Thread 4의 5b7559278909에서 exhaustive small-state 검증 | 2~3개는 direct cases, 4~5개는 successive minima를 B에 격리한 뒤 3개 정렬과 역순 `pa` 복원으로 완료됩니다. |
 | radix pass의 stable partition | 1463a193a4f9 | - | - | - | 5b7559278909 및 후속 deterministic sort tests | one group은 `ra` 순서를 유지하고 zero group은 `pb`/전체 `pa`의 두 번 reverse로 순서를 회복합니다. |
@@ -754,7 +754,7 @@ while (b->size > 0)
 | zero-bit group의 상대 순서가 깨져 lower-bit ordering 손실 | push-to-B 후 전체 `pa`로 두 번 reverse되는 stable partition | - | 5b7559278909 | `pb`만 보면 zero group이 역순이지만, 모두 `pa`하면 두 번째 reverse로 원순서가 복원됩니다. |
 | B allocation 또는 parse 실패 | cf07495c97f7의 main cleanup flow | - | 후속 fault-injection Thread 6 | parse 실패는 error 종료, B 실패는 이미 소유한 A를 먼저 free합니다. Nth-allocation sweep이 후속 검증합니다. |
 
-## 8. Ownership / state / responsibility 변화
+## 8. 소유권 / state / responsibility 변화
 
 | 대상 | 이 Thread 시작 시 | 변화 commit | 이 Thread 종료 시 | 실제 코드 근거 |
 | --- | --- | --- | --- | --- |
@@ -767,7 +767,7 @@ while (b->size > 0)
 - **Source 기준 최종 상태:** ranked A가 size에 따라 direct tiny 또는 stable LSD radix 경로로 들어갑니다. tiny는 최대 두 최소 rank를 B에 격리해 3개 정렬을 재사용하고, radix는 bit마다 시작 A size를 고정해 `ra`/`pb`로 stable partition한 뒤 B를 모두 `pa`합니다. `push_swap` main은 A/B를 소유하고 sorter가 emitting wrappers로 명령을 생성한 뒤 두 stack을 정리합니다.
 - **남아 있는 한계 / 다른 Thread로 넘어가는 책임:** `cf07495c97f7` 시점에는 write 결과가 무시되어 완전한 external stream 전달을 성공 조건으로 삼지 못합니다. correctness independence, deterministic cost, memory movement, sanitizer는 Thread 4, write failure는 Thread 6이 담당합니다. 이 환경에서는 tests를 실행하지 않았으며 해당 SHA의 코드와 test 설계만 확인했습니다.
 
-## 10. 최종 architecture 또는 execution flow 정리
+## 10. 최종 architecture 또는 실행 순서 정리
 - Source-derived flow anchor: `ranked A → size 기반 tiny/radix 선택 → shared operations로 state mutation + emission → B empty / A sorted → main cleanup`
 - **학습자 최종 flow:** `e09cf45e21cd`가 만든 dense-ranked A → `1463a193a4f9:sort_stack`이 size<=5면 `sort_tiny`, 그 이상이면 `radix_sort` 선택 → sorter가 `op_*`를 `emit=1`로 호출해 A/B state와 stdout stream을 함께 진행 → tiny 복원 또는 각 radix pass 종료에서 B를 비우고 최종 A를 정렬 → `cf07495c97f7:main`이 A/B를 해제합니다.
 - **실제 코드 삽입:** general decision은 위 `round_size` 고정, top bit에 따른 `ra`/`pb`, B 전체 `pa` 구문입니다. 이는 현재 size가 줄어도 round 시작 원소를 정확히 한 번씩 처리하고 zero group을 두 번 reverse합니다.
@@ -777,11 +777,11 @@ while (b->size > 0)
 - [x] 모든 commit에서 지정된 SHA의 코드를 직접 확인했습니다.
 - [x] final HEAD를 과거 commit 설명에 소급 사용하지 않았습니다.
 - [x] Source-confirmed fact와 직접 코드 확인 결과를 구분했습니다.
-- [x] S/A commit은 decision, invariant, ownership/failure, 후속 evidence까지 추적했습니다.
+- [x] S/A commit은 decision, 항상 유지해야 하는 조건, 소유권/failure, 후속 evidence까지 추적했습니다.
 - [x] B commit은 Thread 흐름에서 맡는 구현 역할과 필요한 state/boundary만 충분히 확인했습니다.
-- [x] test commit마다 production invariant, failure/boundary, technique, production path, 증명/비증명 범위를 구분했습니다.
-- [x] fix commit은 기존 가정 → failure/risk → root cause → 수정 invariant → 실제 코드 → regression evidence 순서로 연결했습니다.
-- [x] Invariant ledger와 Failure → Fix → Test 표를 실제 코드 근거로 채웠습니다.
+- [x] test commit마다 production 항상 유지해야 하는 조건, failure/boundary, technique, production path, 증명/비증명 범위를 구분했습니다.
+- [x] fix commit은 기존 가정 → failure/risk → root cause → 수정 항상 유지해야 하는 조건 → 실제 코드 → regression evidence 순서로 연결했습니다.
+- [x] 항상 유지해야 하는 조건 ledger와 Failure → Fix → Test 표를 실제 코드 근거로 채웠습니다.
 - [x] 별도 프로젝트 재학습 없이 이 Thread의 설계 → 구현 → 실패/위험 → 수정/검증 흐름을 commit history에 근거해 설명할 수 있습니다.
 ===== END FILE: 03-building-the-sorting-engine.md =====
 
@@ -795,10 +795,10 @@ while (b->size > 0)
 ## 2. 이 Thread를 이해하기 위한 핵심 질문
 - Python replay model은 C product code와 무엇을 공유하지 않아 독립 oracle이 되는가?
 - tiny exhaustive permutations와 larger fixed cases가 각각 어떤 영역을 커버하는가?
-- command budget이 wall-clock time 대신 사용되는 이유와 검증 순서는 무엇인가?
+- command budget이 wall-clock time 대신 사용되는 이유와 검증 순서는 무엇입니까?
 - specified PRNG/permutation generator가 reproducibility와 stream determinism을 어떻게 고정하는가?
 - 6569949742eb의 command/movement/peak-allocation metric이 서로 다른 어떤 비용을 나타내는가?
-- ASan/UBSan 경로가 fault/resource suite를 대체하지 않는 이유는 무엇인가?
+- ASan/UBSan 경로가 fault/resource suite를 대체하지 않는 이유는 무엇입니까?
 
 ## 3. 완료 기준
 - 독립 Python interpreter의 11개 command semantics와 final predicate를 production C와 나란히 비교했습니다.
@@ -817,8 +817,8 @@ while (b->size > 0)
 | 4 | `6569949742eb` | test(resource): 명령과 배열 이동 및 할당량을 기준화 | A | TEST, RESOURCE, PERF | Separately baselines emitted commands, logical pair movements, peak project allocation, and final cleanup. |
 | 5 | `5505adf3e469` | build(sanitize): C99 sanitizer 검증 경로를 추가 | B | TEST, RUNTIME, PRACTICAL | Runs the operation and functional suites against isolated ASan/UBSan builds. |
 
-### Source에서 직접 연결된 invariant / engineering difficulty
-- **Critical invariants**
+### Source에서 직접 연결된 항상 유지해야 하는 조건 / engineering difficulty
+- **Critical 항상 유지해야 하는 조건**
   - Resource metrics count only successfully emitted commands and remain reproducible for the fixed deterministic fixtures.
 - **Major engineering difficulties**
   - Sharing operation semantics between generator and checker without allowing that sharing to become the sole correctness oracle.
@@ -851,19 +851,19 @@ while (b->size > 0)
 - 코드 인용을 남길 때는 `SHA:path:symbol` 형식으로 위치를 기록하고, 설명에 필요한 최소 구문만 삽입합니다.
 
 #### Test commit 학습 기록
-- **대상 production invariant:** `push_swap`이 출력한 각 줄은 11개 합법 command 중 하나이고, 독립 replay 후 A가 Python의 numeric sort 결과와 같고 B가 비어 있어야 합니다. 같은 stream을 product checker도 `OK`로 판정해야 합니다.
+- **대상 production 항상 유지해야 하는 조건:** `push_swap`이 출력한 각 줄은 11개 합법 command 중 하나이고, 독립 replay 후 A가 Python의 numeric sort 결과와 같고 B가 비어 있어야 합니다. 같은 stream을 product checker도 `OK`로 판정해야 합니다.
 - **재현하는 failure/boundary:** integer extremes를 포함한 fixed cases, already-sorted five-element zero-command case, radix 경로의 size 6/10, size 2~5의 모든 permutation 152개를 사용합니다.
 - **test technique:** independent Python list replay + exhaustive small-state enumeration + product checker CLI integration입니다.
 - **통과하는 production path:** test subprocess가 `push_swap` 실행 → stdout command split/validation → Python `apply_moves` → final A/B assertion → 같은 stream을 checker stdin으로 전달합니다.
 - **이 테스트가 증명하는 것:** 나열한 모든 input에서 emitted vocabulary, independent final state, B-empty, product checker integration을 함께 확인합니다. tiny sorter의 전체 입력 상태 공간을 size 5까지 exhaust합니다.
-- **이 테스트가 증명하지 않는 것:** size 6 이상 전체 상태, 최적 command 수, allocation/read/write failure, undefined behavior 부재는 증명하지 않습니다. Python 구현 자체의 결함 가능성도 0은 아니지만 C shared-operation common-mode risk는 크게 줄입니다.
+- **이 테스트가 증명하지 않는 것:** size 6 이상 전체 상태, 최적 command 수, allocation/read/write failure, 정의되지 않은 동작 부재는 증명하지 않습니다. Python 구현 자체의 결함 가능성도 0은 아니지만 C shared-operation common-mode risk는 크게 줄입니다.
 - **성격:** exhaustive small-state evidence와 broad dual-oracle integration evidence를 결합한 regression입니다.
 - **막는 후속 회귀:** generator와 checker가 같은 잘못된 rotate/push를 공유해도 Python final state가 실패하며, tiny branch 누락·unknown command·sorted input 불필요 출력도 잡습니다.
 
 #### 학습자가 복원할 핵심 기록 — A
 - **직전 관련 상태와 문제:** parser/sorter/checker와 operation tests는 있었지만 generator와 checker가 같은 C operation semantics를 공유해 공통 결함을 함께 수용할 수 있었습니다.
 - **주요 boundary/decision:** product C와 자료구조를 공유하지 않는 Python list A/B model을 새 oracle로 두고, product checker는 별도 integration oracle로 유지했습니다.
-- **state / ownership / failure 변화:** production code에는 변화가 없습니다. test harness가 command list를 소유하고 unknown line을 즉시 실패시키며 두 oracle에 순차 전달합니다.
+- **state / 소유권 / failure 변화:** production code에는 변화가 없습니다. test harness가 command list를 소유하고 unknown line을 즉시 실패시키며 두 oracle에 순차 전달합니다.
 - **보장 / 비보장:** tiny 전체 permutation과 selected radix cases의 functional correctness를 강하게 증명하지만, 일반 크기의 완전성·performance·resource·runtime fault는 남습니다.
 - **후속 검증 또는 수정 연결:** `a16dde75d935`가 큰 입력의 command ceiling, `23198a9cdd55`가 specified fixture와 stream determinism, `6569949742eb`가 movement/allocation, `5505adf3e469`가 sanitizer evidence를 추가합니다.
 - **Thread의 다음 관련 commit:** `a16dde75d935`는 correctness를 먼저 확인한 뒤 command count를 평가함으로써 빠르지만 잘못된 stream을 어떻게 배제하는가?
@@ -884,7 +884,7 @@ while (b->size > 0)
 - 코드 인용을 남길 때는 `SHA:path:symbol` 형식으로 위치를 기록하고, 설명에 필요한 최소 구문만 삽입합니다.
 
 #### Test commit 학습 기록
-- **대상 production invariant:** 100/500 unique input에서 stream이 먼저 정확히 정렬되고, 그 뒤 command line 수가 각각 설정된 ceiling 이하이어야 합니다.
+- **대상 production 항상 유지해야 하는 조건:** 100/500 unique input에서 stream이 먼저 정확히 정렬되고, 그 뒤 명령줄 수가 각각 설정된 ceiling 이하이어야 합니다.
 - **재현하는 failure/boundary:** Python `random.seed(4242)`와 unique sample로 크기 100, 500 fixture를 고정합니다.
 - **test technique:** deterministic large-case command-budget regression이며 correctness helper를 선행합니다.
 - **통과하는 production path:** fixture 생성 → `assert_sorted_by_program`의 independent replay/checker → stdout line count → ceiling 비교입니다.
@@ -896,7 +896,7 @@ while (b->size > 0)
 #### 학습자가 복원할 구현 기록 — B
 - **직전 관련 상태:** correctness evidence는 있었지만 large input command growth를 수치로 제한하지 않았습니다.
 - **이 commit의 구현 역할:** fixed-seed 100/500 fixture와 1500/8000 command ceiling을 추가합니다.
-- **핵심 state transition 또는 boundary:** budget assertion 전에 independent correctness가 완료되므로 잘못된 짧은 stream은 performance 성공으로 계산되지 않습니다.
+- **핵심 상태 전이 또는 boundary:** budget assertion 전에 independent correctness가 완료되므로 잘못된 짧은 stream은 performance 성공으로 계산되지 않습니다.
 - **failure/no-op/edge:** elapsed wall-clock은 pass/fail에 쓰지 않습니다. 이 SHA의 fixture reproducibility는 Python `random` 구현에 기대며 generator specification 자체는 아직 문서화되지 않았습니다.
 - **이후 연결:** `23198a9cdd55`가 명시적 32-bit PRNG/Fisher–Yates로 fixture 생성 규칙을 고정하고 seed를 늘립니다.
 - **Thread의 다음 관련 commit:** `23198a9cdd55`는 Python ambient randomness 대신 어떤 명시적 상태 전이와 permutation 규칙을 사용하며 동일 input의 stream equality를 어떻게 확인하는가?
@@ -918,7 +918,7 @@ while (b->size > 0)
 - 코드 인용을 남길 때는 `SHA:path:symbol` 형식으로 위치를 기록하고, 설명에 필요한 최소 구문만 삽입합니다.
 
 #### Test commit 학습 기록
-- **대상 production invariant:** 동일한 입력은 동일한 command list를 생성하며, 여러 seed/size에서 독립 replay correctness와 budget을 유지해야 합니다.
+- **대상 production 항상 유지해야 하는 조건:** 동일한 입력은 동일한 command list를 생성하며, 여러 seed/size에서 독립 replay correctness와 budget을 유지해야 합니다.
 - **재현하는 failure/boundary:** seed 1, 7, 97, 4242, 9001과 size 2,3,5,6,17,64로 tiny/radix 경계를 가로지릅니다. budget은 size 100/500에 seed 7,4242,9001을 사용합니다.
 - **test technique:** specified deterministic fixture generation, repeated-run stream equality, multi-seed CLI regression입니다.
 - **통과하는 production path:** 32-bit LCG → Fisher–Yates permutation → `value * 37 - size * 23` unique signed values → generator 두 번 실행 → command list equality와 independent replay/checker입니다.
@@ -928,7 +928,7 @@ while (b->size > 0)
 - **막는 후속 회귀:** uninitialized state나 ambient random에 의한 command variation, 특정 seed/boundary size에만 나타나는 sorter 오류를 막습니다.
 
 #### 학습자가 복원할 구현 기록 — B
-- **직전 관련 상태:** fixed seed는 있었지만 fixture algorithm이 Python library behavior에 기대고 같은 input의 stream equality도 직접 검사하지 않았습니다.
+- **직전 관련 상태:** fixed seed는 있었지만 fixture algorithm이 Python library 동작에 기대고 같은 input의 stream equality도 직접 검사하지 않았습니다.
 - **이 commit의 구현 역할:** `tests/run_tests.py:deterministic_values`에 다음 명시적 update를 두고 executable path도 environment override로 바꿉니다.
 
 ```python
@@ -936,7 +936,7 @@ while (b->size > 0)
 state = (1664525 * state + 1013904223) & 0xFFFFFFFF
 ```
 
-- **핵심 state transition 또는 boundary:** Fisher–Yates가 `0..size-1` permutation을 만들고 affine mapping이 uniqueness를 유지한 signed values를 만듭니다. 같은 argv를 두 번 실행해 parsed command list 자체를 비교합니다.
+- **핵심 상태 전이 또는 boundary:** Fisher–Yates가 `0..size-1` permutation을 만들고 affine mapping이 uniqueness를 유지한 signed values를 만듭니다. 같은 argv를 두 번 실행해 parsed command list 자체를 비교합니다.
 - **failure/no-op/edge:** size 5/6이 tiny/radix dispatch 경계입니다. path override는 후속 sanitizer binaries에 같은 functional suite를 재사용할 기반이 됩니다.
 - **이후 연결:** `6569949742eb`이 동일 deterministic cases를 resource baseline으로 확장하고, `5505adf3e469`가 path override로 sanitizer 실행 파일을 사용합니다.
 - **Thread의 다음 관련 commit:** `6569949742eb`은 emitted command 수와 array pair movement 및 peak requested bytes를 어떤 서로 다른 hook에서 기록하는가?
@@ -944,8 +944,8 @@ state = (1664525 * state + 1013904223) & 0xFFFFFFFF
 ### `6569949742eb` — test(resource): 명령과 배열 이동 및 할당량을 기준화
 - **Importance:** A
 - **Tags:** TEST, RESOURCE, PERF
-- **Source-confirmed role:** Separately baselines emitted commands, logical pair movements, peak project allocation, and final cleanup.
-- **Classification summary:** Instruments successful commands, logical pair movements, peak project allocation, and deterministic resource baselines.
+- **Source-confirmed role:** Separately 기준 상태 emitted commands, logical pair movements, peak project allocation, and final cleanup.
+- **Classification summary:** Instruments successful commands, logical pair movements, peak project allocation, and deterministic resource 기준 상태.
 
 #### 해당 SHA에서 확인할 코드
 - 먼저 `git show --name-only 6569949742eb`로 이 commit이 실제로 건드린 파일을 확정합니다.
@@ -953,25 +953,25 @@ state = (1664525 * state + 1013904223) & 0xFFFFFFFF
 - fault build에서 command count가 text emission 성공 뒤에만 증가하는 hook 위치를 확인합니다.
 - array operation에서 logical value-rank pair movement/rewrite를 세는 instrumentation 지점을 확인합니다.
 - current/peak requested allocation bytes가 instrumentation header를 제외해 계산되는지 확인합니다.
-- versioned JSON baseline의 10/100/500 × 3 seed case, exact command count, movement/peak upper bound를 확인합니다.
-- zero live allocations와 recorded operation count == emitted command line count 검증을 확인합니다.
+- versioned JSON 기준 상태의 10/100/500 × 3 seed case, exact command count, movement/peak upper bound를 확인합니다.
+- zero live allocations와 recorded operation count == emitted 명령줄 count 검증을 확인합니다.
 - normal build에서 instrumentation hooks가 no-op으로 컴파일되는 경계를 확인합니다.
 - 코드 인용을 남길 때는 `SHA:path:symbol` 형식으로 위치를 기록하고, 설명에 필요한 최소 구문만 삽입합니다.
 
 #### Test commit 학습 기록
-- **대상 production invariant:** counter는 성공적으로 출력된 command만 세고, fixed fixture의 command 수는 exact baseline과 같으며, pair movement·peak requested bytes는 upper bound 이내이고 종료 시 live allocation은 0이어야 합니다.
+- **대상 production 항상 유지해야 하는 조건:** counter는 성공적으로 출력된 command만 세고, fixed fixture의 command 수는 exact 기준 상태와 같으며, pair movement·peak requested bytes는 upper bound 이내이고 종료 시 live allocation은 0이어야 합니다.
 - **재현하는 failure/boundary:** versioned JSON에 size 10/100/500 × seed 7/4242/9001을 고정합니다. exact command 수는 각각 65/1084/6784이며 movement 상한은 650/105000/3200000, peak bytes 상한은 160/1600/8000입니다.
-- **test technique:** compile-time instrumentation + deterministic resource baseline + subprocess report parsing입니다.
-- **통과하는 production path:** fault-build generator → successful `ps_putstr_fd` 뒤 `ps_record_operation` → operation primitive의 `ps_record_movements` → `ps_malloc` current/peak tracking → exit `ps_test_finish` report → Python baseline comparison입니다.
+- **test technique:** compile-time instrumentation + deterministic resource 기준 상태 + subprocess report parsing입니다.
+- **통과하는 production path:** fault-build generator → successful `ps_putstr_fd` 뒤 `ps_record_operation` → operation primitive의 `ps_record_movements` → `ps_malloc` current/peak tracking → exit `ps_test_finish` report → Python 기준 상태 comparison입니다.
 - **이 테스트가 증명하는 것:** selected fixtures에서 emitted line 수와 recorded operation 수가 같고 exact command determinism, movement/peak ceiling, zero live allocation을 확인합니다.
-- **이 테스트가 증명하지 않는 것:** libc 내부 allocation, actual bytes copied by libc, CPU time, 모든 input worst case, normal build binary의 instrumentation 없는 runtime behavior를 직접 측정하지 않습니다.
+- **이 테스트가 증명하지 않는 것:** libc 내부 allocation, actual bytes copied by libc, CPU time, 모든 input worst case, normal build binary의 instrumentation 없는 runtime 동작을 직접 측정하지 않습니다.
 - **성격:** deterministic resource/performance regression입니다.
-- **막는 후속 회귀:** command counter가 실패 전 증가하는 변경, array movement 급증, project allocation peak 증가, cleanup 누락, fixture stream 변화가 baseline을 깨뜨립니다.
+- **막는 후속 회귀:** command counter가 실패 전 증가하는 변경, array movement 급증, project allocation peak 증가, cleanup 누락, fixture stream 변화가 기준 상태를 깨뜨립니다.
 
 #### 학습자가 복원할 핵심 기록 — A
-- **직전 관련 상태와 문제:** command line 수만으로는 array-backed operation의 `memmove` 비용과 memory peak가 보이지 않았습니다.
+- **직전 관련 상태와 문제:** 명령줄 수만으로는 array-backed operation의 `memmove` 비용과 memory peak가 보이지 않았습니다.
 - **주요 boundary/decision:** logical command, logical value-rank pair rewrite, project-requested allocation bytes를 서로 다른 metric으로 분리하고 fault build에만 hook을 활성화했습니다.
-- **state / ownership / failure 변화:** normal build에서는 hook macro가 no-op이라 production semantics를 바꾸지 않습니다. fault build allocator header가 requested size를 보관하되 peak 계산에서는 header를 제외하고 caller가 요청한 bytes만 사용합니다.
+- **state / 소유권 / failure 변화:** normal build에서는 hook macro가 no-op이라 production semantics를 바꾸지 않습니다. fault build allocator header가 requested size를 보관하되 peak 계산에서는 header를 제외하고 caller가 요청한 bytes만 사용합니다.
 - **보장 / 비보장:** fixed cases에서 재현 가능한 relative cost를 제공합니다. movement metric은 실제 CPU/cache cost가 아니라 구현이 정의한 pair 이동/재작성 횟수입니다.
 - **후속 검증 또는 수정 연결:** `5505adf3e469`의 sanitizer는 invalid memory/UB를 다루지만 baseline cost나 deterministic fault cleanup을 대체하지 않습니다. Thread 6의 I/O fault tests는 write 실패에서 counter와 cleanup 의미를 보강합니다.
 - **Thread의 다음 관련 commit:** `5505adf3e469`는 normal/fault objects와 섞이지 않는 별도 object tree에서 어떤 executable/test를 ASan/UBSan으로 재실행하는가?
@@ -987,22 +987,22 @@ state = (1664525 * state + 1013904223) & 0xFFFFFFFF
 - 아래 항목은 반드시 `5505adf3e469` 시점의 파일에서 확인합니다. final HEAD의 같은 함수로 대체하지 않습니다.
 - Makefile의 sanitizer 전용 object directory와 normal object reuse 방지 구조를 확인합니다.
 - ASan/UBSan compile/link flags, debug info, optimization, frame-pointer 설정을 확인합니다.
-- 두 executable과 C operation-invariant test가 sanitizer target에 포함되는지 확인합니다.
+- 두 executable과 C operation-항상 유지해야 하는 조건 test가 sanitizer target에 포함되는지 확인합니다.
 - configurable executable paths로 full Python functional suite를 sanitizer binaries에 재사용하는 흐름을 확인합니다.
 - fault/resource suites와 sanitizer가 서로 다른 defect class를 다룬다는 실행 경계를 확인합니다.
 - 코드 인용을 남길 때는 `SHA:path:symbol` 형식으로 위치를 기록하고, 설명에 필요한 최소 구문만 삽입합니다.
 
 #### 학습자가 복원할 구현 기록 — B
 - **직전 관련 상태:** functional, deterministic, resource evidence는 있었지만 ASan/UBSan instrumented object를 분리해 build/run하는 경로가 없었습니다.
-- **이 commit의 구현 역할:** Makefile이 `.build/sanitize` 전용 object tree와 `-O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined` compile/link flags를 사용해 sanitized `push_swap`, `checker`, operation invariant test를 만듭니다.
-- **핵심 state transition 또는 boundary:** sanitizer target은 operation C test를 실행하고, `PS_PUSH_SWAP`/`PS_CHECKER` environment override로 full Python functional suite를 sanitized executables에 재사용합니다. normal object와 섞이지 않습니다.
-- **failure/no-op/edge:** sanitizer target은 fault-injection 및 resource suite를 대신 실행하지 않습니다. ASan/UBSan은 invalid access/UB 관찰이고 deterministic injected failure·metric baseline은 별도 build의 책임입니다.
+- **이 commit의 구현 역할:** Makefile이 `.build/sanitize` 전용 object tree와 `-O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined` compile/link flags를 사용해 sanitized `push_swap`, `checker`, operation 항상 유지해야 하는 조건 test를 만듭니다.
+- **핵심 상태 전이 또는 boundary:** sanitizer target은 operation C test를 실행하고, `PS_PUSH_SWAP`/`PS_CHECKER` environment override로 full Python functional suite를 sanitized executables에 재사용합니다. normal object와 섞이지 않습니다.
+- **failure/no-op/edge:** sanitizer target은 fault-injection 및 resource suite를 대신 실행하지 않습니다. ASan/UBSan은 invalid access/UB 관찰이고 deterministic injected failure·metric 기준 상태는 별도 build의 책임입니다.
 - **이후 연결:** 이 Thread의 최종 evidence stack은 independent replay, deterministic budgets/resources, sanitizer가 서로 다른 결함 종류를 담당하는 형태입니다.
 - **Thread 내 다음 commit:** 없음. Thread 최종 상태에서 이 commit의 남은 역할을 정리합니다.
 
-## 6. Invariant ledger
+## 6. 항상 유지해야 하는 조건 ledger
 
-| Invariant / contract | 처음 도입 | 강화 | 부족함이 드러난 지점 | fix | regression / evidence | 학습자 확인 메모 |
+| 항상 유지해야 하는 조건 / contract | 처음 도입 | 강화 | 부족함이 드러난 지점 | fix | regression / evidence | 학습자 확인 메모 |
 | --- | --- | --- | --- | --- | --- | --- |
 | product checker가 유일한 correctness oracle이 아님 | 5b7559278909 | 23198a9cdd55에서 deterministic repetition 강화 | - | - | Python replay + product checker의 dual evidence | Python list model이 11개 semantics와 final predicate를 독립 구현하고 checker는 integration oracle로 병행됩니다. |
 | fixed fixtures에서 resource metrics reproducible | 6569949742eb | - | - | - | versioned JSON baseline | specified generator와 JSON의 exact command/upper bounds를 사용하며 operation count는 emitted line 수와 비교됩니다. |
@@ -1016,7 +1016,7 @@ state = (1664525 * state + 1013904223) & 0xFFFFFFFF
 | ambient randomness로 fixture/stream 비교가 불안정 | 23198a9cdd55의 specified generator | - | 반복 실행 command-list equality | 32-bit LCG와 Fisher–Yates를 test code에 직접 규정하고 같은 argv를 두 번 실행해 stream을 비교합니다. |
 | command count만 보면 array movement/memory trade-off가 숨음 | 6569949742eb의 분리 instrumentation | - | versioned resource baseline | output success 뒤 command counter, primitive별 pair movement, allocator requested bytes를 별도 metric으로 둡니다. |
 
-## 8. Ownership / state / responsibility 변화
+## 8. 소유권 / state / responsibility 변화
 
 | 대상 | 이 Thread 시작 시 | 변화 commit | 이 Thread 종료 시 | 실제 코드 근거 |
 | --- | --- | --- | --- | --- |
@@ -1028,9 +1028,9 @@ state = (1664525 * state + 1013904223) & 0xFFFFFFFF
 
 ## 9. Thread 최종 상태
 - **Source 기준 최종 상태:** emitted stream은 Python list model과 product checker 두 경로로 검증되고, tiny size 2~5는 152개 permutation을 exhaust합니다. specified LCG/Fisher–Yates fixture는 repeated command equality와 multi-seed budget을 고정합니다. fault build는 성공 command, pair movement, project allocation peak, final live count를 versioned JSON과 비교하며, 별도 sanitizer object tree가 operation/functional suite를 ASan/UBSan binaries로 재실행하도록 구성됩니다.
-- **남아 있는 한계 / 다른 Thread로 넘어가는 책임:** 각 layer의 증명 범위는 교환 불가능합니다. sanitizer는 deterministic fault injection이나 resource ceiling을 대체하지 않고, selected deterministic cases는 모든 input의 worst case를 증명하지 않습니다. 이 환경에서는 GitHub source checkout이 불가능해 targets를 실제 실행하지 않았으므로 문서의 결과 설명은 test 코드의 assertion/expected baseline을 정적으로 확인한 것이며 새 runtime evidence가 아닙니다.
+- **남아 있는 한계 / 다른 Thread로 넘어가는 책임:** 각 layer의 증명 범위는 교환 불가능합니다. sanitizer는 deterministic fault injection이나 resource ceiling을 대체하지 않고, selected deterministic cases는 모든 input의 worst case를 증명하지 않습니다. 이 환경에서는 GitHub source checkout이 불가능해 targets를 실제 실행하지 않았으므로 문서의 결과 설명은 test 코드의 assertion/expected 기준 상태를 정적으로 확인한 것이며 새 runtime evidence가 아닙니다.
 
-## 10. 최종 architecture 또는 execution flow 정리
+## 10. 최종 architecture 또는 실행 순서 정리
 - Source-derived flow anchor: `emitted stream → independent Python replay + checker → deterministic fixture repetition → command/resource baseline → ASan/UBSan functional replay`
 - **학습자 최종 flow:** `5b7559278909:run_tests.py`가 generator stream을 legal command로 제한하고 Python A/B에 replay한 뒤 checker에도 전달합니다 → `23198a9cdd55:deterministic_values`가 fixture와 두 번의 stream equality를 고정합니다 → `6569949742eb` fault build가 output-success command, primitive movement, requested allocation metrics를 report하고 JSON과 비교합니다 → `5505adf3e469:Makefile` sanitizer target이 별도 binaries로 C operation test와 같은 Python functional suite를 실행하도록 연결합니다.
 - **실제 코드 삽입:** 독립성의 핵심은 Python list operation이고, 재현성의 핵심은 `state = (1664525 * state + 1013904223) & 0xFFFFFFFF`입니다. resource 측정은 command 출력 성공 뒤에만 operation counter를 증가시키는 hook 배치로 external stream과 metric을 일치시킵니다.
@@ -1040,11 +1040,11 @@ state = (1664525 * state + 1013904223) & 0xFFFFFFFF
 - [x] 모든 commit에서 지정된 SHA의 코드를 직접 확인했습니다.
 - [x] final HEAD를 과거 commit 설명에 소급 사용하지 않았습니다.
 - [x] Source-confirmed fact와 직접 코드 확인 결과를 구분했습니다.
-- [x] S/A commit은 decision, invariant, ownership/failure, 후속 evidence까지 추적했습니다.
+- [x] S/A commit은 decision, 항상 유지해야 하는 조건, 소유권/failure, 후속 evidence까지 추적했습니다.
 - [x] B commit은 Thread 흐름에서 맡는 구현 역할과 필요한 state/boundary만 충분히 확인했습니다.
-- [x] test commit마다 production invariant, failure/boundary, technique, production path, 증명/비증명 범위를 구분했습니다.
-- [x] fix commit은 기존 가정 → failure/risk → root cause → 수정 invariant → 실제 코드 → regression evidence 순서로 연결했습니다.
-- [x] Invariant ledger와 Failure → Fix → Test 표를 실제 코드 근거로 채웠습니다.
+- [x] test commit마다 production 항상 유지해야 하는 조건, failure/boundary, technique, production path, 증명/비증명 범위를 구분했습니다.
+- [x] fix commit은 기존 가정 → failure/risk → root cause → 수정 항상 유지해야 하는 조건 → 실제 코드 → regression evidence 순서로 연결했습니다.
+- [x] 항상 유지해야 하는 조건 ledger와 Failure → Fix → Test 표를 실제 코드 근거로 채웠습니다.
 - [x] 별도 프로젝트 재학습 없이 이 Thread의 설계 → 구현 → 실패/위험 → 수정/검증 흐름을 commit history에 근거해 설명할 수 있습니다.
 ===== END FILE: 04-independent-correctness-and-cost-evidence.md =====
 
@@ -1056,11 +1056,11 @@ state = (1664525 * state + 1013904223) & 0xFFFFFFFF
 - **학습 목표:** checker가 command stream을 읽고 silent replay한 뒤 `OK`/`KO`를 판정하는 lifecycle을 복원하고, 초기 general line reader가 protocol-specific bounded reader로 교정되는 실패→수정→검증 과정을 추적합니다.
 
 ## 2. 이 Thread를 이해하기 위한 핵심 질문
-- 초기 reader의 tri-state `1/0/-1` 계약과 frame ownership은 어떻게 구현되는가?
+- 초기 reader의 tri-state `1/0/-1` 계약과 frame 소유권은 어떻게 구현됩니까?
 - command dispatch가 exact string match와 `emit = 0`을 통해 shared operations를 어떻게 재사용하는가?
 - `OK`, `KO`, malformed stream error의 process/output semantics는 어떻게 다른가?
 - 왜 arbitrarily long line reader가 최대 3-byte command protocol에는 과도한 추상화였는가?
-- `EINTR`, permanent read failure, NUL, overlength, EOF-delimited final frame이 reader에서 어떻게 구분되는가?
+- `EINTR`, permanent read failure, NUL, overlength, EOF-delimited final frame이 reader에서 어떻게 구분됩니까?
 
 ## 3. 완료 기준
 - reader → dispatch → state mutation → verdict의 실제 caller/callee 경로를 해당 SHA에서 추적했습니다.
@@ -1079,8 +1079,8 @@ state = (1664525 * state + 1013904223) & 0xFFFFFFFF
 | 5 | `7713a31cf502` | fix(checker): 명령 길이를 제한하고 중단된 읽기를 재시도 | A | CHECKER, RUNTIME, RISK | Replaces unbounded lines with protocol-sized frames and retries interrupted reads. |
 | 6 | `dbf76e147e68` | test(checker): 읽기 실패와 명령 경계를 검증 | A | TEST, CHECKER, RISK | Injects read faults and verifies NUL, empty, overlength, long-stream, and EOF-delimited boundaries. |
 
-### Source에서 직접 연결된 invariant / engineering difficulty
-- **Critical invariants**
+### Source에서 직접 연결된 항상 유지해야 하는 조건 / engineering difficulty
+- **Critical 항상 유지해야 하는 조건**
   - Checker returns `OK` only for sorted A with empty B; `KO` is a normal verdict, whereas malformed input, malformed commands, allocation failure, and I/O failure are errors.
   - Checker frames contain at most three non-newline bytes, contain no NUL, retry `read` interrupted by `EINTR`, and reject other read errors.
 - **Major engineering difficulties**
@@ -1099,7 +1099,7 @@ state = (1664525 * state + 1013904223) & 0xFFFFFFFF
 #### 해당 SHA에서 확인할 코드
 - 먼저 `git show --name-only 0b87adebca2b`로 이 commit이 실제로 건드린 파일을 확정합니다.
 - 아래 항목은 반드시 `0b87adebca2b` 시점의 파일에서 확인합니다. final HEAD의 같은 함수로 대체하지 않습니다.
-- line reader의 tri-state `1`/`0`/`-1` return contract와 caller의 ownership 전달을 확인합니다.
+- line reader의 tri-state `1`/`0`/`-1` return contract와 caller의 소유권 전달을 확인합니다.
 - newline을 제외한 frame 반환과 EOF의 final unterminated non-empty frame acceptance를 확인합니다.
 - buffer geometric growth와 allocation failure/read failure cleanup을 추적합니다.
 - clean EOF with zero bytes에서 allocation이 caller에 남지 않는지 확인합니다.
@@ -1109,7 +1109,7 @@ state = (1664525 * state + 1013904223) & 0xFFFFFFFF
 #### 학습자가 복원할 구현 기록 — B
 - **직전 관련 상태:** checker가 stdin command를 frame 단위로 읽는 API가 없었습니다.
 - **이 commit의 구현 역할:** `0b87adebca2b:src/checker_reader.c:read_next_line`이 한 바이트씩 읽어 newline을 제외한 NUL-terminated heap string을 반환합니다. `grow_line`은 초기 32바이트에서 필요한 길이보다 커질 때까지 두 배로 늘립니다.
-- **핵심 state transition 또는 boundary:** 반환값 1이면 caller가 `*line`을 소유하고, 0이면 clean EOF이며 buffer는 남지 않고, -1이면 allocation/read failure로 내부 buffer를 해제합니다. EOF 전에 읽은 non-empty final frame은 newline 없이도 1로 반환합니다.
+- **핵심 상태 전이 또는 boundary:** 반환값 1이면 caller가 `*line`을 소유하고, 0이면 clean EOF이며 buffer는 남지 않고, -1이면 allocation/read failure로 내부 buffer를 해제합니다. EOF 전에 읽은 non-empty final frame은 newline 없이도 1로 반환합니다.
 - **failure/no-op/edge:** read 실패는 errno를 구분하지 않고 -1이므로 `EINTR`도 permanent error가 됩니다. line 길이는 제한이 없고 embedded NUL도 저장 후 C string 비교에서 조기 종료될 수 있습니다.
 - **이후 연결:** `f79ae7e86592`가 frame을 exact command로 dispatch하고, `7713a31cf502`가 reader를 최대 3바이트 protocol로 축소해 NUL/overlength와 EINTR를 직접 처리합니다.
 - **Thread의 다음 관련 commit:** `f79ae7e86592`는 reader가 넘긴 문자열을 부분 일치 없이 11개 command로 매핑하고 어떻게 stdout을 억제하는가?
@@ -1132,7 +1132,7 @@ state = (1664525 * state + 1013904223) & 0xFFFFFFFF
 #### 학습자가 복원할 구현 기록 — B
 - **직전 관련 상태:** reader는 arbitrary line을 반환하지만 그 문자열을 stack transition으로 해석하지 않았습니다.
 - **이 commit의 구현 역할:** `f79ae7e86592:src/checker.c:apply_checker_command`가 `ps_strcmp`로 `sa`, `sb`, `ss`, `pa`, `pb`, `ra`, `rb`, `rr`, `rra`, `rrb`, `rrr`를 exact 비교하고 해당 `op_*`를 `emit=0`으로 호출합니다.
-- **핵심 state transition 또는 boundary:** known command는 state transition 성공 여부가 아니라 protocol membership을 뜻하는 1을 반환합니다. shared primitive가 size 부족으로 no-op해도 command 자체는 합법이므로 1입니다. unknown/prefix/suffix는 0입니다.
+- **핵심 상태 전이 또는 boundary:** known command는 상태 전이 성공 여부가 아니라 protocol membership을 뜻하는 1을 반환합니다. shared primitive가 size 부족으로 no-op해도 command 자체는 합법이므로 1입니다. unknown/prefix/suffix는 0입니다.
 - **failure/no-op/edge:** stdout에 command를 echo하지 않습니다. 이 시점 operation API는 fallible하지 않으므로 dispatch가 I/O failure를 다룰 필요도 없습니다.
 - **이후 연결:** `d906f4d86528`이 read/apply loop와 final verdict를 연결합니다.
 - **Thread의 다음 관련 commit:** `d906f4d86528`은 valid-but-unsorted stream과 malformed/read-failed stream을 status/output에서 어떻게 구분하는가?
@@ -1147,7 +1147,7 @@ state = (1664525 * state + 1013904223) & 0xFFFFFFFF
 - **Problem:** A command generator alone cannot establish that a stream is legal and reaches the required terminal state. The validator must also distinguish a valid but insufficient stream from malformed input or execution failure.
 - **Decision:** Build a separate checker that parses the same initial values, replays stdin frames through shared silent operations, and emits `OK` only for sorted A with empty B; otherwise a valid completed stream receives `KO`.
 - **Why it mattered:** The commit establishes the public validation protocol and a second consumer of the common model. It also makes `KO` a normal status-zero judgment while reserving non-zero status and `Error` for malformed input, commands, allocation, or reading.
-- **What changed:** The Makefile gains the checker executable, and checker control flow gains frame ownership, command application, cleanup, complete-state evaluation, and verdict output.
+- **What changed:** The Makefile gains the checker executable, and checker 제어 흐름 gains frame 소유권, command application, cleanup, complete-state evaluation, and verdict output.
 
 #### 해당 SHA에서 확인할 코드
 - 먼저 `git show --name-only d906f4d86528`로 이 commit이 실제로 건드린 파일을 확정합니다.
@@ -1161,9 +1161,9 @@ state = (1664525 * state + 1013904223) & 0xFFFFFFFF
 - 코드 인용을 남길 때는 `SHA:path:symbol` 형식으로 위치를 기록하고, 설명에 필요한 최소 구문만 삽입합니다.
 
 #### 학습자가 복원할 핵심 기록 — A
-- **직전 관련 상태와 문제:** reader와 dispatcher는 있었지만 executable lifecycle, frame ownership loop, final-state protocol이 없었습니다.
+- **직전 관련 상태와 문제:** reader와 dispatcher는 있었지만 executable lifecycle, frame 소유권 loop, final-state protocol이 없었습니다.
 - **주요 boundary/decision:** `d906f4d86528:src/checker.c:read_and_apply`가 frame 반환값이 양수인 동안 apply→free를 반복하고, invalid command에서 현재 frame을 free한 뒤 failure를 반환합니다. `main`은 clean EOF에만 complete-state predicate를 평가합니다.
-- **state / ownership / failure 변화:** parse 성공 후 main이 A를, B init 성공 후 A/B를 소유합니다. reader가 반환한 각 frame은 loop가 한 번만 free합니다. parse/B/read/command failure는 stack cleanup 뒤 `Error\n`과 status 1입니다. valid EOF 뒤 sorted A+B empty면 `OK\n`, 아니면 `KO\n`이며 둘 다 status 0입니다.
+- **state / 소유권 / failure 변화:** parse 성공 후 main이 A를, B init 성공 후 A/B를 소유합니다. reader가 반환한 각 frame은 loop가 한 번만 free합니다. parse/B/read/command failure는 stack cleanup 뒤 `Error\n`과 status 1입니다. valid EOF 뒤 sorted A+B empty면 `OK\n`, 아니면 `KO\n`이며 둘 다 status 0입니다.
 - **보장 / 비보장:** valid command stream의 정상 verdict와 malformed transport/protocol의 error 구분을 제공합니다. argc==1은 parse와 stdin read 전에 status 0으로 반환하므로 입력 stream을 소비하지 않습니다. verdict/error write 결과는 아직 확인하지 않습니다.
 - **후속 검증 또는 수정 연결:** `44ee0830e9f0`이 command families와 OK/KO/error를 검증하고, `7713a31cf502`/`dbf76e147e68`이 reader protocol과 read faults를 수정·검증합니다. write status는 `315f4b91779b`에서 보강됩니다.
 - **Thread의 다음 관련 commit:** `44ee0830e9f0`은 primitive unit test가 아니라 checker CLI를 통과해 세 public outcome을 어떤 case로 구분하는가?
@@ -1177,14 +1177,14 @@ state = (1664525 * state + 1013904223) & 0xFFFFFFFF
 #### 해당 SHA에서 확인할 코드
 - 먼저 `git show --name-only 44ee0830e9f0`로 이 commit이 실제로 건드린 파일을 확정합니다.
 - 아래 항목은 반드시 `44ee0830e9f0` 시점의 파일에서 확인합니다. final HEAD의 같은 함수로 대체하지 않습니다.
-- 각 instruction family를 stdin command program으로 실행해 known sorted result를 만드는 test cases를 확인합니다.
+- 각 instruction family를 stdin command program으로 실행해 known sorted result를 만드는 테스트 항목을 확인합니다.
 - `ss`, `rr`, `rrr` combined command도 executable dispatch를 통해 검증되는지 확인합니다.
 - unsorted/no-command → `KO` normal status와 valid-prefix + unknown command → no verdict + `Error` failure를 비교합니다.
-- operation primitive unit test와 달리 checker CLI path를 실제 통과하는 범위를 확인합니다.
+- operation primitive 단위 테스트와 달리 checker CLI path를 실제 통과하는 범위를 확인합니다.
 - 코드 인용을 남길 때는 `SHA:path:symbol` 형식으로 위치를 기록하고, 설명에 필요한 최소 구문만 삽입합니다.
 
 #### Test commit 학습 기록
-- **대상 production invariant:** 11개 exact command가 checker CLI에서 silent replay되고 complete state만 `OK`, valid incomplete state는 `KO`, malformed command는 error가 되어야 합니다.
+- **대상 production 항상 유지해야 하는 조건:** 11개 exact command가 checker CLI에서 silent replay되고 complete state만 `OK`, valid incomplete state는 `KO`, malformed command는 error가 되어야 합니다.
 - **재현하는 failure/boundary:** swap, push, rotate, reverse rotate 및 `ss`/`rr`/`rrr`를 포함한 command programs로 알려진 sorted state를 만들고, unsorted/no-command와 valid prefix 뒤 `wat`을 별도로 사용합니다.
 - **test technique:** deterministic checker CLI integration입니다.
 - **통과하는 production path:** subprocess stdin → `read_next_line` → `apply_checker_command` → shared `op_*` emit=0 → EOF → `stack_is_complete_sorted` → verdict/error입니다.
@@ -1194,9 +1194,9 @@ state = (1664525 * state + 1013904223) & 0xFFFFFFFF
 - **막는 후속 회귀:** command mapping 누락, combined dispatch 한쪽 미적용, KO를 error로 바꾸는 변경, malformed stream 뒤 verdict를 출력하는 변경을 막습니다.
 
 #### 학습자가 복원할 구현 기록 — B
-- **직전 관련 상태:** complete checker lifecycle은 있었지만 public command/vote behavior의 자동 증거가 없었습니다.
+- **직전 관련 상태:** complete checker lifecycle은 있었지만 public command/vote 동작의 자동 증거가 없었습니다.
 - **이 commit의 구현 역할:** 모든 instruction family를 checker executable stdin으로 통과시키고 세 terminal outcome을 고정합니다.
-- **핵심 state transition 또는 boundary:** valid prefix가 이미 stack을 일부 바꿨더라도 뒤의 unknown command가 나오면 verdict 없이 전체 stream이 malformed error로 끝납니다.
+- **핵심 상태 전이 또는 boundary:** valid prefix가 이미 stack을 일부 바꿨더라도 뒤의 unknown command가 나오면 verdict 없이 전체 stream이 malformed error로 끝납니다.
 - **failure/no-op/edge:** unsorted empty stream은 transport/protocol 성공이므로 `KO` status 0입니다.
 - **이후 연결:** 다음 fix는 dispatch가 아니라 reader의 frame size와 EINTR policy를 교정합니다.
 - **Thread의 다음 관련 commit:** `7713a31cf502`는 general line reader의 어떤 상태·allocation 정책을 protocol-sized frame으로 바꾸는가?
@@ -1214,14 +1214,14 @@ state = (1664525 * state + 1013904223) & 0xFFFFFFFF
 - 4번째 byte, embedded NUL, allocation failure를 frame reader가 dispatch 전에 reject하는지 확인합니다.
 - `read`가 `EINTR`일 때 retry하고 다른 error에서 buffer free + caller pointer null + error return하는 경로를 확인합니다.
 - clean EOF/no bytes와 valid EOF-delimited final command의 서로 다른 cleanup/return을 확인합니다.
-- fault-allocation sweep이 revised reader allocation behavior에 맞춰 변경되는지 확인합니다.
+- fault-allocation sweep이 revised reader allocation 동작에 맞춰 변경되는지 확인합니다.
 - 코드 인용을 남길 때는 `SHA:path:symbol` 형식으로 위치를 기록하고, 설명에 필요한 최소 구문만 삽입합니다.
 
 #### Fix chain 복원
 - **기존 가정:** `0b87adebca2b:read_next_line`은 checker 입력을 일반 text line으로 보고 32바이트에서 geometric growth하며 모든 non-newline byte를 허용했습니다. 모든 negative `read`를 동일 failure로 처리했습니다.
 - **실제 failure 또는 위험:** checker protocol의 longest command는 3바이트인데 arbitrary line을 계속 할당·읽을 수 있었고, embedded NUL은 dispatch 문자열을 실제 frame보다 짧게 보이게 할 수 있었습니다. transient `EINTR`도 malformed/transport error로 잘못 종료됐습니다.
 - **root cause:** reader가 protocol boundary를 소유하지 않고 general-purpose line abstraction을 제공했으며, errno별 retry policy가 없었습니다.
-- **수정된 invariant/decision:** frame은 최대 3 non-newline bytes, NUL 금지, allocation은 정확히 `PS_COMMAND_MAX + 1`, `EINTR`만 retry, 다른 read error는 free+NULL+-1입니다. clean EOF/no bytes는 free+NULL+0, EOF-delimited nonempty frame은 1입니다.
+- **수정된 항상 유지해야 하는 조건/decision:** frame은 최대 3 non-newline bytes, NUL 금지, allocation은 정확히 `PS_COMMAND_MAX + 1`, `EINTR`만 retry, 다른 read error는 free+NULL+-1입니다. clean EOF/no bytes는 free+NULL+0, EOF-delimited nonempty frame은 1입니다.
 - **실제 수정 코드:** `7713a31cf502:src/checker_reader.c:read_next_line`의 핵심은 다음과 같습니다.
 
 ```c
@@ -1238,7 +1238,7 @@ if (c == '\0' || len >= PS_COMMAND_MAX)
 #### 학습자가 복원할 핵심 기록 — A
 - **직전 관련 상태와 문제:** checker lifecycle은 완성됐지만 reader가 실제 명령 protocol보다 넓고 transient interruption을 구분하지 않았습니다.
 - **주요 boundary/decision:** 길이·NUL 유효성 검사를 dispatch가 아니라 byte를 받는 reader에 배치해 invalid frame이 command 비교 전에 차단됩니다.
-- **state / ownership / failure 변화:** frame은 매 호출 한 번의 4-byte project allocation입니다. error와 clean EOF에서 reader가 해제하고 pointer를 NULL로 만들며, status 1일 때만 caller가 frame을 소유합니다.
+- **state / 소유권 / failure 변화:** frame은 매 호출 한 번의 4-byte project allocation입니다. error와 clean EOF에서 reader가 해제하고 pointer를 NULL로 만들며, status 1일 때만 caller가 frame을 소유합니다.
 - **보장 / 비보장:** bounded memory, NUL/4번째 byte reject, EINTR retry, EOF framing을 보장합니다. exact command membership은 여전히 dispatcher 책임이고 write failure는 다루지 않습니다.
 - **후속 검증 또는 수정 연결:** `dbf76e147e68`이 read call별 fault injection과 protocol boundaries를 deterministic하게 검증합니다. output hardening은 Thread 6으로 이어집니다.
 - **Thread의 다음 관련 commit:** `dbf76e147e68`은 command bytes와 final EOF probe 각각의 read call을 어떻게 선택해 EIO/EINTR를 주입하는가?
@@ -1261,26 +1261,26 @@ if (c == '\0' || len >= PS_COMMAND_MAX)
 - 코드 인용을 남길 때는 `SHA:path:symbol` 형식으로 위치를 기록하고, 설명에 필요한 최소 구문만 삽입합니다.
 
 #### Test commit 학습 기록
-- **대상 production invariant:** max-3/no-NUL frame, `EINTR` retry, other read error reject, EOF-delimited final command acceptance, 모든 종료에서 frame allocation cleanup입니다.
+- **대상 production 항상 유지해야 하는 조건:** max-3/no-NUL frame, `EINTR` retry, other read error reject, EOF-delimited final command acceptance, 모든 종료에서 frame allocation cleanup입니다.
 - **재현하는 failure/boundary:** runtime `ps_read` call counter가 environment-selected call에서 EIO 또는 EINTR를 반환합니다. `sa\n`의 `s`, `a`, newline, final EOF probe에 EIO를 각각 주입하고, 첫 byte와 EOF probe에는 EINTR를 주입합니다. embedded NUL, `rrrr`, empty line, NUL-only, 64KiB overlong, unterminated `sa`도 사용합니다.
 - **test technique:** deterministic read fault injection + protocol boundary CLI regression + live-allocation reporting입니다.
 - **통과하는 production path:** fault checker → `read_next_line` → runtime `ps_read` injection → retry/error/frame return → dispatch/verdict 또는 error cleanup → `ps_test_finish` allocation report입니다.
 - **이 테스트가 증명하는 것:** 지정 read calls의 permanent failure가 error가 되고 transient EINTR는 같은 read를 재시도해 성공하며, malformed frames는 dispatch 전에 거절되고 valid EOF final frame은 적용되어 `OK`가 됨을 확인합니다. 각 case의 live allocation도 0이어야 합니다.
 - **이 테스트가 증명하지 않는 것:** arbitrary errno, signal timing의 실제 비결정성, write failure, 모든 possible byte stream을 exhaustive하게 증명하지 않습니다.
 - **성격:** deterministic fault regression과 protocol boundary regression입니다.
-- **막는 후속 회귀:** EINTR를 permanent failure로 되돌리기, 4번째 byte/NUL 허용, EOF probe 실패 누락, error path frame leak을 막습니다.
+- **막는 후속 회귀:** EINTR를 permanent failure로 되돌리기, 4번째 byte/NUL 허용, EOF probe 실패 누락, 오류 처리 frame leak을 막습니다.
 
 #### 학습자가 복원할 핵심 기록 — A
 - **직전 관련 상태와 문제:** fix의 branch는 존재했지만 실제 read call 위치별 permanent/transient fault와 hostile frame을 자동으로 재현하는 증거가 없었습니다.
 - **주요 boundary/decision:** runtime seam에서 call count를 세고 selected call만 EIO/EINTR로 바꿔 reader의 정확한 branch를 반복 가능하게 실행합니다.
-- **state / ownership / failure 변화:** production normal behavior는 유지되고 fault build에 read counter/env controls가 생깁니다. test harness는 stderr의 allocation report까지 검사해 frame cleanup을 함께 관찰합니다.
-- **보장 / 비보장:** source에 명시된 read/protocol cases의 regression을 제공합니다. output write와 closed-pipe behavior는 Thread 6이 담당합니다.
+- **state / 소유권 / failure 변화:** production normal 동작은 유지되고 fault build에 read counter/env controls가 생깁니다. test harness는 stderr의 allocation report까지 검사해 frame cleanup을 함께 관찰합니다.
+- **보장 / 비보장:** source에 명시된 read/protocol cases의 regression을 제공합니다. output write와 closed-pipe 동작은 Thread 6이 담당합니다.
 - **후속 검증 또는 수정 연결:** `315f4b91779b`/`e1154e181864`가 같은 runtime 경계를 write-all과 output fault injection으로 확장합니다.
 - **Thread 내 다음 commit:** 없음. Thread 최종 상태에서 이 commit의 남은 역할을 정리합니다.
 
-## 6. Invariant ledger
+## 6. 항상 유지해야 하는 조건 ledger
 
-| Invariant / contract | 처음 도입 | 강화 | 부족함이 드러난 지점 | fix | regression / evidence | 학습자 확인 메모 |
+| 항상 유지해야 하는 조건 / contract | 처음 도입 | 강화 | 부족함이 드러난 지점 | fix | regression / evidence | 학습자 확인 메모 |
 | --- | --- | --- | --- | --- | --- | --- |
 | checker final success = sorted A + empty B | d906f4d86528 | - | - | - | 44ee0830e9f0 | `stack_is_complete_sorted` 뒤에만 `OK`; valid EOF지만 predicate false면 `KO` status 0입니다. |
 | frame 최대 3 non-newline bytes / NUL 금지 | - | - | 0b87adebca2b는 unbounded general reader | 7713a31cf502 | dbf76e147e68 | reader가 4-byte buffer를 한 번 할당하고 4번째 byte 또는 NUL을 저장 전에 오류로 만듭니다. |
@@ -1294,7 +1294,7 @@ if (c == '\0' || len >= PS_COMMAND_MAX)
 | unbounded command frame / embedded NUL / overlength | bounded protocol reader | 7713a31cf502 | dbf76e147e68 | general line abstraction이 protocol length와 binary NUL을 reader에서 제한하지 않은 것이 원인입니다. |
 | transient `EINTR`를 permanent failure로 취급 | `EINTR` retry | 7713a31cf502 | dbf76e147e68 | 모든 negative read를 동일 처리했던 정책을 errno별 retry/reject로 나눴습니다. |
 
-## 8. Ownership / state / responsibility 변화
+## 8. 소유권 / state / responsibility 변화
 
 | 대상 | 이 Thread 시작 시 | 변화 commit | 이 Thread 종료 시 | 실제 코드 근거 |
 | --- | --- | --- | --- | --- |
@@ -1307,7 +1307,7 @@ if (c == '\0' || len >= PS_COMMAND_MAX)
 - **Source 기준 최종 상태:** checker는 값 인자를 parse해 A를 소유하고 동일 capacity B를 만든 뒤, 최대 3바이트·NUL 금지 frame을 한 번의 fixed allocation으로 읽습니다. `EINTR`는 재시도하고 다른 read error는 정리 후 실패합니다. 11개 exact command는 shared operation을 `emit=0`으로 적용합니다. clean EOF에만 A sorted+B empty를 검사해 `OK` 또는 normal `KO`를 출력하고, malformed input/command, allocation, I/O failure는 `Error`와 non-zero status입니다.
 - **남아 있는 한계 / 다른 Thread로 넘어가는 책임:** 이 Thread 마지막 시점의 핵심 reader 경계는 fault tests로 보호되지만 output write 자체의 short/zero/EPIPE와 SIGPIPE는 Thread 6의 `315f4b91779b`/`e1154e181864`가 맡습니다. 현재 환경에서는 test executable을 실행하지 않았고, 문서의 test 결과 범위는 해당 SHA의 test code와 assertions를 확인한 것입니다.
 
-## 10. 최종 architecture 또는 execution flow 정리
+## 10. 최종 architecture 또는 실행 순서 정리
 - Source-derived flow anchor: ``parse initial A → allocate B → bounded frame read → exact dispatch with `emit=0` → clean EOF → complete-state predicate → `OK`/`KO` or error cleanup``
 - **학습자 최종 flow:** `d906f4d86528:main`이 no-values를 reader 전에 반환하거나 A/B를 구성합니다 → `7713a31cf502:read_next_line`이 4-byte buffer에서 protocol frame을 만들고 EINTR를 재시도합니다 → `f79ae7e86592:apply_checker_command`가 exact command를 `op_*` emit=0으로 적용합니다 → frame을 해제하고 반복합니다 → clean EOF면 `stack_is_complete_sorted`, 그 외 오류면 A/B cleanup+Error입니다.
 - **실제 코드 삽입:** 초기 `0b87adebca2b`는 `grow_line`으로 arbitrary buffer를 두 배 확장했지만, fix는 위와 같이 `PS_COMMAND_MAX + 1`을 한 번 할당하고 NUL/4번째 byte를 reader에서 차단합니다. 이 비교가 protocol boundary 이동의 핵심입니다.
@@ -1317,11 +1317,11 @@ if (c == '\0' || len >= PS_COMMAND_MAX)
 - [x] 모든 commit에서 지정된 SHA의 코드를 직접 확인했습니다.
 - [x] final HEAD를 과거 commit 설명에 소급 사용하지 않았습니다.
 - [x] Source-confirmed fact와 직접 코드 확인 결과를 구분했습니다.
-- [x] S/A commit은 decision, invariant, ownership/failure, 후속 evidence까지 추적했습니다.
+- [x] S/A commit은 decision, 항상 유지해야 하는 조건, 소유권/failure, 후속 evidence까지 추적했습니다.
 - [x] B commit은 Thread 흐름에서 맡는 구현 역할과 필요한 state/boundary만 충분히 확인했습니다.
-- [x] test commit마다 production invariant, failure/boundary, technique, production path, 증명/비증명 범위를 구분했습니다.
-- [x] fix commit은 기존 가정 → failure/risk → root cause → 수정 invariant → 실제 코드 → regression evidence 순서로 연결했습니다.
-- [x] Invariant ledger와 Failure → Fix → Test 표를 실제 코드 근거로 채웠습니다.
+- [x] test commit마다 production 항상 유지해야 하는 조건, failure/boundary, technique, production path, 증명/비증명 범위를 구분했습니다.
+- [x] fix commit은 기존 가정 → failure/risk → root cause → 수정 항상 유지해야 하는 조건 → 실제 코드 → regression evidence 순서로 연결했습니다.
+- [x] 항상 유지해야 하는 조건 ledger와 Failure → Fix → Test 표를 실제 코드 근거로 채웠습니다.
 - [x] 별도 프로젝트 재학습 없이 이 Thread의 설계 → 구현 → 실패/위험 → 수정/검증 흐름을 commit history에 근거해 설명할 수 있습니다.
 ===== END FILE: 05-checker-protocol-and-verdict-hardening.md =====
 
@@ -1329,7 +1329,7 @@ if (c == '\0' || len >= PS_COMMAND_MAX)
 # Thread: Runtime fault injection and output failure propagation
 
 ## 1. Thread 목표
-- **Source significance:** The thread changes failure handling from implicit assumptions into an explicit runtime contract. The generator's product is an externally visible command stream, so successful in-memory sorting cannot compensate for an incomplete write. The final design preserves already-written prefixes, stops further emission, cleans all owned memory, and reports failure when the transport cannot deliver the complete result.
+- **Source significance:** The thread changes 실패 처리 from implicit assumptions into an explicit runtime contract. The generator's product is an externally visible command stream, so successful in-memory sorting cannot compensate for an incomplete write. The final design preserves already-written prefixes, stops further emission, cleans all owned memory, and reports failure when the transport cannot deliver the complete result.
 - **학습 목표:** 초기 output helper의 실패 무시 상태에서 runtime seam, allocation fault sweep, write-all contract, `SIGPIPE` 처리, partial-output regression evidence까지 발전하는 cross-cutting failure architecture를 복원합니다.
 
 ## 2. 이 Thread를 이해하기 위한 핵심 질문
@@ -1338,7 +1338,7 @@ if (c == '\0' || len >= PS_COMMAND_MAX)
 - Nth-allocation failure sweep이 partial construction cleanup을 어떻게 검증하는가?
 - `ps_write_all`은 `EINTR`, short positive write, zero-byte write, permanent error를 어떻게 구분하는가?
 - 이미 stdout에 보인 prefix가 있는 상태에서 왜 rollback을 시도하지 않고 emission을 중단하는가?
-- closed pipe를 `SIGPIPE` termination 대신 ordinary write failure로 바꾸는 경로는 어디인가?
+- closed pipe를 `SIGPIPE` termination 대신 ordinary write failure로 바꾸는 경로는 어디입니까?
 
 ## 3. 완료 기준
 - allocation/read/write system boundary가 runtime wrapper로 모이는 실제 호출 경로를 확인했습니다.
@@ -1356,8 +1356,8 @@ if (c == '\0' || len >= PS_COMMAND_MAX)
 | 4 | `315f4b91779b` | fix(io): 출력 실패를 호출 경로 끝까지 전파 | A | RUNTIME, RISK, INTEGRATION | Extends the runtime contract to write-all behavior, `SIGPIPE` handling, and end-to-end failure propagation. |
 | 5 | `e1154e181864` | test(io): 부분 출력과 영구 쓰기 실패를 검증 | A | TEST, RUNTIME, RISK | Verifies interrupted, short, zero, permanent, diagnostic, and closed-pipe write paths. |
 
-### Source에서 직접 연결된 invariant / engineering difficulty
-- **Critical invariants**
+### Source에서 직접 연결된 항상 유지해야 하는 조건 / engineering difficulty
+- **Critical 항상 유지해야 하는 조건**
   - A successful `push_swap` execution means the complete emitted stream was written successfully; a merely sorted in-memory state is insufficient.
   - Short positive writes advance the output cursor, zero-byte writes are failures, and a closed pipe is handled as an ordinary error rather than process termination.
 - **Major engineering difficulties**
@@ -1371,7 +1371,7 @@ if (c == '\0' || len >= PS_COMMAND_MAX)
 - **Importance:** B
 - **Tags:** RUNTIME, PRACTICAL
 - **Source-confirmed role:** Centralizes basic text output but initially ignores write results.
-- **Classification summary:** Adds project-local string comparison, descriptor output, and the canonical error message.
+- **Classification summary:** Adds project-local string comparison, descriptor output, and the canonical 오류 메시지.
 
 #### 해당 SHA에서 확인할 코드
 - 먼저 `git show --name-only 2e97f29961d8`로 이 commit이 실제로 건드린 파일을 확정합니다.
@@ -1386,7 +1386,7 @@ if (c == '\0' || len >= PS_COMMAND_MAX)
 #### 학습자가 복원할 구현 기록 — B
 - **직전 관련 상태:** project-local exact string comparison과 공통 output/error helper가 없거나 direct system call에 흩어질 수 있는 상태였습니다.
 - **이 commit의 구현 역할:** `2e97f29961d8:src/utils.c`에 `ps_strlen`, unsigned-char 기반 `ps_strcmp`, descriptor에 문자열을 쓰는 `ps_putstr_fd`, canonical `write_error`를 추가해 checker dispatch와 두 executable이 공통 text API를 사용하게 합니다.
-- **핵심 state transition 또는 boundary:** `ps_strcmp`는 exact NUL-terminated command membership을 제공하고, `write_error`는 stderr에 `Error\n`을 쓰는 한 지점이 됩니다. output helper는 문자열 길이를 구해 `write` 한 번을 호출합니다.
+- **핵심 상태 전이 또는 boundary:** `ps_strcmp`는 exact NUL-terminated command membership을 제공하고, `write_error`는 stderr에 `Error\n`을 쓰는 한 지점이 됩니다. output helper는 문자열 길이를 구해 `write` 한 번을 호출합니다.
 - **failure/no-op/edge:** `ps_putstr_fd`와 `write_error`의 반환형이 `void`이고 `write` 결과를 버리므로 short write, `EINTR`, zero, EPIPE를 caller가 알 수 없습니다.
 - **이후 연결:** `5faa9d7697af`가 memory/read system call도 runtime boundary로 모으고, `315f4b91779b`가 output helper를 fallible write-all API로 바꿉니다.
 - **Thread의 다음 관련 commit:** `5faa9d7697af`는 parser/stack/checker의 direct allocation/read를 어떤 matching wrapper pair로 치환해 fault injection seam을 만드는가?
@@ -1409,14 +1409,14 @@ if (c == '\0' || len >= PS_COMMAND_MAX)
 - `ps_malloc`, `ps_free`, `ps_read` wrapper 정의와 normal build delegation을 확인합니다.
 - parser scratch buffer, stack buffers, checker command buffer가 direct libc/POSIX call에서 runtime wrapper로 이동하는 diff를 확인합니다.
 - runtime에서 얻은 memory가 matching `ps_free`로 해제되는지 caller별로 추적합니다.
-- operation-invariant test가 필요한 object만 링크하도록 dependency graph가 줄어든 부분을 확인합니다.
+- operation-항상 유지해야 하는 조건 test가 필요한 object만 링크하도록 dependency graph가 줄어든 부분을 확인합니다.
 - behavior change 없이 observability/testability seam만 추가되었는지 비교합니다.
 - 코드 인용을 남길 때는 `SHA:path:symbol` 형식으로 위치를 기록하고, 설명에 필요한 최소 구문만 삽입합니다.
 
 #### 학습자가 복원할 핵심 기록 — A
 - **직전 관련 상태와 문제:** stack 두 buffer, parser sorted scratch, checker frame이 각각 direct `malloc/free`를 쓰고 reader가 direct `read`를 호출해, 특정 acquisition만 실패시키거나 outstanding allocation을 일관되게 셀 수 없었습니다.
 - **주요 boundary/decision:** `5faa9d7697af:src/runtime.c`에 normal build에서는 libc/POSIX에 그대로 위임하는 `ps_malloc`, `ps_free`, `ps_read`를 추가하고 project-owned memory/input call site를 모두 이 경계로 이동했습니다.
-- **state / ownership / failure 변화:** ownership 자체는 변하지 않습니다. `stack_init`이 얻은 두 buffer는 `stack_free`가 `ps_free`, `assign_ranks` scratch는 같은 함수가 `ps_free`, status 1 checker frame은 loop가 `ps_free`합니다. matching pair가 한 API로 모여 instrumentation 가능한 상태가 됩니다.
+- **state / 소유권 / failure 변화:** 소유권 자체는 변하지 않습니다. `stack_init`이 얻은 두 buffer는 `stack_free`가 `ps_free`, `assign_ranks` scratch는 같은 함수가 `ps_free`, status 1 checker frame은 loop가 `ps_free`합니다. matching pair가 한 API로 모여 instrumentation 가능한 상태가 됩니다.
 - **보장 / 비보장:** normal build의 의도된 semantics는 direct call과 같고 domain API를 바꾸지 않습니다. 아직 wrapper 자체는 failure를 주입·보고하지 않으며 output은 여전히 이 경계 밖에서 unchecked입니다.
 - **후속 검증 또는 수정 연결:** `63969f770a21`이 compile-time fault build에서 Nth malloc과 live count를 구현하고, `dbf76e147e68`이 `ps_read`에 selected-call EIO/EINTR를 추가합니다. `315f4b91779b`는 write boundary까지 확장합니다.
 - **Thread의 다음 관련 commit:** `63969f770a21`은 successful allocation 앞에 어떤 header를 배치하고 모든 executable exit에서 outstanding count를 어떻게 검증하는가?
@@ -1433,24 +1433,24 @@ if (c == '\0' || len >= PS_COMMAND_MAX)
 - `PS_FAULT_INJECTION`에서 allocation call counter와 selected Nth `NULL` injection을 확인합니다.
 - successful allocation에 붙는 aligned header와 live-allocation tracking 구조를 확인합니다.
 - 모든 executable exit가 `ps_test_finish`를 거쳐 non-zero live count를 별도 failure로 보고하는지 확인합니다.
-- Python suite가 representative push_swap/checker path의 모든 allocation point와 one-past-last baseline을 sweep하는지 확인합니다.
-- 각 injected failure에서 public `Error` behavior와 zero live allocations를 동시에 검사하는지 확인합니다.
+- Python suite가 representative push_swap/checker path의 모든 allocation point와 one-past-last 기준 상태를 sweep하는지 확인합니다.
+- 각 injected failure에서 public `Error` 동작과 zero live allocations를 동시에 검사하는지 확인합니다.
 - 코드 인용을 남길 때는 `SHA:path:symbol` 형식으로 위치를 기록하고, 설명에 필요한 최소 구문만 삽입합니다.
 
 #### Test commit 학습 기록
-- **대상 production invariant:** project allocation이 어느 acquisition에서 실패해도 executable은 partial ownership을 정리하고 종료 시 live project allocation이 0이어야 합니다.
-- **재현하는 failure/boundary:** `PS_FAIL_MALLOC_AT=N`이 N번째 `ps_malloc`을 `NULL`로 만듭니다. representative `push_swap`은 allocation 1~5를, checker는 1~6을 각각 실패시키고 one-past-last 6/7을 정상 baseline으로 실행합니다.
+- **대상 production 항상 유지해야 하는 조건:** project allocation이 어느 acquisition에서 실패해도 executable은 partial 소유권을 정리하고 종료 시 live project allocation이 0이어야 합니다.
+- **재현하는 failure/boundary:** `PS_FAIL_MALLOC_AT=N`이 N번째 `ps_malloc`을 `NULL`로 만듭니다. representative `push_swap`은 allocation 1~5를, checker는 1~6을 각각 실패시키고 one-past-last 6/7을 정상 기준 상태로 실행합니다.
 - **test technique:** compile-time deterministic Nth-allocation fault injection + exhaustive acquisition-point sweep for selected paths + exit live-count reporting입니다.
-- **통과하는 production path:** fault binary → parser stack/sorted scratch 또는 B/checker frame `ps_malloc` → selected NULL → 해당 cleanup/error path → 모든 main return의 `ps_test_finish` → Python stderr/status assertion입니다.
-- **이 테스트가 증명하는 것:** 선택한 representative paths에서 각 allocation point의 실패가 public non-zero/`Error` behavior로 끝나고 `PS_LIVE_ALLOCATIONS=0`을 보고하며, one-past-last가 실제 모든 acquisition을 통과하는 baseline임을 확인합니다.
-- **이 테스트가 증명하지 않는 것:** libc 내부 allocation, read/write fault, 모든 argv/command path, invalid/double free의 일반 검출은 증명하지 않습니다. header magic/live count는 project wrapper를 통과한 memory에 한정됩니다.
+- **통과하는 production path:** fault binary → parser stack/sorted scratch 또는 B/checker frame `ps_malloc` → selected NULL → 해당 cleanup/오류 처리 → 모든 main return의 `ps_test_finish` → Python stderr/status assertion입니다.
+- **이 테스트가 증명하는 것:** 선택한 representative paths에서 각 allocation point의 실패가 public non-zero/`Error` 동작으로 끝나고 `PS_LIVE_ALLOCATIONS=0`을 보고하며, one-past-last가 실제 모든 acquisition을 통과하는 baseline임을 확인합니다.
+- **이 테스트가 증명하지 않는 것:** libc 내부 allocation, read/write fault, 모든 argv/command path, invalid/이중 해제의 일반 검출은 증명하지 않습니다. header magic/live count는 project wrapper를 통과한 memory에 한정됩니다.
 - **성격:** deterministic fault regression이며 selected path의 allocation points를 sweep합니다.
-- **막는 후속 회귀:** 두 번째 stack buffer 실패 시 첫 번째 buffer 누수, parser scratch 실패 cleanup 누락, checker frame/error path 누수, main early return이 `ps_test_finish`를 우회하는 변경을 막습니다.
+- **막는 후속 회귀:** 두 번째 stack buffer 실패 시 첫 번째 buffer 누수, parser scratch 실패 cleanup 누락, checker frame/오류 처리 누수, main early return이 `ps_test_finish`를 우회하는 변경을 막습니다.
 
 #### 학습자가 복원할 핵심 기록 — A
-- **직전 관련 상태와 문제:** runtime seam은 있었지만 allocation 실패 위치와 live ownership을 관찰하는 구현·test가 없었습니다.
+- **직전 관련 상태와 문제:** runtime seam은 있었지만 allocation 실패 위치와 live 소유권을 관찰하는 구현·test가 없었습니다.
 - **주요 boundary/decision:** `PS_FAULT_INJECTION` build에서 allocation call count와 env-selected failure를 두고, successful allocation 앞에는 `long double`/pointer alignment를 만족하는 union header를 붙여 magic·size를 보관합니다.
-- **state / ownership / failure 변화:** successful `ps_malloc`은 live count를 증가시키고 `ps_free`는 header magic을 지운 뒤 감소시킵니다. 모든 executable return은 `ps_test_finish(status)`를 거쳐 requested report에서 nonzero live count면 status 99를 반환합니다.
+- **state / 소유권 / failure 변화:** successful `ps_malloc`은 live count를 증가시키고 `ps_free`는 header magic을 지운 뒤 감소시킵니다. 모든 executable return은 `ps_test_finish(status)`를 거쳐 requested report에서 nonzero live count면 status 99를 반환합니다.
 - **보장 / 비보장:** selected normal/error construction의 leak-free cleanup을 deterministic하게 확인합니다. source mutation, invalid pointer, output delivery는 범위 밖입니다.
 - **후속 검증 또는 수정 연결:** `6569949742eb`이 같은 header size로 current/peak requested bytes를 추가하고, `e1154e181864`이 write failures에서도 live count 0을 확인합니다.
 - **Thread의 다음 관련 commit:** `315f4b91779b`은 unchecked single write를 어떤 return contract로 바꾸고, 그 status가 첫 failed emission 뒤 sorter를 어떻게 중단시키는가?
@@ -1463,7 +1463,7 @@ if (c == '\0' || len >= PS_COMMAND_MAX)
 
 #### Source-confirmed context
 - **Problem:** The earlier output helper ignored write results. A command could mutate in-memory state but fail to reach stdout, and a closed pipe could terminate the process through `SIGPIPE` before normal cleanup.
-- **Decision:** Add a write-all loop that retries `EINTR`, advances after short writes, rejects zero or permanent failures, ignores `SIGPIPE`, and returns status through output helpers, operation wrappers, sort helpers, checker verdicts, and both executable entry points.
+- **Decision:** Add a write-all loop that retries `EINTR`, advances after short writes, rejects zero or permanent failures, ignores `SIGPIPE`, and returns status through output helpers, operation wrappers, sort helpers, checker verdicts, and both executable 진입점.
 - **Why it mattered:** The generator's actual product is the external command stream, not the final private stack state. The change prevents incomplete delivery from being reported as success, stops further generation after failure, preserves already-visible prefixes without repetition, and still releases all owned resources.
 - **What changed:** Operation and sorting APIs become fallible, checker verdict writes are checked, both mains initialize pipe behavior and convert output failure to status one, and error reporting is attempted without replacing the original failure.
 
@@ -1482,7 +1482,7 @@ if (c == '\0' || len >= PS_COMMAND_MAX)
 - **기존 가정:** `2e97f29961d8:ps_putstr_fd`는 command/error string을 single `write`로 보내고 return을 버렸으며 operation/sorter/main은 모두 `void` 또는 unconditional success 흐름이었습니다.
 - **실제 failure 또는 위험:** short write는 command 일부만 보이게 하고도 성공으로 끝날 수 있고, `EINTR`는 재시도되지 않으며, zero write는 진척 없이 누락되고, EPIPE는 기본 `SIGPIPE`로 cleanup 전에 process를 종료할 수 있습니다. private stack 정렬은 incomplete public stream을 보상하지 못합니다.
 - **root cause:** output transport result가 API contract에 포함되지 않아 호출 계층 어디에서도 실패를 관찰·중단·보고할 수 없었고, pipe signal policy도 초기화되지 않았습니다.
-- **수정된 invariant/decision:** success는 requested byte 전부가 쓰인 경우만 1입니다. `EINTR`는 같은 cursor/count로 retry하고, positive short write는 cursor/count를 전진시키며, zero/permanent error는 0입니다. operation과 sorter는 첫 0을 즉시 반환하고 두 main은 cleanup 후 status 1을 유지합니다. `SIGPIPE`는 ignore해 EPIPE return path로 바꿉니다.
+- **수정된 항상 유지해야 하는 조건/decision:** success는 requested byte 전부가 쓰인 경우만 1입니다. `EINTR`는 같은 cursor/count로 retry하고, positive short write는 cursor/count를 전진시키며, zero/permanent error는 0입니다. operation과 sorter는 첫 0을 즉시 반환하고 두 main은 cleanup 후 status 1을 유지합니다. `SIGPIPE`는 ignore해 EPIPE return path로 바꿉니다.
 - **실제 수정 코드:** `315f4b91779b:src/runtime.c:ps_write_all`은 다음 loop를 사용합니다.
 
 ```c
@@ -1504,7 +1504,7 @@ while (count > 0)
 #### 학습자가 복원할 핵심 기록 — A
 - **직전 관련 상태와 문제:** allocation/read는 runtime seam과 fault tests를 가졌지만 output은 unchecked single write라 external product completeness가 성공 조건이 아니었습니다.
 - **주요 boundary/decision:** write-all을 가장 낮은 runtime boundary에 두고 status를 `ps_putstr_fd` → `emit_op`/`op_*` → tiny/radix helpers → `sort_stack` → main까지 동일 방향으로 올립니다. checker verdict도 같은 helper를 사용합니다.
-- **state / ownership / failure 변화:** operation은 private state를 먼저 mutate한 뒤 emit합니다. 따라서 failed command의 state가 이미 진행됐을 수 있지만 sorter는 즉시 중단하고 private A/B를 해제합니다. 이미 성공한 stdout prefix는 되돌리거나 다시 쓰지 않습니다. 이는 transaction rollback이 아니라 prefix-preserving failure입니다.
+- **state / 소유권 / failure 변화:** operation은 private state를 먼저 mutate한 뒤 emit합니다. 따라서 failed command의 state가 이미 진행됐을 수 있지만 sorter는 즉시 중단하고 private A/B를 해제합니다. 이미 성공한 stdout prefix는 되돌리거나 다시 쓰지 않습니다. 이는 transaction rollback이 아니라 prefix-preserving failure입니다.
 - **보장 / 비보장:** complete write만 success, no zero-write loop, short-write 정확 전진, closed pipe ordinary failure, cleanup과 original status 보존을 보장합니다. stdout에 이미 보인 prefix를 원자적으로 회수하거나 command 단위 atomicity를 보장하지는 않습니다.
 - **후속 검증 또는 수정 연결:** `e1154e181864`이 runtime write seam을 확장해 각 branch와 partial prefix를 검증합니다. resource command counter는 성공 emission 뒤에만 증가해야 한다는 Thread 4 invariant와도 연결됩니다.
 - **Thread의 다음 관련 commit:** `e1154e181864`은 baseline stream의 각 write 위치와 short-then-fail 조합을 어떻게 주입해 누락·중복 없는 prefix를 확인하는가?
@@ -1519,34 +1519,34 @@ while (count > 0)
 - 먼저 `git show --name-only e1154e181864`로 이 commit이 실제로 건드린 파일을 확정합니다.
 - 아래 항목은 반드시 `e1154e181864` 시점의 파일에서 확인합니다. final HEAD의 같은 함수로 대체하지 않습니다.
 - write fault runtime의 interrupted/short/zero/permanent mode와 selected-call injection을 확인합니다.
-- successful multi-command baseline을 기록한 뒤 각 command write를 차례로 실패시키는 sweep을 확인합니다.
-- `EINTR` 및 one-byte short write가 exact baseline stream을 재구성하는 assertion을 확인합니다.
+- successful multi-command 기준 상태를 기록한 뒤 각 command write를 차례로 실패시키는 sweep을 확인합니다.
+- `EINTR` 및 one-byte short write가 exact 기준 상태 stream을 재구성하는 assertion을 확인합니다.
 - short write 후 permanent failure에서 stdout이 정확한 successfully-written prefix만 포함하는지 확인합니다.
 - checker verdict write failure, diagnostic write failure, already-closed pipe case를 각각 확인합니다.
 - 모든 write failure case에서 allocation cleanup이 끝까지 도달하는지 확인합니다.
 - 코드 인용을 남길 때는 `SHA:path:symbol` 형식으로 위치를 기록하고, 설명에 필요한 최소 구문만 삽입합니다.
 
 #### Test commit 학습 기록
-- **대상 production invariant:** `ps_write_all`은 EINTR/short를 완성하고 zero/permanent를 실패시키며, 첫 unrecoverable failure 뒤 추가 output을 만들지 않고 이미 쓴 prefix만 유지하고 cleanup/status failure에 도달해야 합니다.
-- **재현하는 failure/boundary:** fault runtime은 selected write call에 `EINTR`, EPIPE, 0, 또는 count를 1로 줄이는 short를 주입합니다. `push_swap 3 2 1`의 multi-command baseline 각 write failure, first-call EINTR/short/zero, short first+permanent second, checker verdict, parse/command diagnostic, 실제 closed stdout pipe를 사용합니다.
-- **test technique:** deterministic selected-call write fault injection + exact-byte baseline/prefix comparison + real pipe closure + live-allocation report입니다.
+- **대상 production 항상 유지해야 하는 조건:** `ps_write_all`은 EINTR/short를 완성하고 zero/permanent를 실패시키며, 첫 unrecoverable failure 뒤 추가 output을 만들지 않고 이미 쓴 prefix만 유지하고 cleanup/status failure에 도달해야 합니다.
+- **재현하는 failure/boundary:** fault runtime은 selected write call에 `EINTR`, EPIPE, 0, 또는 count를 1로 줄이는 short를 주입합니다. `push_swap 3 2 1`의 multi-command 기준 상태 각 write failure, first-call EINTR/short/zero, short first+permanent second, checker verdict, parse/command diagnostic, 실제 closed stdout pipe를 사용합니다.
+- **test technique:** deterministic selected-call write fault injection + exact-byte 기준 상태/prefix comparison + real pipe closure + live-allocation report입니다.
 - **통과하는 production path:** fault binary → output helper → `ps_write_all`/injected `ps_write_once` → operation/sorter or verdict/diagnostic caller → stack/frame cleanup → `ps_test_finish` allocation report입니다.
-- **이 테스트가 증명하는 것:** EINTR와 one-byte short가 baseline byte stream을 정확히 완성하고, zero/permanent는 non-zero status가 되며, short-then-fail stdout은 baseline의 첫 1바이트만 포함해 반복/건너뜀 없이 멈춥니다. verdict/diagnostic failure와 real closed pipe도 process signal termination 대신 failure cleanup으로 끝나고 live allocation 0이어야 합니다.
+- **이 테스트가 증명하는 것:** EINTR와 one-byte short가 기준 상태 byte stream을 정확히 완성하고, zero/permanent는 non-zero status가 되며, short-then-fail stdout은 기준 상태의 첫 1바이트만 포함해 반복/건너뜀 없이 멈춥니다. verdict/diagnostic failure와 real closed pipe도 process signal termination 대신 failure cleanup으로 끝나고 live allocation 0이어야 합니다.
 - **이 테스트가 증명하지 않는 것:** 모든 OS/device behavior, concurrent writers, command 단위 atomicity, 임의의 여러 short/EINTR 조합 전체를 exhaust하지 않습니다.
 - **성격:** deterministic I/O fault regression과 closed-pipe integration regression입니다.
 - **막는 후속 회귀:** short write를 full success로 오인, cursor 미전진으로 prefix 반복, zero write 무한 loop, failure 뒤 다음 command emission, SIGPIPE cleanup 우회, diagnostic failure가 original status를 성공으로 바꾸는 변경을 막습니다.
 
 #### 학습자가 복원할 핵심 기록 — A
 - **직전 관련 상태와 문제:** production fix는 있었지만 syscall edge와 partial externally visible stream을 반복 가능하게 검증하는 test seam이 없었습니다.
-- **주요 boundary/decision:** write call counter와 env-selected mode를 `ps_write_once`에 배치하고, exact baseline byte string을 먼저 얻어 성공 복구는 equality, permanent failure는 exact prefix로 비교합니다.
-- **state / ownership / failure 변화:** fault build write counter가 추가되지만 normal build semantics는 유지됩니다. 모든 test case는 allocation report를 요청해 output failure가 main/frame cleanup을 건너뛰지 않는지 함께 봅니다.
+- **주요 boundary/decision:** write call counter와 env-selected mode를 `ps_write_once`에 배치하고, exact 기준 상태 byte string을 먼저 얻어 성공 복구는 equality, permanent failure는 exact prefix로 비교합니다.
+- **state / 소유권 / failure 변화:** fault build write counter가 추가되지만 normal build semantics는 유지됩니다. 모든 테스트 항목은 allocation report를 요청해 output failure가 main/frame cleanup을 건너뛰지 않는지 함께 봅니다.
 - **보장 / 비보장:** source가 열거한 interrupted/short/zero/permanent/verdict/diagnostic/closed-pipe 회귀를 제공합니다. 이미 출력된 byte rollback은 요구하지 않고 prefix preservation과 failure status를 요구합니다.
 - **후속 검증 또는 수정 연결:** Thread 최종 regression layer이며 source는 이 이후 추가 output hardening commit을 지정하지 않습니다.
 - **Thread 내 다음 commit:** 없음. Thread 최종 상태에서 이 commit의 남은 역할을 정리합니다.
 
-## 6. Invariant ledger
+## 6. 항상 유지해야 하는 조건 ledger
 
-| Invariant / contract | 처음 도입 | 강화 | 부족함이 드러난 지점 | fix | regression / evidence | 학습자 확인 메모 |
+| 항상 유지해야 하는 조건 / contract | 처음 도입 | 강화 | 부족함이 드러난 지점 | fix | regression / evidence | 학습자 확인 메모 |
 | --- | --- | --- | --- | --- | --- | --- |
 | complete emitted stream까지 성공해야 `push_swap` success | - | - | 2e97f29961d8은 write result를 무시 | 315f4b91779b | e1154e181864 | `ps_write_all` 0이 operation/sorter/main으로 올라가며 main은 A/B free 후 status 1을 반환합니다. baseline write sweep이 incomplete delivery를 success로 숨기지 못하게 합니다. |
 | short write cursor advance / zero write failure / closed pipe ordinary error | - | - | - | 315f4b91779b | e1154e181864 | positive count만큼 cursor/count를 갱신하고 `written <= 0`은 실패합니다. `SIGPIPE` ignore 후 closed pipe가 EPIPE return으로 들어갑니다. |
@@ -1561,7 +1561,7 @@ while (count > 0)
 | short write에서 중복/누락, zero write 무한 반복 위험 | cursor advance + zero-write failure | 315f4b91779b | e1154e181864 | positive actual bytes만큼 cursor/count를 갱신하고 0을 terminal failure로 처리합니다. exact baseline/prefix가 이를 검증합니다. |
 | closed pipe가 cleanup 전에 `SIGPIPE`로 종료 | `SIGPIPE` ignore 후 write error 처리 | 315f4b91779b | e1154e181864 | output-capable main이 먼저 signal policy를 설정해 EPIPE가 return path와 stack cleanup을 통과하게 합니다. |
 
-## 8. Ownership / state / responsibility 변화
+## 8. 소유권 / state / responsibility 변화
 
 | 대상 | 이 Thread 시작 시 | 변화 commit | 이 Thread 종료 시 | 실제 코드 근거 |
 | --- | --- | --- | --- | --- |
@@ -1572,10 +1572,10 @@ while (count > 0)
 | main-level stack cleanup | ordinary parse/sort/checker errors에서 cleanup | 63969f770a21, 315f4b91779b | allocation/output/closed-pipe failure에서도 owned stacks를 free하고 `ps_test_finish` 경유 | `315f4b91779b:src/push_swap.c:main`, `src/checker.c:main` |
 
 ## 9. Thread 최종 상태
-- **Source 기준 최종 상태:** project memory와 input은 runtime wrappers를 통과하고 fault build는 Nth allocation, selected read/write, live allocation을 관찰합니다. output은 `ps_write_all`이 EINTR를 재시도하고 short write만큼 전진하며 zero/permanent를 실패시킵니다. emitting operation이 실패하면 tiny/radix caller가 즉시 반환하고 두 main은 private state를 정리한 뒤 status 1을 보존합니다. `SIGPIPE`는 ignore되어 closed pipe도 같은 ordinary error path를 통과합니다. 이미 쓰인 stdout prefix는 rollback하지 않되 반복하지도 않습니다.
+- **Source 기준 최종 상태:** project memory와 input은 runtime wrappers를 통과하고 fault build는 Nth allocation, selected read/write, live allocation을 관찰합니다. output은 `ps_write_all`이 EINTR를 재시도하고 short write만큼 전진하며 zero/permanent를 실패시킵니다. emitting operation이 실패하면 tiny/radix caller가 즉시 반환하고 두 main은 private state를 정리한 뒤 status 1을 보존합니다. `SIGPIPE`는 ignore되어 closed pipe도 같은 ordinary 오류 처리를 통과합니다. 이미 쓰인 stdout prefix는 rollback하지 않되 반복하지도 않습니다.
 - **남아 있는 한계 / 다른 Thread로 넘어가는 책임:** command 단위 원자성이나 visible prefix rollback은 보장하지 않으며 의도된 contract도 아닙니다. fault tests는 열거된 deterministic syscall 결과와 selected positions를 다루며 모든 kernel/device/concurrency 조합을 증명하지 않습니다. 이 환경에서는 binary를 실행하지 못했으므로 test result를 새로 주장하지 않고 각 SHA의 implementation과 assertion만 확인했습니다.
 
-## 10. 최종 architecture 또는 execution flow 정리
+## 10. 최종 architecture 또는 실행 순서 정리
 - Source-derived flow anchor: `basic output → runtime seam → allocation fault sweep → write-all + status propagation + SIGPIPE policy → injected write regressions`
 - **학습자 최종 flow:** `2e97f29961d8:ps_putstr_fd`의 unchecked single write → `5faa9d7697af:runtime.c`의 malloc/free/read seam → `63969f770a21`의 aligned header/Nth failure/`ps_test_finish` → `315f4b91779b:ps_write_all`의 retry/progress/failure contract → `operations.c:emit_op/op_*` → `sort.c`의 첫 failure 즉시 반환 → `push_swap.c`/`checker.c` cleanup, optional diagnostic, original status → `e1154e181864`의 exact baseline/prefix와 closed-pipe regression입니다.
 - **실제 코드 삽입:** 핵심 decision은 위 `ps_write_all` loop와 `sort.c`의 반복적인 `if (!op_*(...)) return (0);`입니다. operation이 private state를 먼저 바꾸더라도 emission failure가 곧 caller 중단으로 이어져 external stream에 뒤 command를 추가하지 않습니다.
@@ -1585,11 +1585,11 @@ while (count > 0)
 - [x] 모든 commit에서 지정된 SHA의 코드를 직접 확인했습니다.
 - [x] final HEAD를 과거 commit 설명에 소급 사용하지 않았습니다.
 - [x] Source-confirmed fact와 직접 코드 확인 결과를 구분했습니다.
-- [x] S/A commit은 decision, invariant, ownership/failure, 후속 evidence까지 추적했습니다.
+- [x] S/A commit은 decision, 항상 유지해야 하는 조건, 소유권/failure, 후속 evidence까지 추적했습니다.
 - [x] B commit은 Thread 흐름에서 맡는 구현 역할과 필요한 state/boundary만 충분히 확인했습니다.
-- [x] test commit마다 production invariant, failure/boundary, technique, production path, 증명/비증명 범위를 구분했습니다.
-- [x] fix commit은 기존 가정 → failure/risk → root cause → 수정 invariant → 실제 코드 → regression evidence 순서로 연결했습니다.
-- [x] Invariant ledger와 Failure → Fix → Test 표를 실제 코드 근거로 채웠습니다.
+- [x] test commit마다 production 항상 유지해야 하는 조건, failure/boundary, technique, production path, 증명/비증명 범위를 구분했습니다.
+- [x] fix commit은 기존 가정 → failure/risk → root cause → 수정 항상 유지해야 하는 조건 → 실제 코드 → regression evidence 순서로 연결했습니다.
+- [x] 항상 유지해야 하는 조건 ledger와 Failure → Fix → Test 표를 실제 코드 근거로 채웠습니다.
 - [x] 별도 프로젝트 재학습 없이 이 Thread의 설계 → 구현 → 실패/위험 → 수정/검증 흐름을 commit history에 근거해 설명할 수 있습니다.
 ===== END FILE: 06-runtime-fault-injection-and-output-failure-propagation.md =====
 
@@ -1617,7 +1617,7 @@ while (count > 0)
 - Commit map의 순서를 바꾸지 않고 각 SHA를 차례대로 checkout 또는 `git show`로 확인합니다.
 - `Source-confirmed` 항목은 두 source 문서가 이미 확정한 사실입니다. 재평가하지 않습니다.
 - 학습 기록란에는 실제 해당 SHA의 코드에서 직접 확인한 내용만 채웁니다.
-- Invariant ledger와 Failure → Fix → Test 표는 commit을 개별 기능 목록으로 외우지 않고 시간에 따른 contract 변화를 연결하는 용도로 사용합니다.
+- 항상 유지해야 하는 조건 ledger와 Failure → Fix → Test 표는 commit을 개별 기능 목록으로 외우지 않고 시간에 따른 contract 변화를 연결하는 용도로 사용합니다.
 
 ## 해당 SHA 코드 확인 원칙
 
@@ -1633,8 +1633,8 @@ final HEAD에는 후속 fix, failure propagation, testability seam이 이미 섞
 
 ## S/A/B/C별 학습 깊이
 
-- **S:** 프로젝트 핵심 architecture/invariant 또는 일반 sorting mechanism으로 다룹니다. 직전 상태, 문제, 기존 설계의 한계, 결정, 실제 핵심 코드, ownership/lifecycle/state transition, failure scenario, 보장/비보장, 후속 fix/test까지 추적합니다.
-- **A:** 주요 subsystem, boundary, failure path, integration point를 추적합니다. 핵심 코드와 설계 판단, 책임 변화, 검증 연결을 확인합니다.
+- **S:** 프로젝트 핵심 architecture/항상 유지해야 하는 조건 또는 일반 sorting mechanism으로 다룹니다. 직전 상태, 문제, 기존 설계의 한계, 결정, 실제 핵심 코드, 소유권/lifecycle/상태 전이, failure scenario, 보장/비보장, 후속 fix/test까지 추적합니다.
+- **A:** 주요 subsystem, boundary, 실패 처리, integration point를 추적합니다. 핵심 코드와 설계 판단, 책임 변화, 검증 연결을 확인합니다.
 - **B:** Thread 흐름에서 맡는 구현 역할과 필요한 코드/state 변화를 확인합니다. S/A와 같은 깊이를 기계적으로 반복하지 않습니다.
 - **C:** source의 Development Threads에는 C commit이 포함되어 있지 않습니다. 다른 문맥에서 C commit을 볼 때는 Thread 이해에 필요한 경우만 배경으로 사용합니다.
 
@@ -1642,7 +1642,7 @@ final HEAD에는 후속 fix, failure propagation, testability seam이 이미 섞
 
 - 설명에 직접 필요한 최소 코드만 삽입합니다.
 - 코드 앞에 대상 SHA와 path/symbol을 기록합니다.
-- 함수 전체를 복사하기보다 invariant, ownership transfer, state mutation order, failure branch, cleanup, test injection을 보여주는 구문을 우선합니다.
+- 함수 전체를 복사하기보다 항상 유지해야 하는 조건, 소유권 transfer, state mutation order, failure branch, cleanup, test injection을 보여주는 구문을 우선합니다.
 - 변경 전/후 비교가 핵심인 fix에서는 두 SHA의 대응 구문을 함께 남깁니다.
 - source에 없는 구현 세부를 추측해서 정답처럼 채우지 않습니다.
 
@@ -1650,7 +1650,7 @@ final HEAD에는 후속 fix, failure propagation, testability seam이 이미 섞
 
 각 test commit에서는 다음을 구분해서 기록합니다.
 
-- 대상 production invariant
+- 대상 production 항상 유지해야 하는 조건
 - 재현하는 failure 또는 boundary
 - 사용한 test technique
 - 실제 통과하는 production code path
@@ -1659,7 +1659,7 @@ final HEAD에는 후속 fix, failure propagation, testability seam이 이미 섞
 - broad integration인지 deterministic regression인지 또는 다른 명시적 성격인지
 - 후속 변경에서 막는 회귀
 
-특히 product code와 test oracle이 구현을 공유하는지 여부를 확인합니다. 독립 모델, fault injection, deterministic resource baseline, sanitizer는 서로 다른 종류의 evidence이므로 한 종류가 다른 종류를 대체한다고 가정하지 않습니다.
+특히 product code와 test oracle이 구현을 공유하는지 여부를 확인합니다. 독립 모델, fault injection, deterministic resource 기준 상태, sanitizer는 서로 다른 종류의 evidence이므로 한 종류가 다른 종류를 대체한다고 가정하지 않습니다.
 
 ## 문서 완료 기준
 
@@ -1667,7 +1667,6 @@ final HEAD에는 후속 fix, failure propagation, testability seam이 이미 섞
 - 각 commit의 SHA, subject, importance, tags를 바꾸지 않았습니다.
 - 모든 코드 근거를 대상 SHA에서 직접 확인했습니다.
 - S/A/B 깊이를 구분했고 test/fix commit의 학습 구조를 채웠습니다.
-- 각 Thread의 invariant ledger와 Failure → Fix → Test 연결이 실제 code/test 근거로 완성되었습니다.
+- 각 Thread의 항상 유지해야 하는 조건 ledger와 Failure → Fix → Test 연결이 실제 code/test 근거로 완성되었습니다.
 - 프로젝트를 다시 처음부터 읽지 않아도 commit history를 근거로 설계 → 구현 → 실패/위험 → 수정 → 검증의 변화를 설명할 수 있습니다.
 ===== END FILE: README.md =====
-

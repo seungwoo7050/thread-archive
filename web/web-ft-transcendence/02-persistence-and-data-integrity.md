@@ -1,32 +1,32 @@
 ===== BEGIN FILE: 01-repository-abstraction-backend-parity-and-read-models.md =====
-# Development Thread 01 — Repository 추상화·backend parity·read model
+# 개발 스레드 01 — 저장소 추상화·백엔드 동작 일치·조회 모델
 
 ## 1. 학습 목표
 
-- 초기 relational schema가 typed row mapper와 `AppRepository`로 감싸지는 과정을 exact SHA 순서로 재구성합니다.
-- PostgreSQL과 memory 구현의 공통 surface와 실제로 남아 있던 의미 차이를 구분합니다.
-- recent match·dashboard read model의 잘못된 파생 지표가 fix와 regression test로 닫히는 관계를 설명합니다.
-- memory behavioral test와 실제 PostgreSQL integration harness가 서로 무엇을 증명하고 무엇을 증명하지 않는지 구분합니다.
+- 초기 관계형 스키마가 타입이 정의된 행 변환기와 `AppRepository`로 감싸지는 과정을 정확한 SHA 순서로 재구성합니다.
+- PostgreSQL과 메모리 구현의 공통 메서드 집합과 실제로 남아 있던 의미 차이를 구분합니다.
+- 최근 경기·대시보드 조회 모델의 잘못된 파생 지표가 수정과 회귀 테스트로 닫히는 관계를 설명합니다.
+- 메모리 동작 테스트와 실제 PostgreSQL 통합 테스트 실행 틀이 서로 무엇을 검증하고 무엇을 검증하지 않는지 구분합니다.
 
 ## 2. 범위와 경계
 
-- 포함: 초기 DB schema, user/session row mapping, repository lifecycle, seed/upsert, profile·leaderboard·recent-match·dashboard read model, backend test evidence.
-- 포함: `bestStreak`의 fabricated 구현을 고친 `035b97ca7c58`과 regression `6b661420e060`.
-- 포함: PostgreSQL integration command/dependency `e935054ce0c9`과 harness `c43b87694b29`.
-- 제외: session security, match-result atomic finalization, chat persistence, tournament progression, admin audit atomicity는 독립 Thread/카테고리에서 다룹니다.
-- 제외: 실제 WebSocket presence는 persistence user list가 아니라 realtime authority로 이동하므로 이 Thread의 parity 결론으로 일반화하지 않습니다.
+- 포함: 초기 DB 스키마, 사용자/세션 행 변환, 저장소 수명주기, 시드/업서트, 프로필·순위표·최근 경기·대시보드 조회 모델, 백엔드 테스트 근거.
+- 포함: `bestStreak`의 임의로 만든 구현을 고친 `035b97ca7c58`과 회귀 `6b661420e060`.
+- 포함: PostgreSQL 통합 명령/의존성 `e935054ce0c9`과 테스트 실행 틀 `c43b87694b29`.
+- 제외: 세션 보안, 경기 결과 원자적 결과 확정, 채팅 영속 저장, 토너먼트 진행, 관리자 감사 원자성은 독립 개발 스레드/카테고리에서 다룹니다.
+- 제외: 실제 WebSocket 접속 상태는 영속 저장 사용자 목록이 아니라 실시간 판정 권한으로 이동하므로 이 개발 스레드의 동작 일치 결론으로 일반화하지 않습니다.
 
 ## 3. 핵심 질문
 
-- `AppRepository`가 concrete backend 자원과 API caller 사이에서 어떤 lifetime을 소유합니까?
-- compile-time row type, row mapper, repository method는 각각 어떤 오류를 막고 어떤 오류는 막지 못합니까?
-- memory와 PostgreSQL이 같은 interface를 구현해도 왜 동일한 의미를 자동으로 보장하지 않습니까?
-- recent-match newest-first 순서에서 실제 최고 연승을 계산하려면 왜 reverse와 loss reset이 모두 필요합니까?
-- unit/behavioral test와 Testcontainers integration test의 증거 범위는 어떻게 다릅니까?
+- `AppRepository`가 구체적인 백엔드 자원과 API 호출자 사이에서 어떤 수명을 소유합니까?
+- 컴파일 시점 행 타입, 행 변환기, 저장소 메서드는 각각 어떤 오류를 막고 어떤 오류는 막지 못합니까?
+- 메모리와 PostgreSQL이 같은 인터페이스를 구현해도 왜 동일한 의미를 자동으로 보장하지 않습니까?
+- 최근 경기 최신순 순서에서 실제 최고 연승을 계산하려면 왜 역순 처리와 패배 시 초기화가 모두 필요합니까?
+- 단위/동작 테스트와 Testcontainers 통합 테스트의 증거 범위는 어떻게 다릅니까?
 
-## 4. Commit map
+## 4. 커밋 목록
 
-| 순서 | Commit | Subject | Importance | Tags |
+| 순서 | 커밋 | 제목 | 중요도 | 태그 |
 | ---: | --- | --- | :---: | --- |
 | 1 | `0e850d24406e` | `feat(db): 초기 PostgreSQL schema 정의` | B | PERSISTENCE, TOURNAMENT |
 | 2 | `4aa060c0b8df` | `feat(db): 사용자와 세션 row schema 정의` | B | AUTH, PERSISTENCE |
@@ -42,151 +42,151 @@
 | 12 | `e935054ce0c9` | `build(db): PostgreSQL integration 의존성과 명령 추가` | B | PERSISTENCE |
 | 13 | `c43b87694b29` | `test(db): PostgreSQL integration 환경과 계약 추가` | A | PERSISTENCE, RISK, TEST |
 
-## 5. Commit별 조사
+## 5. 커밋별 조사
 
-### 5.1. `0e850d24406e` — feat(db): 초기 PostgreSQL schema 정의
+### 5.1. `0e850d24406e` — feat(db): 초기 PostgreSQL 스키마 정의
 
 | 항목 | 고정 정보 |
 | --- | --- |
 | SHA | `0e850d24406e` |
-| Importance | B |
-| Tags | PERSISTENCE, TOURNAMENT |
-| Source role | 사용자·세션·친구·경기·채팅·토너먼트·관리 작업의 최초 durable relational model을 정의합니다. |
+| 중요도 | B |
+| 태그 | PERSISTENCE, TOURNAMENT |
+| 원문 역할 | 사용자·세션·친구·경기·채팅·토너먼트·관리 작업의 최초 영속 관계형 모델을 정의합니다. |
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `packages/db/migrations/001_initial.sql`의 `pgcrypto` extension, 각 `create table`, 기본값과 nullable column을 확인합니다.
-- `sessions`, `friendships`, `tournament_entries`의 foreign key와 `on delete cascade`가 어떤 row lifetime을 묶는지 추적합니다.
-- `friendships(requester_id, addressee_id)`와 `tournament_entries(tournament_id, user_id)`의 초기 방향성 unique 제약을 확인합니다.
+- `packages/db/migrations/001_initial.sql`의 `pgcrypto` 확장 기능, 각 `create table`, 기본값과 null 허용 열을 확인합니다.
+- `sessions`, `friendships`, `tournament_entries`의 외래 키와 `on delete cascade`가 어떤 행 수명을 묶는지 추적합니다.
+- `friendships(requester_id, addressee_id)`와 `tournament_entries(tournament_id, user_id)`의 초기 방향성 고유 제약을 확인합니다.
 - `matches_ended_at_idx`, `chat_scope_created_at_idx`가 지원하려는 실제 조회 순서를 확인합니다.
-- self-friend, canonical pair, tournament capacity·seed uniqueness, status enum이 아직 DB 제약으로 강제되지 않는다는 점을 기록합니다.
+- 자기 자신과의 친구 관계, 정규화한 사용자 쌍, 토너먼트 정원·시드 고유성, 상태 열거형이 아직 DB 제약으로 강제되지 않는다는 점을 기록합니다.
 
 #### 학습자 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 직전 관련 상태 | DB workspace는 있었지만 애플리케이션 상태를 보존할 PostgreSQL table과 관계가 없었습니다. |
-| 해결하려던 문제 | 사용자·인증·사회 관계·경기 결과·토너먼트를 프로세스 재시작 뒤에도 식별하고 연결할 durable schema가 필요했습니다. |
-| 핵심 결정 | `001_initial.sql` 한 migration에서 UUID 기본키, timestamp 기본값, foreign key, 초기 unique/index를 함께 선언했습니다. |
-| 입력 → 상태 전이 → 출력 | migration 실행 → extension과 table 생성 → FK·unique·조회 index 설치 → 이후 repository가 동일 row를 읽고 씁니다. |
-| ownership / lifetime / cleanup | PostgreSQL이 UUID·생성 시각·관계 row의 lifetime을 소유합니다. `sessions`와 참가 row는 부모 삭제 시 cascade되고, 애플리케이션은 아직 cleanup을 직접 조정하지 않습니다. |
-| failure / rollback / retry | DDL 적용 중 오류가 나면 migration 실행이 실패합니다. 이 SHA 자체에는 기존 데이터 정규화, 재시도 정책, down migration이 없습니다. |
-| 보장하는 것 | 핵심 엔터티와 참조 관계, 동일 방향 friendship 및 동일 tournament/user 중복 방지, 최근 경기·채팅 조회용 index를 제공합니다. |
-| 보장하지 않는 것 | unordered friendship identity, 자기 자신과의 friendship 금지, tournament seed/capacity, status 값의 유효 범위, 경기 결과 idempotency는 보장하지 않습니다. |
-| 후속 연결 | `4aa060c0b8df`가 row 타입과 mapper를 추가하고, `ffb0a8275a4f`·`3aa5958bb967`가 뒤늦게 데이터 무결성 제약을 보강합니다. |
+| 직전 관련 상태 | DB 워크스페이스는 있었지만 애플리케이션 상태를 보존할 PostgreSQL 테이블과 관계가 없었습니다. |
+| 해결하려던 문제 | 사용자·인증·친구 관계·경기 결과·토너먼트를 프로세스 재시작 뒤에도 식별하고 연결할 영속 스키마가 필요했습니다. |
+| 핵심 결정 | `001_initial.sql` 한 마이그레이션에서 UUID 기본키, 타임스탬프 기본값, 외래 키, 초기 고유 제약·인덱스를 함께 선언했습니다. |
+| 입력 → 상태 변경 → 출력 | 마이그레이션 실행 → 확장 기능과 테이블 생성 → FK·고유·조회 인덱스 설치 → 이후 저장소가 동일 행을 읽고 씁니다. |
+| 소유권·수명·정리 | PostgreSQL이 UUID·생성 시각·관계 행의 수명을 소유합니다. `sessions`와 참가 행은 부모 삭제 시 연쇄 삭제되고, 애플리케이션은 아직 정리를 직접 조정하지 않습니다. |
+| 실패·되돌리기·재시도 | DDL 적용 중 오류가 나면 마이그레이션 실행이 실패합니다. 이 SHA 자체에는 기존 데이터 정규화, 재시도 정책, 되돌리기 마이그레이션이 없습니다. |
+| 보장하는 것 | 핵심 엔터티와 참조 관계, 동일 방향 친구 관계 및 동일 토너먼트/사용자 중복 방지, 최근 경기·채팅 조회용 인덱스를 제공합니다. |
+| 보장하지 않는 것 | 순서와 무관한 친구 관계 신원, 자기 자신과의 친구 관계 금지, 토너먼트 시드·정원, 상태 값의 유효 범위, 경기 결과 멱등성은 보장하지 않습니다. |
+| 후속 연결 | `4aa060c0b8df`가 행 타입과 변환기를 추가하고, `ffb0a8275a4f`·`3aa5958bb967`가 뒤늦게 데이터 무결성 제약을 보강합니다. |
 
 #### 비교 기준
 
-- parent 상태와 `0e850d24406e`의 diff를 먼저 비교합니다.
+- 부모 커밋의 상태와 `0e850d24406e`의 변경 내용을 먼저 비교합니다.
 - 후속 관련 SHA `4aa060c0b8df`가 이 결정의 부족한 점을 보완하거나 검증하는지 확인합니다.
 
-### 5.2. `4aa060c0b8df` — feat(db): 사용자와 세션 row schema 정의
+### 5.2. `4aa060c0b8df` — feat(db): 사용자와 세션 행 스키마 정의
 
 | 항목 | 고정 정보 |
 | --- | --- |
 | SHA | `4aa060c0b8df` |
-| Importance | B |
-| Tags | AUTH, PERSISTENCE |
-| Source role | 초기 SQL column을 Kysely row type과 public/session model 변환 함수로 연결합니다. |
+| 중요도 | B |
+| 태그 | AUTH, PERSISTENCE |
+| 원문 역할 | 초기 SQL 열을 Kysely 행 타입과 공개/세션 모델 변환 함수로 연결합니다. |
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `packages/db/src/schema.ts`의 `UserTable`, `SessionTable`, `Database`, `UserRow`, `UserProjectionRow`를 SQL column과 대조합니다.
-- `packages/db/src/rowMappers.ts`의 `toPublicUser`, `toSessionUser`가 snake_case를 camelCase로 바꾸고 어떤 column을 제외하는지 확인합니다.
-- `Generated`, nullable `email`·`banned_at`, `Date`와 숫자 변환이 compile-time에서 어떻게 표현되는지 확인합니다.
-- `online`이 row column이 아니라 mapper 인수라는 점과 public projection에서 email이 빠지는 이유를 기록합니다.
+- `packages/db/src/schema.ts`의 `UserTable`, `SessionTable`, `Database`, `UserRow`, `UserProjectionRow`를 SQL 열과 대조합니다.
+- `packages/db/src/rowMappers.ts`의 `toPublicUser`, `toSessionUser`가 snake_case를 camelCase로 바꾸고 어떤 열을 제외하는지 확인합니다.
+- `Generated`, null 허용 `email`·`banned_at`, `Date`와 숫자 변환이 컴파일 시점에서 어떻게 표현되는지 확인합니다.
+- `online`이 행 열이 아니라 변환기 인수라는 점과 공개 사용자 정보에서 이메일이 빠지는 이유를 기록합니다.
 
 #### 학습자 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 직전 관련 상태 | `001_initial.sql`에는 column이 있었지만 TypeScript query 결과와 shared DTO 사이에 명시된 변환 지점이 없었습니다. |
-| 해결하려던 문제 | SQL 이름과 애플리케이션 이름이 섞이고, public 응답이 email·내부 column을 우발적으로 노출할 위험이 있었습니다. |
-| 핵심 결정 | Kysely table interface와 `Selectable` row type을 만들고 `toPublicUser`·`toSessionUser`를 유일한 초기 변환 지점으로 두었습니다. |
-| 입력 → 상태 전이 → 출력 | `users` row → `UserProjectionRow` → `toPublicUser(online)` → public user, 또는 email을 더한 `SessionUser`로 변환됩니다. |
-| ownership / lifetime / cleanup | DB driver가 row lifetime을 소유하고 mapper는 새 DTO 값을 반환합니다. `online` 상태는 저장 row가 아니라 호출자가 제공하는 일시적 정보입니다. |
-| failure / rollback / retry | mapper는 입력을 runtime 검증하지 않습니다. 잘못된 driver shape나 유효하지 않은 enum은 TypeScript 타입만으로 실행 중 차단되지 않습니다. |
-| 보장하는 것 | column 이름과 API 이름을 분리하고 public/session projection의 노출 범위를 compile-time에 고정합니다. |
-| 보장하지 않는 것 | query 실행, repository lifecycle, backend parity, runtime schema validation은 아직 제공하지 않습니다. |
-| 후속 연결 | `9277572765e7`가 이 타입을 사용하는 repository lifecycle을 만들고, Thread 3의 row-schema refactor가 projection을 canonical 형태로 정렬합니다. |
+| 직전 관련 상태 | `001_initial.sql`에는 열이 있었지만 TypeScript 쿼리 결과와 공유 DTO 사이에 명시된 변환 지점이 없었습니다. |
+| 해결하려던 문제 | SQL 이름과 애플리케이션 이름이 섞이고, 공개 응답이 이메일·내부 열을 우발적으로 노출할 위험이 있었습니다. |
+| 핵심 결정 | Kysely 테이블 인터페이스와 `Selectable` 행 타입을 만들고 `toPublicUser`·`toSessionUser`를 유일한 초기 변환 지점으로 두었습니다. |
+| 입력 → 상태 변경 → 출력 | `users` 행 → `UserProjectionRow` → `toPublicUser(online)` → 공개 사용자, 또는 이메일을 더한 `SessionUser`로 변환됩니다. |
+| 소유권·수명·정리 | DB 드라이버가 행 수명을 소유하고 변환기는 새 DTO 값을 반환합니다. `online` 상태는 저장 행이 아니라 호출자가 제공하는 일시적 정보입니다. |
+| 실패·되돌리기·재시도 | 변환기는 입력을 실행 중 검증하지 않습니다. 잘못된 드라이버 형식이나 유효하지 않은 열거형은 TypeScript 타입만으로 실행 중 차단되지 않습니다. |
+| 보장하는 것 | 열 이름과 API 이름을 분리하고 공개/세션 사용자 정보의 노출 범위를 컴파일 시점에 고정합니다. |
+| 보장하지 않는 것 | 쿼리 실행, 저장소 수명주기, 백엔드 동작 일치, 런타임 스키마 검증은 아직 제공하지 않습니다. |
+| 후속 연결 | `9277572765e7`가 이 타입을 사용하는 저장소 수명주기를 만들고, 개발 스레드 3의 행 스키마 리팩터링이 변환 결과를 표준 형태로 정렬합니다. |
 
 #### 비교 기준
 
-- parent 상태와 `4aa060c0b8df`의 diff를 먼저 비교합니다.
-- 이 Thread의 직전 관련 SHA `0e850d24406e`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
+- 부모 커밋의 상태와 `4aa060c0b8df`의 변경 내용을 먼저 비교합니다.
+- 이 개발 스레드의 직전 관련 SHA `0e850d24406e`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
 - 후속 관련 SHA `9277572765e7`가 이 결정의 부족한 점을 보완하거나 검증하는지 확인합니다.
 
-### 5.3. `9277572765e7` — feat(db): 저장소 lifecycle 구성
+### 5.3. `9277572765e7` — feat(db): 저장소 수명주기 구성
 
 | 항목 | 고정 정보 |
 | --- | --- |
 | SHA | `9277572765e7` |
-| Importance | B |
-| Tags | PERSISTENCE, OPERATIONS |
-| Source role | `AppRepository`와 PostgreSQL/memory factory를 통해 저장소 생성·종료 책임을 API에서 분리합니다. |
+| 중요도 | B |
+| 태그 | PERSISTENCE, OPERATIONS |
+| 원문 역할 | `AppRepository`와 PostgreSQL/메모리 생성 함수를 통해 저장소 생성·종료 책임을 API에서 분리합니다. |
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `packages/db/src/index.ts`의 `AppRepository`, `createPostgresRepository`, `createMemoryRepository`를 확인합니다.
-- PostgreSQL factory가 `Pool`, `Kysely`, dialect를 어떤 순서로 만들고 closure가 무엇을 포획하는지 추적합니다.
+- PostgreSQL 생성 함수가 `Pool`, `Kysely`, dialect를 어떤 순서로 만들고 클로저가 무엇을 포획하는지 추적합니다.
 - `PostgresRepository.close()`의 `db.destroy()`와 `pool.end()` 순서 및 오류 처리 범위를 확인합니다.
-- 이 시점의 interface가 `close`, `ensureSeedData`만 포함하고 기능 parity를 아직 강제하지 않는다는 점을 확인합니다.
+- 이 시점의 인터페이스가 `close`, `ensureSeedData`만 포함하고 기능 동작 일치를 아직 강제하지 않는다는 점을 확인합니다.
 
 #### 학습자 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 직전 관련 상태 | migration SQL과 row mapper는 있었지만 호출자가 Pool/Kysely 생성과 종료를 직접 알아야 했습니다. |
-| 해결하려던 문제 | API가 concrete database 자원에 결합되면 memory test double을 같은 호출 계약으로 사용할 수 없고 종료 누락 위험도 커집니다. |
-| 핵심 결정 | `AppRepository` interface와 두 factory를 도입해 backend 선택과 자원 구성을 factory 내부로 숨겼습니다. |
-| 입력 → 상태 전이 → 출력 | `databaseUrl` → `Pool`/`Kysely` 생성 → `PostgresRepository` 반환 → 호출 종료 시 `close()`가 database 자원을 해제합니다. memory factory는 외부 자원 없는 구현을 반환합니다. |
-| ownership / lifetime / cleanup | PostgreSQL repository가 Kysely와 Pool을 소유하며 repository를 만든 호출자가 `close()` 호출 책임을 가집니다. memory repository는 소유할 외부 handle이 없습니다. |
-| failure / rollback / retry | 생성 뒤 호출자가 `close()`를 누락하면 pool lifetime이 남습니다. 이 SHA에는 공통 `try/finally` composition root나 운영 readiness가 없습니다. |
-| 보장하는 것 | 호출자는 concrete backend를 몰라도 동일 lifecycle method를 사용하고, test에서 memory 구현으로 교체할 수 있습니다. |
-| 보장하지 않는 것 | interface가 데이터 동작의 의미적 parity를 증명하지는 않으며, `ensureSeedData`가 schema migration과 seed를 아직 함께 취급합니다. |
-| 후속 연결 | `fb516f723cdf`부터 실제 repository operation이 추가되고, Thread 2의 `f9bb622a1117`가 migration과 seed ownership을 분리합니다. |
+| 직전 관련 상태 | 마이그레이션 SQL과 행 변환기는 있었지만 호출자가 풀/Kysely 생성과 종료를 직접 알아야 했습니다. |
+| 해결하려던 문제 | API가 구체적인 데이터베이스 자원에 결합되면 메모리 테스트 double을 같은 호출 계약으로 사용할 수 없고 종료 누락 위험도 커집니다. |
+| 핵심 결정 | `AppRepository` 인터페이스와 두 생성 함수를 도입해 백엔드 선택과 자원 구성을 생성 함수 내부로 숨겼습니다. |
+| 입력 → 상태 변경 → 출력 | `databaseUrl` → `Pool`/`Kysely` 생성 → `PostgresRepository` 반환 → 호출 종료 시 `close()`가 데이터베이스 자원을 해제합니다. 메모리 생성 함수는 외부 자원 없는 구현을 반환합니다. |
+| 소유권·수명·정리 | PostgreSQL 저장소가 Kysely와 풀을 소유하며 저장소를 만든 호출자가 `close()` 호출 책임을 가집니다. 메모리 저장소는 소유할 외부 핸들이 없습니다. |
+| 실패·되돌리기·재시도 | 생성 뒤 호출자가 `close()`를 누락하면 풀 수명이 남습니다. 이 SHA에는 공통 `try/finally` 구성 진입점이나 운영 준비 상태가 없습니다. |
+| 보장하는 것 | 호출자는 구체적인 백엔드를 몰라도 동일 수명주기 메서드를 사용하고, 테스트에서 메모리 구현으로 교체할 수 있습니다. |
+| 보장하지 않는 것 | 인터페이스가 데이터 동작의 의미적 동작 일치를 검증하지는 않으며, `ensureSeedData`가 스키마 마이그레이션과 시드를 아직 함께 취급합니다. |
+| 후속 연결 | `fb516f723cdf`부터 실제 저장소 연산이 추가되고, 개발 스레드 2의 `f9bb622a1117`가 마이그레이션과 시드 소유권을 분리합니다. |
 
 #### 비교 기준
 
-- parent 상태와 `9277572765e7`의 diff를 먼저 비교합니다.
-- 이 Thread의 직전 관련 SHA `4aa060c0b8df`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
+- 부모 커밋의 상태와 `9277572765e7`의 변경 내용을 먼저 비교합니다.
+- 이 개발 스레드의 직전 관련 SHA `4aa060c0b8df`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
 - 후속 관련 SHA `fb516f723cdf`가 이 결정의 부족한 점을 보완하거나 검증하는지 확인합니다.
 
-### 5.4. `fb516f723cdf` — feat(db): 개발 사용자 seed 저장 구현
+### 5.4. `fb516f723cdf` — feat(db): 개발 사용자 시드 저장 구현
 
 | 항목 | 고정 정보 |
 | --- | --- |
 | SHA | `fb516f723cdf` |
-| Importance | B |
-| Tags | PERSISTENCE |
-| Source role | 개발용 identity seed와 handle 기반 upsert를 PostgreSQL·memory 구현에 함께 추가합니다. |
+| 중요도 | B |
+| 태그 | PERSISTENCE |
+| 원문 역할 | 개발용 신원 시드와 핸들 기반 업서트를 PostgreSQL·메모리 구현에 함께 추가합니다. |
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `packages/db/src/index.ts`의 `DevLoginInput`, 두 backend의 `ensureSeedData`, `upsertDevUser`를 비교합니다.
-- PostgreSQL `insert ... on conflict (handle) do update ... returning *`가 갱신하는 column과 유지하는 identity를 확인합니다.
-- `normalizeHandle`, deterministic email/display/avatar 생성과 고정 seed 목록을 확인합니다.
-- memory `Map`의 key/value, UUID 생성, seed 반복 실행 시 중복 여부를 PostgreSQL 동작과 비교합니다.
-- 전체 seed가 하나의 transaction으로 묶이지 않는다는 점을 failure 범위에 기록합니다.
+- `packages/db/src/index.ts`의 `DevLoginInput`, 두 백엔드의 `ensureSeedData`, `upsertDevUser`를 비교합니다.
+- PostgreSQL `insert ... on conflict (handle) do update ... returning *`가 갱신하는 열과 유지하는 신원을 확인합니다.
+- `normalizeHandle`, 결정적 이메일/표시 이름·아바타 생성과 고정 시드 목록을 확인합니다.
+- 메모리 `Map`의 키/값, UUID 생성, 시드 반복 실행 시 중복 여부를 PostgreSQL 동작과 비교합니다.
+- 전체 시드가 하나의 트랜잭션으로 묶이지 않는다는 점을 실패 범위에 기록합니다.
 
 #### 학습자 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 직전 관련 상태 | repository는 생성·종료만 지원했고 로컬 로그인이나 read model을 확인할 사용자 데이터가 없었습니다. |
-| 해결하려던 문제 | 반복 가능한 개발 환경과 같은 handle로 재로그인할 때 동일 사용자를 갱신하는 identity 규칙이 필요했습니다. |
-| 핵심 결정 | handle을 정규화한 뒤 PostgreSQL은 upsert하고 memory는 canonical map을 조회·갱신하며, `ensureSeedData`가 고정 개발 사용자를 준비합니다. |
-| 입력 → 상태 전이 → 출력 | 개발 입력 → handle 정규화 → 기존 row/map 검색 → insert 또는 update → mapper를 거친 session user 반환입니다. |
-| ownership / lifetime / cleanup | PostgreSQL row는 DB가, memory user는 repository의 `Map`이 소유합니다. 반환값은 projection이며 repository 종료 전까지 memory 원본이 유지됩니다. |
-| failure / rollback / retry | 개별 upsert는 idempotent하지만 seed 전체가 하나의 transaction은 아닙니다. 중간 실패 후 재실행으로 수렴할 수는 있어도 이 SHA가 all-or-nothing을 보장하지 않습니다. |
-| 보장하는 것 | 동일 handle 재실행이 새 identity를 무한 생성하지 않고 두 backend에서 개발 로그인 입력을 처리할 수 있습니다. |
-| 보장하지 않는 것 | production에서 자동 seed가 안전하다는 보장, profile별 데이터 분리, 역할 부여의 보안성, 두 backend의 모든 정렬·limit parity는 없습니다. |
-| 후속 연결 | Thread 2의 `8da6edef28eb`가 seed profile을 나누고 `e1a0316fbe84`가 API startup의 암시적 seed를 제거합니다. |
+| 직전 관련 상태 | 저장소는 생성·종료만 지원했고 로컬 로그인이나 조회 모델을 확인할 사용자 데이터가 없었습니다. |
+| 해결하려던 문제 | 반복 가능한 개발 환경과 같은 핸들로 재로그인할 때 동일 사용자를 갱신하는 신원 규칙이 필요했습니다. |
+| 핵심 결정 | 핸들을 정규화한 뒤 PostgreSQL은 업서트하고 메모리는 표준 목록을 조회·갱신하며, `ensureSeedData`가 고정 개발 사용자를 준비합니다. |
+| 입력 → 상태 변경 → 출력 | 개발 입력 → 핸들 정규화 → 기존 행/목록 검색 → 삽입 또는 갱신 → 변환기를 거친 세션 사용자 반환입니다. |
+| 소유권·수명·정리 | PostgreSQL 행은 DB가, 메모리 사용자는 저장소의 `Map`이 소유합니다. 반환값은 변환 결과이며 저장소 종료 전까지 메모리 원본이 유지됩니다. |
+| 실패·되돌리기·재시도 | 개별 업서트는 멱등하지만 시드 전체가 하나의 트랜잭션은 아닙니다. 중간 실패 후 재실행으로 수렴할 수는 있어도 이 SHA가 전부 반영하거나 전혀 반영하지 않는 방식을 보장하지 않습니다. |
+| 보장하는 것 | 동일 핸들 재실행이 새 신원을 무한 생성하지 않고 두 백엔드에서 개발 로그인 입력을 처리할 수 있습니다. |
+| 보장하지 않는 것 | 운영에서 자동 시드가 안전하다는 보장, 프로필별 데이터 분리, 역할 부여의 보안성, 두 백엔드의 모든 정렬·상한 동작 일치는 없습니다. |
+| 후속 연결 | 개발 스레드 2의 `8da6edef28eb`가 초기 데이터 구성을 나누고 `e1a0316fbe84`가 API 시작의 암시적 시드를 제거합니다. |
 
 #### 비교 기준
 
-- parent 상태와 `fb516f723cdf`의 diff를 먼저 비교합니다.
-- 이 Thread의 직전 관련 SHA `9277572765e7`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
+- 부모 커밋의 상태와 `fb516f723cdf`의 변경 내용을 먼저 비교합니다.
+- 이 개발 스레드의 직전 관련 SHA `9277572765e7`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
 - 후속 관련 SHA `c5b96a06925c`가 이 결정의 부족한 점을 보완하거나 검증하는지 확인합니다.
 
 ### 5.5. `c5b96a06925c` — feat(db): 프로필 조회와 변경 저장 구현
@@ -194,35 +194,35 @@
 | 항목 | 고정 정보 |
 | --- | --- |
 | SHA | `c5b96a06925c` |
-| Importance | B |
-| Tags | PERSISTENCE |
-| Source role | identity 저장소를 profile lookup/update와 사용자 목록 read model로 확장합니다. |
+| 중요도 | B |
+| 태그 | PERSISTENCE |
+| 원문 역할 | 신원 저장소를 프로필 조회/갱신과 사용자 목록 조회 모델로 확장합니다. |
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `AppRepository`에 추가된 `getUserById`, `getUserByHandle`, `updateProfile`, `listOnlineUsers` signature를 확인합니다.
-- PostgreSQL `update ... returning *`와 update 전 사용자 조회의 failure path를 확인합니다.
-- PostgreSQL `status = 'active'`, rating 정렬, `limit 12`와 memory 구현의 filter/limit 차이를 비교합니다.
-- public mapper가 email을 제외하고 `online`을 어떤 값으로 채우는지 확인합니다.
+- `AppRepository`에 추가된 `getUserById`, `getUserByHandle`, `updateProfile`, `listOnlineUsers` 서명을 확인합니다.
+- PostgreSQL `update ... returning *`와 갱신 전 사용자 조회의 실패 경로를 확인합니다.
+- PostgreSQL `status = 'active'`, 레이팅 정렬, `limit 12`와 메모리 구현의 필터·상한 차이를 비교합니다.
+- 공개 변환기가 이메일을 제외하고 `online`을 어떤 값으로 채우는지 확인합니다.
 
 #### 학습자 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 직전 관련 상태 | 개발 로그인은 가능했지만 다른 사용자를 조회하거나 자기 표시 이름·avatar를 갱신할 repository operation이 없었습니다. |
-| 해결하려던 문제 | HTTP profile·lobby가 persistence 내부 SQL을 직접 작성하지 않고 identity-bound read/write를 수행해야 했습니다. |
-| 핵심 결정 | ID/handle lookup, profile update, active-user 목록을 `AppRepository`에 올리고 두 backend에 구현했습니다. |
-| 입력 → 상태 전이 → 출력 | 식별자 또는 handle → row 검색 → public projection 반환; profile patch → 대상 확인 → row/map 변경 → 갱신 projection 반환입니다. |
-| ownership / lifetime / cleanup | repository가 원본 row/map 변경을 소유하고 호출자는 반환 projection만 소비합니다. memory update는 저장된 객체를 직접 바꿉니다. |
-| failure / rollback / retry | 대상이 없으면 명시적 오류를 던집니다. 이 SHA에서 PostgreSQL은 active·limit 12를 적용하지만 memory 목록은 같은 filter/limit를 완전히 재현하지 않습니다. |
-| 보장하는 것 | profile 접근과 변경이 repository 경계에 모이고 SQL column이 API route로 직접 새지 않습니다. |
-| 보장하지 않는 것 | 실제 WebSocket presence, 두 backend의 완전한 목록 parity, optimistic concurrency, runtime 입력 검증은 보장하지 않습니다. |
-| 후속 연결 | `0364c42f776b`·`c7ea1ff241c8`가 read model을 확장하고, 실제 online authority는 이후 realtime subsystem으로 이동합니다. |
+| 직전 관련 상태 | 개발 로그인은 가능했지만 다른 사용자를 조회하거나 자기 표시 이름·avatar를 갱신할 저장소 연산이 없었습니다. |
+| 해결하려던 문제 | HTTP 프로필·로비가 영속 저장 내부 SQL을 직접 작성하지 않고 사용자 신원에 종속된 읽기/쓰기를 수행해야 했습니다. |
+| 핵심 결정 | ID/핸들 조회, 프로필 갱신, 활성 사용자 목록을 `AppRepository`에 올리고 두 백엔드에 구현했습니다. |
+| 입력 → 상태 변경 → 출력 | 식별자 또는 핸들 → 행 검색 → 공개 사용자 정보 반환; 프로필 패치 → 대상 확인 → 행/목록 변경 → 갱신 변환 결과 반환입니다. |
+| 소유권·수명·정리 | 저장소가 원본 행/목록 변경을 소유하고 호출자는 반환 변환 결과만 소비합니다. 메모리 갱신은 저장된 객체를 직접 바꿉니다. |
+| 실패·되돌리기·재시도 | 대상이 없으면 명시적 오류를 던집니다. 이 SHA에서 PostgreSQL은 활성·상한 12를 적용하지만 메모리 목록은 같은 필터·상한을 완전히 재현하지 않습니다. |
+| 보장하는 것 | 프로필 접근과 변경이 저장소 경계에 모이고 SQL 열이 API 라우트로 직접 새지 않습니다. |
+| 보장하지 않는 것 | 실제 WebSocket 접속 상태, 두 백엔드의 완전한 목록 동작 일치, optimistic 동시성, 실행 시점 입력 검증은 보장하지 않습니다. |
+| 후속 연결 | `0364c42f776b`·`c7ea1ff241c8`가 조회 모델을 확장하고, 실제 온라인 판정 권한은 이후 실시간 하위 시스템으로 이동합니다. |
 
 #### 비교 기준
 
-- parent 상태와 `c5b96a06925c`의 diff를 먼저 비교합니다.
-- 이 Thread의 직전 관련 SHA `fb516f723cdf`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
+- 부모 커밋의 상태와 `c5b96a06925c`의 변경 내용을 먼저 비교합니다.
+- 이 개발 스레드의 직전 관련 SHA `fb516f723cdf`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
 - 후속 관련 SHA `0364c42f776b`가 이 결정의 부족한 점을 보완하거나 검증하는지 확인합니다.
 
 ### 5.6. `0364c42f776b` — feat(db): 순위 조회 구현
@@ -230,72 +230,72 @@
 | 항목 | 고정 정보 |
 | --- | --- |
 | SHA | `0364c42f776b` |
-| Importance | B |
-| Tags | PERSISTENCE |
-| Source role | rating과 승수에서 leaderboard projection을 계산하는 repository read model을 추가합니다. |
+| 중요도 | B |
+| 태그 | PERSISTENCE |
+| 원문 역할 | 레이팅과 승수에서 순위표 변환 결과를 계산하는 저장소 조회 모델을 추가합니다. |
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- 두 backend의 `listLeaderboard()` 정렬 key, limit, `rank` 생성 방식을 비교합니다.
-- `percentage(wins, losses)`의 zero-total 처리와 소수점 한 자리 반올림을 확인합니다.
-- PostgreSQL `order by rating desc, wins desc limit 20`과 memory sort의 동점·limit 차이를 기록합니다.
-- `LeaderboardEntry`로 변환할 때 public user와 계산 field의 소유 위치를 확인합니다.
+- 두 백엔드의 `listLeaderboard()` 정렬 키, 상한, `rank` 생성 방식을 비교합니다.
+- `percentage(wins, losses)`의 0-total 처리와 소수점 한 자리 반올림을 확인합니다.
+- PostgreSQL `order by rating desc, wins desc limit 20`과 메모리 sort의 동점·상한 차이를 기록합니다.
+- `LeaderboardEntry`로 변환할 때 공개 사용자와 계산 필드의 소유 위치를 확인합니다.
 
 #### 학습자 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 직전 관련 상태 | profile 목록은 있었지만 순위, 승률, 표시 순서를 일관된 DTO로 제공하지 못했습니다. |
-| 해결하려던 문제 | UI가 backend별 raw users를 받아 자체 정렬·계산하면 PostgreSQL과 memory 결과가 갈라질 수 있었습니다. |
-| 핵심 결정 | `listLeaderboard()`가 rating·wins 순으로 정렬하고 rank와 승률을 repository에서 계산하도록 했습니다. |
-| 입력 → 상태 전이 → 출력 | 사용자 row 집합 → rating/wins 정렬 → index 기반 rank와 `percentage` 계산 → leaderboard entry 배열입니다. |
-| ownership / lifetime / cleanup | 저장된 rating/wins는 repository가 소유하고, rank/winRate는 호출 시 생성되는 read-model 값입니다. |
-| failure / rollback / retry | 빈 전적은 0%로 처리합니다. 동점의 추가 deterministic key와 memory의 `limit 20` parity는 이 SHA에서 완전하지 않습니다. |
-| 보장하는 것 | leaderboard 계산 위치와 기본 정렬 규칙이 두 backend 계약에 포함됩니다. |
-| 보장하지 않는 것 | rating 변경의 atomicity, 전체 시즌 범위, 안정적인 동점 순서, pagination은 보장하지 않습니다. |
-| 후속 연결 | `6509e32ba95d`가 memory 흐름에서 결과를 간접 확인하고, rating finalization 자체는 별도의 persistence story에서 강화됩니다. |
+| 직전 관련 상태 | 프로필 목록은 있었지만 순위, 승률, 표시 순서를 일관된 DTO로 제공하지 못했습니다. |
+| 해결하려던 문제 | UI가 백엔드별 가공 전 사용자 데이터를 받아 자체 정렬·계산하면 PostgreSQL과 메모리 결과가 갈라질 수 있었습니다. |
+| 핵심 결정 | `listLeaderboard()`가 레이팅·승수 순으로 정렬하고 순위와 승률을 저장소에서 계산하도록 했습니다. |
+| 입력 → 상태 변경 → 출력 | 사용자 행 집합 → 레이팅/승수 정렬 → 인덱스 기반 순위와 `percentage` 계산 → 순위표 항목 배열입니다. |
+| 소유권·수명·정리 | 저장된 레이팅/승수는 저장소가 소유하고, 순위/winRate는 호출 시 생성되는 조회 모델 값입니다. |
+| 실패·되돌리기·재시도 | 빈 전적은 0%로 처리합니다. 동점의 추가 결정적 키와 메모리의 `limit 20` 동작 일치는 이 SHA에서 완전하지 않습니다. |
+| 보장하는 것 | 순위표 계산 위치와 기본 정렬 규칙이 두 백엔드 계약에 포함됩니다. |
+| 보장하지 않는 것 | 레이팅 변경의 원자성, 전체 시즌 범위, 안정적인 동점 순서, pagination은 보장하지 않습니다. |
+| 후속 연결 | `6509e32ba95d`가 메모리 흐름에서 결과를 간접 확인하고, 레이팅 결과 확정 자체는 별도의 영속 저장 과정에서 강화됩니다. |
 
 #### 비교 기준
 
-- parent 상태와 `0364c42f776b`의 diff를 먼저 비교합니다.
-- 이 Thread의 직전 관련 SHA `c5b96a06925c`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
+- 부모 커밋의 상태와 `0364c42f776b`의 변경 내용을 먼저 비교합니다.
+- 이 개발 스레드의 직전 관련 SHA `c5b96a06925c`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
 - 후속 관련 SHA `8ab49e5f2dd4`가 이 결정의 부족한 점을 보완하거나 검증하는지 확인합니다.
 
-### 5.7. `8ab49e5f2dd4` — feat(db): 경기 조회 row contract 정의
+### 5.7. `8ab49e5f2dd4` — feat(db): 경기 조회 행 계약 정의
 
 | 항목 | 고정 정보 |
 | --- | --- |
 | SHA | `8ab49e5f2dd4` |
-| Importance | B |
-| Tags | PERSISTENCE |
-| Source role | persisted match와 joined handle을 `MatchSummary`로 바꾸는 typed row boundary를 정의합니다. |
+| 중요도 | B |
+| 태그 | PERSISTENCE |
+| 원문 역할 | 저장된 경기와 참가한 핸들을 `MatchSummary`로 바꾸는 타입이 정의된 행 경계를 정의합니다. |
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `packages/db/src/schema.ts`의 `MatchTable`, `MatchRow`, `MatchWithHandlesRow`를 initial SQL과 대조합니다.
-- `packages/db/src/rowMappers.ts`의 `toMatchSummary(row, userId)`가 승패와 상대 handle을 어떻게 결정하는지 확인합니다.
-- loser의 `ratingDelta`가 `-12`, AI 상대가 문자열 `AI`로 표현되는 초기 가정을 기록합니다.
-- `ended_at.toISOString()`과 nullable winner/loser 처리 경계를 확인합니다.
-- 이 SHA에는 실제 recent-match query가 아직 없다는 점을 분리해서 기록합니다.
+- `packages/db/src/schema.ts`의 `MatchTable`, `MatchRow`, `MatchWithHandlesRow`를 초기 SQL과 대조합니다.
+- `packages/db/src/rowMappers.ts`의 `toMatchSummary(row, userId)`가 승패와 상대 핸들을 어떻게 결정하는지 확인합니다.
+- 패자의 `ratingDelta`가 `-12`, AI 상대가 문자열 `AI`로 표현되는 초기 가정을 기록합니다.
+- `ended_at.toISOString()`과 null 허용 승자/패자 처리 경계를 확인합니다.
+- 이 SHA에는 실제 최근 경기 쿼리가 아직 없다는 점을 분리해서 기록합니다.
 
 #### 학습자 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 직전 관련 상태 | `matches` table은 존재했지만 joined query 결과와 공개 경기 요약 사이에 타입·변환 계약이 없었습니다. |
-| 해결하려던 문제 | viewer-relative 승패, 상대 식별, timestamp 형식을 각 caller가 임의로 계산하면 read model이 일관되지 않습니다. |
-| 핵심 결정 | `MatchTable`·`MatchWithHandlesRow`와 `toMatchSummary`를 추가해 DB row에서 `MatchSummary`로의 변환을 고정했습니다. |
-| 입력 → 상태 전이 → 출력 | match row + winner/loser handle + 선택적 viewer ID → 상대/승패/rating delta 계산 → ISO timestamp를 가진 summary입니다. |
-| ownership / lifetime / cleanup | DB가 raw match를 소유하고 mapper가 일회성 public summary를 소유합니다. viewer ID는 저장 상태를 바꾸지 않습니다. |
-| failure / rollback / retry | nullable participant는 AI fallback으로 처리됩니다. 실제 query가 잘못된 join shape를 반환하면 mapper 자체는 runtime 검증하지 않습니다. |
-| 보장하는 것 | 경기 row의 snake_case와 공개 summary의 camelCase·viewer-relative 의미를 한 함수에 모읍니다. |
-| 보장하지 않는 것 | 최근 경기 범위, 정렬, dashboard 구성, 실제 rating history 기반 delta는 아직 보장하지 않습니다. |
-| 후속 연결 | `c7ea1ff241c8`가 query와 dashboard를 연결하고 Thread 3의 row-mapper test가 이 변환을 직접 고정합니다. |
+| 직전 관련 상태 | `matches` 테이블은 존재했지만 참가한 쿼리 결과와 공개 경기 요약 사이에 타입·변환 계약이 없었습니다. |
+| 해결하려던 문제 | 조회 사용자 기준 승패, 상대 식별, 타임스탬프 형식을 각 호출자가 임의로 계산하면 조회 모델이 일관되지 않습니다. |
+| 핵심 결정 | `MatchTable`·`MatchWithHandlesRow`와 `toMatchSummary`를 추가해 DB 행에서 `MatchSummary`로의 변환을 고정했습니다. |
+| 입력 → 상태 변경 → 출력 | 경기 행 + 승자/패자 핸들 + 선택적 viewer ID → 상대/승패/레이팅 시간 간격 계산 → ISO 타임스탬프를 가진 요약입니다. |
+| 소유권·수명·정리 | DB가 가공 전 경기 데이터를 소유하고 변환기가 일회성 공개 요약을 소유합니다. viewer ID는 저장 상태를 바꾸지 않습니다. |
+| 실패·되돌리기·재시도 | null 허용 참가자는 AI 대체 처리로 처리됩니다. 실제 쿼리가 잘못된 참가 형식을 반환하면 변환기 자체는 실행 중 검증하지 않습니다. |
+| 보장하는 것 | 경기 행의 snake_case와 공개 요약의 camelCase·조회 사용자 기준 의미를 한 함수에 모읍니다. |
+| 보장하지 않는 것 | 최근 경기 범위, 정렬, 대시보드 구성, 실제 레이팅 이력 기반 시간 간격은 아직 보장하지 않습니다. |
+| 후속 연결 | `c7ea1ff241c8`가 쿼리와 대시보드를 연결하고 개발 스레드 3의 행 변환기 테스트가 이 변환을 직접 고정합니다. |
 
 #### 비교 기준
 
-- parent 상태와 `8ab49e5f2dd4`의 diff를 먼저 비교합니다.
-- 이 Thread의 직전 관련 SHA `0364c42f776b`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
+- 부모 커밋의 상태와 `8ab49e5f2dd4`의 변경 내용을 먼저 비교합니다.
+- 이 개발 스레드의 직전 관련 SHA `0364c42f776b`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
 - 후속 관련 SHA `c7ea1ff241c8`가 이 결정의 부족한 점을 보완하거나 검증하는지 확인합니다.
 
 ### 5.8. `c7ea1ff241c8` — feat(db): 최근 경기와 대시보드 조회 구현
@@ -303,345 +303,345 @@
 | 항목 | 고정 정보 |
 | --- | --- |
 | SHA | `c7ea1ff241c8` |
-| Importance | B |
-| Tags | PERSISTENCE |
-| Source role | recent-match query와 dashboard aggregate를 두 backend에 처음 연결합니다. |
+| 중요도 | B |
+| 태그 | PERSISTENCE |
+| 원문 역할 | 최근 경기 쿼리와 대시보드 집계를 두 백엔드에 처음 연결합니다. |
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `PostgresRepository.listRecentMatches`의 winner/loser join, 선택적 participant filter, `ended_at desc limit 8`을 확인합니다.
-- `MemoryRepository.listRecentMatches`의 filter, tail/reverse 처리와 `memoryMatchSummary`를 비교합니다.
-- 두 `getDashboard`가 profile, recent matches, win rate, `bestStreak`를 어떻게 조립하는지 확인합니다.
-- PostgreSQL의 임의 수식과 memory 상수로 만든 `bestStreak`가 실제 match sequence에서 파생되지 않는 결함을 명시합니다.
+- `PostgresRepository.listRecentMatches`의 승자/패자 참가, 선택적 참가자 필터, `ended_at desc limit 8`을 확인합니다.
+- `MemoryRepository.listRecentMatches`의 필터, tail/역순 처리 처리와 `memoryMatchSummary`를 비교합니다.
+- 두 `getDashboard`가 프로필, 최근 경기, 승리 빈도, `bestStreak`를 어떻게 조립하는지 확인합니다.
+- PostgreSQL의 임의 수식과 메모리 상수로 만든 `bestStreak`가 실제 경기 순번에서 파생되지 않는 결함을 명시합니다.
 
 #### 학습자 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 직전 관련 상태 | match mapper는 있었지만 query와 dashboard aggregate가 없었고, UI가 profile과 경기 목록을 따로 조립해야 했습니다. |
-| 해결하려던 문제 | viewer-scoped 최근 경기와 요약 지표를 한 repository read operation으로 제공해야 했습니다. |
-| 핵심 결정 | PostgreSQL은 participant 조건이 있는 join query, memory는 저장 배열 filter를 사용하고 둘 다 최근 8개를 역시간순으로 반환하도록 했습니다. |
-| 입력 → 상태 전이 → 출력 | `userId` → 사용자 조회 → 최근 경기 8개 → win rate와 bestStreak 계산 → `DashboardSummary` 반환입니다. |
-| ownership / lifetime / cleanup | repository가 query와 aggregate 조립을 소유합니다. 반환 배열은 read model이며 underlying rows/map의 lifetime과 분리됩니다. |
-| failure / rollback / retry | 사용자가 없으면 실패합니다. `bestStreak`는 PostgreSQL의 `wins-losses+3` 수식과 memory 상수 3이라 실제 sequence와 무관합니다. |
-| 보장하는 것 | 최근 경기 정렬·limit와 dashboard 조립 위치가 공통 interface에 들어갑니다. |
-| 보장하지 않는 것 | 이 SHA만으로 backend parity나 실제 최고 연승의 정확성은 보장하지 않습니다. optional SQL fragment도 이후 명시적 두 query로 정리됩니다. |
-| 후속 연결 | `035b97ca7c58`가 실제 경기 순서에서 streak를 계산하고 `6b661420e060`이 회귀를 고정합니다. |
+| 직전 관련 상태 | 경기 변환기는 있었지만 쿼리와 대시보드 집계가 없었고, UI가 프로필과 경기 목록을 따로 조립해야 했습니다. |
+| 해결하려던 문제 | 사용자별 최근 경기와 요약 지표를 한 저장소 읽기 연산으로 제공해야 했습니다. |
+| 핵심 결정 | PostgreSQL은 참가자 조건이 있는 참가 쿼리, 메모리는 저장 배열 필터를 사용하고 둘 다 최근 8개를 역시간순으로 반환하도록 했습니다. |
+| 입력 → 상태 변경 → 출력 | `userId` → 사용자 조회 → 최근 경기 8개 → 승리 빈도와 bestStreak 계산 → `DashboardSummary` 반환입니다. |
+| 소유권·수명·정리 | 저장소가 쿼리와 집계 조립을 소유합니다. 반환 배열은 조회 모델이며 내부 행/목록의 수명과 분리됩니다. |
+| 실패·되돌리기·재시도 | 사용자가 없으면 실패합니다. `bestStreak`는 PostgreSQL의 `wins-losses+3` 수식과 메모리 상수 3이라 실제 순번과 무관합니다. |
+| 보장하는 것 | 최근 경기 정렬·상한과 대시보드 조립 위치가 공통 인터페이스에 들어갑니다. |
+| 보장하지 않는 것 | 이 SHA만으로 백엔드 동작 일치나 실제 최고 연승의 정확성은 보장하지 않습니다. 선택적 SQL 조각도 이후 명시적 두 쿼리로 정리됩니다. |
+| 후속 연결 | `035b97ca7c58`가 실제 경기 순서에서 연승을 계산하고 `6b661420e060`이 회귀를 고정합니다. |
 
 #### 비교 기준
 
-- parent 상태와 `c7ea1ff241c8`의 diff를 먼저 비교합니다.
-- 이 Thread의 직전 관련 SHA `8ab49e5f2dd4`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
+- 부모 커밋의 상태와 `c7ea1ff241c8`의 변경 내용을 먼저 비교합니다.
+- 이 개발 스레드의 직전 관련 SHA `8ab49e5f2dd4`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
 - 후속 관련 SHA `6509e32ba95d`가 이 결정의 부족한 점을 보완하거나 검증하는지 확인합니다.
 
-### 5.9. `6509e32ba95d` — test(db): 메모리 저장소 흐름 검증
+### 5.9. `6509e32ba95d` — 테스트(db): 메모리 저장소 흐름 검증
 
 | 항목 | 고정 정보 |
 | --- | --- |
 | SHA | `6509e32ba95d` |
-| Importance | B |
-| Tags | PERSISTENCE, TOURNAMENT, TEST |
-| Source role | memory backend의 주요 repository operation이 한 계약으로 조합되는지 초기 행동 시험을 추가합니다. |
+| 중요도 | B |
+| 태그 | PERSISTENCE, TOURNAMENT, TEST |
+| 원문 역할 | 메모리 저장소의 주요 저장소 연산이 한 계약으로 조합되는지 초기 행동 시험을 추가합니다. |
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `packages/db/src/index.test.ts`의 seed·upsert·session·match·dashboard 시나리오를 순서대로 추적합니다.
-- friendship과 tournament 생성·참가 시나리오가 당시의 단순 memory 표현을 어떤 기대값으로 고정하는지 확인합니다.
-- 시험이 `createMemoryRepository()`만 사용하며 PostgreSQL·concurrency·resource close를 실행하지 않는다는 점을 분리합니다.
-- assertion이 개별 mapper보다 public repository output을 관찰한다는 점을 확인합니다.
+- `packages/db/src/index.test.ts`의 시드·업서트·세션·경기·대시보드 시나리오를 순서대로 추적합니다.
+- 친구 관계와 토너먼트 생성·참가 시나리오가 당시의 단순 메모리 표현을 어떤 기대값으로 고정하는지 확인합니다.
+- 시험이 `createMemoryRepository()`만 사용하며 PostgreSQL·동시성·자원 종료를 실행하지 않는다는 점을 분리합니다.
+- 검증이 개별 변환기보다 공개 저장소 출력을 관찰한다는 점을 확인합니다.
 
 #### 학습자 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 직전 관련 상태 | 두 backend에 operation이 늘었지만 memory 구현의 기본 흐름을 실행하는 회귀 시험이 없었습니다. |
-| 해결하려던 문제 | seed 이후 identity/session/match/dashboard 및 social/tournament method가 함께 호출될 때 계약이 깨지지 않는지 확인해야 했습니다. |
-| 핵심 결정 | Vitest에서 public `AppRepository` method만 호출하는 memory behavioral test를 추가했습니다. |
-| 입력 → 상태 전이 → 출력 | memory repository 생성 → seed/upsert → session과 match 생성 → dashboard 조회, 별도 friendship·tournament 흐름 → public 결과 assertion입니다. |
-| ownership / lifetime / cleanup | 각 test가 repository를 지역 소유하며 외부 자원 cleanup은 필요 없습니다. 내부 Map/배열은 repository lifetime 동안 유지됩니다. |
-| failure / rollback / retry | 동기적 memory 구현이라 DB 오류·transaction rollback·실제 병렬 경쟁 상태는 재현하지 않습니다. |
-| 보장하는 것 | 초기 common interface가 호출 가능한 상태이고 핵심 happy path의 결과 shape가 유지됨을 보여 줍니다. |
-| 보장하지 않는 것 | PostgreSQL schema/migration, SQL mapper, pool cleanup, 실제 concurrency나 backend parity 전체를 증명하지 않습니다. |
-| 후속 연결 | `e935054ce0c9`·`c43b87694b29`가 실제 PostgreSQL integration 환경과 lifecycle evidence를 추가합니다. |
+| 직전 관련 상태 | 두 백엔드에 연산이 늘었지만 메모리 구현의 기본 흐름을 실행하는 회귀 시험이 없었습니다. |
+| 해결하려던 문제 | 시드 이후 신원/세션/경기/대시보드 및 소셜/토너먼트 메서드가 함께 호출될 때 계약이 깨지지 않는지 확인해야 했습니다. |
+| 핵심 결정 | Vitest에서 공개 `AppRepository` 메서드만 호출하는 메모리 동작 테스트를 추가했습니다. |
+| 입력 → 상태 변경 → 출력 | 메모리 저장소 생성 → 시드/업서트 → 세션과 경기 생성 → 대시보드 조회, 별도 친구 관계·토너먼트 흐름 → 공개 결과 검증입니다. |
+| 소유권·수명·정리 | 각 테스트가 저장소를 지역 소유하며 외부 자원 정리는 필요 없습니다. 내부 Map/배열은 저장소 수명 동안 유지됩니다. |
+| 실패·되돌리기·재시도 | 동기적 메모리 구현이라 DB 오류·트랜잭션 되돌리기·실제 병렬 경쟁 상태는 재현하지 않습니다. |
+| 보장하는 것 | 초기 공통 인터페이스가 호출 가능한 상태이고 핵심 정상 경로의 결과 형식이 유지됨을 보여 줍니다. |
+| 보장하지 않는 것 | PostgreSQL 스키마/마이그레이션, SQL 변환기, 풀 정리, 실제 동시성이나 백엔드 동작 일치 전체를 검증하지 않습니다. |
+| 후속 연결 | `e935054ce0c9`·`c43b87694b29`가 실제 PostgreSQL 통합 환경과 수명주기 근거를 추가합니다. |
 
-#### Test commit 학습 기록
+#### 테스트 커밋 학습 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 검증 대상 불변식 | memory repository의 공통 operation이 순서대로 조합되고 public DTO를 반환한다는 계약입니다. |
-| 재현한 실패·경계 | 비어 있는 memory 상태에서 seed 후 사용자·세션·경기·dashboard, friendship·tournament를 생성하는 초기 경계입니다. |
-| 시험 기법 | 외부 의존성 없는 behavioral integration test입니다. |
-| 통과하는 실제 코드 경로 | `createMemoryRepository` → `ensureSeedData`/`upsertDevUser`/session·match·dashboard 및 social/tournament methods입니다. |
-| 시험이 증명하는 것 | memory backend의 해당 happy path와 method surface가 작동함을 증명합니다. |
-| 시험이 증명하지 않는 것 | PostgreSQL SQL, transaction, migration, pool lifecycle, 다중 요청 경쟁 상태는 증명하지 않습니다. |
-| 막으려는 회귀 | repository method 추가·refactor 중 memory happy path와 반환 shape가 조용히 깨지는 회귀를 막습니다. |
+| 검증 대상 불변식 | 메모리 저장소의 공통 연산이 순서대로 조합되고 공개 DTO를 반환한다는 계약입니다. |
+| 재현한 실패·경계 | 비어 있는 메모리 상태에서 시드 후 사용자·세션·경기·대시보드, 친구 관계·토너먼트를 생성하는 초기 경계입니다. |
+| 시험 기법 | 외부 의존성 없는 동작 통합 테스트입니다. |
+| 통과하는 실제 코드 경로 | `createMemoryRepository` → `ensureSeedData`/`upsertDevUser`/세션·경기·대시보드 및 소셜/토너먼트 메서드입니다. |
+| 테스트가 검증하는 것 | 메모리 저장소의 해당 정상 경로와 메서드 호출 방법이 작동함을 검증합니다. |
+| 테스트가 검증하지 않는 것 | PostgreSQL SQL, 트랜잭션, 마이그레이션, 풀 수명주기, 다중 요청 경쟁 상태는 검증하지 않습니다. |
+| 막으려는 회귀 | 저장소 메서드 추가·리팩터링 중 메모리 정상 경로와 반환 형식이 조용히 깨지는 회귀를 막습니다. |
 
 #### 비교 기준
 
-- parent 상태와 `6509e32ba95d`의 diff를 먼저 비교합니다.
-- 이 Thread의 직전 관련 SHA `c7ea1ff241c8`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
+- 부모 커밋의 상태와 `6509e32ba95d`의 변경 내용을 먼저 비교합니다.
+- 이 개발 스레드의 직전 관련 SHA `c7ea1ff241c8`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
 - 후속 관련 SHA `035b97ca7c58`가 이 결정의 부족한 점을 보완하거나 검증하는지 확인합니다.
 
-### 5.10. `035b97ca7c58` — fix(db): 최근 경기에서 최고 연승 계산
+### 5.10. `035b97ca7c58` — 수정(db): 최근 경기에서 최고 연승 계산
 
 | 항목 | 고정 정보 |
 | --- | --- |
 | SHA | `035b97ca7c58` |
-| Importance | B |
-| Tags | PERSISTENCE |
-| Source role | backend별 가짜 `bestStreak`를 실제 recent-match sequence에서 계산하는 공통 함수로 교체합니다. |
+| 중요도 | B |
+| 태그 | PERSISTENCE |
+| 원문 역할 | 백엔드별 가짜 `bestStreak`를 실제 최근 경기 순번에서 계산하는 공통 함수로 교체합니다. |
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `packages/db/src/index.ts`에서 PostgreSQL 수식과 memory 상수가 제거된 parent diff를 확인합니다.
-- `bestWinningStreak(matches)`가 역시간순 recent list를 복사·reverse하여 시간순으로 순회하는 이유를 확인합니다.
-- win에서 current/best를 증가시키고 loss에서 current를 0으로 되돌리는 상태 전이를 추적합니다.
-- 계산 범위가 전체 이력이 아니라 `listRecentMatches`가 반환한 최대 8경기라는 non-guarantee를 기록합니다.
+- `packages/db/src/index.ts`에서 PostgreSQL 수식과 메모리 상수가 제거된 부모 커밋 변경 내용을 확인합니다.
+- `bestWinningStreak(matches)`가 역시간순 최근 목록을 복사한 뒤 뒤집어 시간순으로 순회하는 이유를 확인합니다.
+- 승리에서 현재/최댓값을 증가시키고 패배에서 현재를 0으로 되돌리는 상태 전이를 추적합니다.
+- 계산 범위가 전체 이력이 아니라 `listRecentMatches`가 반환한 최대 8경기라는 보장하지 않는 범위를 기록합니다.
 
 #### 학습자 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 직전 관련 상태 | `c7ea1ff241c8`은 PostgreSQL에서 임의 수식, memory에서 상수 3을 반환해 동일 경기 이력도 실제 연승과 무관했습니다. |
-| 해결하려던 문제 | dashboard가 persistence evidence가 아닌 fabricated metric을 표시하고 backend마다 다른 값을 낼 수 있었습니다. |
-| 핵심 결정 | 두 backend가 같은 `bestWinningStreak(recentMatches)`를 호출하도록 하고 역시간순 배열을 시간순으로 순회하는 작은 상태 계산기를 추가했습니다. |
-| 입력 → 상태 전이 → 출력 | 최근 경기 newest-first 배열 복사 → reverse → win이면 current 증가·best 갱신, loss면 current=0 → best 반환입니다. |
-| ownership / lifetime / cleanup | 원본 `recentMatches` 배열은 spread로 복사해 변형하지 않습니다. 계산 함수가 파생 지표를 소유하고 repository는 결과만 dashboard에 넣습니다. |
-| failure / rollback / retry | 빈 배열은 0을 반환합니다. `draw` 같은 값은 현재 `MatchSummary.result` domain에 없으며, 경기 목록 조회 실패는 상위로 전파됩니다. |
-| 보장하는 것 | PostgreSQL과 memory가 동일한 실제 match-result sequence에서 같은 최고 연승을 계산합니다. |
-| 보장하지 않는 것 | 최대 8개 최근 경기 밖의 더 긴 연승, 시즌 전체 지표, DB-side 계산은 보장하지 않습니다. |
-| 후속 연결 | `6b661420e060`이 win/loss reset과 ordering을 deterministic memory regression으로 검증합니다. |
+| 직전 관련 상태 | `c7ea1ff241c8`은 PostgreSQL에서 임의 수식, 메모리에서 상수 3을 반환해 동일 경기 이력도 실제 연승과 무관했습니다. |
+| 해결하려던 문제 | 대시보드가 저장된 데이터 근거가 아닌 임의로 만든 지표를 표시하고 백엔드마다 다른 값을 낼 수 있었습니다. |
+| 핵심 결정 | 두 백엔드가 같은 `bestWinningStreak(recentMatches)`를 호출하도록 하고 역시간순 배열을 시간순으로 순회하는 작은 상태 계산기를 추가했습니다. |
+| 입력 → 상태 변경 → 출력 | 최근 경기 최신순 배열 복사 → 배열 뒤집기 → 승리이면 현재 증가·최댓값 갱신, 패배면 현재=0 → 최댓값 반환입니다. |
+| 소유권·수명·정리 | 원본 `recentMatches` 배열은 스프레드 문법로 복사해 변형하지 않습니다. 계산 함수가 파생 지표를 소유하고 저장소는 결과만 대시보드에 넣습니다. |
+| 실패·되돌리기·재시도 | 빈 배열은 0을 반환합니다. `draw` 같은 값은 현재 `MatchSummary.result` 도메인에 없으며, 경기 목록 조회 실패는 상위로 전파됩니다. |
+| 보장하는 것 | PostgreSQL과 메모리가 동일한 실제 경기 결과 순번에서 같은 최고 연승을 계산합니다. |
+| 보장하지 않는 것 | 최대 8개 최근 경기 밖의 더 긴 연승, 시즌 전체 지표, DB 측 계산은 보장하지 않습니다. |
+| 후속 연결 | `6b661420e060`이 승리/패배 초기화와 순서를 결정적 메모리 회귀로 검증합니다. |
 
 #### 최소 코드 근거
 
-- `packages/db/src/index.ts::bestWinningStreak` — `[...matches].reverse()`로 newest-first read model을 chronological order로 바꾼 뒤 loss에서 연속값을 초기화합니다.
+- `packages/db/src/index.ts::bestWinningStreak` — `[...matches].reverse()`로 최신순 조회 모델을 시간순 순서로 바꾼 뒤 패배에서 연속값을 초기화합니다.
 
 #### 비교 기준
 
-- parent 상태와 `035b97ca7c58`의 diff를 먼저 비교합니다.
-- 이 Thread의 직전 관련 SHA `6509e32ba95d`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
+- 부모 커밋의 상태와 `035b97ca7c58`의 변경 내용을 먼저 비교합니다.
+- 이 개발 스레드의 직전 관련 SHA `6509e32ba95d`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
 - 후속 관련 SHA `6b661420e060`가 이 결정의 부족한 점을 보완하거나 검증하는지 확인합니다.
 
-### 5.11. `6b661420e060` — test(db): 최고 연승 계산 검증
+### 5.11. `6b661420e060` — 테스트(db): 최고 연승 계산 검증
 
 | 항목 | 고정 정보 |
 | --- | --- |
 | SHA | `6b661420e060` |
-| Importance | B |
-| Tags | PERSISTENCE, TEST |
-| Source role | `bestWinningStreak`의 order와 loss reset을 public dashboard 경로에서 검증합니다. |
+| 중요도 | B |
+| 태그 | PERSISTENCE, TEST |
+| 원문 역할 | `bestWinningStreak`의 순서와 패배 초기화를 공개 대시보드 경로에서 검증합니다. |
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `packages/db/src/index.test.ts`의 `derives the best streak from recent match results` 시나리오를 확인합니다.
-- 생성 순서 `win → loss → win → win`과 조회 결과 `win, win, loss, win`의 reverse chronology를 대조합니다.
-- `dashboard.bestStreak === 2`가 loss reset과 newest-first 처리 둘 다 필요로 한다는 점을 설명합니다.
-- 시험이 memory backend만 실행하며 8경기 window 밖의 streak는 다루지 않는다는 점을 기록합니다.
+- 생성 순서 `win → loss → win → win`과 조회 결과 `win, win, loss, win`의 역시간순을 대조합니다.
+- `dashboard.bestStreak === 2`가 패배 초기화와 최신순 처리 둘 다 필요로 한다는 점을 설명합니다.
+- 시험이 메모리 저장소만 실행하며 8경기 시간 구간 밖의 streak는 다루지 않는다는 점을 기록합니다.
 
 #### 학습자 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 직전 관련 상태 | `035b97ca7c58`가 계산기를 추가했지만 역순 처리나 loss reset이 다시 깨져도 이를 탐지할 집중 시험이 없었습니다. |
-| 해결하려던 문제 | recent list가 newest-first이므로 단순 순회하면 시간 방향을 잘못 해석할 수 있고, loss 뒤 current를 초기화하지 않으면 3으로 계산될 수 있었습니다. |
-| 핵심 결정 | 실제 repository로 네 경기 결과를 저장하고 dashboard의 경기 순서와 `bestStreak`를 함께 assertion했습니다. |
-| 입력 → 상태 전이 → 출력 | seed·두 사용자 생성 → 네 경기 저장 → dashboard 조회 → 결과 배열이 newest-first인지 확인 → 최고 연승 2 확인입니다. |
-| ownership / lifetime / cleanup | 시험 repository가 저장 순서와 파생 지표 계산을 소유하며 test 종료 뒤 memory state는 폐기됩니다. |
-| failure / rollback / retry | 외부 오류나 retry는 주입하지 않습니다. assertion 실패가 계산·정렬 회귀를 직접 드러냅니다. |
-| 보장하는 것 | public dashboard 경로에서 order 변환과 loss reset이 결합되어 기대값 2를 만든다는 것을 증명합니다. |
-| 보장하지 않는 것 | PostgreSQL query 자체, 8개를 넘는 history, 전체 시즌 streak는 증명하지 않습니다. |
-| 후속 연결 | 후속 row-mapping·query refactor가 dashboard 의미를 바꾸지 않도록 보호합니다. |
+| 직전 관련 상태 | `035b97ca7c58`가 계산기를 추가했지만 역순 처리나 패배 초기화가 다시 깨져도 이를 탐지할 집중 시험이 없었습니다. |
+| 해결하려던 문제 | 최근 목록이 최신순이므로 단순 순회하면 시간 방향을 잘못 해석할 수 있고, 패배 뒤 현재를 초기화하지 않으면 3으로 계산될 수 있었습니다. |
+| 핵심 결정 | 실제 저장소로 네 경기 결과를 저장하고 대시보드의 경기 순서와 `bestStreak`를 함께 검증했습니다. |
+| 입력 → 상태 변경 → 출력 | 시드·두 사용자 생성 → 네 경기 저장 → 대시보드 조회 → 결과 배열이 최신순인지 확인 → 최고 연승 2 확인입니다. |
+| 소유권·수명·정리 | 시험 저장소가 저장 순서와 파생 지표 계산을 소유하며 테스트 종료 뒤 메모리 상태는 폐기됩니다. |
+| 실패·되돌리기·재시도 | 외부 오류나 재시도는 주입하지 않습니다. 검증 실패가 계산·정렬 회귀를 직접 드러냅니다. |
+| 보장하는 것 | 공개 대시보드 경로에서 순서 변환과 패배 초기화가 결합되어 기대값 2를 만든다는 것을 검증합니다. |
+| 보장하지 않는 것 | PostgreSQL 쿼리 자체, 8개를 넘는 이력, 전체 시즌 streak는 검증하지 않습니다. |
+| 후속 연결 | 후속 행 매핑·쿼리 리팩터링이 대시보드 의미를 바꾸지 않도록 보호합니다. |
 
-#### Test commit 학습 기록
+#### 테스트 커밋 학습 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 검증 대상 불변식 | recent-match ordering을 chronological streak 계산으로 바꾸고 loss에서 연속 승리를 끊는 불변식입니다. |
-| 재현한 실패·경계 | newest-first 조회와 `win → loss → win → win` 저장 순서의 조합입니다. |
-| 시험 기법 | memory repository를 통과하는 deterministic regression test입니다. |
+| 검증 대상 불변식 | 최근 경기 순서를 시간순 streak 계산으로 바꾸고 패배에서 연속 승리를 끊는 불변식입니다. |
+| 재현한 실패·경계 | 최신순 조회와 `win → loss → win → win` 저장 순서의 조합입니다. |
+| 시험 기법 | 메모리 저장소를 통과하는 결정적 회귀 테스트입니다. |
 | 통과하는 실제 코드 경로 | `createMatch` → `listRecentMatches` → `getDashboard` → `bestWinningStreak`입니다. |
-| 시험이 증명하는 것 | 결과 순서와 최고 연승 2를 함께 확인하므로 역순·reset 두 조건을 검증합니다. |
-| 시험이 증명하지 않는 것 | PostgreSQL 실행 계획, 전체 history 범위, concurrent match write는 증명하지 않습니다. |
-| 막으려는 회귀 | fabricated constant/수식으로 되돌아가거나 recent 배열 방향을 잘못 순회하는 회귀를 막습니다. |
+| 테스트가 검증하는 것 | 결과 순서와 최고 연승 2를 함께 확인하므로 역순·초기화 두 조건을 검증합니다. |
+| 테스트가 검증하지 않는 것 | PostgreSQL 실행 계획, 전체 이력 범위, 동시 경기 쓰기는 검증하지 않습니다. |
+| 막으려는 회귀 | 임의로 만든 constant/수식으로 되돌아가거나 최근 배열 방향을 잘못 순회하는 회귀를 막습니다. |
 
 #### 비교 기준
 
-- parent 상태와 `6b661420e060`의 diff를 먼저 비교합니다.
-- 이 Thread의 직전 관련 SHA `035b97ca7c58`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
+- 부모 커밋의 상태와 `6b661420e060`의 변경 내용을 먼저 비교합니다.
+- 이 개발 스레드의 직전 관련 SHA `035b97ca7c58`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
 - 후속 관련 SHA `e935054ce0c9`가 이 결정의 부족한 점을 보완하거나 검증하는지 확인합니다.
 
-### 5.12. `e935054ce0c9` — build(db): PostgreSQL integration 의존성과 명령 추가
+### 5.12. `e935054ce0c9` — 빌드(db): PostgreSQL 통합 의존성과 명령 추가
 
 | 항목 | 고정 정보 |
 | --- | --- |
 | SHA | `e935054ce0c9` |
-| Importance | B |
-| Tags | PERSISTENCE |
-| Source role | unit suite와 실제 PostgreSQL integration suite를 분리하고 Testcontainers 실행 경계를 추가합니다. |
+| 중요도 | B |
+| 태그 | PERSISTENCE |
+| 원문 역할 | 단위 테스트 모음과 실제 PostgreSQL 통합 테스트 모음을 분리하고 Testcontainers 실행 경계를 추가합니다. |
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- root `package.json`의 `postgres-integration` script가 DB package command에 위임하는지 확인합니다.
-- `packages/db/package.json`의 unit exclude pattern과 integration Vitest command의 timeout·worker·file-parallelism 설정을 확인합니다.
-- `@testcontainers/postgresql` dev dependency와 lockfile 추가가 production dependency에 포함되지 않는지 확인합니다.
-- 이 SHA는 실행 기반만 추가하고 실제 integration scenario는 다음 commit이라는 점을 분리합니다.
+- 루트 `package.json`의 `postgres-integration` 스크립트가 DB 패키지 명령에 위임하는지 확인합니다.
+- `packages/db/package.json`의 단위 exclude 방식과 통합 Vitest 명령의 시간 초과·워커·파일 병렬 실행 설정을 확인합니다.
+- `@testcontainers/postgresql` 개발 의존성과 잠금 파일 추가가 운영 의존성에 포함되지 않는지 확인합니다.
+- 이 SHA는 실행 기반만 추가하고 실제 통합 시나리오는 다음 커밋이라는 점을 분리합니다.
 
 #### 학습자 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 직전 관련 상태 | DB package의 `test`는 unit과 container-backed test의 비용·환경 차이를 구분할 실행 경계가 없었습니다. |
-| 해결하려던 문제 | 실제 PostgreSQL을 쓰는 시험은 Docker, 긴 timeout, 순차 실행이 필요하며 일반 unit suite에 섞으면 불안정하거나 건너뛰기 쉽습니다. |
-| 핵심 결정 | root/package script를 추가하고 unit은 `*.integration.test.ts`를 제외하며 integration command는 한 worker·no file parallelism과 확장 timeout을 사용하도록 했습니다. |
-| 입력 → 상태 전이 → 출력 | `pnpm postgres-integration` → `@pong-pong/db` 전용 Vitest command → Testcontainers 의존성을 사용할 준비가 됩니다. |
-| ownership / lifetime / cleanup | 개발 의존성과 test process가 container lifetime을 소유합니다. production package runtime에는 이 도구를 요구하지 않습니다. |
-| failure / rollback / retry | Docker daemon 부재, image pull 실패, timeout은 command 실패로 노출됩니다. 이 SHA 자체는 container cleanup 코드를 아직 추가하지 않습니다. |
-| 보장하는 것 | unit과 real-PostgreSQL 검증을 명시적으로 선택·CI 연결할 수 있는 실행 경계를 제공합니다. |
-| 보장하지 않는 것 | 어떤 schema·seed·cleanup 불변식이 검증되는지는 아직 보장하지 않으며 실제 통과 증거도 이 commit만으로 없습니다. |
-| 후속 연결 | `c43b87694b29`가 isolated schema와 cleanup을 포함한 integration contract를 구현합니다. |
+| 직전 관련 상태 | DB 패키지의 `test`는 단위와 컨테이너 기반 테스트의 비용·환경 차이를 구분할 실행 경계가 없었습니다. |
+| 해결하려던 문제 | 실제 PostgreSQL을 쓰는 시험은 Docker, 긴 시간 초과, 순차 실행이 필요하며 일반 단위 테스트 모음에 섞으면 불안정하거나 건너뛰기 쉽습니다. |
+| 핵심 결정 | 루트와 패키지 명령을 추가하고 단위 테스트에서는 `*.integration.test.ts`를 제외했습니다. 통합 테스트 명령은 워커 1개, 파일 병렬 실행 비활성화, 확장된 시간 제한을 사용합니다. |
+| 입력 → 상태 변경 → 출력 | `pnpm postgres-integration` → `@pong-pong/db` 전용 Vitest 명령 → Testcontainers 의존성을 사용할 준비가 됩니다. |
+| 소유권·수명·정리 | 개발 의존성과 테스트 프로세스가 컨테이너 수명을 소유합니다. 운영 패키지 실행할 때는 이 도구를 요구하지 않습니다. |
+| 실패·되돌리기·재시도 | Docker 데몬 부재, 이미지 가져오기 실패, 시간 초과는 명령 실패로 노출됩니다. 이 SHA 자체는 컨테이너 정리 코드를 아직 추가하지 않습니다. |
+| 보장하는 것 | 단위와 실제 PostgreSQL 검증을 명시적으로 선택·CI 연결할 수 있는 실행 경계를 제공합니다. |
+| 보장하지 않는 것 | 어떤 스키마·시드·정리 불변식이 검증되는지는 아직 보장하지 않으며 실제 통과 증거도 이 커밋만으로 없습니다. |
+| 후속 연결 | `c43b87694b29`가 격리된 스키마와 정리를 포함한 통합 계약을 구현합니다. |
 
 #### 비교 기준
 
-- parent 상태와 `e935054ce0c9`의 diff를 먼저 비교합니다.
-- 이 Thread의 직전 관련 SHA `6b661420e060`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
+- 부모 커밋의 상태와 `e935054ce0c9`의 변경 내용을 먼저 비교합니다.
+- 이 개발 스레드의 직전 관련 SHA `6b661420e060`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
 - 후속 관련 SHA `c43b87694b29`가 이 결정의 부족한 점을 보완하거나 검증하는지 확인합니다.
 
-### 5.13. `c43b87694b29` — test(db): PostgreSQL integration 환경과 계약 추가
+### 5.13. `c43b87694b29` — 테스트(db): PostgreSQL 통합 환경과 계약 추가
 
 | 항목 | 고정 정보 |
 | --- | --- |
 | SHA | `c43b87694b29` |
-| Importance | A |
-| Tags | PERSISTENCE, RISK, TEST |
-| Source role | 실제 PostgreSQL 16 container에서 migration·seed·schema 격리·cleanup 계약을 검증합니다. |
+| 중요도 | A |
+| 태그 | PERSISTENCE, RISK, TEST |
+| 원문 역할 | 실제 PostgreSQL 16 컨테이너에서 마이그레이션·시드·스키마 격리·정리 계약을 검증합니다. |
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `packages/db/src/postgres.integration.test.ts`의 PostgreSQL 16-alpine container startup/stop lifecycle을 확인합니다.
-- `withIsolatedDatabase`가 무작위 `test_<32hex>` schema와 `search_path` URL을 만들고 pool/repository를 등록·역순 cleanup하는 과정을 추적합니다.
-- callback 오류가 있어도 cleanup을 실행하고, cleanup 오류가 원래 오류를 덮지 않도록 처리하는지 확인합니다.
-- migration idempotence, development/demo seed idempotence와 profile 차이, sibling schema isolation assertion을 구분합니다.
-- 실제 test command는 `e935054ce0c9`의 sequential integration command임을 연결합니다.
+- `packages/db/src/postgres.integration.test.ts`의 PostgreSQL 16-alpine 컨테이너 시작/중지 수명주기를 확인합니다.
+- `withIsolatedDatabase`가 무작위 `test_<32hex>` 스키마와 `search_path` URL을 만들고 풀/저장소를 등록·역순 정리하는 과정을 추적합니다.
+- 콜백 오류가 있어도 정리를 실행하고, 정리 오류가 원래 오류를 덮지 않도록 처리하는지 확인합니다.
+- 마이그레이션 멱등성, 개발/데모용 초기 데이터 멱등성과 프로필 차이, 인접한 스키마 격리 검증을 구분합니다.
+- 실제 테스트 명령은 `e935054ce0c9`의 순차 실행 통합 명령임을 연결합니다.
 
 #### 학습자 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 직전 관련 상태 | memory behavioral test만으로는 SQL 문법, Kysely migration table, PostgreSQL type conversion, pool/schema cleanup을 확인할 수 없었습니다. |
-| 해결하려던 문제 | 한 test의 row가 다른 test에 남거나 callback 실패로 pool/container가 누수되면 결과가 비결정적이고 CI가 종료되지 않을 수 있었습니다. |
-| 핵심 결정 | PostgreSQL 16 Testcontainer를 suite 단위로 띄우고 각 case마다 무작위 isolated schema를 생성해 migration·seed를 실행하며, 자원을 역순으로 정리하는 harness를 만들었습니다. |
-| 입력 → 상태 전이 → 출력 | container 시작 → test별 schema/search_path 생성 → pool/repository 등록 → migration·seed·query assertion → callback 성공/실패와 무관하게 repository/pool close·schema drop → suite 종료 시 container stop입니다. |
-| ownership / lifetime / cleanup | outer suite가 container를, `withIsolatedDatabase`가 schema와 열린 pool/repository 목록을 소유합니다. cleanup은 등록 역순으로 실행되어 의존 자원을 먼저 닫습니다. |
-| failure / rollback / retry | callback이 던져도 cleanup은 계속됩니다. cleanup 오류는 수집하되 원래 callback 오류를 보존하고, container stop도 suite teardown에서 수행합니다. |
-| 보장하는 것 | 실제 PostgreSQL에서 migration 재실행 안정성, seed profile idempotence, schema 격리, 실패 중 cleanup을 검증할 수 있는 기반을 제공합니다. |
-| 보장하지 않는 것 | production traffic 규모, network partition, 모든 repository method parity, 이 환경에서의 실제 test 통과는 본 작업에서 증명하지 않았습니다. |
-| 후속 연결 | Thread 2의 migration/readiness/reset 시험과 Thread 4·5의 concurrency integration test가 이 harness를 확장합니다. |
+| 직전 관련 상태 | 메모리 동작 테스트만으로는 SQL 문법, Kysely 마이그레이션 테이블, PostgreSQL 타입 변환, 풀/스키마 정리를 확인할 수 없었습니다. |
+| 해결하려던 문제 | 한 테스트의 행이 다른 테스트에 남거나 콜백 실패로 풀/컨테이너가 누수되면 결과가 비결정적이고 CI가 종료되지 않을 수 있었습니다. |
+| 핵심 결정 | PostgreSQL 16 Testcontainer를 테스트 모음 단위로 띄우고 각 사례마다 무작위 격리된 스키마를 생성해 마이그레이션·시드를 실행하며, 자원을 역순으로 정리하는 테스트 실행 틀을 만들었습니다. |
+| 입력 → 상태 변경 → 출력 | 컨테이너 시작 → 테스트별 스키마/검색 경로 생성 → 풀/저장소 등록 → 마이그레이션·시드·쿼리 검증 → 콜백 성공/실패와 무관하게 저장소/풀 종료·스키마 폐기 → 테스트 모음 종료 시 컨테이너 중지입니다. |
+| 소유권·수명·정리 | 상위 테스트 모음이 컨테이너를, `withIsolatedDatabase`가 스키마와 열린 풀/저장소 목록을 소유합니다. 정리는 등록 역순으로 실행되어 의존 자원을 먼저 닫습니다. |
+| 실패·되돌리기·재시도 | 콜백이 던져도 정리는 계속됩니다. 정리 오류는 수집하되 원래 콜백 오류를 보존하고, 컨테이너 중지도 테스트 모음 종료 정리에서 수행합니다. |
+| 보장하는 것 | 실제 PostgreSQL에서 마이그레이션 재실행 안정성, 초기 데이터 구성 멱등성, 스키마 격리, 실패 중 정리를 검증할 수 있는 기반을 제공합니다. |
+| 보장하지 않는 것 | 운영 트래픽 규모, 네트워크 분할, 모든 저장소 메서드 동작 일치, 이 환경에서의 실제 테스트 통과는 본 작업에서 검증하지 않았습니다. |
+| 후속 연결 | 개발 스레드 2의 마이그레이션/준비 상태/초기화 시험과 개발 스레드 4·5의 동시성 통합 테스트가 이 테스트 실행 틀을 확장합니다. |
 
 #### 최소 코드 근거
 
-- `packages/db/src/postgres.integration.test.ts::withIsolatedDatabase` — schema·pool·repository를 test가 명시적으로 소유하고 callback 실패 뒤에도 역순 cleanup합니다.
+- `packages/db/src/postgres.integration.test.ts::withIsolatedDatabase` — 스키마·풀·저장소를 테스트가 명시적으로 소유하고 콜백 실패 뒤에도 역순 정리합니다.
 
-#### Test commit 학습 기록
+#### 테스트 커밋 학습 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 검증 대상 불변식 | migration·seed가 실제 PostgreSQL에서 반복 가능하고 test별 schema/resource가 서로 격리·정리된다는 불변식입니다. |
-| 재현한 실패·경계 | callback 실패, 여러 pool/repository 등록, 같은 migration/seed 재실행, development/demo profile 차이입니다. |
-| 시험 기법 | PostgreSQL 16 Testcontainers와 random schema `search_path`를 사용하는 integration/lifecycle test입니다. |
-| 통과하는 실제 코드 경로 | `migrateDatabase`·`ensureSeedData`·repository query, `close`, pool end, schema drop, container stop입니다. |
-| 시험이 증명하는 것 | SQL과 PostgreSQL driver를 실제로 통과하는 상태 전이 및 실패 시 cleanup 설계가 시험 코드상 검증됨을 보여 줍니다. |
-| 시험이 증명하지 않는 것 | 부하·장애 복구·production 데이터 migration, 모든 backend operation parity는 증명하지 않습니다. 이 세션에서는 command를 실행하지 않았습니다. |
-| 막으려는 회귀 | mock/memory에서는 보이지 않는 SQL 오류, schema 오염, 열린 handle 누수, seed 중복 회귀를 막습니다. |
+| 검증 대상 불변식 | 마이그레이션·시드가 실제 PostgreSQL에서 반복 가능하고 테스트별 스키마/자원이 서로 격리·정리된다는 불변식입니다. |
+| 재현한 실패·경계 | 콜백 실패, 여러 풀/저장소 등록, 같은 마이그레이션/시드 재실행, 개발/체험 프로필 차이입니다. |
+| 시험 기법 | PostgreSQL 16 Testcontainers와 무작위 스키마 `search_path`를 사용하는 통합/수명주기 테스트입니다. |
+| 통과하는 실제 코드 경로 | `migrateDatabase`·`ensureSeedData`·저장소 쿼리, `close`, 풀 종료, 스키마 폐기, 컨테이너 중지입니다. |
+| 테스트가 검증하는 것 | SQL과 PostgreSQL 드라이버를 실제로 통과하는 상태 전이 및 실패 시 정리 설계가 시험 코드상 검증됨을 보여 줍니다. |
+| 테스트가 검증하지 않는 것 | 부하·장애 복구·운영 데이터 마이그레이션, 모든 백엔드 연산 동작 일치는 검증하지 않습니다. 이 세션에서는 명령을 실행하지 않았습니다. |
+| 막으려는 회귀 | 가짜 객체/메모리에서는 보이지 않는 SQL 오류, 스키마 오염, 열린 핸들 누수, 시드 중복 회귀를 막습니다. |
 
 #### 비교 기준
 
-- parent 상태와 `c43b87694b29`의 diff를 먼저 비교합니다.
-- 이 Thread의 직전 관련 SHA `e935054ce0c9`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
+- 부모 커밋의 상태와 `c43b87694b29`의 변경 내용을 먼저 비교합니다.
+- 이 개발 스레드의 직전 관련 SHA `e935054ce0c9`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
 
-## 6. 불변식 변화
+## 6. 불변 조건 변화
 
 | 단계 | 관련 SHA | 조사 초점 | 학습자 기록 |
 | --- | --- | --- | --- |
-| Durable model 도입 | `0e850d24406e` | row identity·FK lifetime·초기 unique/index의 범위를 구분합니다. | PostgreSQL이 UUID·timestamp·관계 row를 소유하게 되었지만 canonical friendship, seed/capacity, idempotent result 같은 고위험 불변식은 아직 schema 밖에 남았습니다. |
-| Typed translation 경계 | `4aa060c0b8df` | DB row와 public/session DTO의 노출 범위를 추적합니다. | `UserProjectionRow`와 mapper가 snake_case·nullable field를 DTO로 바꾸며 public projection에서 email을 제외합니다. 다만 runtime validation은 하지 않습니다. |
-| Backend lifecycle·surface | `9277572765e7` → `c7ea1ff241c8` | factory·close·operation 확장과 parity의 실제 범위를 기록합니다. | caller는 하나의 interface를 사용하지만 PostgreSQL filter/limit와 memory 배열 동작은 일부 달랐습니다. interface parity는 의미 parity가 아니라 교체 가능한 호출 surface만 제공합니다. |
-| 파생 read-model correction | `035b97ca7c58` → `6b661420e060` | fabricated metric이 repository evidence 기반 계산으로 바뀌는 과정을 설명합니다. | backend별 수식/상수가 제거되고 동일 `recentMatches` sequence를 시간순으로 해석하는 계산기로 통일되었습니다. regression은 order와 loss reset을 함께 고정합니다. |
-| 실제 DB evidence | `e935054ce0c9` → `c43b87694b29` | 실행 경계·격리·cleanup이 만드는 보장 범위를 구분합니다. | unit과 container suite가 분리되고 test마다 random schema와 명시적 cleanup owner를 둡니다. 실제 SQL·migration lifecycle을 시험할 수 있지만 production 장애·부하까지 증명하지는 않습니다. |
+| 영속 저장 모델 도입 | `0e850d24406e` | 행 신원·FK 수명·초기 고유 제약·인덱스의 범위를 구분합니다. | PostgreSQL이 UUID·타임스탬프·관계 행을 소유하게 되었지만 표준 친구 관계, 시드·정원, 멱등 결과 같은 고위험 불변식은 아직 스키마 밖에 남았습니다. |
+| 타입이 지정된 변환 경계 | `4aa060c0b8df` | DB 행과 공개/세션 DTO의 노출 범위를 추적합니다. | `UserProjectionRow`와 변환기가 snake_case·null 허용 필드를 DTO로 바꾸며 공개 사용자 정보에서 이메일을 제외합니다. 다만 실행 중 검증은 하지 않습니다. |
+| 백엔드 수명주기·호출 방법 | `9277572765e7` → `c7ea1ff241c8` | 생성 함수·종료·연산 확장과 동작 일치의 실제 범위를 기록합니다. | 호출자는 하나의 인터페이스를 사용하지만 PostgreSQL 필터·상한과 메모리 배열 동작은 일부 달랐습니다. 인터페이스 동작 일치는 의미 동작 일치가 아니라 교체 가능한 호출 인터페이스만 제공합니다. |
+| 파생 조회 모델 교정 | `035b97ca7c58` → `6b661420e060` | 임의로 만든 지표를 저장된 경기 결과에서 계산하도록 바꾸는 과정을 설명합니다. | 백엔드별 수식과 상수를 제거하고 같은 `recentMatches` 배열을 시간순으로 해석하는 계산기로 통일했습니다. 회귀 테스트는 경기 순서와 패배 시 연승 초기화를 함께 고정합니다. |
+| 실제 DB 근거 | `e935054ce0c9` → `c43b87694b29` | 실행 경계·격리·정리가 만드는 보장 범위를 구분합니다. | 단위와 컨테이너 테스트 모음이 분리되고 테스트마다 무작위 스키마와 명시적 정리 소유 주체를 둡니다. 실제 SQL·마이그레이션 수명주기를 시험할 수 있지만 운영 장애·부하까지 검증하지는 않습니다. |
 
-## 7. Failure → Fix → Test 관계
+## 7. 실패 → 수정 → 테스트 관계
 
-| 관계 | Failure / 이전 가정 | Fix / 결정 | Test / 근거 | 학습자 기록 |
+| 관계 | 실패 / 이전 가정 | 수정 / 결정 | 테스트 / 근거 | 학습자 기록 |
 | --- | --- | --- | --- | --- |
-| 1 | `c7ea1ff241c8`: PostgreSQL은 임의 수식, memory는 상수 3으로 `bestStreak`를 생성했습니다. | `035b97ca7c58`: recent match 결과를 chronological order로 순회하는 공통 계산기를 추가했습니다. | `6b661420e060`: `win→loss→win→win`과 newest-first 반환을 이용해 기대값 2를 검증합니다. | 이 관계는 read model이 저장된 경기 evidence에서만 파생되어야 한다는 불변식을 복구합니다. test는 fabricated value뿐 아니라 reverse·reset 오류도 막습니다. |
-| 2 | memory test만으로는 SQL·migration table·pool cleanup을 확인할 수 없었습니다. | `e935054ce0c9`: 전용 command와 Testcontainers dependency를 추가했습니다. | `c43b87694b29`: PostgreSQL 16, isolated schema, callback-failure cleanup을 구현했습니다. | 시험 실행 환경 자체를 먼저 독립시킨 뒤 실제 DB lifecycle을 검증합니다. harness의 존재와 이 세션에서의 실제 통과는 구분해야 합니다. |
+| 1 | `c7ea1ff241c8`: PostgreSQL은 임의 수식, 메모리는 상수 3으로 `bestStreak`를 생성했습니다. | `035b97ca7c58`: 최근 경기 결과를 시간순으로 순회하는 공통 계산기를 추가했습니다. | `6b661420e060`: `win→loss→win→win`과 최신순 반환을 이용해 기대값 2를 검증합니다. | 이 관계는 조회 모델이 저장된 경기 근거에서만 파생되어야 한다는 불변식을 복구합니다. 테스트는 임의로 만든 값뿐 아니라 역순 처리와 초기화 오류도 막습니다. |
+| 2 | 메모리 테스트만으로는 SQL·마이그레이션 테이블·풀 정리를 확인할 수 없었습니다. | `e935054ce0c9`: 전용 명령과 Testcontainers 의존성을 추가했습니다. | `c43b87694b29`: PostgreSQL 16, 격리된 스키마, 콜백 실패 정리를 구현했습니다. | 시험 실행 환경 자체를 먼저 독립시킨 뒤 실제 DB 수명주기를 검증합니다. 테스트 실행 틀의 존재와 이 세션에서의 실제 통과는 구분해야 합니다. |
 
-## 8. Ownership·상태·책임 변화
+## 8. 소유권·상태·담당 범위 변화
 
 | 구간 | 이전 소유자/표현 | 이후 소유자/표현 | 관련 SHA | 학습자 기록 |
 | --- | --- | --- | --- | --- |
-| Schema와 row | 애플리케이션 상태의 durable owner가 없었습니다. | PostgreSQL table/FK가 row identity와 관계 lifetime을 소유합니다. | `0e850d24406e` | DB가 durability를 맡지만 domain-level canonical identity와 capacity는 이후 제약·transaction이 보강해야 했습니다. |
-| DB shape → DTO | caller가 raw column을 직접 해석할 수 있었습니다. | row mapper가 이름·nullable·공개 field 변환을 소유합니다. | `4aa060c0b8df`, `8ab49e5f2dd4` | mapper는 새 projection을 반환하고 raw row를 수정하지 않습니다. runtime 검증 책임은 별도 protocol 경계에 남습니다. |
-| 자원 lifecycle | Pool/Kysely 생성·종료가 caller 세부사항이었습니다. | repository factory가 구성하고 caller가 `close()`를 호출합니다. | `9277572765e7` | 구성은 repository가, 종료 trigger는 composition root가 소유하는 분할 책임입니다. |
-| Read-model 계산 | UI 또는 backend별 임의 계산으로 갈라질 수 있었습니다. | repository 공통 helper가 recent sequence에서 지표를 계산합니다. | `c7ea1ff241c8`, `035b97ca7c58` | 저장 원본은 DB/Map이 유지하고 파생 metric은 query 시 생성됩니다. 계산 범위는 recent 8개로 한정됩니다. |
-| Integration resource | test 자원의 명시적 owner가 없었습니다. | suite와 helper가 container·schema·pool·repository cleanup을 소유합니다. | `c43b87694b29` | callback 오류와 teardown을 분리해 원래 실패를 보존하면서 열린 handle을 정리합니다. |
+| 스키마와 행 | 애플리케이션 상태의 영속 소유 주체가 없었습니다. | PostgreSQL 테이블/FK가 행 신원과 관계 수명을 소유합니다. | `0e850d24406e` | DB가 영속성을 맡지만 도메인 수준 정규화한 식별 방식과 용량은 이후 제약·트랜잭션이 보강해야 했습니다. |
+| DB 형식 → DTO | 호출자가 가공 전 열을 직접 해석할 수 있었습니다. | 행 변환기가 이름·null 허용·공개 필드 변환을 소유합니다. | `4aa060c0b8df`, `8ab49e5f2dd4` | 변환기는 새 변환 결과를 반환하고 가공 전 행을 수정하지 않습니다. 실행 중 검증 책임은 별도 프로토콜 경계에 남습니다. |
+| 자원 수명주기 | 풀/Kysely 생성·종료가 호출자 세부사항이었습니다. | 저장소 생성 함수가 구성하고 호출자가 `close()`를 호출합니다. | `9277572765e7` | 구성은 저장소가, 종료 호출 시점는 구성 진입점이 소유하는 분할 책임입니다. |
+| 읽기 모델 계산 | UI 또는 백엔드별 임의 계산으로 갈라질 수 있었습니다. | 저장소 공통 도우미 함수가 최근 순번에서 지표를 계산합니다. | `c7ea1ff241c8`, `035b97ca7c58` | 저장 원본은 DB/Map이 유지하고 파생 지표는 쿼리 시 생성됩니다. 계산 범위는 최근 8개로 한정됩니다. |
+| 통합 자원 | 테스트 자원의 명시적 소유 주체가 없었습니다. | 테스트 모음과 도우미 함수가 컨테이너·스키마·풀·저장소 정리를 소유합니다. | `c43b87694b29` | 콜백 오류와 종료 정리를 분리해 원래 실패를 보존하면서 열린 핸들을 정리합니다. |
 
-## 9. Thread 최종 상태
+## 9. 개발 스레드 최종 상태
 
-이 Thread의 최종 상태에서 `AppRepository`는 PostgreSQL과 memory를 같은 호출 surface 뒤에 배치하고, row mapper는 relational row를 shared read model로 변환합니다. profile·leaderboard·recent match·dashboard가 repository operation으로 제공되며 `bestStreak`는 최근 경기 결과에서 계산됩니다. 다만 interface만으로 완전한 backend 의미 parity를 증명하지 않으며, 실제 PostgreSQL 보장은 container integration test가 다루는 범위로 제한됩니다.
+이 개발 스레드의 최종 상태에서 `AppRepository`는 PostgreSQL과 메모리를 같은 인터페이스 뒤에 배치하고, 행 변환기는 관계형 데이터 행을 공유 조회 모델로 변환합니다. 프로필·순위표·최근 경기·대시보드가 저장소 연산으로 제공되며 `bestStreak`는 최근 경기 결과에서 계산됩니다. 다만 인터페이스만으로 완전한 백엔드 의미 동작 일치를 검증하지 않으며, 실제 PostgreSQL 보장은 컨테이너 통합 테스트가 다루는 범위로 제한됩니다.
 
 ## 10. 최종 실행 흐름
 
-1. 호출자가 factory로 PostgreSQL 또는 memory repository를 만들고 해당 repository lifetime의 종료 책임을 가집니다.
-2. repository method가 DB query 또는 Map/배열 조회를 수행하고 raw row/record를 얻습니다.
-3. row mapper가 snake_case, nullable 값, viewer-relative 의미를 shared DTO로 변환합니다.
-4. `getDashboard`는 사용자와 newest-first 최근 경기 최대 8개를 조립합니다.
-5. `bestWinningStreak`가 복사한 경기 배열을 시간순으로 순회해 loss에서 current를 초기화하고 best를 반환합니다.
-6. memory test는 public method composition을, PostgreSQL integration harness는 migration·seed·schema/resource lifecycle을 서로 다른 범위에서 검증합니다.
+1. 호출자가 생성 함수로 PostgreSQL 또는 메모리 저장소를 만들고 해당 저장소 수명의 종료 책임을 가집니다.
+2. 저장소 메서드가 DB 쿼리 또는 Map/배열 조회를 수행하고 가공 전 행/레코드를 얻습니다.
+3. 행 변환기가 snake_case, null 허용 값, 조회 사용자 기준 의미를 공유 DTO로 변환합니다.
+4. `getDashboard`는 사용자와 최신순 최근 경기 최대 8개를 조립합니다.
+5. `bestWinningStreak`가 복사한 경기 배열을 시간순으로 순회해 패배에서 현재를 초기화하고 최댓값을 반환합니다.
+6. 메모리 테스트는 공개 메서드 구성을, PostgreSQL 통합 테스트 실행 틀은 마이그레이션·시드·스키마/자원 수명주기를 서로 다른 범위에서 검증합니다.
 
 ## 11. 학습 완료 확인
 
 - [x] 초기 SQL 제약과 나중에 보강된 불변식을 혼동하지 않고 설명할 수 있습니다.
-- [x] mapper의 compile-time 보장과 runtime non-guarantee를 구분할 수 있습니다.
-- [x] memory/PostgreSQL의 interface parity와 의미 parity 차이를 구체적인 filter·limit 사례로 설명할 수 있습니다.
-- [x] `bestStreak` fix의 이전 가정, root cause, corrected invariant와 regression을 연결할 수 있습니다.
-- [x] memory behavioral test와 PostgreSQL integration test의 증거 범위를 과장하지 않고 설명할 수 있습니다.
+- [x] 변환기의 컴파일 시점 보장과 실행 시점 보장하지 않는 범위를 구분할 수 있습니다.
+- [x] 메모리/PostgreSQL의 인터페이스 동작 일치와 의미 동작 일치 차이를 구체적인 필터·상한 사례로 설명할 수 있습니다.
+- [x] `bestStreak` 수정의 이전 가정, 근본 원인, 수정된 불변 조건과 회귀를 연결할 수 있습니다.
+- [x] 메모리 동작 테스트와 PostgreSQL 통합 테스트의 증거 범위를 과장하지 않고 설명할 수 있습니다.
 
 ## 12. 실행 및 증거 기록
 
 - 저장소 실행 시험: 실행하지 않았습니다.
-- 이유: 로컬 `git clone --branch web/ft_transcendence --single-branch`가 DNS 해석 실패(`Could not resolve host: github.com`)로 중단되어 의존성을 포함한 실행 가능한 checkout을 만들 수 없었습니다.
-- 코드 근거: 지정 브랜치의 source classification과 각 exact SHA의 GitHub commit diff를 확인했습니다. 따라서 본 문서의 시험 설명은 실제 시험 코드의 정적 검토 결과이며, 이 환경에서의 통과 결과가 아닙니다.
+- 이유: 로컬 `git clone --branch web/ft_transcendence --single-branch`가 DNS 해석 실패(`Could not resolve host: github.com`)로 중단되어 의존성을 포함한 실행 가능한 체크아웃을 만들 수 없었습니다.
+- 코드 근거: 지정 브랜치의 원문 분류와 각 정확한 SHA의 GitHub 커밋 변경 내용을 확인했습니다. 따라서 본 문서의 시험 설명은 실제 시험 코드의 정적 검토 결과이며, 이 환경에서의 통과 결과가 아닙니다.
 ===== END FILE: 01-repository-abstraction-backend-parity-and-read-models.md =====
 
 ===== BEGIN FILE: 02-migration-seed-readiness-and-reset-lifecycle.md =====
-# Development Thread 02 — Migration·seed·readiness·reset lifecycle
+# 개발 스레드 02 — 마이그레이션·초기 데이터·준비 상태·초기화 수명주기
 
 ## 1. 학습 목표
 
-- 초기 SQL 실행과 seed가 하나의 method에 묶인 상태에서 versioned migration·profile seed로 분리되는 ownership 변화를 재구성합니다.
-- database 연결 가능성과 migration set의 current/pending/diverged 상태가 repository readiness로 결합되는 과정을 설명합니다.
-- API startup의 암시적 seed mutation을 제거한 이유와 source-level regression guard의 한계를 구분합니다.
-- 파괴적 test reset이 strict target resolver, transactional schema replacement, migration 재적용과 시험으로 보호되는 과정을 추적합니다.
+- 초기 SQL 실행과 시드가 하나의 메서드에 묶인 상태에서 버전이 명시된 마이그레이션·프로필 시드로 분리되는 소유권 변화를 재구성합니다.
+- 데이터베이스 연결 가능성과 마이그레이션 집합의 현재/대기 중/불일치 상태가 저장소 준비 상태로 결합되는 과정을 설명합니다.
+- API 시작의 암시적 시드 변경을 제거한 이유와 소스 수준 회귀 보호 조건의 한계를 구분합니다.
+- 파괴적 테스트 초기화가 엄격한 대상 모듈 해석기, 트랜잭션으로 스키마 교체, 마이그레이션 재적용과 시험으로 보호되는 과정을 추적합니다.
 
 ## 2. 범위와 경계
 
-- 포함: DB package migration asset/CLI, Kysely migration lifecycle, seed profile, migration-set inspection, repository readiness, startup seed removal, test reset guard·executor·test.
+- 포함: DB 패키지 마이그레이션 자산/CLI, Kysely 마이그레이션 수명주기, 초기 데이터 구성, 마이그레이션 집합 검토, 저장소 준비 상태, 시작 시 초기 데이터 생성 제거, 테스트 초기화 보호 조건·실행 객체·테스트.
 - 실제 역사 순서에 맞춰 `e1a0316fbe84`·`5cac4843fd9b`를 `113b3c422192` 이후가 아니라 그 앞에 배치합니다.
-- 제외: HTTP liveness/readiness endpoint, Prometheus metric, graceful shutdown과 deployment orchestration은 operations category에서 다룹니다.
-- 제외: role assignment, guest session, WebSocket ticket migration은 authentication category의 독립 데이터 전환입니다.
-- reset은 test-only destructive lifecycle이며 production migration rollback 전략으로 일반화하지 않습니다.
+- 제외: HTTP 생존 상태/준비 상태 엔드포인트, Prometheus 지표, 단계적 종료와 배포 실행 조정은 연산 카테고리에서 다룹니다.
+- 제외: 역할 할당, 비회원 세션, WebSocket 티켓 마이그레이션은 인증 카테고리의 독립 데이터 전환입니다.
+- 초기화는 테스트 전용 데이터 삭제 수명주기이며 운영 마이그레이션 되돌리기 전략으로 일반화하지 않습니다.
 
 ## 3. 핵심 질문
 
-- 왜 `migrate`와 `seed`가 같은 `ensureSeedData()`를 호출하는 상태가 잘못된 ownership입니까?
-- applied migration이 bundled set의 prefix가 아닐 때 왜 단순 pending이 아니라 diverged입니까?
-- repository readiness는 process liveness와 무엇이 다르고 어느 순간까지의 상태만 보장합니까?
-- startup에서 seed를 제거한 뒤 필요한 데이터 준비 책임은 어디로 이동합니까?
-- test reset guard는 어떤 입력을 DB 연결 전에 차단하며, drop/create와 migration이 왜 하나의 transaction이 아닙니까?
+- 왜 `migrate`와 `seed`가 같은 `ensureSeedData()`를 호출하는 상태가 잘못된 소유권입니까?
+- 적용된 마이그레이션이 번들에 포함된 집합의 접두 경로가 아닐 때 왜 단순 대기 중이 아니라 불일치입니까?
+- 저장소 준비 상태는 프로세스 생존 상태와 무엇이 다르고 어느 순간까지의 상태만 보장합니까?
+- 시작에서 시드를 제거한 뒤 필요한 데이터 준비 책임은 어디로 이동합니까?
+- 테스트 초기화 보호 조건은 어떤 입력을 DB 연결 전에 차단하며, 폐기/생성과 마이그레이션이 왜 하나의 트랜잭션이 아닙니까?
 
-## 4. Commit map
+## 4. 커밋 목록
 
-| 순서 | Commit | Subject | Importance | Tags |
+| 순서 | 커밋 | 제목 | 중요도 | 태그 |
 | ---: | --- | --- | :---: | --- |
 | 1 | `1140fb868714` | `feat(db): migration 실행 경계 구성` | B | PERSISTENCE |
 | 2 | `dea169d587a3` | `feat(db): 데이터베이스 CLI 명령 연결` | B | PERSISTENCE |
@@ -656,41 +656,41 @@
 | 11 | `434403a7c16a` | `feat(db): test schema reset과 migration 실행 연결` | A | PERSISTENCE, RISK |
 | 12 | `527b5f137425` | `test(db): test database reset guard 검증` | B | PERSISTENCE, TEST |
 
-## 5. Commit별 조사
+## 5. 커밋별 조사
 
-### 5.1. `1140fb868714` — feat(db): migration 실행 경계 구성
+### 5.1. `1140fb868714` — feat(db): 마이그레이션 실행 경계 구성
 
 | 항목 | 고정 정보 |
 | --- | --- |
 | SHA | `1140fb868714` |
-| Importance | B |
-| Tags | PERSISTENCE |
-| Source role | 초기 SQL 파일을 DB package가 읽고 실행할 수 있는 importable schema-initialization 경계로 연결합니다. |
+| 중요도 | B |
+| 태그 | PERSISTENCE |
+| 원문 역할 | 초기 SQL 파일을 DB 패키지가 읽고 실행할 수 있는 외부에서 가져와 실행할 수 있는 스키마 초기화 경계로 연결합니다. |
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `packages/db/src/migrations.ts`와 package export가 `001_initial.sql`을 runtime에서 찾는 방식을 확인합니다.
-- `initialMigrationSql`을 사용하는 caller가 파일 경로·module URL에 의존하는 범위를 확인합니다.
-- 이 시점에는 migration history table이나 개별 version 적용 상태가 없고, 하나의 초기 SQL payload라는 점을 기록합니다.
-- package build/runtime에서 SQL asset이 존재해야 한다는 non-guarantee를 확인합니다.
+- `packages/db/src/migrations.ts`와 패키지 내보내기가 `001_initial.sql`을 실행할 때 찾는 방식을 확인합니다.
+- `initialMigrationSql`을 사용하는 호출자가 파일 경로·모듈 URL에 의존하는 범위를 확인합니다.
+- 이 시점에는 마이그레이션 이력 테이블이나 개별 버전 적용 상태가 없고, 하나의 초기 SQL 메시지 본문라는 점을 기록합니다.
+- 패키지 빌드/실행할 때 SQL 자산이 존재해야 한다는 보장하지 않는 범위를 확인합니다.
 
 #### 학습자 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 직전 관련 상태 | `001_initial.sql`은 repository에 있었지만 TypeScript runtime이 이를 import·실행할 안정된 package 경계가 없었습니다. |
-| 해결하려던 문제 | repository 초기화 코드가 임의 경로로 SQL을 읽으면 실행 위치나 package 소비 방식에 따라 schema setup이 깨질 수 있었습니다. |
-| 핵심 결정 | DB package 내부에서 초기 migration SQL을 읽어 export하고 이후 repository/CLI가 그 값을 사용하도록 했습니다. |
-| 입력 → 상태 전이 → 출력 | module-relative SQL asset 조회 → `initialMigrationSql` 로드 → repository 초기화 path가 SQL을 execute합니다. |
-| ownership / lifetime / cleanup | DB package가 SQL asset의 위치와 읽기 책임을 소유합니다. 실행 caller는 반환된 SQL을 소비하지만 version set을 소유하지 않습니다. |
-| failure / rollback / retry | asset 누락·경로 오류·SQL 실행 오류는 호출자에게 전파됩니다. 적용된 migration 목록이나 rollback은 없습니다. |
-| 보장하는 것 | schema initialization SQL을 API와 CLI가 같은 package 경계에서 사용할 수 있습니다. |
-| 보장하지 않는 것 | versioned migration lifecycle, pending/diverged 판별, seed와 schema evolution 분리는 보장하지 않습니다. |
-| 후속 연결 | `dea169d587a3`가 CLI에 연결하고 `f9bb622a1117`가 단일 SQL payload를 Kysely file migration lifecycle로 대체합니다. |
+| 직전 관련 상태 | `001_initial.sql`은 저장소에 있었지만 TypeScript 실행 환경이 이를 가져오기·실행할 안정된 패키지 경계가 없었습니다. |
+| 해결하려던 문제 | 저장소 초기화 코드가 임의 경로로 SQL을 읽으면 실행 위치나 패키지 소비 방식에 따라 스키마 설정이 깨질 수 있었습니다. |
+| 핵심 결정 | DB 패키지 내부에서 초기 마이그레이션 SQL을 읽어 내보내고 이후 저장소와 CLI가 그 값을 사용하도록 했습니다. |
+| 입력 → 상태 변경 → 출력 | 모듈 위치를 기준으로 SQL 파일 조회 → `initialMigrationSql` 로드 → 저장소 초기화 경로에서 SQL 실행 순서입니다. |
+| 소유권·수명·정리 | DB 패키지가 SQL 자산의 위치와 읽기 책임을 소유합니다. 실행 호출자는 반환된 SQL을 소비하지만 버전 집합을 소유하지 않습니다. |
+| 실패·되돌리기·재시도 | 자산 누락·경로 오류·SQL 실행 오류는 호출자에게 전파됩니다. 적용된 마이그레이션 목록이나 되돌리기는 없습니다. |
+| 보장하는 것 | 스키마 initialization SQL을 API와 CLI가 같은 패키지 경계에서 사용할 수 있습니다. |
+| 보장하지 않는 것 | 버전이 명시된 마이그레이션 수명주기, 대기 중/불일치 판별, 시드와 스키마 변화 분리는 보장하지 않습니다. |
+| 후속 연결 | `dea169d587a3`가 CLI에 연결하고 `f9bb622a1117`가 단일 SQL 메시지 본문을 Kysely 파일 마이그레이션 수명주기로 대체합니다. |
 
 #### 비교 기준
 
-- parent 상태와 `1140fb868714`의 diff를 먼저 비교합니다.
+- 부모 커밋의 상태와 `1140fb868714`의 변경 내용을 먼저 비교합니다.
 - 후속 관련 SHA `dea169d587a3`가 이 결정의 부족한 점을 보완하거나 검증하는지 확인합니다.
 
 ### 5.2. `dea169d587a3` — feat(db): 데이터베이스 CLI 명령 연결
@@ -698,530 +698,530 @@
 | 항목 | 고정 정보 |
 | --- | --- |
 | SHA | `dea169d587a3` |
-| Importance | B |
-| Tags | PERSISTENCE |
-| Source role | `migrate`, `seed`, memory smoke를 DB package CLI에 노출하지만 당시 migration과 seed는 같은 method를 호출합니다. |
+| 중요도 | B |
+| 태그 | PERSISTENCE |
+| 원문 역할 | `migrate`, `seed`, 메모리 실행 확인을 DB 패키지 CLI에 노출하지만 당시 마이그레이션과 시드는 같은 메서드를 호출합니다. |
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `packages/db/src/cli.ts`의 command parsing과 unknown-command failure를 확인합니다.
-- `migrate`와 `seed`가 모두 repository의 `ensureSeedData()`를 호출하는 parent 상태를 비교합니다.
-- `try/finally` 또는 종료 경로에서 repository `close()`가 항상 실행되는지 확인합니다.
-- `packages/db/package.json` scripts가 각 command를 어떻게 노출하는지 확인합니다.
+- `packages/db/src/cli.ts`의 명령 파싱과 알 수 없는 명령 실패를 확인합니다.
+- `migrate`와 `seed`가 모두 저장소의 `ensureSeedData()`를 호출하는 부모 커밋의 상태를 비교합니다.
+- `try/finally` 또는 종료 경로에서 저장소 `close()`가 항상 실행되는지 확인합니다.
+- `packages/db/package.json`의 스크립트가 각 명령을 어떻게 노출하는지 확인합니다.
 
 #### 학습자 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 직전 관련 상태 | schema와 seed를 준비하는 repository method는 있었지만 개발자·운영 script가 호출할 명시적 CLI가 없었습니다. |
-| 해결하려던 문제 | 수동 코드 호출 대신 반복 가능한 command가 필요했지만, 당시 `ensureSeedData`가 DDL과 seed를 동시에 소유해 두 command의 의미가 같았습니다. |
-| 핵심 결정 | command parser를 추가하고 `migrate`, `seed`, `memory-smoke`를 package script에 연결했습니다. |
-| 입력 → 상태 전이 → 출력 | CLI 인수 해석 → URL/backend repository 생성 → `ensureSeedData()` 또는 smoke operation → `close()`입니다. |
-| ownership / lifetime / cleanup | CLI process가 repository lifetime과 종료를 소유합니다. schema/seed의 실제 변경은 repository method가 수행합니다. |
-| failure / rollback / retry | 잘못된 command와 DB 오류는 non-zero failure로 전파됩니다. `migrate`만 실행해도 seed가 생성되는 의미적 결합이 남아 있습니다. |
-| 보장하는 것 | 개발자가 DB 준비와 smoke를 명시적 package command로 실행할 수 있습니다. |
-| 보장하지 않는 것 | migration과 seed의 분리, environment profile, applied-version 기록, readiness는 보장하지 않습니다. |
-| 후속 연결 | `f9bb622a1117`가 잘못 결합된 ownership을 분리하고 `981ee655559b`가 CLI 의미를 다시 연결합니다. |
+| 직전 관련 상태 | 스키마와 시드를 준비하는 저장소 메서드는 있었지만 개발자·운영 스크립트가 호출할 명시적 CLI가 없었습니다. |
+| 해결하려던 문제 | 수동 코드 호출 대신 반복 가능한 명령이 필요했지만, 당시 `ensureSeedData`가 DDL과 시드를 동시에 소유해 두 명령의 의미가 같았습니다. |
+| 핵심 결정 | 명령 파서를 추가하고 `migrate`, `seed`, `memory-smoke`를 패키지 명령에 연결했습니다. |
+| 입력 → 상태 변경 → 출력 | CLI 인수 해석 → URL/백엔드 저장소 생성 → `ensureSeedData()` 또는 실행 확인 연산 → `close()`입니다. |
+| 소유권·수명·정리 | CLI 프로세스가 저장소 수명과 종료를 소유합니다. 스키마/시드의 실제 변경은 저장소 메서드가 수행합니다. |
+| 실패·되돌리기·재시도 | 잘못된 명령과 DB 오류는 0이 아닌 종료 상태 실패로 전파됩니다. `migrate`만 실행해도 시드가 생성되는 의미적 결합이 남아 있습니다. |
+| 보장하는 것 | 개발자가 DB 준비와 실행 확인을 명시적 패키지 명령으로 실행할 수 있습니다. |
+| 보장하지 않는 것 | 마이그레이션과 시드의 분리, 실행 환경 프로필, 적용된 버전 기록, 준비 상태는 보장하지 않습니다. |
+| 후속 연결 | `f9bb622a1117`가 잘못 결합된 소유권을 분리하고 `981ee655559b`가 CLI 의미를 다시 연결합니다. |
 
 #### 비교 기준
 
-- parent 상태와 `dea169d587a3`의 diff를 먼저 비교합니다.
-- 이 Thread의 직전 관련 SHA `1140fb868714`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
+- 부모 커밋의 상태와 `dea169d587a3`의 변경 내용을 먼저 비교합니다.
+- 이 개발 스레드의 직전 관련 SHA `1140fb868714`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
 - 후속 관련 SHA `f9bb622a1117`가 이 결정의 부족한 점을 보완하거나 검증하는지 확인합니다.
 
-### 5.3. `f9bb622a1117` — refactor(db): SQL migration lifecycle 분리
+### 5.3. `f9bb622a1117` — 리팩터링(db): SQL 마이그레이션 수명주기 분리
 
 | 항목 | 고정 정보 |
 | --- | --- |
 | SHA | `f9bb622a1117` |
-| Importance | A |
-| Tags | PERSISTENCE, RISK, REFACTOR |
-| Source role | schema evolution을 Kysely `Migrator`와 SQL file set이, seed를 repository가 소유하도록 책임을 분리합니다. |
+| 중요도 | A |
+| 태그 | PERSISTENCE, RISK, REFACTOR |
+| 원문 역할 | 스키마 변화를 Kysely `Migrator`와 SQL 파일 집합이, 시드를 저장소가 소유하도록 책임을 분리합니다. |
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `packages/db/src/migrator.ts`의 `FileMigrationProvider`, `Migrator`, migration directory resolution을 확인합니다.
-- `packages/db/src/index.ts`에서 `ensureSeedData()`가 schema DDL 실행을 더 이상 수행하지 않는 parent diff를 확인합니다.
-- 기존 `initialMigrationSql` import/asset 경로가 제거되거나 대체되는 범위를 확인합니다.
-- migration failure result와 thrown error가 caller에게 어떻게 전달되는지 확인합니다.
-- repository seed가 이미 migration된 schema를 전제로 하게 된 새로운 precondition을 기록합니다.
+- `packages/db/src/migrator.ts`의 `FileMigrationProvider`, `Migrator`, 마이그레이션 디렉터리 해석을 확인합니다.
+- `packages/db/src/index.ts`에서 `ensureSeedData()`가 스키마 DDL 실행을 더 이상 수행하지 않는 부모 커밋 변경 내용을 확인합니다.
+- 기존 `initialMigrationSql` 가져오기/자산 경로가 제거되거나 대체되는 범위를 확인합니다.
+- 마이그레이션 실패 결과와 thrown 오류가 호출자에게 어떻게 전달되는지 확인합니다.
+- 저장소 시드가 이미 마이그레이션된 스키마를 전제로 하게 된 새로운 실행 전 조건을 기록합니다.
 
 #### 학습자 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 직전 관련 상태 | `migrate`와 `seed`가 같은 `ensureSeedData()`를 실행해 schema version과 데이터 준비의 책임이 섞여 있었습니다. |
-| 해결하려던 문제 | 운영 startup·CI가 schema만 적용하거나 seed만 선택할 수 없고, migration history와 순서를 독립적으로 추적할 수 없었습니다. |
-| 핵심 결정 | SQL 파일을 Kysely `FileMigrationProvider`와 `Migrator`에 맡기고, repository의 `ensureSeedData`는 데이터 upsert만 수행하도록 바꿨습니다. |
-| 입력 → 상태 전이 → 출력 | `migrateDatabase(url)` → migration directory의 version file discovery → Kysely migration table과 비교 → pending SQL 순차 적용; seed command는 별도 repository path를 사용합니다. |
-| ownership / lifetime / cleanup | Migrator가 schema evolution 순서와 applied state를 소유하고 repository가 seed 데이터 의미를 소유합니다. caller는 두 lifecycle을 명시적으로 조합합니다. |
-| failure / rollback / retry | migration이 실패하면 이후 seed를 자동 실행하지 않으며 오류가 전파됩니다. repository method를 migration 없이 호출하면 table 부재로 실패할 수 있습니다. |
-| 보장하는 것 | schema evolution과 seed 데이터 생성이 서로 독립적으로 실행·감사될 수 있고 applied migration history가 생깁니다. |
-| 보장하지 않는 것 | bundled/applied set divergence 판별, readiness 노출, destructive reset 안전성은 아직 보장하지 않습니다. |
-| 후속 연결 | `981ee655559b`가 CLI를 새 lifecycle에 맞추고 `30aac132e14e`가 migration set 일치 여부를 명시적으로 분류합니다. |
+| 직전 관련 상태 | `migrate`와 `seed`가 같은 `ensureSeedData()`를 실행해 스키마 버전과 데이터 준비의 책임이 섞여 있었습니다. |
+| 해결하려던 문제 | 운영 시작·CI가 스키마만 적용하거나 시드만 선택할 수 없고, 마이그레이션 이력과 순서를 독립적으로 추적할 수 없었습니다. |
+| 핵심 결정 | SQL 파일을 Kysely `FileMigrationProvider`와 `Migrator`에 맡기고, 저장소의 `ensureSeedData`는 데이터 업서트만 수행하도록 바꿨습니다. |
+| 입력 → 상태 변경 → 출력 | `migrateDatabase(url)` → 마이그레이션 디렉터리의 버전 파일 discovery → Kysely 마이그레이션 테이블과 비교 → 대기 중 SQL 순차 적용; 시드 명령은 별도 저장소 경로를 사용합니다. |
+| 소유권·수명·정리 | Migrator가 스키마 변화 순서와 적용된 상태를 소유하고 저장소가 시드 데이터 의미를 소유합니다. 호출자는 두 수명주기를 명시적으로 조합합니다. |
+| 실패·되돌리기·재시도 | 마이그레이션이 실패하면 이후 시드를 자동 실행하지 않으며 오류가 전파됩니다. 저장소 메서드를 마이그레이션 없이 호출하면 테이블 부재로 실패할 수 있습니다. |
+| 보장하는 것 | 스키마 변화와 시드 데이터 생성이 서로 독립적으로 실행·감사될 수 있고 적용된 마이그레이션 이력이 생깁니다. |
+| 보장하지 않는 것 | 번들에 포함된/적용된 집합 불일치 판별, 준비 상태 노출, 데이터를 삭제하는 초기화 안전성은 아직 보장하지 않습니다. |
+| 후속 연결 | `981ee655559b`가 CLI를 새 수명주기에 맞추고 `30aac132e14e`가 마이그레이션 집합 일치 여부를 명시적으로 분류합니다. |
 
 #### 최소 코드 근거
 
-- `packages/db/src/migrator.ts` — Kysely `FileMigrationProvider`/`Migrator`가 SQL file 순서와 applied migration state를 소유하고, repository seed path에서는 DDL 책임이 제거됩니다.
+- `packages/db/src/migrator.ts` — Kysely `FileMigrationProvider`/`Migrator`가 SQL 파일 순서와 적용된 마이그레이션 상태를 소유하고, 저장소 시드 경로에서는 DDL 책임이 제거됩니다.
 
 #### 비교 기준
 
-- parent 상태와 `f9bb622a1117`의 diff를 먼저 비교합니다.
-- 이 Thread의 직전 관련 SHA `dea169d587a3`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
+- 부모 커밋의 상태와 `f9bb622a1117`의 변경 내용을 먼저 비교합니다.
+- 이 개발 스레드의 직전 관련 SHA `dea169d587a3`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
 - 후속 관련 SHA `8da6edef28eb`가 이 결정의 부족한 점을 보완하거나 검증하는지 확인합니다.
 
-### 5.4. `8da6edef28eb` — feat(db): 환경별 seed profile 분리
+### 5.4. `8da6edef28eb` — feat(db): 환경별 초기 데이터 구성 분리
 
 | 항목 | 고정 정보 |
 | --- | --- |
 | SHA | `8da6edef28eb` |
-| Importance | B |
-| Tags | AUTH, REALTIME, PERSISTENCE |
-| Source role | `development`와 `demo` seed profile을 분리해 환경별 사용자·NPC 데이터 범위를 명시합니다. |
+| 중요도 | B |
+| 태그 | AUTH, REALTIME, PERSISTENCE |
+| 원문 역할 | `development`와 `demo` 초기 데이터 구성을 분리해 환경별 사용자·NPC 데이터 범위를 명시합니다. |
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `SeedProfile`과 `ensureSeedData(profile = 'development')` signature를 두 backend에서 확인합니다.
-- development profile의 일반·관리 사용자와 demo profile의 NPC/체험 데이터 차이를 확인합니다.
-- NPC rating band와 `is_npc` upsert가 반복 실행에서 identity를 유지하는지 확인합니다.
-- profile 선택이 migration을 실행하지 않는다는 `f9bb622a1117` 이후 precondition을 확인합니다.
+- `SeedProfile`과 `ensureSeedData(profile = 'development')` 서명을 두 백엔드에서 확인합니다.
+- 개발 프로필의 일반·관리 사용자와 체험 프로필의 NPC/체험 데이터 차이를 확인합니다.
+- NPC 레이팅 band와 `is_npc` 업서트가 반복 실행에서 신원을 유지하는지 확인합니다.
+- 프로필 선택이 마이그레이션을 실행하지 않는다는 `f9bb622a1117` 이후 실행 전 조건을 확인합니다.
 
 #### 학습자 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 직전 관련 상태 | migration과 seed는 분리됐지만 seed 데이터가 하나의 고정 집합이라 개발용 권한 사용자와 demo용 상대가 섞였습니다. |
-| 해결하려던 문제 | 환경에 따라 필요한 sample identity가 다른데 같은 seed를 적용하면 demo에서 불필요한 계정·권한이 생길 수 있었습니다. |
-| 핵심 결정 | `development`·`demo` profile을 도입하고 두 backend의 `ensureSeedData`가 profile별 사용자/NPC 집합을 upsert하도록 했습니다. |
-| 입력 → 상태 전이 → 출력 | profile 입력 → 공통 NPC 및 profile-specific 사용자 선택 → handle 기준 upsert → 반복 실행 시 기존 identity 갱신입니다. |
-| ownership / lifetime / cleanup | repository가 profile별 seed set과 memory map/DB row를 소유합니다. caller가 환경에 맞는 profile 선택 책임을 가집니다. |
-| failure / rollback / retry | 잘못된 profile은 타입/CLI parsing에서 차단됩니다. 여러 upsert가 하나의 transaction으로 묶인다는 보장은 없습니다. |
-| 보장하는 것 | development와 demo가 의도한 데이터 집합을 명시적으로 선택하고 반복 적용해도 handle 중복이 생기지 않습니다. |
-| 보장하지 않는 것 | 권한 assignment의 보안 전체, production 자동 seed 허용, migration current 상태는 보장하지 않습니다. |
-| 후속 연결 | `981ee655559b`가 `seed:dev`·`seed:demo` command로 연결하고 PostgreSQL integration test가 idempotence와 차이를 확인합니다. |
+| 직전 관련 상태 | 마이그레이션과 시드는 분리됐지만 시드 데이터가 하나의 고정 집합이라 개발용 권한 사용자와 체험용 상대가 섞였습니다. |
+| 해결하려던 문제 | 환경에 따라 필요한 예시 신원이 다른데 같은 시드를 적용하면 체험에서 불필요한 계정·권한이 생길 수 있었습니다. |
+| 핵심 결정 | `development`·`demo` 프로필을 도입하고 두 백엔드의 `ensureSeedData`가 프로필별 사용자/NPC 집합을 업서트하도록 했습니다. |
+| 입력 → 상태 변경 → 출력 | 프로필 입력 → 공통 NPC와 프로필별 사용자 선택 → 핸들 기준 업서트 → 반복 실행 시 기존 신원 갱신입니다. |
+| 소유권·수명·정리 | 저장소가 프로필별 시드 집합과 메모리 목록/DB 행을 소유합니다. 호출자가 환경에 맞는 프로필 선택 책임을 가집니다. |
+| 실패·되돌리기·재시도 | 잘못된 프로필은 타입/CLI 파싱에서 차단됩니다. 여러 업서트가 하나의 트랜잭션으로 묶인다는 보장은 없습니다. |
+| 보장하는 것 | 개발과 체험이 의도한 데이터 집합을 명시적으로 선택하고 반복 적용해도 핸들 중복이 생기지 않습니다. |
+| 보장하지 않는 것 | 권한 배정의 보안 전체, 운영 자동 시드 허용, 마이그레이션 현재 상태는 보장하지 않습니다. |
+| 후속 연결 | `981ee655559b`가 `seed:dev`·`seed:demo` 명령으로 연결하고 PostgreSQL 통합 테스트가 멱등성과 차이를 확인합니다. |
 
 #### 비교 기준
 
-- parent 상태와 `8da6edef28eb`의 diff를 먼저 비교합니다.
-- 이 Thread의 직전 관련 SHA `f9bb622a1117`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
+- 부모 커밋의 상태와 `8da6edef28eb`의 변경 내용을 먼저 비교합니다.
+- 이 개발 스레드의 직전 관련 SHA `f9bb622a1117`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
 - 후속 관련 SHA `981ee655559b`가 이 결정의 부족한 점을 보완하거나 검증하는지 확인합니다.
 
-### 5.5. `981ee655559b` — refactor(db): migration과 seed CLI 연결
+### 5.5. `981ee655559b` — 리팩터링(db): 마이그레이션과 시드 CLI 연결
 
 | 항목 | 고정 정보 |
 | --- | --- |
 | SHA | `981ee655559b` |
-| Importance | B |
-| Tags | PERSISTENCE |
-| Source role | CLI command를 분리된 migration function과 profile-specific seed operation에 정확히 연결합니다. |
+| 중요도 | B |
+| 태그 | PERSISTENCE |
+| 원문 역할 | CLI 명령을 분리된 마이그레이션 함수와 프로필별 시드 연산에 정확히 연결합니다. |
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `packages/db/src/cli.ts`의 `migrate`, `seed:dev`, `seed:demo`, `memory-smoke` branch를 확인합니다.
-- `migrate`가 repository `ensureSeedData`가 아니라 `migrateDatabase(databaseUrl)`을 직접 호출하는지 확인합니다.
-- seed command의 repository 생성·profile 인수·`finally close()`를 추적합니다.
-- usage text와 `packages/db/package.json` scripts가 command 의미와 일치하는지 확인합니다.
+- `packages/db/src/cli.ts`의 `migrate`, `seed:dev`, `seed:demo`, `memory-smoke` 브랜치를 확인합니다.
+- `migrate`가 저장소 `ensureSeedData`가 아니라 `migrateDatabase(databaseUrl)`을 직접 호출하는지 확인합니다.
+- 시드 명령의 저장소 생성·프로필 인수·`finally close()`를 추적합니다.
+- 사용법 본문과 `packages/db/package.json`의 스크립트가 명령 의미와 일치하는지 확인합니다.
 
 #### 학습자 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 직전 관련 상태 | `f9bb622a1117`가 내부 책임을 분리했지만 CLI는 이전 command 의미를 그대로 두면 사용자에게 잘못된 동작을 노출할 수 있었습니다. |
-| 해결하려던 문제 | `migrate`는 schema만, `seed:*`는 이미 migration된 schema의 데이터만 바꿔야 했습니다. |
-| 핵심 결정 | command dispatch를 `migrateDatabase`, `ensureSeedData('development'\|'demo')`에 각각 연결하고 package scripts 이름을 맞췄습니다. |
-| 입력 → 상태 전이 → 출력 | `migrate` → migrator 실행; `seed:dev\|demo` → repository 생성 → profile seed → `finally close`; smoke는 memory path를 사용합니다. |
-| ownership / lifetime / cleanup | migration command는 migrator resource를, seed command는 repository lifecycle을 소유합니다. CLI caller가 실행 순서를 선택합니다. |
-| failure / rollback / retry | seed를 migration 전에 실행하면 DB 오류가 발생합니다. 두 command를 하나의 all-or-nothing operation으로 묶지 않습니다. |
-| 보장하는 것 | command 이름과 실제 mutation 범위가 일치하고 seed backend 자원이 항상 close되는 경로를 제공합니다. |
-| 보장하지 않는 것 | 배포가 올바른 순서로 command를 실행한다는 보장, migration divergence/readiness는 아직 없습니다. |
-| 후속 연결 | `30aac132e14e`와 `2f05d5d79c64`가 적용 상태를 판별하고 repository readiness로 노출합니다. |
+| 직전 관련 상태 | `f9bb622a1117`가 내부 책임을 분리했지만 CLI는 이전 명령 의미를 그대로 두면 사용자에게 잘못된 동작을 노출할 수 있었습니다. |
+| 해결하려던 문제 | `migrate`는 스키마만, `seed:*`는 이미 마이그레이션된 스키마의 데이터만 바꿔야 했습니다. |
+| 핵심 결정 | CLI 명령을 `migrateDatabase`, `ensureSeedData("development" | "demo")`에 각각 연결하고 패키지 명령 이름을 맞췄습니다. |
+| 입력 → 상태 변경 → 출력 | `migrate` → 마이그레이션 실행기 실행; `seed:dev\|demo` → 저장소 생성 → 프로필 시드 → `finally close`; 실행 확인은 메모리 경로를 사용합니다. |
+| 소유권·수명·정리 | 마이그레이션 명령은 마이그레이션 실행기 자원을, 시드 명령은 저장소 수명주기를 소유합니다. CLI 호출자가 실행 순서를 선택합니다. |
+| 실패·되돌리기·재시도 | 시드를 마이그레이션 전에 실행하면 DB 오류가 발생합니다. 두 명령을 하나의 전부 반영하거나 전혀 반영하지 않는 방식 연산으로 묶지 않습니다. |
+| 보장하는 것 | 명령 이름과 실제 변경 범위가 일치하고 시드 백엔드 자원이 항상 종료되는 경로를 제공합니다. |
+| 보장하지 않는 것 | 배포가 올바른 순서로 명령을 실행한다는 보장, 마이그레이션 불일치/준비 상태는 아직 없습니다. |
+| 후속 연결 | `30aac132e14e`와 `2f05d5d79c64`가 적용 상태를 판별하고 저장소 준비 상태로 노출합니다. |
 
 #### 비교 기준
 
-- parent 상태와 `981ee655559b`의 diff를 먼저 비교합니다.
-- 이 Thread의 직전 관련 SHA `8da6edef28eb`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
+- 부모 커밋의 상태와 `981ee655559b`의 변경 내용을 먼저 비교합니다.
+- 이 개발 스레드의 직전 관련 SHA `8da6edef28eb`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
 - 후속 관련 SHA `30aac132e14e`가 이 결정의 부족한 점을 보완하거나 검증하는지 확인합니다.
 
-### 5.6. `30aac132e14e` — feat(db): migration set 상태 검사 추가
+### 5.6. `30aac132e14e` — feat(db): 마이그레이션 집합 상태 검사 추가
 
 | 항목 | 고정 정보 |
 | --- | --- |
 | SHA | `30aac132e14e` |
-| Importance | A |
-| Tags | PERSISTENCE, OPERATIONS, RISK |
-| Source role | bundled SQL migration 이름과 DB의 Kysely applied record를 비교해 current/pending/diverged를 구분합니다. |
+| 중요도 | A |
+| 태그 | PERSISTENCE, OPERATIONS, RISK |
+| 원문 역할 | 번들에 포함된 SQL 마이그레이션 이름과 DB의 Kysely 적용된 레코드를 비교해 현재/대기 중/불일치를 구분합니다. |
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `packages/db/src/migrator.ts`의 bundled migration name discovery와 applied migration query를 확인합니다.
-- current, pending, diverged를 결정하는 순서·prefix 조건과 unknown applied migration 처리 방식을 추적합니다.
-- 파일 이름 정렬이 실제 migration order와 어떻게 연결되는지 확인합니다.
-- DB 연결 실패와 migration set divergence가 서로 다른 failure로 전달되는지 확인합니다.
-- 상태 검사가 migration을 적용하거나 seed를 변경하지 않는 read-only operation인지 확인합니다.
+- `packages/db/src/migrator.ts`의 번들에 포함된 마이그레이션 이름 discovery와 적용된 마이그레이션 쿼리를 확인합니다.
+- 현재, 대기 중, 불일치를 결정하는 순서·접두 경로 조건과 알 수 없는 적용된 마이그레이션 처리 방식을 추적합니다.
+- 파일 이름 정렬이 실제 마이그레이션 순서와 어떻게 연결되는지 확인합니다.
+- DB 연결 실패와 마이그레이션 집합 divergence가 서로 다른 실패로 전달되는지 확인합니다.
+- 상태 검사가 마이그레이션을 적용하거나 시드를 변경하지 않는 읽기 전용 연산인지 확인합니다.
 
 #### 학습자 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 직전 관련 상태 | Kysely는 pending migration을 적용할 수 있었지만 서비스가 현재 binary의 migration set과 DB applied state가 같은지 명시적으로 설명하지 못했습니다. |
-| 해결하려던 문제 | DB가 연결돼도 pending file이 있거나 이미 적용된 migration이 bundle에서 사라진 diverged 상태면 API를 ready로 취급하면 안 됩니다. |
-| 핵심 결정 | bundled file 이름과 applied record를 정렬·비교해 `current`, `pending`, `diverged` 상태를 계산하는 inspection function을 추가했습니다. |
-| 입력 → 상태 전이 → 출력 | migration directory 목록 읽기 + Kysely applied rows 조회 → ordered set 비교 → 동일하면 current, applied prefix 뒤 file이 남으면 pending, prefix가 깨지거나 unknown applied가 있으면 diverged입니다. |
-| ownership / lifetime / cleanup | Migrator module이 migration vocabulary와 comparison logic을 소유합니다. 검사 caller는 결과를 정책으로 해석합니다. |
-| failure / rollback / retry | DB query/파일 읽기 실패는 상태가 아니라 오류로 전파됩니다. divergence를 자동 수정하거나 down migration하지 않습니다. |
-| 보장하는 것 | 연결 가능성과 별개로 binary/DB schema set의 합치·미적용·분기를 구분할 수 있습니다. |
-| 보장하지 않는 것 | migration 내용의 semantic 호환성, production data migration 안전성, 자동 복구는 보장하지 않습니다. |
-| 후속 연결 | `2f05d5d79c64`가 이 inspection을 repository readiness contract에 포함하고 운영 health endpoint는 다른 카테고리에서 소비합니다. |
+| 직전 관련 상태 | Kysely는 대기 중 마이그레이션을 적용할 수 있었지만 서비스가 현재 바이너리의 마이그레이션 집합과 DB 적용된 상태가 같은지 명시적으로 설명하지 못했습니다. |
+| 해결하려던 문제 | DB가 연결돼도 대기 중 파일이 있거나 이미 적용된 마이그레이션이 번들에서 사라진 불일치 상태면 API를 준비 완료로 취급하면 안 됩니다. |
+| 핵심 결정 | 번들에 포함된 파일 이름과 적용된 레코드를 정렬·비교해 `current`, `pending`, `diverged` 상태를 계산하는 검토 함수를 추가했습니다. |
+| 입력 → 상태 변경 → 출력 | 마이그레이션 디렉터리 목록 읽기 + Kysely 적용된 행 조회 → 정렬된 집합 비교 → 동일하면 현재, 적용된 접두 경로 뒤 파일이 남으면 대기 중, 접두 경로가 깨지거나 알 수 없는 적용된가 있으면 불일치입니다. |
+| 소유권·수명·정리 | Migrator 모듈이 마이그레이션 이벤트 종류와 비교 로직을 소유합니다. 검사 호출자는 결과를 정책으로 해석합니다. |
+| 실패·되돌리기·재시도 | DB 쿼리/파일 읽기 실패는 상태가 아니라 오류로 전파됩니다. divergence를 자동 수정하거나 되돌리기 마이그레이션하지 않습니다. |
+| 보장하는 것 | 연결 가능성과 별개로 바이너리/DB 스키마 집합의 합치·미적용·분기를 구분할 수 있습니다. |
+| 보장하지 않는 것 | 마이그레이션 내용의 의미상 호환성, 운영 데이터 마이그레이션 안전성, 자동 복구는 보장하지 않습니다. |
+| 후속 연결 | `2f05d5d79c64`가 이 검토를 저장소 준비 상태 계약에 포함하고 운영 상태 확인 엔드포인트는 다른 카테고리에서 소비합니다. |
 
 #### 최소 코드 근거
 
-- `packages/db/src/migrator.ts` — bundled migration name sequence와 Kysely applied sequence를 비교하며, applied prefix가 깨지는 경우를 단순 pending이 아닌 `diverged`로 분류합니다.
+- `packages/db/src/migrator.ts` — 번들에 포함된 마이그레이션 이름 순번과 Kysely 적용된 순번을 비교하며, 적용된 접두 경로가 깨지는 경우를 단순 대기 중이 아닌 `diverged`로 분류합니다.
 
 #### 비교 기준
 
-- parent 상태와 `30aac132e14e`의 diff를 먼저 비교합니다.
-- 이 Thread의 직전 관련 SHA `981ee655559b`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
+- 부모 커밋의 상태와 `30aac132e14e`의 변경 내용을 먼저 비교합니다.
+- 이 개발 스레드의 직전 관련 SHA `981ee655559b`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
 - 후속 관련 SHA `2f05d5d79c64`가 이 결정의 부족한 점을 보완하거나 검증하는지 확인합니다.
 
-### 5.7. `2f05d5d79c64` — feat(db): repository readiness 경계 추가
+### 5.7. `2f05d5d79c64` — feat(db): 저장소 준비 상태 경계 추가
 
 | 항목 | 고정 정보 |
 | --- | --- |
 | SHA | `2f05d5d79c64` |
-| Importance | A |
-| Tags | PERSISTENCE, OPERATIONS |
-| Source role | storage 연결성과 migration set 상태를 concrete backend 밖의 `AppRepository` readiness contract로 올립니다. |
+| 중요도 | A |
+| 태그 | PERSISTENCE, OPERATIONS |
+| 원문 역할 | 저장소 연결성과 마이그레이션 집합 상태를 구체적인 백엔드 밖의 `AppRepository` 준비 상태 계약으로 올립니다. |
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `AppRepository`에 추가된 readiness method와 반환/오류 shape를 확인합니다.
-- PostgreSQL 구현의 `select 1` 또는 동등한 connectivity probe와 migration set inspection 순서를 추적합니다.
-- pending/diverged 상태가 ready 결과가 아니라 failure로 해석되는지 확인합니다.
-- memory 구현이 외부 DB 없이 어떤 readiness 값을 반환하는지 비교합니다.
-- API가 Pool/Kysely 세부사항을 알지 않아도 readiness를 확인할 수 있는지 확인합니다.
+- `AppRepository`에 추가된 준비 상태 메서드와 반환/오류 형식을 확인합니다.
+- PostgreSQL 구현의 `select 1` 또는 동등한 연결 가능 여부 확인 요청과 마이그레이션 집합 검토 순서를 추적합니다.
+- 대기 중/불일치 상태가 준비 완료 결과가 아니라 실패로 해석되는지 확인합니다.
+- 메모리 구현이 외부 DB 없이 어떤 준비 상태 값을 반환하는지 비교합니다.
+- API가 풀/Kysely 세부사항을 알지 않아도 준비 상태를 확인할 수 있는지 확인합니다.
 
 #### 학습자 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 직전 관련 상태 | migration 상태를 계산할 수 있었지만 API가 이를 사용하려면 DB package의 concrete migrator·pool 세부사항을 알아야 했습니다. |
-| 해결하려던 문제 | liveness와 달리 ready는 query 가능하고 현재 binary와 schema가 일치해야 하며 backend 선택과 무관한 호출 계약이 필요했습니다. |
-| 핵심 결정 | `AppRepository`에 readiness operation을 추가하고 PostgreSQL은 connectivity probe와 migration set current를 확인하며 memory는 즉시 준비 상태를 반환하도록 했습니다. |
-| 입력 → 상태 전이 → 출력 | API readiness 요청 → repository readiness → PostgreSQL query 성공 여부 → migration set inspection → current이면 ready 응답, 아니면 오류/비준비입니다. |
-| ownership / lifetime / cleanup | repository가 backend-specific health probe와 migration interpretation을 소유하고 API는 결과만 소비합니다. |
-| failure / rollback / retry | 연결 실패·pending·diverged는 ready로 숨기지 않습니다. probe와 실제 다음 business query 사이의 race는 제거하지 못합니다. |
-| 보장하는 것 | 서비스가 storage implementation을 추측하지 않고 동일 interface에서 query 가능성과 schema current 상태를 검사할 수 있습니다. |
-| 보장하지 않는 것 | 장기 transaction, replica lag, 모든 table의 semantic integrity, 이후 순간의 availability는 보장하지 않습니다. |
-| 후속 연결 | `e1a0316fbe84`가 startup mutation을 제거해 readiness와 initialization을 더 분리하고, health endpoint 통합은 operations category에서 검증됩니다. |
+| 직전 관련 상태 | 마이그레이션 상태를 계산할 수 있었지만 API가 이를 사용하려면 DB 패키지의 구체적인 마이그레이션 실행기·풀 세부사항을 알아야 했습니다. |
+| 해결하려던 문제 | 생존 상태와 달리 준비 완료는 쿼리 가능하고 현재 바이너리와 스키마가 일치해야 하며 백엔드 선택과 무관한 호출 계약이 필요했습니다. |
+| 핵심 결정 | `AppRepository`에 준비 상태 연산을 추가하고 PostgreSQL은 연결 가능 여부 확인 요청과 마이그레이션 집합이 최신인 상태를 확인하며 메모리는 즉시 준비 상태를 반환하도록 했습니다. |
+| 입력 → 상태 변경 → 출력 | API 준비 상태 요청 → 저장소 준비 상태 → PostgreSQL 쿼리 성공 여부 → 마이그레이션 집합 검토 → 현재이면 준비 완료 응답, 아니면 오류/비준비입니다. |
+| 소유권·수명·정리 | 저장소가 백엔드별 상태 확인 요청과 마이그레이션 해석을 소유하고 API는 결과만 소비합니다. |
+| 실패·되돌리기·재시도 | 연결 실패·대기 중·불일치는 준비 완료로 숨기지 않습니다. 확인 요청과 실제 다음 업무 쿼리 사이의 경쟁 상태는 제거하지 못합니다. |
+| 보장하는 것 | 서비스가 저장소 구현을 추측하지 않고 동일 인터페이스에서 쿼리 가능성과 스키마 현재 상태를 검사할 수 있습니다. |
+| 보장하지 않는 것 | 장기 트랜잭션, 복제본 lag, 모든 테이블의 의미상 무결성, 이후 순간의 사용 가능 상태는 보장하지 않습니다. |
+| 후속 연결 | `e1a0316fbe84`가 시작 변경을 제거해 준비 상태와 initialization을 더 분리하고, 상태 확인 엔드포인트 통합은 연산 카테고리에서 검증됩니다. |
 
 #### 비교 기준
 
-- parent 상태와 `2f05d5d79c64`의 diff를 먼저 비교합니다.
-- 이 Thread의 직전 관련 SHA `30aac132e14e`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
+- 부모 커밋의 상태와 `2f05d5d79c64`의 변경 내용을 먼저 비교합니다.
+- 이 개발 스레드의 직전 관련 SHA `30aac132e14e`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
 - 후속 관련 SHA `e1a0316fbe84`가 이 결정의 부족한 점을 보완하거나 검증하는지 확인합니다.
 
-### 5.8. `e1a0316fbe84` — fix(api): startup seed 생성을 제거
+### 5.8. `e1a0316fbe84` — 수정(api): 시작 시 초기 데이터 생성 생성을 제거
 
 | 항목 | 고정 정보 |
 | --- | --- |
 | SHA | `e1a0316fbe84` |
-| Importance | B |
-| Tags | PERSISTENCE |
-| Source role | API process startup이 memory backend를 선택했다는 이유만으로 데이터를 암시적으로 생성하던 동작을 제거합니다. |
+| 중요도 | B |
+| 태그 | PERSISTENCE |
+| 원문 역할 | API 프로세스 시작이 메모리 저장소를 선택했다는 이유만으로 데이터를 암시적으로 생성하던 동작을 제거합니다. |
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `apps/api/src/index.ts` parent diff에서 `if (!env.databaseUrl) await repo.ensureSeedData()` 제거를 확인합니다.
-- repository 생성, application build, listen, shutdown 흐름에서 seed mutation이 사라졌는지 확인합니다.
-- 명시적 CLI seed와 startup composition root의 책임 차이를 기록합니다.
-- memory startup이 빈 상태일 수 있다는 새 non-guarantee와 demo/guest 흐름의 별도 준비 책임을 확인합니다.
+- `apps/api/src/index.ts` 부모 커밋 변경 내용에서 `if (!env.databaseUrl) await repo.ensureSeedData()` 제거를 확인합니다.
+- 저장소 생성, 애플리케이션 빌드, 포트 열기, 종료 흐름에서 시드 변경이 사라졌는지 확인합니다.
+- 명시적 CLI 시드와 시작 구성 진입점의 책임 차이를 기록합니다.
+- 메모리 시작이 빈 상태일 수 있다는 새 보장하지 않는 범위와 체험/비회원 흐름의 별도 준비 책임을 확인합니다.
 
 #### 학습자 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 직전 관련 상태 | API startup은 `DATABASE_URL`이 없으면 memory repository에 자동 seed를 넣어 process boot와 data mutation을 결합했습니다. |
-| 해결하려던 문제 | 재시작이 데이터 상태를 바꾸고, production/demo 설정 오류가 sample data로 가려지며, readiness가 initialization 성공처럼 오해될 수 있었습니다. |
-| 핵심 결정 | composition root에서 `ensureSeedData()` 호출을 제거하고 seed는 DB CLI나 명시적 test setup만 수행하도록 했습니다. |
-| 입력 → 상태 전이 → 출력 | 환경 parse → repository 생성 → application 구성 → listen으로 진행하며 startup 중 seed write는 없습니다. |
-| ownership / lifetime / cleanup | API process는 runtime lifecycle만 소유하고 seed data ownership은 명시적 DB command/test fixture로 돌아갑니다. |
-| failure / rollback / retry | 필요한 seed를 별도 실행하지 않으면 memory read는 빈 결과를 반환할 수 있습니다. startup이 이를 보완하지 않습니다. |
-| 보장하는 것 | process boot가 암시적으로 사용자·NPC 데이터를 생성하지 않는 fail-transparent startup을 제공합니다. |
-| 보장하지 않는 것 | 배포 orchestration이 migration/seed를 올바르게 실행했다는 보장이나 source 밖 동적 호출 금지는 아직 없습니다. |
-| 후속 연결 | `5cac4843fd9b`가 entrypoint source에 seed 호출이 다시 들어오는 것을 회귀로 막습니다. |
+| 직전 관련 상태 | API 시작은 `DATABASE_URL`이 없으면 메모리 저장소에 자동 시드를 넣어 프로세스 시작과 데이터 변경을 결합했습니다. |
+| 해결하려던 문제 | 재시작이 데이터 상태를 바꾸고, 운영/체험 설정 오류가 예시 데이터로 가려지며, 준비 상태가 initialization 성공처럼 오해될 수 있었습니다. |
+| 핵심 결정 | 구성 진입점에서 `ensureSeedData()` 호출을 제거하고 시드는 DB CLI나 명시적 테스트 설정만 수행하도록 했습니다. |
+| 입력 → 상태 변경 → 출력 | 환경 파싱 → 저장소 생성 → 애플리케이션 구성 → 포트 열기로 진행하며 시작 중 시드 쓰기는 없습니다. |
+| 소유권·수명·정리 | API 프로세스는 실행 시점 수명주기만 소유하고 초기 데이터 소유권은 명시적 DB 명령/테스트 픽스처로 돌아갑니다. |
+| 실패·되돌리기·재시도 | 필요한 시드를 별도 실행하지 않으면 메모리 읽기는 빈 결과를 반환할 수 있습니다. 시작이 이를 보완하지 않습니다. |
+| 보장하는 것 | 프로세스 시작이 암시적으로 사용자·NPC 데이터를 생성하지 않는 오류를 숨기지 않는 시작을 제공합니다. |
+| 보장하지 않는 것 | 배포 실행 조정이 마이그레이션/시드를 올바르게 실행했다는 보장이나 소스 밖 동적 호출 금지는 아직 없습니다. |
+| 후속 연결 | `5cac4843fd9b`가 진입점 소스에 시드 호출이 다시 들어오는 것을 회귀로 막습니다. |
 
 #### 비교 기준
 
-- parent 상태와 `e1a0316fbe84`의 diff를 먼저 비교합니다.
-- 이 Thread의 직전 관련 SHA `2f05d5d79c64`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
+- 부모 커밋의 상태와 `e1a0316fbe84`의 변경 내용을 먼저 비교합니다.
+- 이 개발 스레드의 직전 관련 SHA `2f05d5d79c64`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
 - 후속 관련 SHA `5cac4843fd9b`가 이 결정의 부족한 점을 보완하거나 검증하는지 확인합니다.
 
-### 5.9. `5cac4843fd9b` — test(api): startup seed 금지 검증
+### 5.9. `5cac4843fd9b` — 테스트(api): 시작 시 초기 데이터 생성 금지 검증
 
 | 항목 | 고정 정보 |
 | --- | --- |
 | SHA | `5cac4843fd9b` |
-| Importance | B |
-| Tags | REALTIME, TEST |
-| Source role | API entrypoint가 `ensureSeedData`를 호출하지 않는다는 정적 회귀 guard를 추가합니다. |
+| 중요도 | B |
+| 태그 | REALTIME, TEST |
+| 원문 역할 | API 진입점이 `ensureSeedData`를 호출하지 않는다는 정적 회귀 보호 조건을 추가합니다. |
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `apps/api/src/startup.test.ts`가 어떤 source file을 읽고 어떤 정규식/문자열을 금지하는지 확인합니다.
-- 시험이 API process를 실제 시작하지 않고 source text를 검사한다는 점을 분리합니다.
-- 같은 commit의 WebSocket smoke 변경이 seeded NPC 의존성을 제거하는지 확인합니다.
-- alias·wrapper를 통한 간접 seed 호출은 탐지하지 못하는 non-guarantee를 기록합니다.
+- `apps/api/src/startup.test.ts`가 어떤 소스 파일을 읽고 어떤 정규식/문자열을 금지하는지 확인합니다.
+- 시험이 API 프로세스를 실제 시작하지 않고 소스 본문을 검사한다는 점을 분리합니다.
+- 같은 커밋의 WebSocket 실행 확인 변경이 고정 시드를 사용한 NPC 의존성을 제거하는지 확인합니다.
+- 별칭·wrapper를 통한 간접 시드 호출은 탐지하지 못하는 보장하지 않는 범위를 기록합니다.
 
 #### 학습자 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 직전 관련 상태 | `e1a0316fbe84`가 한 줄을 제거했지만 후속 refactor가 같은 startup path에 seed 호출을 다시 넣어도 집중 guard가 없었습니다. |
-| 해결하려던 문제 | startup lifecycle과 데이터 준비 책임의 분리가 source 변경으로 쉽게 회귀할 수 있었습니다. |
-| 핵심 결정 | entrypoint source를 읽어 `.ensureSeedData(` 호출이 없는지 assertion하고 smoke가 seed 전제 없이 진행되도록 조정했습니다. |
-| 입력 → 상태 전이 → 출력 | test → `apps/api/src/index.ts` text load → 금지 pattern 검색 → 존재 시 실패; 별도 smoke는 AI/queue 경로를 seed 없는 조건에 맞춥니다. |
-| ownership / lifetime / cleanup | 시험이 source contract를 소유하며 runtime repository state는 만들지 않습니다. |
-| failure / rollback / retry | wrapper·computed property·다른 startup module의 간접 호출은 놓칠 수 있습니다. 실제 process boot나 DB mutation을 관찰하지 않습니다. |
-| 보장하는 것 | 현재 entrypoint에 직접적인 startup seed call이 다시 들어오면 unit suite가 실패합니다. |
-| 보장하지 않는 것 | 전체 call graph에서 모든 암시적 seed를 금지한다거나 production startup이 실제로 mutation-free라는 runtime 증거는 아닙니다. |
-| 후속 연결 | 이후 destructive reset은 startup과 별개인 explicit test-only CLI로 설계됩니다. |
+| 직전 관련 상태 | `e1a0316fbe84`가 한 줄을 제거했지만 후속 리팩터링이 같은 시작 경로에 시드 호출을 다시 넣어도 집중 보호 조건이 없었습니다. |
+| 해결하려던 문제 | 시작 수명주기와 데이터 준비 책임의 분리가 소스 변경으로 쉽게 회귀할 수 있었습니다. |
+| 핵심 결정 | 진입점 소스를 읽어 `.ensureSeedData(` 호출이 없는지 검증하고 실행 확인이 시드 전제 없이 진행되도록 조정했습니다. |
+| 입력 → 상태 변경 → 출력 | 테스트 → `apps/api/src/index.ts` 본문 부하 → 금지 방식 검색 → 존재 시 실패; 별도 실행 확인은 AI/대기열 경로를 시드 없는 조건에 맞춥니다. |
+| 소유권·수명·정리 | 시험이 소스 계약을 소유하며 실행 시점 저장소 상태는 만들지 않습니다. |
+| 실패·되돌리기·재시도 | wrapper·computed property·다른 시작 모듈의 간접 호출은 놓칠 수 있습니다. 실제 프로세스 시작이나 DB 변경을 관찰하지 않습니다. |
+| 보장하는 것 | 현재 진입점에 직접적인 시작 시 초기 데이터 생성 호출이 다시 들어오면 단위 테스트 모음이 실패합니다. |
+| 보장하지 않는 것 | 전체 호출 의존성 그래프에서 모든 암시적 시드 생성을 금지하거나 운영 실행 경로가 실제로 데이터 변경을 전혀 하지 않는다는 실행 시점 증거는 아닙니다. |
+| 후속 연결 | 이후 데이터를 삭제하는 초기화는 시작과 별개인 명시적 테스트 전용 CLI로 설계됩니다. |
 
-#### Test commit 학습 기록
+#### 테스트 커밋 학습 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 검증 대상 불변식 | API startup과 seed lifecycle이 분리되어 entrypoint가 직접 `ensureSeedData`를 호출하지 않는다는 규칙입니다. |
-| 재현한 실패·경계 | 후속 수정이 memory fallback 편의를 위해 seed call을 다시 삽입하는 source-level 회귀입니다. |
-| 시험 기법 | source file text를 읽는 static contract test입니다. |
-| 통과하는 실제 코드 경로 | `apps/api/src/startup.test.ts` → `apps/api/src/index.ts` source inspection입니다. |
-| 시험이 증명하는 것 | 직접 method call pattern이 entrypoint에 없음을 증명합니다. |
-| 시험이 증명하지 않는 것 | 간접 wrapper, 다른 module, 실제 runtime mutation이나 deployment command 순서는 증명하지 않습니다. |
-| 막으려는 회귀 | process boot가 sample data 생성 책임을 다시 떠안는 회귀를 빠르게 막습니다. |
+| 검증 대상 불변식 | API 시작과 시드 수명주기가 분리되어 진입점이 직접 `ensureSeedData`를 호출하지 않는다는 규칙입니다. |
+| 재현한 실패·경계 | 후속 수정이 메모리 저장소 대체 실행 편의를 위해 시드 호출을 다시 삽입하는 소스 수준 회귀입니다. |
+| 시험 기법 | 소스 파일 본문을 읽는 정적 계약 테스트입니다. |
+| 통과하는 실제 코드 경로 | `apps/api/src/startup.test.ts` → `apps/api/src/index.ts` 소스 검토입니다. |
+| 테스트가 검증하는 것 | 직접 메서드 호출 방식이 진입점에 없음을 검증합니다. |
+| 테스트가 검증하지 않는 것 | 간접 wrapper, 다른 모듈, 실제 실행 시점 변경이나 배포 명령 순서는 검증하지 않습니다. |
+| 막으려는 회귀 | 프로세스 시작이 예시 데이터 생성 책임을 다시 떠안는 회귀를 빠르게 막습니다. |
 
 #### 비교 기준
 
-- parent 상태와 `5cac4843fd9b`의 diff를 먼저 비교합니다.
-- 이 Thread의 직전 관련 SHA `e1a0316fbe84`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
+- 부모 커밋의 상태와 `5cac4843fd9b`의 변경 내용을 먼저 비교합니다.
+- 이 개발 스레드의 직전 관련 SHA `e1a0316fbe84`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
 - 후속 관련 SHA `113b3c422192`가 이 결정의 부족한 점을 보완하거나 검증하는지 확인합니다.
 
-### 5.10. `113b3c422192` — feat(db): test database reset target guard 추가
+### 5.10. `113b3c422192` — feat(db): 테스트 데이터베이스 초기화 대상 보호 조건 추가
 
 | 항목 | 고정 정보 |
 | --- | --- |
 | SHA | `113b3c422192` |
-| Importance | A |
-| Tags | PERSISTENCE |
-| Source role | 파괴적 reset을 허용할 database/schema target을 strict environment·URL 규칙으로 fail-closed 판정합니다. |
+| 중요도 | A |
+| 태그 | PERSISTENCE |
+| 원문 역할 | 파괴적 초기화를 허용할 데이터베이스/스키마 대상을 엄격한 실행 환경·URL 규칙으로 실패 시 차단 판정합니다. |
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `packages/db/src/testReset.ts`의 `resolveTestResetTarget`에서 `NODE_ENV=test`, `TEST_DATABASE_URL` 필수 조건을 확인합니다.
-- PostgreSQL URL protocol, database name pattern, `options=-c search_path=...` parsing과 허용 개수를 추적합니다.
-- public schema가 허용되는 dedicated test database 이름과 isolated `test_[a-f0-9]{32}` schema regex를 확인합니다.
-- ambiguous option, 일반 DB 이름, 잘못된 schema가 모두 동일한 unsafe failure로 차단되는지 확인합니다.
-- guard가 target만 반환하고 실제 drop/create를 아직 수행하지 않는다는 점을 분리합니다.
+- PostgreSQL URL 프로토콜, 데이터베이스 이름 방식, `options=-c search_path=...` 파싱과 허용 개수를 추적합니다.
+- 공개 스키마가 허용되는 전용 테스트 데이터베이스 이름과 격리된 `test_[a-f0-9]{32}` 스키마 정규식을 확인합니다.
+- 모호한 옵션, 허용 목록에 없는 DB 이름, 잘못된 스키마가 모두 같은 안전 검사 오류로 차단되는지 확인합니다.
+- 보호 조건이 대상만 반환하고 실제 폐기/생성을 아직 수행하지 않는다는 점을 분리합니다.
 
 #### 학습자 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 직전 관련 상태 | test isolation을 위해 schema reset이 필요했지만 잘못된 URL을 받으면 개발·운영 데이터까지 삭제할 수 있었습니다. |
-| 해결하려던 문제 | `NODE_ENV=test` 한 조건이나 database 이름에 `test`가 포함된 정도로는 encoded path·search_path option을 안전하게 판별할 수 없었습니다. |
-| 핵심 결정 | `resolveTestResetTarget`이 환경, protocol, database name, option count, exact schema pattern을 모두 검사하고 dedicated public test DB 또는 generated isolated schema만 반환하도록 했습니다. |
-| 입력 → 상태 전이 → 출력 | env 입력 → 필수값 검증 → URL parse/decoded DB name → options/search_path 해석 → strict allow-list match → 안전 target 반환, 하나라도 어긋나면 throw입니다. |
-| ownership / lifetime / cleanup | guard module이 destructive target validation을 소유하고 reset executor는 검증된 target만 받아야 합니다. 아직 DB resource는 만들지 않습니다. |
-| failure / rollback / retry | 일반 DB, production env, 여러 options, 임의 schema, ambiguous search_path는 fail-closed합니다. URL이 규칙을 만족해도 실제 server가 test 전용인지 외부에서 증명하지는 못합니다. |
-| 보장하는 것 | 실수로 평범한 application DB/public schema를 reset command에 넘기는 주요 경로를 코드 수준에서 차단합니다. |
-| 보장하지 않는 것 | DB 권한 오설정, DNS가 다른 server를 가리키는 경우, privileged attacker의 환경 조작까지 보장하지 않습니다. |
-| 후속 연결 | `434403a7c16a`가 이 resolver 뒤에 실제 drop/create+migrate를 연결하고 `527b5f137425`가 거부·허용 경계를 검증합니다. |
+| 직전 관련 상태 | 테스트 격리를 위해 스키마 초기화가 필요했지만 잘못된 URL을 받으면 개발·운영 데이터까지 삭제할 수 있었습니다. |
+| 해결하려던 문제 | `NODE_ENV=test` 한 조건이나 데이터베이스 이름에 `test`가 포함된 정도로는 인코딩된 경로·검색 경로 옵션을 안전하게 판별할 수 없었습니다. |
+| 핵심 결정 | `resolveTestResetTarget`이 환경, 프로토콜, 데이터베이스 이름, 옵션 개수, 정확한 스키마 이름 형식을 모두 검사하고 전용 공개 테스트 DB 또는 자동 생성한 격리 스키마만 반환하도록 했습니다. |
+| 입력 → 상태 변경 → 출력 | 환경 설정 입력 → 필수값 검증 → URL 파싱과 디코딩한 DB 이름 확인 → 옵션과 `search_path` 해석 → 엄격한 허용 목록 대조 → 안전한 대상 반환입니다. 하나라도 어긋나면 예외를 발생시킵니다. |
+| 소유권·수명·정리 | 보호 조건 모듈이 삭제 대상 검증을 소유하고 초기화 실행 객체는 검증된 대상만 받아야 합니다. 아직 DB 자원은 만들지 않습니다. |
+| 실패·되돌리기·재시도 | 일반 DB, 운영 환경 설정, 여러 옵션, 임의 스키마, ambiguous 검색 경로는 실패 시 차단합니다. URL이 규칙을 만족해도 실제 서버가 테스트 전용인지 외부에서 검증하지는 못합니다. |
+| 보장하는 것 | 실수로 평범한 애플리케이션 DB/공개 스키마를 초기화 명령에 넘기는 주요 경로를 코드 수준에서 차단합니다. |
+| 보장하지 않는 것 | DB 권한 오설정, DNS가 다른 서버를 가리키는 경우, privileged attacker의 환경 조작까지 보장하지 않습니다. |
+| 후속 연결 | `434403a7c16a`가 이 모듈 해석기 뒤에 실제 폐기/생성+마이그레이션 실행을 연결하고 `527b5f137425`가 거부·허용 경계를 검증합니다. |
 
 #### 최소 코드 근거
 
-- `packages/db/src/testReset.ts::resolveTestResetTarget` — dedicated test DB의 `public` 또는 정확한 `test_[a-f0-9]{32}` schema만 허용하고 그 외 URL/option은 모두 거부합니다.
+- `packages/db/src/testReset.ts::resolveTestResetTarget` — 전용 테스트 DB의 `public` 또는 정확한 `test_[a-f0-9]{32}` 스키마만 허용하고 그 외 URL/옵션은 모두 거부합니다.
 
 #### 비교 기준
 
-- parent 상태와 `113b3c422192`의 diff를 먼저 비교합니다.
-- 이 Thread의 직전 관련 SHA `5cac4843fd9b`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
+- 부모 커밋의 상태와 `113b3c422192`의 변경 내용을 먼저 비교합니다.
+- 이 개발 스레드의 직전 관련 SHA `5cac4843fd9b`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
 - 후속 관련 SHA `434403a7c16a`가 이 결정의 부족한 점을 보완하거나 검증하는지 확인합니다.
 
-### 5.11. `434403a7c16a` — feat(db): test schema reset과 migration 실행 연결
+### 5.11. `434403a7c16a` — feat(db): 테스트 스키마 초기화와 마이그레이션 실행 연결
 
 | 항목 | 고정 정보 |
 | --- | --- |
 | SHA | `434403a7c16a` |
-| Importance | A |
-| Tags | PERSISTENCE, RISK |
-| Source role | 검증된 test target만 transaction으로 drop/create한 뒤 migration을 다시 적용하는 explicit `reset:test` CLI를 구현합니다. |
+| 중요도 | A |
+| 태그 | PERSISTENCE, RISK |
+| 원문 역할 | 검증된 테스트 대상만 트랜잭션으로 폐기/생성한 뒤 마이그레이션을 다시 적용하는 명시적 `reset:test` CLI를 구현합니다. |
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `packages/db/src/testReset.ts`의 `resetTestDatabase`가 resolver를 먼저 호출하는지 확인합니다.
-- control URL에서 options를 제거하고 Pool/client를 만든 뒤 `begin`/`drop schema`/`create schema`/`commit` 또는 `rollback`하는 순서를 추적합니다.
-- identifier quote helper가 strict resolver 결과만 받는지 확인합니다.
-- client release와 pool end가 success/failure 모두에서 실행되는지 확인합니다.
-- schema transaction이 끝난 뒤 `migrateDatabase(target.databaseUrl)`가 별도 lifecycle로 실행되는 이유와 실패 상태를 기록합니다.
-- `packages/db/src/cli.ts`와 package script의 `reset:test` 연결을 확인합니다.
+- `packages/db/src/testReset.ts`의 `resetTestDatabase`가 모듈 해석기를 먼저 호출하는지 확인합니다.
+- 제어 URL에서 옵션을 제거하고 풀/클라이언트를 만든 뒤 `begin`/`drop schema`/`create schema`/`commit` 또는 `rollback`하는 순서를 추적합니다.
+- 식별자 인용 도우미 함수가 엄격한 모듈 해석 결과만 받는지 확인합니다.
+- 클라이언트 릴리스와 풀 종료가 성공/실패 모두에서 실행되는지 확인합니다.
+- 스키마 트랜잭션이 끝난 뒤 `migrateDatabase(target.databaseUrl)`가 별도 수명주기로 실행되는 이유와 실패 상태를 기록합니다.
+- `packages/db/src/cli.ts`와 패키지 명령의 `reset:test` 연결을 확인합니다.
 
 #### 학습자 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 직전 관련 상태 | 안전 target을 판별할 수 있었지만 실제 reset과 migration 재적용을 일관되게 수행하는 command가 없었습니다. |
-| 해결하려던 문제 | 수동 drop/create는 guard를 우회하거나 중간 실패 때 열린 client·부분 schema를 남길 위험이 있었습니다. |
-| 핵심 결정 | `reset:test`가 resolver를 통과한 schema를 transaction에서 drop/create하고 자원을 정리한 뒤 같은 target URL로 migration을 실행하도록 했습니다. |
-| 입력 → 상태 전이 → 출력 | CLI → target resolve → control Pool/client → BEGIN → quoted schema DROP CASCADE → CREATE → COMMIT → client release/pool end → `migrateDatabase`로 current schema 재구성입니다. |
-| ownership / lifetime / cleanup | reset function이 control connection과 transaction cleanup을 소유하고 migrator가 새 schema version 적용을 소유합니다. CLI caller는 explicit invocation만 소유합니다. |
-| failure / rollback / retry | DDL 단계 오류면 ROLLBACK 후 자원을 닫습니다. migration은 commit 뒤 별도 단계이므로 migration 실패 시 빈/부분 적용 test schema가 남고 command가 실패합니다. |
-| 보장하는 것 | 허용된 test target만 파괴하며 sibling schema를 건드리지 않고 reset 뒤 current migration set을 재적용할 수 있습니다. |
-| 보장하지 않는 것 | drop/create와 전체 migration이 하나의 transaction이라는 보장, production target의 물리적 식별, seed 자동 복구는 없습니다. |
-| 후속 연결 | `527b5f137425`가 pure guard matrix와 실제 PostgreSQL sibling-schema 보존·readiness를 검증합니다. |
+| 직전 관련 상태 | 안전 대상을 판별할 수 있었지만 실제 초기화와 마이그레이션 재적용을 일관되게 수행하는 명령이 없었습니다. |
+| 해결하려던 문제 | 수동 폐기/생성은 보호 조건을 우회하거나 중간 실패 때 열린 클라이언트·부분 스키마를 남길 위험이 있었습니다. |
+| 핵심 결정 | `reset:test`가 모듈 해석기를 통과한 스키마를 트랜잭션에서 폐기/생성하고 자원을 정리한 뒤 같은 대상 URL로 마이그레이션을 실행하도록 했습니다. |
+| 입력 → 상태 변경 → 출력 | CLI → 대상 판별 → 제어 풀/클라이언트 → BEGIN → 안전하게 인용한 스키마 DROP CASCADE → CREATE → COMMIT → 클라이언트 릴리스/풀 종료 → `migrateDatabase`로 현재 스키마 재구성입니다. |
+| 소유권·수명·정리 | 초기화 함수가 제어 연결과 트랜잭션 정리를 소유하고 마이그레이션 실행기가 새 스키마 버전 적용을 소유합니다. CLI 호출자는 명시적 호출만 소유합니다. |
+| 실패·되돌리기·재시도 | DDL 단계 오류면 ROLLBACK 후 자원을 닫습니다. 마이그레이션은 커밋 뒤 별도 단계이므로 마이그레이션 실패 시 빈/부분 적용 테스트 스키마가 남고 명령이 실패합니다. |
+| 보장하는 것 | 허용된 테스트 대상만 파괴하며 인접한 스키마를 건드리지 않고 초기화 뒤 현재 마이그레이션 집합을 재적용할 수 있습니다. |
+| 보장하지 않는 것 | 폐기/생성과 전체 마이그레이션이 하나의 트랜잭션이라는 보장, 운영 대상의 물리적 식별, 시드 자동 복구는 없습니다. |
+| 후속 연결 | `527b5f137425`가 순수 보호 조건 조합표와 실제 PostgreSQL 인접한 스키마 보존·준비 상태를 검증합니다. |
 
 #### 최소 코드 근거
 
-- `packages/db/src/testReset.ts::resetTestDatabase` — 검증된 schema의 `DROP ... CASCADE`와 `CREATE`를 한 transaction에서 수행하고, commit 이후 별도 `migrateDatabase` lifecycle을 실행합니다.
+- `packages/db/src/testReset.ts::resetTestDatabase` — 검증된 스키마의 `DROP ... CASCADE`와 `CREATE`를 한 트랜잭션에서 수행하고, 커밋 이후 별도 `migrateDatabase` 수명주기를 실행합니다.
 
 #### 비교 기준
 
-- parent 상태와 `434403a7c16a`의 diff를 먼저 비교합니다.
-- 이 Thread의 직전 관련 SHA `113b3c422192`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
+- 부모 커밋의 상태와 `434403a7c16a`의 변경 내용을 먼저 비교합니다.
+- 이 개발 스레드의 직전 관련 SHA `113b3c422192`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
 - 후속 관련 SHA `527b5f137425`가 이 결정의 부족한 점을 보완하거나 검증하는지 확인합니다.
 
-### 5.12. `527b5f137425` — test(db): test database reset guard 검증
+### 5.12. `527b5f137425` — 테스트(db): 테스트 데이터베이스 초기화 보호 조건 검증
 
 | 항목 | 고정 정보 |
 | --- | --- |
 | SHA | `527b5f137425` |
-| Importance | B |
-| Tags | PERSISTENCE, TEST |
-| Source role | 파괴적 reset의 허용·거부 matrix와 실제 isolated-schema reset 효과를 검증합니다. |
+| 중요도 | B |
+| 태그 | PERSISTENCE, TEST |
+| 원문 역할 | 파괴적 초기화의 허용·거부 조합표와 실제 격리된 스키마 초기화 효과를 검증합니다. |
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `packages/db/src/testReset.test.ts`의 non-test env, 일반 DB, ambiguous options, invalid schema 거부 case를 확인합니다.
-- dedicated test DB public schema와 generated isolated schema 허용 case를 확인합니다.
-- `packages/db/src/postgres.integration.test.ts`의 sibling schema marker, target reset, users table empty, migration readiness current assertion을 추적합니다.
-- 시험이 target schema 외 sibling을 보존하는지 direct query로 확인하는 부분을 찾습니다.
-- Testcontainers/Docker가 필요한 integration 부분과 pure resolver unit 부분을 구분합니다.
+- `packages/db/src/testReset.test.ts`의 비 테스트 환경 설정, 일반 DB, ambiguous 옵션, 잘못된 스키마 거부 사례를 확인합니다.
+- 전용 테스트 DB 공개 스키마와 자동 생성한 격리 스키마 허용 사례를 확인합니다.
+- `packages/db/src/postgres.integration.test.ts`의 인접한 스키마 표식, 대상 초기화, 사용자 테이블 빈, 마이그레이션 준비 상태 현재 검증을 추적합니다.
+- 시험이 대상 스키마 외 인접한을 보존하는지 직접 쿼리로 확인하는 부분을 찾습니다.
+- Testcontainers/Docker가 필요한 통합 부분과 순수 모듈 해석기 단위 부분을 구분합니다.
 
 #### 학습자 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 직전 관련 상태 | `113b3c422192`와 `434403a7c16a`가 guard/executor를 구현했지만 allow-list가 너무 넓거나 reset 범위가 잘못돼도 탐지할 시험이 필요했습니다. |
-| 해결하려던 문제 | 특히 encoded/복수 option, 평범한 DB 이름, target과 sibling schema의 혼동이 destructive data loss로 이어질 수 있었습니다. |
-| 핵심 결정 | pure resolver table test와 PostgreSQL isolated-schema integration test를 함께 추가했습니다. |
-| 입력 → 상태 전이 → 출력 | unit: env/URL matrix → resolve success 또는 unsafe rejection; integration: target·sibling schema 생성 → target reset → migration/current 확인 → sibling marker 보존 확인입니다. |
-| ownership / lifetime / cleanup | unit test는 문자열 규칙을, integration harness는 schema·pool lifecycle을 소유하고 기존 `withIsolatedDatabase` cleanup을 재사용합니다. |
-| failure / rollback / retry | unsafe 입력은 DB 연결 전에 실패합니다. 실제 reset 실패는 command error로 전파되며 test harness가 자원을 정리합니다. |
-| 보장하는 것 | 정의된 allow-list가 fail-closed이고 reset이 target schema만 교체한 뒤 migration current 상태를 만든다는 코드를 검증합니다. |
-| 보장하지 않는 것 | 실제 production URL 오지정, 권한 escalation, 이 환경에서의 container test 통과는 증명하지 않습니다. |
-| 후속 연결 | 이후 test DB reset은 explicit CLI로 유지되며 startup seed removal과 함께 process boot/data mutation 책임을 분리합니다. |
+| 직전 관련 상태 | `113b3c422192`와 `434403a7c16a`가 보호 조건/실행 객체를 구현했지만 허용 목록이 너무 넓거나 초기화 범위가 잘못돼도 탐지할 시험이 필요했습니다. |
+| 해결하려던 문제 | 특히 인코딩된/복수 옵션, 허용 목록에 없는 DB 이름, 대상과 인접한 스키마의 혼동이 데이터 손실로 이어질 수 있었습니다. |
+| 핵심 결정 | 순수 모듈 해석기 테이블 테스트와 PostgreSQL 격리된 스키마 통합 테스트를 함께 추가했습니다. |
+| 입력 → 상태 변경 → 출력 | 단위: 환경 설정/URL 조합표 → 판별 성공 또는 안전하지 않은 실패; 통합: 대상·인접한 스키마 생성 → 대상 초기화 → 마이그레이션/현재 확인 → 인접한 표식 보존 확인입니다. |
+| 소유권·수명·정리 | 단위 테스트는 문자열 규칙을, 통합 테스트 실행 틀은 스키마·풀 수명주기를 소유하고 기존 `withIsolatedDatabase` 정리를 재사용합니다. |
+| 실패·되돌리기·재시도 | 안전하지 않은 입력은 DB 연결 전에 실패합니다. 실제 초기화 실패는 명령 오류로 전파되며 테스트 실행 틀이 자원을 정리합니다. |
+| 보장하는 것 | 정의된 허용 목록이 실패 시 차단이고 초기화가 대상 스키마만 교체한 뒤 마이그레이션 현재 상태를 만든다는 코드를 검증합니다. |
+| 보장하지 않는 것 | 실제 운영 URL 오지정, 권한 escalation, 이 환경에서의 컨테이너 테스트 통과는 검증하지 않습니다. |
+| 후속 연결 | 이후 테스트 DB 초기화는 명시적 CLI로 유지되며 시작 시 초기 데이터 생성 제거와 함께 프로세스 시작/데이터 변경 책임을 분리합니다. |
 
-#### Test commit 학습 기록
+#### 테스트 커밋 학습 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 검증 대상 불변식 | 파괴적 reset은 test-only allow-list target에만 적용되고 sibling schema를 보존하며 migration current 상태로 끝나야 합니다. |
-| 재현한 실패·경계 | non-test env, 일반 DB, 복수/모호 option, invalid schema, 실제 sibling schema가 있는 PostgreSQL입니다. |
-| 시험 기법 | pure decision-table unit test와 Testcontainers integration test의 조합입니다. |
-| 통과하는 실제 코드 경로 | `resolveTestResetTarget` → `resetTestDatabase` → transaction DDL → `migrateDatabase` → readiness/query입니다. |
-| 시험이 증명하는 것 | guard의 주요 거부 조건과 target-only reset·migration 재적용을 코드상 검증합니다. |
-| 시험이 증명하지 않는 것 | 물리 server identity, credential compromise, production data restore, 본 세션에서의 실제 실행 성공은 증명하지 않습니다. |
-| 막으려는 회귀 | allow-list 완화, schema quote 오류, sibling 삭제, reset 후 migration 누락 회귀를 막습니다. |
+| 검증 대상 불변식 | 파괴적 초기화는 테스트 전용 허용 목록 대상에만 적용되고 인접한 스키마를 보존하며 마이그레이션 현재 상태로 끝나야 합니다. |
+| 재현한 실패·경계 | 비 테스트 환경 설정, 일반 DB, 복수/모호 옵션, 잘못된 스키마, 실제 인접한 스키마가 있는 PostgreSQL입니다. |
+| 시험 기법 | 순수 판단 테이블 단위 테스트와 Testcontainers 통합 테스트의 조합입니다. |
+| 통과하는 실제 코드 경로 | `resolveTestResetTarget` → `resetTestDatabase` → 트랜잭션 DDL → `migrateDatabase` → 준비 상태/쿼리입니다. |
+| 테스트가 검증하는 것 | 보호 조건의 주요 거부 조건과 대상에만 적용되는 초기화·마이그레이션 재적용을 코드상 검증합니다. |
+| 테스트가 검증하지 않는 것 | 물리 서버 신원, 인증 정보 compromise, 운영 데이터 restore, 본 세션에서의 실제 실행 성공은 검증하지 않습니다. |
+| 막으려는 회귀 | 허용 목록 완화, 스키마 이름 인용 오류, 인접 스키마 삭제, 초기화 후 마이그레이션 누락 회귀를 막습니다. |
 
 #### 비교 기준
 
-- parent 상태와 `527b5f137425`의 diff를 먼저 비교합니다.
-- 이 Thread의 직전 관련 SHA `434403a7c16a`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
+- 부모 커밋의 상태와 `527b5f137425`의 변경 내용을 먼저 비교합니다.
+- 이 개발 스레드의 직전 관련 SHA `434403a7c16a`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
 
-## 6. 불변식 변화
+## 6. 불변 조건 변화
 
 | 단계 | 관련 SHA | 조사 초점 | 학습자 기록 |
 | --- | --- | --- | --- |
-| 초기 executable SQL | `1140fb868714` → `dea169d587a3` | SQL asset과 CLI가 만든 최초 실행 경계 및 결합 문제를 기록합니다. | DB package가 초기 SQL을 제공하고 CLI가 이를 호출할 수 있게 됐지만 `migrate`와 `seed`가 모두 `ensureSeedData`를 실행해 schema와 data mutation이 구분되지 않았습니다. |
-| Lifecycle 분리 | `f9bb622a1117` → `981ee655559b` | migrator·repository·CLI의 새 책임을 구분합니다. | Kysely Migrator가 versioned schema evolution을, repository가 profile seed를, CLI가 명시적 command dispatch와 resource close를 소유합니다. |
-| Readiness 판정 | `30aac132e14e` → `2f05d5d79c64` | connection과 migration-set current 조건을 결합합니다. | DB query 가능성만으로 ready가 되지 않습니다. bundled/applied sequence가 정확히 current일 때만 repository readiness가 성공하고 pending/diverged는 비준비로 노출됩니다. |
-| Startup mutation 제거 | `e1a0316fbe84` → `5cac4843fd9b` | process boot와 data initialization 책임 분리를 설명합니다. | API entrypoint는 seed를 만들지 않으며 explicit CLI/test setup이 데이터 준비를 소유합니다. source test는 직접 호출 회귀만 막고 전체 runtime call graph를 증명하지는 않습니다. |
-| Destructive reset 보호 | `113b3c422192` → `527b5f137425` | fail-closed target, transaction, migration, sibling 보존을 추적합니다. | strict environment·URL·schema allow-list를 통과한 target만 transaction으로 drop/create되고 migration이 별도로 재적용됩니다. unit matrix와 real-PostgreSQL test가 거부 조건과 target-only effect를 연결합니다. |
+| 초기 실행 가능한 SQL | `1140fb868714` → `dea169d587a3` | SQL 자산과 CLI가 만든 최초 실행 경계 및 결합 문제를 기록합니다. | DB 패키지가 초기 SQL을 제공하고 CLI가 이를 호출할 수 있게 됐지만 `migrate`와 `seed`가 모두 `ensureSeedData`를 실행해 스키마와 데이터 변경이 구분되지 않았습니다. |
+| 수명주기 분리 | `f9bb622a1117` → `981ee655559b` | 마이그레이션 실행기·저장소·CLI에 나뉜 책임을 구분합니다. | Kysely Migrator가 버전이 명시된 스키마 변화를, 저장소가 프로필 시드를, CLI가 명시적 명령 전달과 자원 종료를 소유합니다. |
+| 준비 상태 판정 | `30aac132e14e` → `2f05d5d79c64` | 연결과 마이그레이션 집합 현재 조건을 결합합니다. | DB 쿼리 가능성만으로 준비 완료가 되지 않습니다. 번들에 포함된/적용된 순번이 정확히 현재일 때만 저장소 준비 상태가 성공하고 대기 중/불일치는 비준비로 노출됩니다. |
+| 시작 변경 제거 | `e1a0316fbe84` → `5cac4843fd9b` | 프로세스 시작과 데이터 initialization 책임 분리를 설명합니다. | API 진입점은 시드를 만들지 않으며 명시적 CLI/테스트 설정이 데이터 준비를 소유합니다. 소스 테스트는 직접 호출 회귀만 막고 전체 실행 시점 호출 의존성 그래프를 검증하지는 않습니다. |
+| Destructive 초기화 보호 | `113b3c422192` → `527b5f137425` | 실패 시 차단 대상, 트랜잭션, 마이그레이션, 인접한 보존을 추적합니다. | 엄격한 실행 환경·URL·스키마 허용 목록을 통과한 대상만 트랜잭션으로 폐기/생성되고 마이그레이션이 별도로 재적용됩니다. 단위 조합표와 실제 PostgreSQL 테스트가 거부 조건과 대상에만 적용되는 효과를 연결합니다. |
 
-## 7. Failure → Fix → Test 관계
+## 7. 실패 → 수정 → 테스트 관계
 
-| 관계 | Failure / 이전 가정 | Fix / 결정 | Test / 근거 | 학습자 기록 |
+| 관계 | 실패 / 이전 가정 | 수정 / 결정 | 테스트 / 근거 | 학습자 기록 |
 | --- | --- | --- | --- | --- |
-| 1 | `dea169d587a3`: migrate와 seed가 같은 method를 호출해 schema와 sample data가 함께 변했습니다. | `f9bb622a1117`, `8da6edef28eb`, `981ee655559b`: Migrator·profile seed·CLI command를 분리했습니다. | `c43b87694b29`의 migration/seed idempotence와 profile integration evidence가 후속 보호 역할을 합니다. | 문제는 command 이름이 아니라 ownership 결합이었습니다. schema history는 migrator, 데이터 집합은 repository, 실행 순서는 caller가 소유하도록 나뉩니다. |
-| 2 | DB 연결 성공만으로는 pending/diverged schema를 ready로 오인할 수 있었습니다. | `30aac132e14e`가 set 상태를 분류하고 `2f05d5d79c64`가 repository readiness에 포함했습니다. | HTTP health 통합은 operations category에서 검증되며 이 Thread는 repository-level 근거만 고정합니다. | ready는 현재 binary가 기대하는 migration sequence와 DB applied sequence가 맞는 순간의 조건입니다. 미래 availability나 semantic data correctness는 아닙니다. |
-| 3 | API startup이 memory fallback을 선택하면 sample data를 암시적으로 생성했습니다. | `e1a0316fbe84`가 startup seed call을 제거했습니다. | `5cac4843fd9b`가 entrypoint direct call pattern을 금지합니다. | process lifecycle과 data initialization을 분리합니다. test는 가벼운 static guard이므로 indirect call까지 보장한다고 해석하면 안 됩니다. |
-| 4 | 수동 test reset은 잘못된 URL/schema를 파괴하거나 sibling을 지울 위험이 있었습니다. | `113b3c422192` strict resolver와 `434403a7c16a` explicit reset executor를 추가했습니다. | `527b5f137425`가 거부 matrix와 sibling-schema 보존을 검증합니다. | 검증은 DB 연결 전 fail-closed하며 executor는 검증 결과만 사용합니다. schema replacement와 migration은 별도 lifecycle이므로 migration 실패 시 command 실패 상태가 남을 수 있습니다. |
+| 1 | `dea169d587a3`: 마이그레이션 실행과 시드가 같은 메서드를 호출해 스키마와 예시 데이터가 함께 변했습니다. | `f9bb622a1117`, `8da6edef28eb`, `981ee655559b`: Migrator·프로필 시드·CLI 명령을 분리했습니다. | `c43b87694b29`의 마이그레이션/시드 멱등성과 프로필 통합 근거가 후속 보호 역할을 합니다. | 문제는 명령 이름이 아니라 소유권 결합이었습니다. 스키마 이력은 마이그레이션 실행기, 데이터 집합은 저장소, 실행 순서는 호출자가 소유하도록 나뉩니다. |
+| 2 | DB 연결 성공만으로는 대기 중이거나 불일치한 스키마를 준비 완료로 오인할 수 있었습니다. | `30aac132e14e`가 마이그레이션 집합 상태를 분류하고 `2f05d5d79c64`가 저장소 준비 상태에 포함했습니다. | HTTP 상태 확인 통합은 운영 카테고리에서 검증되며 이 개발 스레드는 저장소 수준의 근거만 고정합니다. | 준비 완료는 현재 바이너리가 기대하는 마이그레이션 목록과 DB에 적용된 목록이 일치하는 순간의 상태입니다. 향후 사용 가능성이나 데이터 의미의 정확성까지 보장하지는 않습니다. |
+| 3 | API 시작이 메모리 저장소 대체 실행을 선택하면 예시 데이터를 암시적으로 생성했습니다. | `e1a0316fbe84`가 시작 시 초기 데이터 생성 호출을 제거했습니다. | `5cac4843fd9b`가 진입점 직접 호출 방식을 금지합니다. | 프로세스 수명주기와 데이터 initialization을 분리합니다. 테스트는 가벼운 정적 보호 조건이므로 indirect 호출까지 보장한다고 해석하면 안 됩니다. |
+| 4 | 수동 테스트 초기화는 잘못된 URL/스키마를 파괴하거나 인접한을 지울 위험이 있었습니다. | `113b3c422192` 엄격한 모듈 해석기와 `434403a7c16a` 명시적 초기화 실행 객체를 추가했습니다. | `527b5f137425`가 거부 조합표와 인접한 스키마 보존을 검증합니다. | 검증은 DB 연결 전 실패 시 차단하며 실행 객체는 검증 결과만 사용합니다. 스키마 교체와 마이그레이션은 별도 수명주기이므로 마이그레이션 실패 시 명령 실패 상태가 남을 수 있습니다. |
 
-## 8. Ownership·상태·책임 변화
+## 8. 소유권·상태·담당 범위 변화
 
 | 구간 | 이전 소유자/표현 | 이후 소유자/표현 | 관련 SHA | 학습자 기록 |
 | --- | --- | --- | --- | --- |
-| Schema evolution | repository `ensureSeedData`가 DDL과 data upsert를 함께 소유했습니다. | Kysely Migrator가 version file과 applied state를 소유합니다. | `f9bb622a1117` | repository는 이미 존재하는 schema를 전제로 seed만 수행하며 caller가 migrate-before-seed 순서를 명시합니다. |
-| Seed dataset | 하나의 implicit 개발 집합이었습니다. | repository가 development/demo profile별 upsert set을 소유합니다. | `8da6edef28eb` | 환경 선택은 CLI/deployment caller가 소유하고 production startup은 이를 자동으로 실행하지 않습니다. |
-| Readiness | API가 concrete DB 상태를 추측해야 했습니다. | repository가 connectivity와 migration current 판단을 소유합니다. | `30aac132e14e`, `2f05d5d79c64` | API는 backend 세부사항 대신 공통 readiness operation을 소비합니다. |
-| Startup | composition root가 runtime boot와 seed mutation을 함께 했습니다. | API는 boot/listen만, DB CLI·test fixture가 data initialization을 소유합니다. | `e1a0316fbe84` | 빈 memory state는 허용되는 명시적 결과이며 startup이 sample data로 감추지 않습니다. |
-| Test reset | 운영자/시험 코드가 임의 SQL과 URL을 직접 다룰 수 있었습니다. | resolver가 target safety, reset function이 transaction/resource, migrator가 재적용을 소유합니다. | `113b3c422192` → `434403a7c16a` | 각 소유자는 검증·파괴·재구성을 분리하고 error/cleanup 경계를 명시합니다. |
+| 스키마 변화 | 저장소 `ensureSeedData`가 DDL과 데이터 업서트를 함께 소유했습니다. | Kysely Migrator가 버전 파일과 적용된 상태를 소유합니다. | `f9bb622a1117` | 저장소는 이미 존재하는 스키마를 전제로 시드만 수행하며 호출자가 마이그레이션 실행 후 시드 순서를 명시합니다. |
+| 시드 데이터 집합 | 하나의 암묵적 개발 집합이었습니다. | 저장소가 개발·체험 프로필별 업서트 집합을 소유합니다. | `8da6edef28eb` | 환경 선택은 CLI 또는 배포 호출자가 소유하며 운영 실행 경로는 이를 자동으로 실행하지 않습니다. |
+| 준비 상태 | API가 구체적인 DB 상태를 추측해야 했습니다. | 저장소가 연결 가능 여부와 마이그레이션 현재 판단을 소유합니다. | `30aac132e14e`, `2f05d5d79c64` | API는 백엔드 세부사항 대신 공통 준비 상태 연산을 소비합니다. |
+| 시작 | 구성 진입점이 실행 시점 boot와 시드 변경을 함께 했습니다. | API는 boot/포트 열기만, DB CLI·테스트 픽스처가 데이터 initialization을 소유합니다. | `e1a0316fbe84` | 빈 메모리 상태는 허용되는 명시적 결과이며 시작이 예시 데이터로 감추지 않습니다. |
+| 테스트 초기화 | 운영자/시험 코드가 임의 SQL과 URL을 직접 다룰 수 있었습니다. | 모듈 해석기가 대상 안전성, 초기화 함수가 트랜잭션/자원, 마이그레이션 실행기가 재적용을 소유합니다. | `113b3c422192` → `434403a7c16a` | 각 소유자는 검증·파괴·재구성을 분리하고 오류/정리 경계를 명시합니다. |
 
-## 9. Thread 최종 상태
+## 9. 개발 스레드 최종 상태
 
-최종적으로 schema evolution은 Kysely file migration set과 applied record가, seed는 environment profile을 받는 repository operation이 소유합니다. repository readiness는 연결 성공과 migration set current를 함께 요구하며, API startup은 데이터를 만들지 않습니다. `reset:test`는 strict allow-list target에만 transactional schema replacement를 수행하고 이후 migration을 재적용합니다. 이 설계는 production rollback이나 deployment sequencing 전체를 대신하지 않습니다.
+최종적으로 스키마 변경 이력은 Kysely 파일 마이그레이션 집합과 적용 기록이 소유하고, 시드는 실행 환경 프로필을 받는 저장소 연산이 생성합니다. 저장소 준비 상태는 연결 성공과 최신 마이그레이션 집합을 모두 요구하며, API 시작 과정은 데이터를 만들지 않습니다. `reset:test`는 엄격한 허용 목록에 포함된 대상에만 트랜잭션으로 스키마를 교체하고 마이그레이션을 다시 적용합니다. 이 설계가 운영 롤백이나 전체 배포 순서를 대신하지는 않습니다.
 
 ## 10. 최종 실행 흐름
 
-1. 배포·개발 caller가 `migrate` command를 실행하면 Migrator가 bundled SQL 이름과 applied state를 기준으로 pending migration을 적용합니다.
-2. 필요한 환경에서만 `seed:dev` 또는 `seed:demo`가 repository를 만들고 profile-specific upsert를 수행한 뒤 `finally`에서 close합니다.
-3. API startup은 repository와 application을 구성할 뿐 seed write를 수행하지 않습니다.
-4. readiness 요청은 repository에서 connectivity probe와 migration set comparison을 수행하고 current일 때만 성공합니다.
-5. test reset은 env/URL/schema allow-list를 먼저 평가해 unsafe target이면 DB 연결 전 종료합니다.
-6. 안전 target은 transaction에서 drop/create되고 client/pool이 정리된 뒤 같은 target에 migration이 재적용됩니다.
-7. unit/static/integration tests는 각각 resolver matrix, startup direct-call 금지, 실제 schema 격리·sibling 보존을 서로 다른 범위에서 보호합니다.
+1. 배포·개발 호출자가 `migrate` 명령을 실행하면 Migrator가 번들에 포함된 SQL 이름과 적용된 상태를 기준으로 대기 중 마이그레이션을 적용합니다.
+2. 필요한 환경에서만 `seed:dev` 또는 `seed:demo`가 저장소를 만들고 프로필별 업서트를 수행한 뒤 `finally`에서 종료합니다.
+3. API 시작은 저장소와 애플리케이션을 구성할 뿐 시드 쓰기를 수행하지 않습니다.
+4. 준비 상태 요청은 저장소에서 연결 가능 여부 확인 요청과 마이그레이션 집합 비교를 수행하고 현재일 때만 성공합니다.
+5. 테스트 초기화는 환경 설정·URL·스키마 허용 목록을 먼저 검사하며, 안전하지 않은 대상이면 DB에 연결하기 전에 종료합니다.
+6. 안전 대상은 트랜잭션에서 폐기/생성되고 클라이언트/풀이 정리된 뒤 같은 대상에 마이그레이션이 재적용됩니다.
+7. 단위·정적·통합 테스트는 각각 모듈 해석 조합표, 시작 코드의 직접 호출 금지, 실제 스키마 격리와 다른 스키마 보존을 서로 다른 범위에서 보호합니다.
 
 ## 11. 학습 완료 확인
 
-- [x] migration과 seed가 분리돼야 하는 이유를 command 이름이 아니라 state ownership으로 설명할 수 있습니다.
-- [x] current, pending, diverged의 차이와 readiness failure 의미를 설명할 수 있습니다.
-- [x] startup seed 제거가 만드는 빈 상태와 명시적 initialization 책임을 설명할 수 있습니다.
-- [x] source-level startup test의 증거 한계를 과장하지 않습니다.
-- [x] reset guard의 exact allow-list, DDL transaction, 별도 migration 단계와 failure state를 설명할 수 있습니다.
-- [x] Thread 2의 수정된 commit 순서가 실제 branch chronology와 일치함을 확인했습니다.
+- [x] 마이그레이션과 시드가 분리돼야 하는 이유를 명령 이름이 아니라 상태 소유권으로 설명할 수 있습니다.
+- [x] 현재, 대기 중, 불일치의 차이와 준비 상태 실패 의미를 설명할 수 있습니다.
+- [x] 시작 시 초기 데이터 생성 제거가 만드는 빈 상태와 명시적 initialization 책임을 설명할 수 있습니다.
+- [x] 소스 수준 시작 테스트의 증거 한계를 과장하지 않습니다.
+- [x] 초기화 보호 조건의 정확한 허용 목록, DDL 트랜잭션, 별도 마이그레이션 단계와 실패 상태를 설명할 수 있습니다.
+- [x] 개발 스레드 2의 수정된 커밋 순서가 실제 브랜치 chronology와 일치함을 확인했습니다.
 
 ## 12. 실행 및 증거 기록
 
 - 저장소 실행 시험: 실행하지 않았습니다.
-- 이유: 로컬 `git clone --branch web/ft_transcendence --single-branch`가 DNS 해석 실패(`Could not resolve host: github.com`)로 중단되어 의존성을 포함한 실행 가능한 checkout을 만들 수 없었습니다.
-- 코드 근거: 지정 브랜치의 source classification과 각 exact SHA의 GitHub commit diff를 확인했습니다. 따라서 본 문서의 시험 설명은 실제 시험 코드의 정적 검토 결과이며, 이 환경에서의 통과 결과가 아닙니다.
+- 이유: 로컬 `git clone --branch web/ft_transcendence --single-branch`가 DNS 해석 실패(`Could not resolve host: github.com`)로 중단되어 의존성을 포함한 실행 가능한 체크아웃을 만들 수 없었습니다.
+- 코드 근거: 지정 브랜치의 원문 분류와 각 정확한 SHA의 GitHub 커밋 변경 내용을 확인했습니다. 따라서 본 문서의 시험 설명은 실제 시험 코드의 정적 검토 결과이며, 이 환경에서의 통과 결과가 아닙니다.
 ===== END FILE: 02-migration-seed-readiness-and-reset-lifecycle.md =====
 
 ===== BEGIN FILE: 03-row-mapping-and-backend-contract-alignment.md =====
-# Development Thread 03 — Row mapping과 backend contract 정렬
+# 개발 스레드 03 — 행 변환과 백엔드 계약 정렬
 
 ## 1. 학습 목표
 
-- 행 타입·memory stored record·mapper input/output의 중복 표현을 canonical schema로 모으는 refactor sequence를 재구성합니다.
-- behavior-preserving refactor라는 주장을 각 exact diff의 변경 범위와 non-guarantee로 제한합니다.
-- PostgreSQL relation assembly와 memory aggregate lookup에서 ownership이 어떻게 명시적으로 드러나는지 설명합니다.
-- pure mapper regression test가 무엇을 고정하고 live query·transaction은 왜 증명하지 못하는지 구분합니다.
+- 행 타입·메모리 저장된 레코드·변환기 입력/출력의 중복 표현을 표준 스키마로 모으는 리팩터링 순번을 재구성합니다.
+- 동작을 유지하는 리팩터링이라는 주장은 각 커밋의 실제 변경 범위와 보장하지 않는 범위 안에서만 사용합니다.
+- PostgreSQL 관계 조립과 메모리 집계 조회에서 소유권이 어떻게 명시적으로 드러나는지 설명합니다.
+- 순수 변환기 회귀 테스트가 무엇을 고정하고 실시간 쿼리·트랜잭션은 왜 검증하지 못하는지 구분합니다.
 
 ## 2. 범위와 경계
 
-- 포함: user projection, memory match record, canonical row aliases, record view, explicit query shapes, tournament/admin relation helpers, memory aggregate lookup, mapper unit test.
-- 제외: C-level formatting-only commits는 state·ownership·behavior 변화가 없어 추가하지 않았습니다.
-- 제외: match finalization atomicity, admin audit transaction, tournament admission lock은 별도의 데이터 무결성 Thread에서 다룹니다.
-- 이 Thread의 refactor는 runtime validation을 새로 제공하지 않습니다. TypeScript contract와 code reviewability가 중심입니다.
+- 포함: 사용자 조회 결과, 메모리 경기 레코드, 표준 행 별칭, 레코드 조회 결과, 명시적 쿼리 형태, 토너먼트/관리자 관계 도우미 함수, 메모리 집계 조회, 변환기 단위 테스트.
+- 제외: 중요도 C인 서식 정리 전용 커밋는 상태·소유권·동작 변화가 없어 추가하지 않았습니다.
+- 제외: 경기 결과 확정 원자성, 관리자 감사 트랜잭션, 토너먼트 참가 잠금은 별도의 데이터 무결성 개발 스레드에서 다룹니다.
+- 이 개발 스레드의 리팩터링은 실행 중 검증을 새로 제공하지 않습니다. TypeScript 계약과 코드 검토 가능성이 중심입니다.
 
 ## 3. 핵심 질문
 
-- write command와 stored record가 같은 타입을 공유하면 어떤 lifetime·확장 문제가 생깁니까?
-- canonical row type은 실제 SQL constraint나 runtime validation과 어떻게 다릅니까?
-- row mapper가 relation을 직접 조회하지 않고 caller가 related-data object를 조립하는 이유는 무엇입니까?
-- memory child lookup이 aggregate와 child를 함께 반환하면 어떤 잘못된 mutation target을 줄입니까?
-- pure mapper test로 behavior preservation을 어디까지 주장할 수 있습니까?
+- 쓰기 명령과 저장된 레코드가 같은 타입을 공유하면 어떤 수명·확장 문제가 생깁니까?
+- 표준 행 타입은 실제 SQL 제약이나 실행 중 검증과 어떻게 다릅니까?
+- 행 변환기가 관계를 직접 조회하지 않고 호출자가 연관 데이터 객체를 조립하는 이유는 무엇입니까?
+- 메모리 하위 조회가 집계와 하위를 함께 반환하면 어떤 잘못된 변경 대상을 줄입니까?
+- 순수 변환기 테스트로 동작 보존을 어디까지 주장할 수 있습니까?
 
-## 4. Commit map
+## 4. 커밋 목록
 
-| 순서 | Commit | Subject | Importance | Tags |
+| 순서 | 커밋 | 제목 | 중요도 | 태그 |
 | ---: | --- | --- | :---: | --- |
 | 1 | `73b8ce0f0c26` | `refactor(db): repository user projection 타입 정렬` | B | AUTH, PERSISTENCE |
 | 2 | `3d0ae79affd5` | `refactor(db): memory match record 계약 정렬` | B | PERSISTENCE |
@@ -1235,507 +1235,507 @@
 | 10 | `b34fdaa1e9c2` | `refactor(db): memory chat과 tournament 진입 경계 정렬` | B | PERSISTENCE, TOURNAMENT |
 | 11 | `dc0e60e6aa35` | `test(db): database row mapping contract 검증` | B | PERSISTENCE, TOURNAMENT, TEST |
 
-## 5. Commit별 조사
+## 5. 커밋별 조사
 
-### 5.1. `73b8ce0f0c26` — refactor(db): repository user projection 타입 정렬
+### 5.1. `73b8ce0f0c26` — 리팩터링(db): 저장소 사용자 조회 결과 타입 정렬
 
 | 항목 | 고정 정보 |
 | --- | --- |
 | SHA | `73b8ce0f0c26` |
-| Importance | B |
-| Tags | AUTH, PERSISTENCE |
-| Source role | memory-only user alias를 제거하고 canonical `UserProjectionRow`를 repository 저장 표현으로 사용합니다. |
+| 중요도 | B |
+| 태그 | AUTH, PERSISTENCE |
+| 원문 역할 | 메모리 전용 사용자 별칭을 제거하고 표준 `UserProjectionRow`를 저장소 저장 표현으로 사용합니다. |
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `packages/db/src/index.ts`의 memory `users` Map type이 이전 `MemoryUserRow`에서 무엇으로 바뀌는지 확인합니다.
-- `packages/db/src/schema.ts`의 canonical `UserProjectionRow` field set과 memory object construction을 대조합니다.
-- email·created_at·banned_at처럼 projection에 포함/제외된 field를 확인합니다.
-- runtime mutation이나 query 결과가 바뀌지 않고 type ownership만 정렬되는지 parent diff로 확인합니다.
+- `packages/db/src/index.ts`의 메모리 `users` Map 타입이 이전 `MemoryUserRow`에서 무엇으로 바뀌는지 확인합니다.
+- `packages/db/src/schema.ts`의 표준 `UserProjectionRow` 필드 집합과 메모리 객체 생성을 대조합니다.
+- 이메일·created_at·정지 시각처럼 변환 결과에 포함/제외된 필드를 확인합니다.
+- 실행 시점 변경이나 쿼리 결과가 바뀌지 않고 타입 소유권만 정렬되는지 부모 커밋 변경 내용으로 확인합니다.
 
 #### 학습자 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 직전 관련 상태 | memory repository는 SQL user projection과 별도의 `MemoryUserRow` alias를 유지해 같은 user shape가 두 곳에서 정의됐습니다. |
-| 해결하려던 문제 | schema 변경 시 memory alias만 늦게 갱신되거나 mapper가 받는 shape와 저장 shape가 갈라질 위험이 있었습니다. |
-| 핵심 결정 | memory user store의 값 타입을 canonical `UserProjectionRow`로 바꾸고 객체 생성 field를 명시했습니다. |
-| 입력 → 상태 전이 → 출력 | memory user 입력 → canonical projection 객체 생성/저장 → 기존 mapper로 public/session DTO 변환입니다. |
-| ownership / lifetime / cleanup | `schema.ts`가 user projection vocabulary를 소유하고 memory repository는 그 타입의 원본 객체를 Map lifetime 동안 소유합니다. |
-| failure / rollback / retry | compile-time refactor이므로 runtime validation은 추가되지 않습니다. 누락 field는 typecheck에서 잡히지만 잘못된 값은 실행 중 그대로 들어갈 수 있습니다. |
-| 보장하는 것 | PostgreSQL query projection과 memory storage가 같은 TypeScript field contract를 참조합니다. |
-| 보장하지 않는 것 | PostgreSQL과 memory의 정렬·filter·transaction 의미가 같아진 것은 아니며 동작 parity 전체를 보장하지 않습니다. |
-| 후속 연결 | `3e3f21129369`가 더 많은 canonical enum/row type을 schema module로 모으고 mapper 시험이 후속 보호를 제공합니다. |
+| 직전 관련 상태 | 메모리 저장소는 SQL 사용자 조회 결과와 별도의 `MemoryUserRow` 별칭을 유지해 같은 사용자 형식이 두 곳에서 정의됐습니다. |
+| 해결하려던 문제 | 스키마 변경 시 메모리 별칭만 늦게 갱신되거나 변환기가 받는 형식과 저장 형식이 갈라질 위험이 있었습니다. |
+| 핵심 결정 | 메모리 사용자 저장소의 값 타입을 표준 `UserProjectionRow`로 바꾸고 객체 생성 필드를 명시했습니다. |
+| 입력 → 상태 변경 → 출력 | 메모리 사용자 입력 → 표준 변환 결과 객체 생성/저장 → 기존 변환기로 공개/세션 DTO 변환입니다. |
+| 소유권·수명·정리 | `schema.ts`가 사용자 조회 결과 이벤트 종류를 소유하고 메모리 저장소는 그 타입의 원본 객체를 Map 수명 동안 소유합니다. |
+| 실패·되돌리기·재시도 | 컴파일 시점 리팩터링이므로 실행 중 검증은 추가되지 않습니다. 누락 필드는 타입 검사에서 잡히지만 잘못된 값은 실행 중 그대로 들어갈 수 있습니다. |
+| 보장하는 것 | PostgreSQL 쿼리 변환 결과와 메모리 저장소가 같은 TypeScript 필드 계약을 참조합니다. |
+| 보장하지 않는 것 | PostgreSQL과 메모리의 정렬·필터·트랜잭션 의미가 같아진 것은 아니며 동작 일치 전체를 보장하지 않습니다. |
+| 후속 연결 | `3e3f21129369`가 더 많은 표준 열거형/행 타입을 스키마 모듈로 모으고 변환기 시험이 후속 보호를 제공합니다. |
 
 #### 비교 기준
 
-- parent 상태와 `73b8ce0f0c26`의 diff를 먼저 비교합니다.
+- 부모 커밋의 상태와 `73b8ce0f0c26`의 변경 내용을 먼저 비교합니다.
 - 후속 관련 SHA `3d0ae79affd5`가 이 결정의 부족한 점을 보완하거나 검증하는지 확인합니다.
 
-### 5.2. `3d0ae79affd5` — refactor(db): memory match record 계약 정렬
+### 5.2. `3d0ae79affd5` — 리팩터링(db): 메모리 경기 레코드 계약 정렬
 
 | 항목 | 고정 정보 |
 | --- | --- |
 | SHA | `3d0ae79affd5` |
-| Importance | B |
-| Tags | PERSISTENCE |
-| Source role | write command를 상속하던 memory match record를 명시적 stored shape로 바꿉니다. |
+| 중요도 | B |
+| 태그 | PERSISTENCE |
+| 원문 역할 | 쓰기 명령을 상속하던 메모리 경기 레코드를 명시적 저장된 형식으로 바꿉니다. |
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `packages/db/src/index.ts`의 이전 `MemoryMatchRecord`가 write input을 intersection/상속하던 부분과 새 explicit field를 비교합니다.
-- `createMatch` 또는 finalization path가 command에서 어떤 field만 복사해 저장하는지 확인합니다.
-- `memoryMatchSummary`가 새 `endedAt`·participant ID field를 읽는 경로를 확인합니다.
-- tournament command metadata나 일시적 입력이 stored record에 우발적으로 남지 않는지 확인합니다.
+- `packages/db/src/index.ts`의 이전 `MemoryMatchRecord`가 쓰기 입력을 intersection/상속하던 부분과 새 명시적 필드를 비교합니다.
+- `createMatch` 또는 결과 확정 경로가 명령에서 어떤 필드만 복사해 저장하는지 확인합니다.
+- `memoryMatchSummary`가 새 `endedAt`·참가자 ID 필드를 읽는 경로를 확인합니다.
+- 토너먼트 명령 메타데이터나 일시적 입력이 저장된 레코드에 우발적으로 남지 않는지 확인합니다.
 
 #### 학습자 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 직전 관련 상태 | memory match record는 write command shape를 재사용해 저장해야 할 state와 호출 순간의 command metadata가 구분되지 않았습니다. |
-| 해결하려던 문제 | command가 확장될 때 memory persistence shape도 자동 확장되어 ownership과 lifetime이 불명확해질 수 있었습니다. |
-| 핵심 결정 | `MemoryMatchRecord`를 id, result key, mode, participant IDs, scores, endedAt 등 실제 저장 field로 명시했습니다. |
-| 입력 → 상태 전이 → 출력 | match command → 필요한 field 선택·새 record 생성 → memory 배열 저장 → summary mapper가 stored field만 읽습니다. |
-| ownership / lifetime / cleanup | command 객체는 caller lifetime, stored record는 repository 배열 lifetime을 가집니다. 두 객체가 별도 값으로 분리됩니다. |
-| failure / rollback / retry | 저장 중 failure injection이나 transaction은 추가되지 않습니다. 단순 memory push의 process-local atomicity만 유지됩니다. |
-| 보장하는 것 | memory 저장 표현이 write input 변화에 암시적으로 끌려가지 않고 stored contract를 명확히 유지합니다. |
-| 보장하지 않는 것 | durable persistence, cross-process consistency, PostgreSQL row와 byte-level 동일성은 보장하지 않습니다. |
-| 후속 연결 | `9d64ea406b03`가 tournament finalization에서도 aggregate/match lookup 결과를 명시적으로 다룹니다. |
+| 직전 관련 상태 | 메모리 경기 레코드는 쓰기 명령 형식을 재사용해 저장해야 할 상태와 호출 순간의 명령 메타데이터가 구분되지 않았습니다. |
+| 해결하려던 문제 | 명령이 확장될 때 메모리 영속 저장 형식도 자동 확장되어 소유권과 수명이 불명확해질 수 있었습니다. |
+| 핵심 결정 | `MemoryMatchRecord`를 id, 결과 키, 모드, 참가자 ID, 점수, endedAt 등 실제 저장 필드로 명시했습니다. |
+| 입력 → 상태 변경 → 출력 | 경기 명령 → 필요한 필드 선택·새 레코드 생성 → 메모리 배열 저장 → 요약 변환기가 저장된 필드만 읽습니다. |
+| 소유권·수명·정리 | 명령 객체는 호출자 수명, 저장된 레코드는 저장소 배열 수명을 가집니다. 두 객체가 별도 값으로 분리됩니다. |
+| 실패·되돌리기·재시도 | 저장 중 실패 주입이나 트랜잭션은 추가되지 않습니다. 단순 메모리 push의 프로세스 내부 원자성만 유지됩니다. |
+| 보장하는 것 | 메모리 저장 표현이 쓰기 입력 변화에 암시적으로 끌려가지 않고 저장된 계약을 명확히 유지합니다. |
+| 보장하지 않는 것 | 영속 저장, 여러 프로세스 간 일관성, PostgreSQL 행과 바이트 단위의 동일성은 보장하지 않습니다. |
+| 후속 연결 | `9d64ea406b03`가 토너먼트 결과 확정에서도 집계/경기 조회 결과를 명시적으로 다룹니다. |
 
 #### 비교 기준
 
-- parent 상태와 `3d0ae79affd5`의 diff를 먼저 비교합니다.
-- 이 Thread의 직전 관련 SHA `73b8ce0f0c26`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
+- 부모 커밋의 상태와 `3d0ae79affd5`의 변경 내용을 먼저 비교합니다.
+- 이 개발 스레드의 직전 관련 SHA `73b8ce0f0c26`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
 - 후속 관련 SHA `3e3f21129369`가 이 결정의 부족한 점을 보완하거나 검증하는지 확인합니다.
 
-### 5.3. `3e3f21129369` — refactor(db): canonical row schema 타입 정렬
+### 5.3. `3e3f21129369` — 리팩터링(db): 표준 행 스키마 타입 정렬
 
 | 항목 | 고정 정보 |
 | --- | --- |
 | SHA | `3e3f21129369` |
-| Importance | B |
-| Tags | PERSISTENCE, TOURNAMENT |
-| Source role | database enum·row projection vocabulary를 `schema.ts`의 canonical type으로 통합합니다. |
+| 중요도 | B |
+| 태그 | PERSISTENCE, TOURNAMENT |
+| 원문 역할 | 데이터베이스 열거형·행 조회 결과 이벤트 종류를 `schema.ts`의 표준 타입으로 통합합니다. |
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `packages/db/src/schema.ts`의 `TournamentRound`, `TournamentMatchStatus`, `ChatScope`, `AdminAction` alias를 shared contract와 대조합니다.
-- `Database` table map과 각 `Selectable` row export의 재배치를 확인합니다.
-- `UserProjectionRow`가 broad alias 대신 explicit `Pick`으로 어떤 column을 고정하는지 확인합니다.
-- joined row interface가 canonical aliases를 참조하도록 바뀌고 중복 string union이 제거되는지 확인합니다.
+- `packages/db/src/schema.ts`의 `TournamentRound`, `TournamentMatchStatus`, `ChatScope`, `AdminAction` 별칭을 공유 계약과 대조합니다.
+- `Database` 테이블 목록과 각 `Selectable` 행 내보내기의 재배치를 확인합니다.
+- `UserProjectionRow`가 넓은 범위의 별칭 대신 명시적 `Pick`으로 어떤 열을 고정하는지 확인합니다.
+- 참가한 행 인터페이스가 표준 타입 별칭를 참조하도록 바뀌고 중복 문자열 유니언 타입이 제거되는지 확인합니다.
 
 #### 학습자 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 직전 관련 상태 | round/status/scope/action과 여러 row projection이 mapper·repository에 중복 선언되어 같은 DB column을 다른 union으로 표현할 수 있었습니다. |
-| 해결하려던 문제 | row mapper refactor를 계속하려면 한 module이 DB-facing type vocabulary를 소유해야 했습니다. |
-| 핵심 결정 | `schema.ts`에 canonical alias와 explicit row projection을 모으고 joined row가 이를 참조하도록 정렬했습니다. |
-| 입력 → 상태 전이 → 출력 | SQL table interface → `Selectable` row type → joined projection → mapper 입력 type으로 한 방향의 type dependency를 만듭니다. |
-| ownership / lifetime / cleanup | `schema.ts`가 DB row vocabulary를 소유하고 mapper/repository는 import해 소비합니다. runtime row lifetime은 변하지 않습니다. |
-| failure / rollback / retry | DB constraint나 runtime parser는 추가되지 않습니다. TypeScript 선언이 실제 SQL과 어긋나면 실행 중 자동 검출하지 못합니다. |
-| 보장하는 것 | 동일 column의 compile-time 표현을 한 곳에서 변경하고 downstream type drift를 줄입니다. |
-| 보장하지 않는 것 | 실제 enum 값의 DB CHECK, query column completeness, behavior change 부재를 실행으로 증명하지는 않습니다. |
-| 후속 연결 | `212650b2863d`와 `5c8659ea233b`가 mapper 출력·relation assembly를 이 canonical type에 맞춥니다. |
+| 직전 관련 상태 | 라운드/상태/범위/동작과 여러 행 조회 결과가 변환기·저장소에 중복 선언되어 같은 DB 열을 다른 유니언 타입으로 표현할 수 있었습니다. |
+| 해결하려던 문제 | 행 변환기 리팩터링을 계속하려면 한 모듈이 DB 코드에서 사용하는 타입 이벤트 종류를 소유해야 했습니다. |
+| 핵심 결정 | `schema.ts`에 표준 별칭과 명시적 행 조회 결과를 모으고 참가한 행이 이를 참조하도록 정렬했습니다. |
+| 입력 → 상태 변경 → 출력 | SQL 테이블 인터페이스 → `Selectable` 행 타입 → 참가한 변환 결과 → 변환기 입력 타입으로 한 방향의 타입 의존성을 만듭니다. |
+| 소유권·수명·정리 | `schema.ts`가 DB 행 이벤트 종류를 소유하고 변환기/저장소는 가져오기해 소비합니다. 실행 시점 행 수명은 변하지 않습니다. |
+| 실패·되돌리기·재시도 | DB 제약이나 실행 중 파서는 추가되지 않습니다. TypeScript 선언이 실제 SQL과 어긋나면 실행 중 자동 검출하지 못합니다. |
+| 보장하는 것 | 동일 열의 컴파일 시점 표현을 한 곳에서 변경하고 하위 소비 패키지 타입 편차를 줄입니다. |
+| 보장하지 않는 것 | 실제 열거형 값의 DB CHECK, 쿼리 열 완전성, 동작 변경 부재를 실행으로 검증하지는 않습니다. |
+| 후속 연결 | `212650b2863d`와 `5c8659ea233b`가 변환기 출력·관계 조립을 이 표준 타입에 맞춥니다. |
 
 #### 비교 기준
 
-- parent 상태와 `3e3f21129369`의 diff를 먼저 비교합니다.
-- 이 Thread의 직전 관련 SHA `3d0ae79affd5`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
+- 부모 커밋의 상태와 `3e3f21129369`의 변경 내용을 먼저 비교합니다.
+- 이 개발 스레드의 직전 관련 SHA `3d0ae79affd5`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
 - 후속 관련 SHA `212650b2863d`가 이 결정의 부족한 점을 보완하거나 검증하는지 확인합니다.
 
-### 5.4. `212650b2863d` — refactor(db): row mapper record 타입 정렬
+### 5.4. `212650b2863d` — 리팩터링(db): 행 변환기 레코드 타입 정렬
 
 | 항목 | 고정 정보 |
 | --- | --- |
 | SHA | `212650b2863d` |
-| Importance | B |
-| Tags | PERSISTENCE, TOURNAMENT |
-| Source role | `toTournamentMatchRecord`의 반환값을 canonical row type에서 파생한 explicit view로 고정합니다. |
+| 중요도 | B |
+| 태그 | PERSISTENCE, TOURNAMENT |
+| 원문 역할 | `toTournamentMatchRecord`의 반환값을 표준 행 타입에서 파생한 명시적 조회 결과로 고정합니다. |
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `packages/db/src/rowMappers.ts`의 `TournamentMatchRecordView`와 `toTournamentMatchRecord` return annotation을 확인합니다.
-- round/status type이 hard-coded union이 아니라 `TournamentMatchRow` field에서 파생되는지 확인합니다.
-- nullable score·ID field에서 `Number`/null 변환이 유지되는지 parent와 비교합니다.
-- public summary mapper와 internal record mapper의 field 차이를 구분합니다.
+- `packages/db/src/rowMappers.ts`의 `TournamentMatchRecordView`와 `toTournamentMatchRecord`의 반환 타입 명시을 확인합니다.
+- 라운드/상태 타입이 하드코딩된 유니언 타입이 아니라 `TournamentMatchRow` 필드에서 파생되는지 확인합니다.
+- null 허용 점수·ID 필드에서 `Number`/null 변환이 유지되는지 부모 커밋과 비교합니다.
+- 공개 요약 변환기와 내부 레코드 변환기의 필드 차이를 구분합니다.
 
 #### 학습자 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 직전 관련 상태 | tournament match record mapper는 반환 타입이 암시적이어서 schema alias가 바뀌어도 caller 계약이 명확히 드러나지 않았습니다. |
-| 해결하려던 문제 | internal finalization/lookup code가 public summary와 다른 최소 record shape를 안전하게 소비해야 했습니다. |
-| 핵심 결정 | `TournamentMatchRecordView`를 정의하고 round/status를 canonical row field에서 파생해 mapper 반환 타입을 명시했습니다. |
-| 입력 → 상태 전이 → 출력 | `TournamentMatchRow` → snake_case ID/status/participant field 선택 → camelCase internal record view 반환입니다. |
-| ownership / lifetime / cleanup | mapper가 새 value를 소유하고 DB row는 query result lifetime에 남습니다. view는 public relation user를 소유하지 않고 ID만 담습니다. |
-| failure / rollback / retry | runtime validation은 없고 malformed null/type은 차단하지 않습니다. 변환 failure는 일반 JS error로 드러날 수 있습니다. |
-| 보장하는 것 | internal record caller가 어떤 field를 받을 수 있는지 compile-time에 고정되고 schema alias 변경이 전파됩니다. |
-| 보장하지 않는 것 | query가 올바른 row를 가져왔다는 보장, match lifecycle의 legal transition, relation user 존재성은 제공하지 않습니다. |
-| 후속 연결 | `dc0e60e6aa35`가 정확한 record shape를 pure mapper test로 검증합니다. |
+| 직전 관련 상태 | 토너먼트 경기 레코드 변환기는 반환 타입이 암시적이어서 스키마 별칭이 바뀌어도 호출자 계약이 명확히 드러나지 않았습니다. |
+| 해결하려던 문제 | 내부 결과 확정/조회 코드가 공개 요약과 다른 최소 레코드 형식을 안전하게 소비해야 했습니다. |
+| 핵심 결정 | `TournamentMatchRecordView`를 정의하고 라운드/상태를 표준 행 필드에서 파생해 변환기 반환 타입을 명시했습니다. |
+| 입력 → 상태 변경 → 출력 | `TournamentMatchRow` → snake_case ID/상태/참가자 필드 선택 → camelCase 내부 레코드 조회 결과 반환입니다. |
+| 소유권·수명·정리 | 변환기가 새 값을 소유하고 DB 행은 쿼리 결과 수명에 남습니다. 조회 결과는 공개 관계 사용자를 소유하지 않고 ID만 담습니다. |
+| 실패·되돌리기·재시도 | 실행 중 검증은 없고 잘못된 null/타입은 차단하지 않습니다. 변환 실패는 일반 JS 오류로 드러날 수 있습니다. |
+| 보장하는 것 | 내부 레코드 호출자가 어떤 필드를 받을 수 있는지 컴파일 시점에 고정되고 스키마 별칭 변경이 전파됩니다. |
+| 보장하지 않는 것 | 쿼리가 올바른 행을 가져왔다는 보장, 경기 수명주기의 허용된 상태 전이, 관계 사용자 존재성은 제공하지 않습니다. |
+| 후속 연결 | `dc0e60e6aa35`가 정확한 레코드 형식을 순수 변환기 테스트로 검증합니다. |
 
 #### 비교 기준
 
-- parent 상태와 `212650b2863d`의 diff를 먼저 비교합니다.
-- 이 Thread의 직전 관련 SHA `3e3f21129369`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
+- 부모 커밋의 상태와 `212650b2863d`의 변경 내용을 먼저 비교합니다.
+- 이 개발 스레드의 직전 관련 SHA `3e3f21129369`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
 - 후속 관련 SHA `45144a3719bc`가 이 결정의 부족한 점을 보완하거나 검증하는지 확인합니다.
 
-### 5.5. `45144a3719bc` — refactor(db): dashboard와 friendship 조회 경계 정렬
+### 5.5. `45144a3719bc` — 리팩터링(db): 대시보드와 친구 관계 조회 경계 정렬
 
 | 항목 | 고정 정보 |
 | --- | --- |
 | SHA | `45144a3719bc` |
-| Importance | B |
-| Tags | PERSISTENCE |
-| Source role | optional SQL fragment를 제거하고 scoped/unscoped recent-match query를 두 개의 명시적 shape로 분리합니다. |
+| 중요도 | B |
+| 태그 | PERSISTENCE |
+| 원문 역할 | 선택적 SQL fragment를 제거하고 사용자 범위를 지정한 쿼리와 전체 쿼리 최근 경기 쿼리를 두 개의 명시적 형식으로 분리합니다. |
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `PostgresRepository.listRecentMatches` parent에서 conditional `sql` fragment가 사용되던 부분과 두 explicit query branch를 비교합니다.
-- 두 query의 select column, joins, order, limit가 동일하고 where만 다른지 확인합니다.
-- `listFriends` SQL formatting과 dashboard object construction이 behavior를 바꾸는지 확인합니다.
-- 분기 duplication이 늘어나는 대신 query shape reviewability가 좋아지는 trade-off를 기록합니다.
+- `PostgresRepository.listRecentMatches` 부모 커밋에서 조건부 `sql` fragment가 사용되던 부분과 두 명시적 쿼리 브랜치를 비교합니다.
+- 두 쿼리의 조회 열, 조인, 정렬, 조회 개수가 동일하고 WHERE 조건만 다른지 확인합니다.
+- `listFriends` SQL 형식화과 대시보드 객체 생성이 동작을 바꾸는지 확인합니다.
+- 분기 duplication이 늘어나는 대신 쿼리 형식 reviewability가 좋아지는 trade-off를 기록합니다.
 
 #### 학습자 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 직전 관련 상태 | recent-match query는 optional raw SQL fragment를 중간에 삽입해 scoped/unscoped query의 최종 shape를 한눈에 검토하기 어려웠습니다. |
-| 해결하려던 문제 | typed query 결과와 participant predicate가 branch별로 정확히 일치하는지 reviewer가 확인하기 쉬운 표현이 필요했습니다. |
-| 핵심 결정 | userId 존재 여부에 따라 완전한 두 SQL query를 선택하고 나머지 mapping·dashboard behavior는 유지했습니다. |
-| 입력 → 상태 전이 → 출력 | `userId` 있음 → participant where가 포함된 query, 없음 → global query → 같은 `toMatchSummary` mapping과 newest-first limit입니다. |
-| ownership / lifetime / cleanup | repository method가 query branch 선택을 소유하고 mapper가 출력 변환을 계속 소유합니다. |
-| failure / rollback / retry | SQL duplication으로 한 branch만 수정할 위험이 생깁니다. 이 commit은 transaction·failure handling을 추가하지 않습니다. |
-| 보장하는 것 | 실제 실행될 SQL shape와 bind parameter 위치를 branch마다 명시적으로 검토할 수 있습니다. |
-| 보장하지 않는 것 | 성능 개선, result parity의 실행 증거, friendship semantics 변경은 보장하지 않습니다. |
-| 후속 연결 | `dc0e60e6aa35`는 mapper shape를 보호하지만 두 SQL branch의 integration behavior 자체는 직접 실행하지 않습니다. |
+| 직전 관련 상태 | 최근 경기 쿼리는 선택적으로 끼워 넣는 SQL 조각를 중간에 삽입해 사용자 범위를 지정한 쿼리와 전체 쿼리 쿼리의 최종 형식을 한눈에 검토하기 어려웠습니다. |
+| 해결하려던 문제 | 타입이 지정된 쿼리 결과와 참가자 조건 함수가 브랜치별로 정확히 일치하는지 reviewer가 확인하기 쉬운 표현이 필요했습니다. |
+| 핵심 결정 | userId 존재 여부에 따라 완전한 두 SQL 쿼리를 선택하고 나머지 매핑·대시보드 동작은 유지했습니다. |
+| 입력 → 상태 변경 → 출력 | `userId` 있음 → 참가자 where가 포함된 쿼리, 없음 → 전역 쿼리 → 같은 `toMatchSummary` 매핑과 최신순 상한입니다. |
+| 소유권·수명·정리 | 저장소 메서드가 쿼리 브랜치 선택을 소유하고 변환기가 출력 변환을 계속 소유합니다. |
+| 실패·되돌리기·재시도 | SQL 중복으로 한 분기만 수정할 위험이 생깁니다. 이 커밋은 트랜잭션·실패 처리를 추가하지 않습니다. |
+| 보장하는 것 | 실제 실행될 SQL 형식과 바인딩 매개변수 위치를 브랜치마다 명시적으로 검토할 수 있습니다. |
+| 보장하지 않는 것 | 성능 개선, 결과 동작 일치의 실행 증거, 친구 관계 동작 의미 변경은 보장하지 않습니다. |
+| 후속 연결 | `dc0e60e6aa35`는 변환기 형식을 보호하지만 두 SQL 브랜치의 통합 동작 자체는 직접 실행하지 않습니다. |
 
 #### 비교 기준
 
-- parent 상태와 `45144a3719bc`의 diff를 먼저 비교합니다.
-- 이 Thread의 직전 관련 SHA `212650b2863d`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
+- 부모 커밋의 상태와 `45144a3719bc`의 변경 내용을 먼저 비교합니다.
+- 이 개발 스레드의 직전 관련 SHA `212650b2863d`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
 - 후속 관련 SHA `ce41a880d6c6`가 이 결정의 부족한 점을 보완하거나 검증하는지 확인합니다.
 
-### 5.6. `ce41a880d6c6` — refactor(db): PostgreSQL tournament helper와 admin 경계 정렬
+### 5.6. `ce41a880d6c6` — 리팩터링(db): PostgreSQL 토너먼트 도우미 함수와 관리자 경계 정렬
 
 | 항목 | 고정 정보 |
 | --- | --- |
 | SHA | `ce41a880d6c6` |
-| Importance | B |
-| Tags | PERSISTENCE, TOURNAMENT |
-| Source role | tournament match relation 조립과 admin query를 명시적 helper/statement로 정리합니다. |
+| 중요도 | B |
+| 태그 | PERSISTENCE, TOURNAMENT |
+| 원문 역할 | 토너먼트 경기 관계 조립과 관리자 쿼리를 명시적 도우미 함수/SQL 문으로 정리합니다. |
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `packages/db/src/index.ts`의 `tournamentMatchFromRow`가 left/right/winner ID를 `getUserById`로 해석하는 순서를 확인합니다.
-- `ensureFinalMatch` 또는 tournament helper가 어떤 executor/row를 받는지 확인합니다.
-- `listAdminUsers`, `listAdminActions`, `setUserBan`의 query와 mapper 호출을 parent와 비교합니다.
-- 이 refactor가 admin status update와 audit insert를 하나의 transaction으로 만들지는 않는다는 점을 명시합니다.
-- relation user가 삭제·누락된 경우 null 처리와 thrown failure를 구분합니다.
+- `packages/db/src/index.ts`의 `tournamentMatchFromRow`가 왼쪽·오른쪽 참가자·승자 ID를 `getUserById`로 해석하는 순서를 확인합니다.
+- `ensureFinalMatch` 또는 토너먼트 도우미 함수가 어떤 실행 객체/행을 받는지 확인합니다.
+- `listAdminUsers`, `listAdminActions`, `setUserBan`의 쿼리와 변환기 호출을 부모 커밋과 비교합니다.
+- 이 리팩터링이 관리자 상태 갱신과 감사 삽입을 하나의 트랜잭션으로 만들지는 않는다는 점을 명시합니다.
+- 관계 사용자가 삭제·누락된 경우 null 처리와 thrown 실패를 구분합니다.
 
 #### 학습자 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 직전 관련 상태 | PostgreSQL tournament relation 조립과 admin methods가 긴 inline query·mapping에 섞여 책임 위치를 파악하기 어려웠습니다. |
-| 해결하려던 문제 | 한 tournament match row의 세 user relation을 동일 규칙으로 해석하고 admin query도 독립적으로 검토할 수 있어야 했습니다. |
-| 핵심 결정 | `tournamentMatchFromRow` helper를 추출하고 admin query/mapper 단계를 명시적으로 배치했습니다. |
-| 입력 → 상태 전이 → 출력 | match row → left/right/winner ID별 user lookup → relation object → summary mapper; admin row → actor/target lookup → admin summary입니다. |
-| ownership / lifetime / cleanup | helper가 relation assembly를 소유하고 mapper가 shape conversion을 소유합니다. repository가 DB call lifetime을 관리합니다. |
-| failure / rollback / retry | 여러 relation lookup 중 하나가 실패하면 상위 operation이 실패할 수 있습니다. admin update와 audit insert atomicity는 이 refactor가 보장하지 않습니다. |
-| 보장하는 것 | tournament/admin의 caller-callee 관계와 relation resolution 위치가 분명해집니다. |
-| 보장하지 않는 것 | N+1 query 제거, transaction 추가, behavior equivalence의 runtime proof는 제공하지 않습니다. |
-| 후속 연결 | `5c8659ea233b`가 tournament aggregate mapper에 explicit related-data object를 요구하며 relation ownership을 더 명확히 합니다. |
+| 직전 관련 상태 | PostgreSQL 토너먼트 관계 조립과 관리자 메서드가 긴 인라인 쿼리·매핑에 섞여 책임 위치를 파악하기 어려웠습니다. |
+| 해결하려던 문제 | 한 토너먼트 경기 행의 세 사용자 관계를 동일 규칙으로 해석하고 관리자 쿼리도 독립적으로 검토할 수 있어야 했습니다. |
+| 핵심 결정 | `tournamentMatchFromRow` 도우미 함수를 추출하고 관리자 쿼리/변환기 단계를 명시적으로 배치했습니다. |
+| 입력 → 상태 변경 → 출력 | 경기 행 → 왼쪽·오른쪽 참가자·승자 ID별 사용자 조회 → 관계 객체 → 요약 변환기; 관리자 행 → 수행자/대상 조회 → 관리자 요약입니다. |
+| 소유권·수명·정리 | 도우미 함수가 관계 조립을 소유하고 변환기가 형식 변환을 소유합니다. 저장소가 DB 호출 수명을 관리합니다. |
+| 실패·되돌리기·재시도 | 여러 관계 조회 중 하나가 실패하면 상위 연산이 실패할 수 있습니다. 관리자 갱신과 감사 삽입 원자성은 이 리팩터링이 보장하지 않습니다. |
+| 보장하는 것 | 토너먼트/관리자의 호출자 피호출자 관계와 관계 해석 위치가 분명해집니다. |
+| 보장하지 않는 것 | N+1 쿼리 제거, 트랜잭션 추가, 동작 equivalence의 실행 중 검증 근거는 제공하지 않습니다. |
+| 후속 연결 | `5c8659ea233b`가 토너먼트 집계 변환기에 명시적 연관 데이터 객체를 요구하며 관계 소유권을 더 명확히 합니다. |
 
 #### 비교 기준
 
-- parent 상태와 `ce41a880d6c6`의 diff를 먼저 비교합니다.
-- 이 Thread의 직전 관련 SHA `45144a3719bc`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
+- 부모 커밋의 상태와 `ce41a880d6c6`의 변경 내용을 먼저 비교합니다.
+- 이 개발 스레드의 직전 관련 SHA `45144a3719bc`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
 - 후속 관련 SHA `5c8659ea233b`가 이 결정의 부족한 점을 보완하거나 검증하는지 확인합니다.
 
-### 5.7. `5c8659ea233b` — refactor(db): tournament relation mapper 계약 정렬
+### 5.7. `5c8659ea233b` — 리팩터링(db): 토너먼트 관계 변환기 계약 정렬
 
 | 항목 | 고정 정보 |
 | --- | --- |
 | SHA | `5c8659ea233b` |
-| Importance | B |
-| Tags | PERSISTENCE, TOURNAMENT |
-| Source role | tournament mapper가 row spread와 사후 mutation 대신 explicit related-data object를 받도록 바꿉니다. |
+| 중요도 | B |
+| 태그 | PERSISTENCE, TOURNAMENT |
+| 원문 역할 | 토너먼트 변환기가 행 스프레드 문법와 사후 변경 대신 명시적 연관 데이터 객체를 받도록 바꿉니다. |
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `packages/db/src/rowMappers.ts`의 이전 `toTournamentSummary(row, entries, matches)`와 새 `{ entries, matches, winner }` 인수를 비교합니다.
-- creator projection이 `{...row, id: creator_id, status: user_status}` spread에서 explicit field object로 바뀌는지 확인합니다.
-- `PostgresRepository.tournamentFromRow`가 entries query, matches helper, winner lookup을 모두 끝낸 뒤 mapper를 호출하는지 추적합니다.
-- `ensureTournamentBracket` executor type이 `Kysely | Transaction`으로 명시되는지 확인합니다.
-- mapper가 더 이상 반환 후 `summary.winner = ...` mutation을 요구하지 않는지 확인합니다.
+- 생성자 변환 결과가 `{...row, id: creator_id, status: user_status}` 스프레드 문법에서 명시적 필드 객체로 바뀌는지 확인합니다.
+- `PostgresRepository.tournamentFromRow`가 참가 기록 쿼리, 경기 도우미 함수, 승자 조회를 모두 끝낸 뒤 변환기를 호출하는지 추적합니다.
+- `ensureTournamentBracket` 실행 객체 타입이 `Kysely | Transaction`으로 명시되는지 확인합니다.
+- 변환기가 더 이상 반환 후 `summary.winner = ...` 변경을 요구하지 않는지 확인합니다.
 
 #### 학습자 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 직전 관련 상태 | 기존 mapper는 tournament row에 creator field를 spread해 다른 row처럼 보이게 하고, winner는 mapper 반환 후 mutation으로 채웠습니다. |
-| 해결하려던 문제 | row provenance와 related data ownership이 숨겨져 누락 relation·잘못된 field alias가 compile-time에서 드러나기 어려웠습니다. |
-| 핵심 결정 | `toTournamentSummary(row, {entries, matches, winner})`를 도입하고 creator를 explicit field로 구성하며 모든 relation을 호출 전에 조립했습니다. |
-| 입력 → 상태 전이 → 출력 | tournament+creator row → entries/matches/winner 비동기 조회 → related object → 한 번의 pure summary construction입니다. |
-| ownership / lifetime / cleanup | repository가 relation fetch와 async lifetime을 소유하고 mapper가 완성된 immutable-style DTO construction을 소유합니다. 반환 후 mutation이 사라집니다. |
-| failure / rollback / retry | relation query 중 하나가 실패하면 aggregate 전체가 실패합니다. batch loading이나 transaction-consistent snapshot은 추가되지 않습니다. |
-| 보장하는 것 | mapper 입력에서 raw row와 related data가 명시적으로 구분되고 winner 누락을 사후 mutation에 의존하지 않습니다. |
-| 보장하지 않는 것 | N+1 query, concurrent row 변화 사이의 snapshot consistency, runtime validation은 보장하지 않습니다. |
-| 후속 연결 | `dc0e60e6aa35`가 entries/matches/winner를 넣은 mapper output을 고정합니다. |
+| 직전 관련 상태 | 기존 변환기는 토너먼트 행에 생성자 필드를 스프레드 문법해 다른 행처럼 보이게 하고, 승자는 변환기 반환 후 변경으로 채웠습니다. |
+| 해결하려던 문제 | 행의 출처와 연관 데이터 소유권이 숨겨져 누락 관계·잘못된 필드 별칭이 컴파일 시점에서 드러나기 어려웠습니다. |
+| 핵심 결정 | `toTournamentSummary(row, {entries, matches, winner})`를 도입하고 생성자를 명시적 필드로 구성하며 모든 관계를 호출 전에 조립했습니다. |
+| 입력 → 상태 변경 → 출력 | 토너먼트+생성자 행 → 참가 기록/경기/승자 비동기 조회 → related 객체 → 한 번의 순수 요약 생성입니다. |
+| 소유권·수명·정리 | 저장소가 관계 조회 요청과 비동기 처리 수명을 소유하고 변환기가 완성된 불변 방식 DTO 생성을 소유합니다. 반환 후 변경이 사라집니다. |
+| 실패·되돌리기·재시도 | 관계 쿼리 중 하나라도 실패하면 집계 전체가 실패합니다. 일괄 조회나 하나의 트랜잭션에서 일관된 스냅샷을 읽는 기능은 추가하지 않았습니다. |
+| 보장하는 것 | 변환기 입력에서 가공 전 행과 연관 데이터가 명시적으로 구분되고 승자 누락을 사후 변경에 의존하지 않습니다. |
+| 보장하지 않는 것 | N+1 쿼리, 동시 행 변화 사이의 스냅샷 일관성, 실행 중 검증은 보장하지 않습니다. |
+| 후속 연결 | `dc0e60e6aa35`가 참가 기록/경기/승자를 넣은 변환기 출력을 고정합니다. |
 
 #### 최소 코드 근거
 
-- `packages/db/src/rowMappers.ts::toTournamentSummary` — `row`와 `{ entries, matches, winner }`를 분리해 relation provenance와 필수 조립 단계를 명시합니다.
+- `packages/db/src/rowMappers.ts::toTournamentSummary` — `row`와 `{ entries, matches, winner }`를 분리해 관계 데이터의 출처와 필수 조립 단계를 명시합니다.
 
 #### 비교 기준
 
-- parent 상태와 `5c8659ea233b`의 diff를 먼저 비교합니다.
-- 이 Thread의 직전 관련 SHA `ce41a880d6c6`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
+- 부모 커밋의 상태와 `5c8659ea233b`의 변경 내용을 먼저 비교합니다.
+- 이 개발 스레드의 직전 관련 SHA `ce41a880d6c6`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
 - 후속 관련 SHA `f77e317de4c1`가 이 결정의 부족한 점을 보완하거나 검증하는지 확인합니다.
 
-### 5.8. `f77e317de4c1` — refactor(db): memory match completion과 admin 경계 정렬
+### 5.8. `f77e317de4c1` — 리팩터링(db): 메모리 경기 완료와 관리자 경계 정렬
 
 | 항목 | 고정 정보 |
 | --- | --- |
 | SHA | `f77e317de4c1` |
-| Importance | B |
-| Tags | REALTIME, PERSISTENCE, TOURNAMENT |
-| Source role | memory tournament match lookup을 aggregate와 child를 함께 반환하는 helper로 통합합니다. |
+| 중요도 | B |
+| 태그 | REALTIME, PERSISTENCE, TOURNAMENT |
+| 원문 역할 | 메모리 토너먼트 경기 조회를 집계와 하위를 함께 반환하는 도우미 함수로 통합합니다. |
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `packages/db/src/index.ts`의 `findTournamentMatch(matchId)` 반환 `{ tournament, match } | null`을 확인합니다.
-- `completeTournamentMatch`가 helper 결과와 winner lookup을 재사용해 어느 객체를 mutation하는지 추적합니다.
-- `listAdminUsers`, `listAdminActions`, `setUserBan`이 explicit object construction으로 바뀐 부분을 확인합니다.
-- memory mutation이 transaction/rollback 없이 process-local object를 직접 바꾼다는 점을 기록합니다.
+- `completeTournamentMatch`가 도우미 함수 결과와 승자 조회를 재사용해 어느 객체를 변경하는지 추적합니다.
+- `listAdminUsers`, `listAdminActions`, `setUserBan`이 명시적 객체 생성으로 바뀐 부분을 확인합니다.
+- 메모리 변경이 트랜잭션/되돌리기 없이 프로세스 내부 객체를 직접 바꾼다는 점을 기록합니다.
 
 #### 학습자 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 직전 관련 상태 | memory completion은 tournament 배열과 match를 별도로 다시 찾고 non-null assertion에 의존했습니다. |
-| 해결하려던 문제 | child match를 찾은 뒤 소유 aggregate를 잃으면 status·winner를 다른 객체에 반영하거나 lookup logic이 중복될 수 있었습니다. |
-| 핵심 결정 | `findTournamentMatch`가 aggregate와 child를 한 결과로 반환하고 completion/admin methods가 explicit local 값을 사용하도록 정렬했습니다. |
-| 입력 → 상태 전이 → 출력 | match ID → `{tournament, match}` lookup → winner projection 조회 → child status/score 변경 → semifinal이면 final 생성, 아니면 aggregate 완료입니다. |
-| ownership / lifetime / cleanup | repository 배열이 tournament aggregate와 child object lifetime을 소유하고 helper는 alias pair를 일시적으로 반환합니다. |
-| failure / rollback / retry | winner lookup 후 mutation 중 예외가 발생하면 자동 rollback이 없습니다. process-local sequential method라는 전제입니다. |
-| 보장하는 것 | match와 그 소유 tournament가 같은 lookup 결과로 함께 이동해 mutation target이 분명해집니다. |
-| 보장하지 않는 것 | PostgreSQL transaction parity, concurrent mutation safety, deep copy 반환은 보장하지 않습니다. |
-| 후속 연결 | `9d64ea406b03`가 같은 helper를 atomic finalization의 memory tournament branch에 재사용합니다. |
+| 직전 관련 상태 | 메모리 완료는 토너먼트 배열과 경기를 별도로 다시 찾고 null이 아닌 검증에 의존했습니다. |
+| 해결하려던 문제 | 하위 경기를 찾은 뒤 소유 집계를 잃으면 상태·승자를 다른 객체에 반영하거나 조회 로직이 중복될 수 있었습니다. |
+| 핵심 결정 | `findTournamentMatch`가 집계와 하위를 한 결과로 반환하고 완료/관리자 메서드가 명시적 로컬 값을 사용하도록 정렬했습니다. |
+| 입력 → 상태 변경 → 출력 | 경기 ID → `{tournament, match}` 조회 → 승자 변환 결과 조회 → 하위 상태/점수 변경 → 준결승이면 최종 생성, 아니면 집계 완료입니다. |
+| 소유권·수명·정리 | 저장소 배열이 토너먼트 집계와 하위 객체 수명을 소유하고 도우미 함수는 별칭 쌍을 일시적으로 반환합니다. |
+| 실패·되돌리기·재시도 | 승자 조회 후 변경 중 예외가 발생하면 자동 되돌리기가 없습니다. 프로세스 내부 순차 실행 메서드라는 전제입니다. |
+| 보장하는 것 | 경기와 그 소유 토너먼트가 같은 조회 결과로 함께 이동해 변경 대상이 분명해집니다. |
+| 보장하지 않는 것 | PostgreSQL 트랜잭션 동작 일치, 동시 변경 안전성, 깊은 복사 반환은 보장하지 않습니다. |
+| 후속 연결 | `9d64ea406b03`가 같은 도우미 함수를 원자적 결과 확정의 메모리 토너먼트 브랜치에 재사용합니다. |
 
 #### 비교 기준
 
-- parent 상태와 `f77e317de4c1`의 diff를 먼저 비교합니다.
-- 이 Thread의 직전 관련 SHA `5c8659ea233b`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
+- 부모 커밋의 상태와 `f77e317de4c1`의 변경 내용을 먼저 비교합니다.
+- 이 개발 스레드의 직전 관련 SHA `5c8659ea233b`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
 - 후속 관련 SHA `9d64ea406b03`가 이 결정의 부족한 점을 보완하거나 검증하는지 확인합니다.
 
-### 5.9. `9d64ea406b03` — refactor(db): memory tournament 확정 경계 정렬
+### 5.9. `9d64ea406b03` — 리팩터링(db): 메모리 토너먼트 확정 경계 정렬
 
 | 항목 | 고정 정보 |
 | --- | --- |
 | SHA | `9d64ea406b03` |
-| Importance | B |
-| Tags | PERSISTENCE, TOURNAMENT |
-| Source role | memory `finalizeMatch`의 tournament participant 검증과 aggregate mutation을 하나의 lookup result에 정렬합니다. |
+| 중요도 | B |
+| 태그 | PERSISTENCE, TOURNAMENT |
+| 원문 역할 | 메모리 `finalizeMatch`의 토너먼트 참가자 검증과 집계 변경을 하나의 조회 결과에 정렬합니다. |
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `finalizeMatch`의 이전 `tournamentLink` map/find 표현과 `findTournamentMatch` 사용을 비교합니다.
-- already-finalized `matchId` 검사와 winner/loser가 해당 tournament match participant인지 검증하는 순서를 확인합니다.
-- 일반 match record/stat update 뒤 tournament match/aggregate를 mutation하는 경로를 추적합니다.
-- memory operation이 한 call stack에 있지만 예외 시 deep rollback이 없다는 점을 확인합니다.
+- `finalizeMatch`의 이전 `tournamentLink` 목록/find 표현과 `findTournamentMatch` 사용을 비교합니다.
+- already-finalized `matchId` 검사와 승자/패자가 해당 토너먼트 경기 참가자인지 검증하는 순서를 확인합니다.
+- 일반 경기 레코드/통계 갱신 뒤 토너먼트 경기/집계를 변경하는 경로를 추적합니다.
+- 메모리 연산이 한 호출 stack에 있지만 예외 시 깊은 되돌리기가 없다는 점을 확인합니다.
 
 #### 학습자 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 직전 관련 상태 | memory finalization은 tournament와 child를 임시 map 구조로 찾고 각 조건에서 optional chain을 반복했습니다. |
-| 해결하려던 문제 | participant 검증·중복 확정·semifinal/final mutation이 같은 aggregate를 대상으로 한다는 사실을 코드가 명확히 유지해야 했습니다. |
-| 핵심 결정 | `findTournamentMatch` 결과를 하나의 local value로 사용해 participant set과 subsequent mutation을 정렬했습니다. |
-| 입력 → 상태 전이 → 출력 | command → tournament child lookup → already-finalized·participant 검증 → match/stat update → child result 기록 → semifinal final 생성 또는 tournament winner/status 확정입니다. |
-| ownership / lifetime / cleanup | repository가 match record, user stats, tournament aggregate를 같은 method 동안 소유합니다. helper result는 원본 object alias입니다. |
-| failure / rollback / retry | 검증 전에는 mutation하지 않지만 일반 match/stat update 이후 tournament mutation에서 예외가 나면 PostgreSQL transaction과 같은 rollback은 없습니다. |
-| 보장하는 것 | memory 구현에서 tournament validation과 mutation이 동일 child/aggregate reference를 사용합니다. |
-| 보장하지 않는 것 | durable atomicity, failure injection rollback, cross-process idempotency는 보장하지 않습니다. |
-| 후속 연결 | `dc0e60e6aa35`는 mapper를 검증하고, match-finalization atomicity 자체는 별도의 persistence Thread에서 다룹니다. |
+| 직전 관련 상태 | 메모리 결과 확정은 토너먼트와 하위를 임시 목록 구조로 찾고 각 조건에서 선택적 과정을 반복했습니다. |
+| 해결하려던 문제 | 참가자 검증·중복 확정·준결승/최종 변경이 같은 집계를 대상으로 한다는 사실을 코드가 명확히 유지해야 했습니다. |
+| 핵심 결정 | `findTournamentMatch` 결과를 하나의 로컬 값으로 사용해 참가자 집합과 subsequent 변경을 정렬했습니다. |
+| 입력 → 상태 변경 → 출력 | 명령 → 토너먼트 하위 조회 → already-finalized·참가자 검증 → 경기/통계 갱신 → 하위 결과 기록 → 준결승 최종 생성 또는 토너먼트 승자/상태 확정입니다. |
+| 소유권·수명·정리 | 저장소가 경기 레코드, 사용자 통계, 토너먼트 집계를 같은 메서드 동안 소유합니다. 도우미 함수 결과는 원본 객체 별칭입니다. |
+| 실패·되돌리기·재시도 | 검증 전에는 변경하지 않지만 일반 경기/통계 갱신 이후 토너먼트 변경에서 예외가 나면 PostgreSQL 트랜잭션과 같은 되돌리기는 없습니다. |
+| 보장하는 것 | 메모리 구현에서 토너먼트 검증과 변경이 동일 하위/집계 참조를 사용합니다. |
+| 보장하지 않는 것 | 영속 원자성, 실패 주입 되돌리기, 여러 영역에 걸친 프로세스 멱등성은 보장하지 않습니다. |
+| 후속 연결 | `dc0e60e6aa35`는 변환기를 검증하고, 경기 결과 확정 원자성 자체는 별도의 영속 저장 개발 스레드에서 다룹니다. |
 
 #### 비교 기준
 
-- parent 상태와 `9d64ea406b03`의 diff를 먼저 비교합니다.
-- 이 Thread의 직전 관련 SHA `f77e317de4c1`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
+- 부모 커밋의 상태와 `9d64ea406b03`의 변경 내용을 먼저 비교합니다.
+- 이 개발 스레드의 직전 관련 SHA `f77e317de4c1`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
 - 후속 관련 SHA `b34fdaa1e9c2`가 이 결정의 부족한 점을 보완하거나 검증하는지 확인합니다.
 
-### 5.10. `b34fdaa1e9c2` — refactor(db): memory chat과 tournament 진입 경계 정렬
+### 5.10. `b34fdaa1e9c2` — 리팩터링(db): 메모리 채팅과 토너먼트 진입 경계 정렬
 
 | 항목 | 고정 정보 |
 | --- | --- |
 | SHA | `b34fdaa1e9c2` |
-| Importance | B |
-| Tags | PERSISTENCE, TOURNAMENT |
-| Source role | memory chat/tournament object construction과 lookup을 explicit shared-domain shape에 맞춥니다. |
+| 중요도 | B |
+| 태그 | PERSISTENCE, TOURNAMENT |
+| 원문 역할 | 메모리 채팅/토너먼트 객체 생성과 조회를 명시적 공유 도메인 형식에 맞춥니다. |
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `createChatMessage`의 `ChatMessage` type annotation과 field별 object construction을 확인합니다.
-- `createTournament`가 `TournamentSummary`를 명시하고 entries/matches 초기값을 모두 제공하는지 확인합니다.
-- `joinTournament`의 `alreadyJoined`, capacity check, append, playerCount/status 전이를 추적합니다.
+- `createChatMessage`의 `ChatMessage` 타입 명시과 필드별 객체 생성을 확인합니다.
+- `createTournament`가 `TournamentSummary`를 명시하고 참가 기록/경기 초기값을 모두 제공하는지 확인합니다.
+- `joinTournament`의 `alreadyJoined`, 용량 확인, 배열 추가, `playerCount`/상태 전이를 추적합니다.
 - `getTournamentMatch`, `startTournamentMatch`가 `findTournamentMatch`를 재사용하는지 확인합니다.
-- 반복 join의 idempotence와 full tournament에서 기존 참가자의 재join 허용을 구분합니다.
+- 반복 참가의 멱등성과 정원 초과 토너먼트에서 기존 참가자의 재참가 허용을 구분합니다.
 
 #### 학습자 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 직전 관련 상태 | memory methods는 compact object literal과 여러 lookup 방식에 의존해 shared domain shape와 상태 전이가 숨겨졌습니다. |
-| 해결하려던 문제 | chat/tournament의 생성·참가·match 시작이 같은 typed boundary를 사용하고 중복 lookup을 줄일 필요가 있었습니다. |
-| 핵심 결정 | 반환 객체에 explicit type을 주고 join 조건을 분기하며 tournament match lookup을 공통 helper로 통일했습니다. |
-| 입력 → 상태 전이 → 출력 | chat input → sender 검증 → typed message 저장; tournament create → typed aggregate 저장; join → existing/full 검사 → entry append → count/status/bracket 갱신입니다. |
-| ownership / lifetime / cleanup | repository 배열이 message와 tournament aggregate를 소유하고 caller는 같은 객체 projection을 받습니다. helper가 child alias를 찾습니다. |
-| failure / rollback / retry | full 상태에서 신규 사용자는 실패하고 기존 사용자는 no-op 후 summary를 받습니다. method 중간 예외에 대한 rollback은 없습니다. |
-| 보장하는 것 | memory domain object의 필수 field와 join idempotence/capacity 분기가 명시적으로 드러납니다. |
-| 보장하지 않는 것 | 실제 concurrent request serialization, deep immutability, PostgreSQL transaction과 동일한 failure semantics는 보장하지 않습니다. |
-| 후속 연결 | Thread 5의 `efdb5c3a4932`가 entrant를 canonical user store에서 검증하고 concurrency test가 final-slot 결과를 확인합니다. |
+| 직전 관련 상태 | 메모리 메서드는 축약된 객체 표현과 여러 조회 방식에 의존해 공유 도메인 형식과 상태 전이가 숨겨졌습니다. |
+| 해결하려던 문제 | 채팅/토너먼트의 생성·참가·경기 시작이 같은 타입 검증 경계를 사용하고 중복 조회를 줄일 필요가 있었습니다. |
+| 핵심 결정 | 반환 객체에 명시적 타입을 주고 참가 조건을 분기하며 토너먼트 경기 조회를 공통 도우미 함수로 통일했습니다. |
+| 입력 → 상태 변경 → 출력 | 채팅 입력 → 발신자 검증 → 형식이 정해진 메시지 저장; 토너먼트 생성 → 타입이 지정된 집계 저장; 참가 → 기존/정원 초과 검사 → 항목 추가 → 개수/상태/대진 갱신입니다. |
+| 소유권·수명·정리 | 저장소 배열이 메시지와 토너먼트 집계를 소유하고 호출자는 같은 객체 변환 결과를 받습니다. 도우미 함수가 하위 별칭을 찾습니다. |
+| 실패·되돌리기·재시도 | 정원이 찬 상태에서 신규 사용자는 실패하고, 이미 참가한 사용자는 상태를 바꾸지 않은 채 기존 요약을 받습니다. 메서드 중간에 예외가 발생해도 되돌리지는 않습니다. |
+| 보장하는 것 | 메모리 도메인 객체의 필수 필드와 참가 멱등성/용량 분기가 명시적으로 드러납니다. |
+| 보장하지 않는 것 | 실제 동시 요청 직렬화, 깊은 불변성, PostgreSQL 트랜잭션과 동일한 실패 동작 의미는 보장하지 않습니다. |
+| 후속 연결 | 개발 스레드 5의 `efdb5c3a4932`가 참가자를 표준 사용자 저장소에서 검증하고 동시성 테스트가 마지막 슬롯 결과를 확인합니다. |
 
 #### 비교 기준
 
-- parent 상태와 `b34fdaa1e9c2`의 diff를 먼저 비교합니다.
-- 이 Thread의 직전 관련 SHA `9d64ea406b03`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
+- 부모 커밋의 상태와 `b34fdaa1e9c2`의 변경 내용을 먼저 비교합니다.
+- 이 개발 스레드의 직전 관련 SHA `9d64ea406b03`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
 - 후속 관련 SHA `dc0e60e6aa35`가 이 결정의 부족한 점을 보완하거나 검증하는지 확인합니다.
 
-### 5.11. `dc0e60e6aa35` — test(db): database row mapping contract 검증
+### 5.11. `dc0e60e6aa35` — 테스트(db): 데이터베이스 행 매핑 계약 검증
 
 | 항목 | 고정 정보 |
 | --- | --- |
 | SHA | `dc0e60e6aa35` |
-| Importance | B |
-| Tags | PERSISTENCE, TOURNAMENT, TEST |
-| Source role | pure row fixture에서 user·match·friendship·chat·tournament·admin mapper 출력을 고정합니다. |
+| 중요도 | B |
+| 태그 | PERSISTENCE, TOURNAMENT, TEST |
+| 원문 역할 | 순수 행 픽스처에서 사용자·경기·친구 관계·채팅·토너먼트·관리자 변환기 출력을 고정합니다. |
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `packages/db/src/rowMappers.test.ts`의 canonical `UserRow` fixture와 고정 UUID/Date를 확인합니다.
-- `toPublicUser`가 snake_case를 노출하지 않고 online/role/rating을 변환하는 assertion을 확인합니다.
-- joined match/friendship/chat row에서 viewer-relative result, opponent, sender, ISO timestamp를 확인합니다.
-- tournament record/summary의 entries·matches·winner와 admin actor/target relation assertion을 확인합니다.
-- live query나 PostgreSQL을 사용하지 않는 pure mapper unit test라는 범위를 명시합니다.
+- `packages/db/src/rowMappers.test.ts`의 표준 `UserRow` 픽스처와 고정 UUID/Date를 확인합니다.
+- `toPublicUser`가 snake_case를 노출하지 않고 온라인/역할/레이팅을 변환하는 검증을 확인합니다.
+- 참가한 경기/친구 관계/채팅 행에서 조회 사용자 기준 결과, 상대, 발신자, ISO 타임스탬프를 확인합니다.
+- 토너먼트 레코드/요약의 참가 기록·경기·승자와 관리자 수행자/대상 관계 검증을 확인합니다.
+- 실시간 쿼리나 PostgreSQL을 사용하지 않는 순수 변환기 단위 테스트라는 범위를 명시합니다.
 
 #### 학습자 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 직전 관련 상태 | 여러 refactor가 TypeScript contract를 정리했지만 runtime object shape가 바뀌지 않았다는 집중 regression evidence가 없었습니다. |
-| 해결하려던 문제 | explicit projection·relation object 변경 중 snake_case 누출, viewer-relative sign, nullable relation, timestamp conversion이 깨질 수 있었습니다. |
-| 핵심 결정 | 고정 row fixture로 모든 주요 mapper를 직접 호출하고 exact/partial object assertion을 추가했습니다. |
-| 입력 → 상태 전이 → 출력 | typed fixture row → mapper 호출 → public/internal DTO의 ID·이름·enum·numeric·ISO·relation field 비교입니다. |
-| ownership / lifetime / cleanup | test fixture가 입력 value를 소유하고 mapper는 새 output object를 반환합니다. DB/pool resource는 없습니다. |
-| failure / rollback / retry | malformed runtime row, SQL join 누락, query ordering은 재현하지 않습니다. pure function assertion 실패로 shape regression을 드러냅니다. |
-| 보장하는 것 | 현재 mapper가 relational naming을 공개 DTO에 누출하지 않고 relation data를 의도한 shape로 조립함을 증명합니다. |
-| 보장하지 않는 것 | 실제 query가 이 row shape를 반환한다는 것, transaction consistency, repository behavior 전체는 증명하지 않습니다. |
-| 후속 연결 | 후속 mapper/schema refactor가 shared API contract를 바꾸면 이 test가 명시적으로 실패합니다. |
+| 직전 관련 상태 | 여러 리팩터링이 TypeScript 계약을 정리했지만 실행 중 객체 형식이 바뀌지 않았다는 집중 회귀 테스트 근거가 없었습니다. |
+| 해결하려던 문제 | 명시적 변환 결과·관계 객체 변경 중 snake_case 누출, 조회 사용자 기준 sign, null 허용 관계, 타임스탬프 변환이 깨질 수 있었습니다. |
+| 핵심 결정 | 고정 행 픽스처로 모든 주요 변환기를 직접 호출하고 정확한/부분 반영 객체 검증을 추가했습니다. |
+| 입력 → 상태 변경 → 출력 | 타입이 지정된 픽스처 행 → 변환기 호출 → 공개/내부 DTO의 ID·이름·열거형·numeric·ISO·관계 필드 비교입니다. |
+| 소유권·수명·정리 | 테스트 픽스처가 입력 값을 소유하고 변환기는 새 출력 객체를 반환합니다. DB/풀 자원은 없습니다. |
+| 실패·되돌리기·재시도 | 잘못된 실행 시점 행, SQL 참가 누락, 쿼리 순서는 재현하지 않습니다. 순수 함수 검증 실패로 형식 회귀를 드러냅니다. |
+| 보장하는 것 | 현재 변환기가 관계형 이름 변환을 공개 DTO에 누출하지 않고 관계 데이터를 의도한 형식으로 조립함을 검증합니다. |
+| 보장하지 않는 것 | 실제 쿼리가 이 행 형식을 반환한다는 것, 트랜잭션 일관성, 저장소 동작 전체는 검증하지 않습니다. |
+| 후속 연결 | 후속 변환기/스키마 리팩터링이 공유 API 계약을 바꾸면 이 테스트가 명시적으로 실패합니다. |
 
-#### Test commit 학습 기록
+#### 테스트 커밋 학습 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 검증 대상 불변식 | DB row에서 shared domain DTO로 변환할 때 naming, nullable relation, viewer-relative 결과, numeric/time 변환이 유지돼야 합니다. |
-| 재현한 실패·경계 | joined row와 tournament relation object의 복합 shape, null winner/target, loss rating sign입니다. |
-| 시험 기법 | 고정 fixture를 쓰는 pure unit/contract test입니다. |
-| 통과하는 실제 코드 경로 | `toPublicUser`, `toMatchSummary`, `toFriendSummary`, `toChatMessage`, tournament/admin mapper functions입니다. |
-| 시험이 증명하는 것 | mapper 함수 자체의 output shape와 핵심 field 의미를 deterministic하게 증명합니다. |
-| 시험이 증명하지 않는 것 | SQL query, PostgreSQL driver conversion, relation snapshot consistency, repository transaction은 증명하지 않습니다. |
-| 막으려는 회귀 | schema alias·mapper refactor 중 snake_case 누출, 누락 relation, 잘못된 sign/ISO 변환 회귀를 막습니다. |
+| 검증 대상 불변식 | DB 행에서 공유 도메인 DTO로 변환할 때 이름 변환, null 허용 관계, 조회 사용자 기준 결과, 숫자·시간 변환이 유지돼야 합니다. |
+| 재현한 실패·경계 | 참가한 행과 토너먼트 관계 객체의 복합 형식, null 승자/대상, 패배 레이팅 sign입니다. |
+| 시험 기법 | 고정 픽스처를 쓰는 순수 단위/계약 테스트입니다. |
+| 통과하는 실제 코드 경로 | `toPublicUser`, `toMatchSummary`, `toFriendSummary`, `toChatMessage`, 토너먼트/관리자 변환기 functions입니다. |
+| 테스트가 검증하는 것 | 변환기 함수 자체의 출력 형식과 핵심 필드 의미를 결정적으로 검증합니다. |
+| 테스트가 검증하지 않는 것 | SQL 쿼리, PostgreSQL 드라이버 변환, 관계 스냅샷 일관성, 저장소 트랜잭션은 검증하지 않습니다. |
+| 막으려는 회귀 | 스키마 별칭·변환기 리팩터링 중 snake_case 누출, 누락 관계, 잘못된 sign/ISO 변환 회귀를 막습니다. |
 
 #### 비교 기준
 
-- parent 상태와 `dc0e60e6aa35`의 diff를 먼저 비교합니다.
-- 이 Thread의 직전 관련 SHA `b34fdaa1e9c2`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
+- 부모 커밋의 상태와 `dc0e60e6aa35`의 변경 내용을 먼저 비교합니다.
+- 이 개발 스레드의 직전 관련 SHA `b34fdaa1e9c2`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
 
-## 6. 불변식 변화
+## 6. 불변 조건 변화
 
 | 단계 | 관련 SHA | 조사 초점 | 학습자 기록 |
 | --- | --- | --- | --- |
-| Canonical storage vocabulary | `73b8ce0f0c26` → `3e3f21129369` | 중복 alias·command inheritance가 제거되는 범위를 확인합니다. | memory user는 canonical projection을, memory match는 explicit stored shape를 사용하고 DB enum/row aliases는 `schema.ts`가 소유합니다. type ownership이 한 방향으로 정렬됩니다. |
-| Explicit mapper view | `212650b2863d` | internal record와 public summary의 차이를 기록합니다. | tournament match internal record는 IDs·status 중심의 명시적 view를 반환하며 public relation user가 포함된 summary와 분리됩니다. |
-| Explicit query·relation assembly | `45144a3719bc` → `5c8659ea233b` | query shape와 related-data provenance를 추적합니다. | conditional SQL fragment가 완전한 두 query로 바뀌고 tournament row, entries, matches, winner가 mapper 호출 전 명시적으로 조립됩니다. 사후 mutation과 row masquerading이 제거됩니다. |
-| Memory aggregate lookup | `f77e317de4c1` → `b34fdaa1e9c2` | child와 owner aggregate의 alias·mutation 범위를 확인합니다. | `findTournamentMatch`가 원본 aggregate와 child를 함께 반환해 participant 검증·completion·start가 동일 객체를 대상으로 수행됩니다. process-local direct mutation이라는 한계는 남습니다. |
-| Mapper regression evidence | `dc0e60e6aa35` | 정적 type refactor 뒤 runtime object shape를 확인합니다. | 고정 row fixture가 user/match/social/tournament/admin mapper의 naming·nullable·relation·time 변환을 검증하지만 live SQL row 생성은 다루지 않습니다. |
+| 표준 저장소 이벤트 종류 | `73b8ce0f0c26` → `3e3f21129369` | 중복 별칭과 명령 상속이 제거되는 범위를 확인합니다. | 메모리 사용자는 표준 변환 결과를, 메모리 경기는 명시적인 저장 레코드를 사용하고 DB 열거형과 행 별칭은 `schema.ts`가 소유합니다. 타입 소유권이 한 방향으로 정렬됩니다. |
+| 명시적 변환기 조회 결과 | `212650b2863d` | 내부 레코드와 공개 요약의 차이를 기록합니다. | 토너먼트 경기 내부 레코드는 IDs·상태 중심의 명시적 조회 결과를 반환하며 공개 관계 사용자가 포함된 요약과 분리됩니다. |
+| 명시적 쿼리·관계 조립 | `45144a3719bc` → `5c8659ea233b` | 쿼리 형식과 연관 데이터의 출처를 추적합니다. | 조건부 SQL fragment가 완전한 두 쿼리로 바뀌고 토너먼트 행, 참가 기록, 경기, 승자가 변환기 호출 전 명시적으로 조립됩니다. 사후 변경과 행 위장이 제거됩니다. |
+| 메모리 집계 조회 | `f77e317de4c1` → `b34fdaa1e9c2` | 하위와 소유 주체 집계의 별칭·변경 범위를 확인합니다. | `findTournamentMatch`가 원본 집계와 하위를 함께 반환해 참가자 검증·완료·시작이 동일 객체를 대상으로 수행됩니다. 프로세스 내부 직접 변경이라는 한계는 남습니다. |
+| 변환기 회귀 테스트 근거 | `dc0e60e6aa35` | 정적 타입 리팩터링 뒤 실행 중 객체 형식을 확인합니다. | 고정 행 픽스처가 사용자/경기/소셜/토너먼트/관리자 변환기의 이름 변환·null 허용·관계·시간 변환을 검증하지만 실시간 SQL 행 생성은 다루지 않습니다. |
 
-## 7. Failure → Fix → Test 관계
+## 7. 실패 → 수정 → 테스트 관계
 
-| 관계 | Failure / 이전 가정 | Fix / 결정 | Test / 근거 | 학습자 기록 |
+| 관계 | 실패 / 이전 가정 | 수정 / 결정 | 테스트 / 근거 | 학습자 기록 |
 | --- | --- | --- | --- | --- |
-| 1 | memory-only alias와 write-command inheritance가 stored shape를 암시적으로 확장했습니다. | `73b8ce0f0c26`, `3d0ae79affd5`, `3e3f21129369`가 canonical projection과 explicit record를 도입했습니다. | `dc0e60e6aa35`가 downstream mapper output shape를 고정합니다. | compile-time source of truth를 줄여 schema 변화가 한 경로로 전파되게 합니다. test는 output을 보호하지만 storage/query parity 전체는 증명하지 않습니다. |
-| 2 | tournament mapper가 row spread와 반환 후 winner mutation으로 relation provenance를 숨겼습니다. | `ce41a880d6c6`, `5c8659ea233b`가 helper와 `{ entries, matches, winner }` 계약을 추가했습니다. | `dc0e60e6aa35`의 tournament/admin fixture assertion입니다. | repository가 관계 조회를, mapper가 순수 shape construction을 소유합니다. 여러 query의 snapshot consistency는 별도 문제로 남습니다. |
-| 3 | memory completion이 tournament와 child를 반복 lookup하고 optional chain/non-null assertion에 의존했습니다. | `f77e317de4c1` → `9d64ea406b03` → `b34fdaa1e9c2`가 aggregate+child helper를 공통 사용합니다. | 후속 memory repository·concurrency tests가 public behavior를 간접 보호합니다. | 동일 원본 object를 mutation한다는 사실이 명확해졌지만 transaction rollback이나 cross-request serialization을 추가한 것은 아닙니다. |
+| 1 | 메모리 저장소 전용 별칭과 쓰기 명령 상속이 저장 형식을 암묵적으로 확장했습니다. | `73b8ce0f0c26`, `3d0ae79affd5`, `3e3f21129369`가 표준 변환 결과와 명시적 레코드를 도입했습니다. | `dc0e60e6aa35`가 하위 소비 패키지 변환기의 출력 형식을 고정합니다. | 컴파일 시점의 기준 정의를 줄여 스키마 변경이 하나의 변환 경로로 전파되게 합니다. 테스트는 변환 결과를 보호하지만 저장소와 쿼리의 동작 일치 전체를 검증하지는 않습니다. |
+| 2 | 토너먼트 변환기가 행 스프레드 문법와 반환 후 승자 변경으로 관계 데이터의 출처를 숨겼습니다. | `ce41a880d6c6`, `5c8659ea233b`가 도우미 함수와 `{ entries, matches, winner }` 계약을 추가했습니다. | `dc0e60e6aa35`의 토너먼트/관리자 픽스처 검증입니다. | 저장소가 관계 조회를, 변환기가 순수 형식 생성을 소유합니다. 여러 쿼리의 스냅샷 일관성은 별도 문제로 남습니다. |
+| 3 | 메모리 완료가 토너먼트와 하위를 반복 조회하고 선택적 과정/null이 아닌 검증에 의존했습니다. | `f77e317de4c1` → `9d64ea406b03` → `b34fdaa1e9c2`가 집계+하위 도우미 함수를 공통 사용합니다. | 후속 메모리 저장소·동시성 테스트가 공개 동작을 간접 보호합니다. | 동일 원본 객체를 변경한다는 사실이 명확해졌지만 트랜잭션 되돌리기나 여러 영역에 걸친 요청 직렬화를 추가한 것은 아닙니다. |
 
-## 8. Ownership·상태·책임 변화
+## 8. 소유권·상태·담당 범위 변화
 
 | 구간 | 이전 소유자/표현 | 이후 소유자/표현 | 관련 SHA | 학습자 기록 |
 | --- | --- | --- | --- | --- |
-| User/match stored type | memory-only alias와 write command가 shape를 간접 소유했습니다. | `schema.ts` projection과 explicit `MemoryMatchRecord`가 stored field를 소유합니다. | `73b8ce0f0c26`, `3d0ae79affd5` | caller command lifetime과 repository stored-record lifetime이 type에서도 분리됩니다. |
-| DB type vocabulary | round/status/scope/action union이 여러 파일에 중복됐습니다. | canonical aliases와 row exports를 `schema.ts`가 소유합니다. | `3e3f21129369`, `212650b2863d` | mapper는 schema field에서 타입을 파생하지만 runtime row validation은 여전히 별도 책임입니다. |
-| Relation assembly | mapper 입력 masquerading과 사후 mutation에 분산됐습니다. | repository helper가 relation fetch, mapper가 완성 DTO construction을 소유합니다. | `ce41a880d6c6`, `5c8659ea233b` | raw row와 related data가 분리되어 caller-callee contract가 명시됩니다. |
-| Memory aggregate mutation | child와 owner를 별도 탐색했습니다. | helper가 `{tournament, match}` 원본 alias pair를 반환합니다. | `f77e317de4c1` → `b34fdaa1e9c2` | mutation target은 분명해졌지만 반환 projection의 deep immutability는 제공하지 않습니다. |
-| Regression owner | typecheck만 behavior-preserving 근거였습니다. | pure mapper test가 public/internal output shape를 소유합니다. | `dc0e60e6aa35` | DB 없이 빠르게 shape를 고정하고 live query는 integration suite 책임으로 남깁니다. |
+| 사용자/경기 저장된 타입 | 메모리 전용 별칭과 쓰기 명령이 형식을 간접 소유했습니다. | `schema.ts` 변환 결과와 명시적 `MemoryMatchRecord`가 저장된 필드를 소유합니다. | `73b8ce0f0c26`, `3d0ae79affd5` | 호출자 명령 수명과 저장소 저장된 레코드 수명이 타입에서도 분리됩니다. |
+| DB 타입 이벤트 종류 | 라운드/상태/범위/동작 유니언 타입이 여러 파일에 중복됐습니다. | 표준 타입 별칭와 행 exports를 `schema.ts`가 소유합니다. | `3e3f21129369`, `212650b2863d` | 변환기는 스키마 필드에서 타입을 파생하지만 실행 시점 행 검증은 여전히 별도 책임입니다. |
+| 관계 조립 | 변환기 입력 위장과 사후 변경에 분산됐습니다. | 저장소 도우미 함수가 관계 조회 요청, 변환기가 완성 DTO 생성을 소유합니다. | `ce41a880d6c6`, `5c8659ea233b` | 가공 전 행과 연관 데이터가 분리되어 호출자 피호출자 계약이 명시됩니다. |
+| 메모리 집계 변경 | 하위와 소유 주체를 별도 탐색했습니다. | 도우미 함수가 `{tournament, match}` 원본 별칭 쌍을 반환합니다. | `f77e317de4c1` → `b34fdaa1e9c2` | 변경 대상은 분명해졌지만 반환 변환 결과의 깊은 불변성은 제공하지 않습니다. |
+| 회귀 소유 주체 | 타입 검사만 동작을 유지하는 근거였습니다. | 순수 변환기 테스트가 공개/내부 출력 형식을 소유합니다. | `dc0e60e6aa35` | DB 없이 빠르게 형식을 고정하고 실시간 쿼리는 통합 테스트 모음 책임으로 남깁니다. |
 
-## 9. Thread 최종 상태
+## 9. 개발 스레드 최종 상태
 
-최종 상태에서 `schema.ts`가 DB-facing row와 enum vocabulary를 소유하고, memory repository는 command와 분리된 explicit stored record를 사용합니다. PostgreSQL repository는 query와 relation fetch를 명시적으로 수행한 뒤 related-data object를 mapper에 넘기며, memory repository는 aggregate와 child를 같은 lookup 결과로 다룹니다. mapper test는 변환 shape를 보호하지만 SQL 실행·transaction·concurrency를 증명하지 않습니다.
+최종 상태에서 `schema.ts`가 DB 코드에서 사용하는 행과 열거형 이벤트 종류를 소유하고, 메모리 저장소는 명령과 분리된 명시적 저장된 레코드를 사용합니다. PostgreSQL 저장소는 쿼리와 관계 조회 요청을 명시적으로 수행한 뒤 연관 데이터 객체를 변환기에 넘기며, 메모리 저장소는 집계와 하위를 같은 조회 결과로 다룹니다. 변환기 테스트는 변환 형식을 보호하지만 SQL 실행·트랜잭션·동시성을 검증하지 않습니다.
 
 ## 10. 최종 실행 흐름
 
-1. SQL schema에 대응하는 canonical row/enum type을 `schema.ts`에서 import합니다.
-2. PostgreSQL query는 완전한 query branch로 row를 읽고 relation helper가 left/right/winner 또는 entries/matches/winner를 조립합니다.
-3. mapper는 raw row와 explicit related-data object를 받아 새 shared DTO를 한 번에 구성합니다.
-4. memory backend는 canonical projection/explicit record를 저장하고 `findTournamentMatch`로 owner aggregate와 child를 함께 찾습니다.
-5. completion·start·join은 그 원본 object를 직접 변경하며 transaction-like rollback은 제공하지 않습니다.
-6. pure fixture test가 mapper의 naming, viewer-relative 값, nullable relation, ISO 변환을 고정합니다.
+1. SQL 스키마에 대응하는 표준 행/열거형 타입을 `schema.ts`에서 가져오기합니다.
+2. PostgreSQL 쿼리는 완전한 쿼리 브랜치로 행을 읽고 관계 도우미 함수가 왼쪽·오른쪽 참가자·승자 또는 참가 기록/경기/승자를 조립합니다.
+3. 변환기는 가공 전 행과 명시적 연관 데이터 객체를 받아 새 공유 DTO를 한 번에 구성합니다.
+4. 메모리 저장소는 표준 변환 결과/명시적 레코드를 저장하고 `findTournamentMatch`로 소유 주체 집계와 하위를 함께 찾습니다.
+5. 완료·시작·참가는 그 원본 객체를 직접 변경하며 트랜잭션과 같은 되돌리기는 제공하지 않습니다.
+6. 순수 픽스처 테스트가 변환기의 이름 변환, 조회 사용자 기준 값, null 허용 관계, ISO 변환을 고정합니다.
 
 ## 11. 학습 완료 확인
 
-- [x] command type과 stored record type의 lifetime 차이를 설명할 수 있습니다.
-- [x] canonical TypeScript row type이 DB CHECK나 runtime parser를 대신하지 않는다고 설명할 수 있습니다.
-- [x] relation fetch와 mapper construction의 책임 분리를 실제 helper·function 이름으로 설명할 수 있습니다.
-- [x] memory aggregate+child lookup의 장점과 rollback non-guarantee를 함께 말할 수 있습니다.
-- [x] C-level formatting commit을 제외한 이유를 독립적인 state·ownership 변화 부재로 설명할 수 있습니다.
-- [x] mapper unit test의 증거 범위를 live PostgreSQL query로 과장하지 않습니다.
+- [x] 명령 타입과 저장된 레코드 타입의 수명 차이를 설명할 수 있습니다.
+- [x] 표준 TypeScript 행 타입이 DB CHECK나 실행 중 파서를 대신하지 않는다고 설명할 수 있습니다.
+- [x] 관계 조회 요청과 변환기 생성의 책임 분리를 실제 도우미 함수·함수 이름으로 설명할 수 있습니다.
+- [x] 메모리 집계+하위 조회의 장점과 되돌리기 보장하지 않는 범위를 함께 말할 수 있습니다.
+- [x] 중요도 C인 서식 정리 커밋을 제외한 이유를 독립적인 상태·소유권 변화 부재로 설명할 수 있습니다.
+- [x] 변환기 단위 테스트의 증거 범위를 실시간 PostgreSQL 쿼리로 과장하지 않습니다.
 
 ## 12. 실행 및 증거 기록
 
 - 저장소 실행 시험: 실행하지 않았습니다.
-- 이유: 로컬 `git clone --branch web/ft_transcendence --single-branch`가 DNS 해석 실패(`Could not resolve host: github.com`)로 중단되어 의존성을 포함한 실행 가능한 checkout을 만들 수 없었습니다.
-- 코드 근거: 지정 브랜치의 source classification과 각 exact SHA의 GitHub commit diff를 확인했습니다. 따라서 본 문서의 시험 설명은 실제 시험 코드의 정적 검토 결과이며, 이 환경에서의 통과 결과가 아닙니다.
+- 이유: 로컬 `git clone --branch web/ft_transcendence --single-branch`가 DNS 해석 실패(`Could not resolve host: github.com`)로 중단되어 의존성을 포함한 실행 가능한 체크아웃을 만들 수 없었습니다.
+- 코드 근거: 지정 브랜치의 원문 분류와 각 정확한 SHA의 GitHub 커밋 변경 내용을 확인했습니다. 따라서 본 문서의 시험 설명은 실제 시험 코드의 정적 검토 결과이며, 이 환경에서의 통과 결과가 아닙니다.
 ===== END FILE: 03-row-mapping-and-backend-contract-alignment.md =====
 
 ===== BEGIN FILE: 04-canonical-friendship-and-concurrent-requests.md =====
-# Development Thread 04 — Canonical friendship과 동시 요청
+# 개발 스레드 04 — 표준 친구 관계와 동시 요청
 
 ## 1. 학습 목표
 
-- 초기 directional friendship row와 memory summary가 왜 하나의 관계 identity를 표현하지 못하는지 설명합니다.
-- legacy data normalization, self-check, canonical expression unique index의 적용 순서를 재구성합니다.
-- PostgreSQL single-statement upsert가 repeat/reverse request를 어떤 state transition으로 원자화하는지 추적합니다.
-- memory parity와 regression test의 실제 concurrency 증거 범위를 과장하지 않고 구분합니다.
+- 초기 방향이 있는 친구 관계 행과 메모리 요약이 왜 하나의 관계 신원을 표현하지 못하는지 설명합니다.
+- 기존 데이터 정규화, 자기 자신 여부 검사, 정규화한 식 고유 인덱스의 적용 순서를 재구성합니다.
+- PostgreSQL 단일 SQL 문 업서트가 반복/반대 방향 요청을 어떤 상태 전이로 원자화하는지 추적합니다.
+- 메모리 동작 일치와 회귀 테스트의 실제 동시성 증거 범위를 과장하지 않고 구분합니다.
 
 ## 2. 범위와 경계
 
-- 포함: friendship repository operation, canonical-pair migration, PostgreSQL atomic request, memory relationship record, cross-backend regression.
-- `cdaca35ccf7f`에서는 friendship assertion만 이 Thread의 핵심 근거로 사용합니다. 같은 commit의 tournament test는 Thread 5에서 다룹니다.
-- 제외: profile/friend HTTP authorization, guest capability, browser cache invalidation은 auth/web category 책임입니다.
-- 제외: friendship 삭제·차단·notification policy는 이 history에 구현되지 않았으므로 일반론으로 채우지 않습니다.
+- 포함: 친구 관계 저장소 연산, 표준 쌍 마이그레이션, PostgreSQL 원자적 요청, 메모리 relationship 레코드, 여러 영역에 걸친 백엔드 회귀.
+- `cdaca35ccf7f`에서는 친구 관계 검증만 이 개발 스레드의 핵심 근거로 사용합니다. 같은 커밋의 토너먼트 테스트는 개발 스레드 5에서 다룹니다.
+- 제외: 프로필/친구 HTTP 권한 검사, 비회원 권한, 브라우저 캐시 무효화는 인증/웹 카테고리 책임입니다.
+- 제외: 친구 관계 삭제·차단·알림 규칙은 이 이력에 구현되지 않았으므로 일반론으로 채우지 않습니다.
 
 ## 3. 핵심 질문
 
-- 왜 `(requester_id, addressee_id)` unique만으로 A↔B 관계 하나를 보장할 수 없습니까?
-- 기존 duplicate를 정리하지 않고 canonical unique index를 추가하면 어떤 migration failure가 생깁니까?
-- same-direction repeat와 reverse pending request는 각각 어떤 상태를 반환해야 합니까?
-- PostgreSQL upsert에서 existing row와 `excluded` row의 방향 비교는 무엇을 결정합니까?
-- memory parity test와 실제 concurrent database request 증거는 어떻게 다릅니까?
+- 왜 `(requester_id, addressee_id)` 고유만으로 A↔B 관계 하나를 보장할 수 없습니까?
+- 기존 중복을 정리하지 않고 표준 고유 인덱스를 추가하면 어떤 마이그레이션 실패가 생깁니까?
+- 같은 방향 반복과 반대 방향의 대기 중 요청은 각각 어떤 상태를 반환해야 합니까?
+- PostgreSQL 업서트에서 기존 행과 `excluded` 행의 방향 비교는 무엇을 결정합니까?
+- 메모리 동작 일치 테스트와 실제 동시 데이터베이스 요청 증거는 어떻게 다릅니까?
 
-## 4. Commit map
+## 4. 커밋 목록
 
-| 순서 | Commit | Subject | Importance | Tags |
+| 순서 | 커밋 | 제목 | 중요도 | 태그 |
 | ---: | --- | --- | :---: | --- |
 | 1 | `645e5a3c8e96` | `feat(db): 친구 관계 저장 구현` | B | PERSISTENCE |
 | 2 | `ffb0a8275a4f` | `feat(db): friendship canonical pair 제약 추가` | A | PERSISTENCE, RISK |
@@ -1743,303 +1743,303 @@
 | 4 | `34db79005f30` | `feat(db): memory friendship invariant 적용` | B | PERSISTENCE |
 | 5 | `cdaca35ccf7f` | `test(db): friendship와 tournament 경쟁 상태 검증` | A | PERSISTENCE, TOURNAMENT, RISK |
 
-## 5. Commit별 조사
+## 5. 커밋별 조사
 
 ### 5.1. `645e5a3c8e96` — feat(db): 친구 관계 저장 구현
 
 | 항목 | 고정 정보 |
 | --- | --- |
 | SHA | `645e5a3c8e96` |
-| Importance | B |
-| Tags | PERSISTENCE |
-| Source role | friendship list/request/accept를 처음 repository contract에 올리지만 관계 identity가 요청 방향과 backend 표현에 묶여 있습니다. |
+| 중요도 | B |
+| 태그 | PERSISTENCE |
+| 원문 역할 | 친구 관계 목록/요청/수락을 처음 저장소 계약에 올리지만 관계 신원이 요청 방향과 백엔드 표현에 묶여 있습니다. |
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `AppRepository`의 `listFriends`, `requestFriend`, `acceptFriend` signature를 확인합니다.
-- PostgreSQL `listFriends`의 `case when requester_id = userId then addressee_id else requester_id end` join을 추적합니다.
+- `AppRepository`의 `listFriends`, `requestFriend`, `acceptFriend` 서명을 확인합니다.
+- PostgreSQL `listFriends`의 `case when requester_id = userId then addressee_id else requester_id end` 참가를 추적합니다.
 - `requestFriend`의 초기 `on conflict (requester_id, addressee_id)`가 같은 방향만 충돌로 보는지 확인합니다.
-- `acceptFriend`의 `where id = friendshipId and addressee_id = userId` authorization 조건을 확인합니다.
-- memory 구현이 `FriendSummary[]`만 저장하고 requester/addressee identity를 보존하지 않는 차이를 기록합니다.
-- 자기 자신 요청과 reverse duplicate를 DB 제약/코드가 아직 막지 않는다는 점을 확인합니다.
+- `acceptFriend`의 `where id = friendshipId and addressee_id = userId` 권한 검사 조건을 확인합니다.
+- 메모리 구현이 `FriendSummary[]`만 저장하고 요청자와 수신자 신원을 보존하지 않는 차이를 기록합니다.
+- 자기 자신 요청과 반대 방향 중복을 DB 제약/코드가 아직 막지 않는다는 점을 확인합니다.
 
 #### 학습자 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 직전 관련 상태 | friendship table은 초기 schema에 있었지만 repository에서 관계를 생성·조회·수락할 operation이 없었습니다. |
-| 해결하려던 문제 | social route가 raw SQL을 직접 다루지 않고 양쪽 사용자가 같은 관계를 조회할 수 있어야 했습니다. |
-| 핵심 결정 | 공통 interface에 list/request/accept를 추가하고 PostgreSQL은 directional row, memory는 caller-facing `FriendSummary` 배열로 구현했습니다. |
-| 입력 → 상태 전이 → 출력 | requester+상대 handle → user lookup → pending row/summary 생성; list → requester/addressee 어느 쪽인지 계산해 상대 user join; accept → addressee가 지정 row status를 accepted로 변경합니다. |
-| ownership / lifetime / cleanup | PostgreSQL row는 두 user ID와 방향을 소유하지만 memory 배열은 requester/addressee를 버리고 public summary만 소유합니다. 이 차이가 이후 parity 문제의 원인입니다. |
-| failure / rollback / retry | 동일 방향 재요청은 upsert되지만 역방향 요청은 별도 row가 될 수 있습니다. self-friend도 허용될 수 있고 memory accept는 actor 권한을 충분히 확인하지 않습니다. |
-| 보장하는 것 | 기본 friendship lifecycle과 addressee-only accept 조건을 PostgreSQL path에 제공합니다. |
-| 보장하지 않는 것 | unordered pair당 한 관계, self-friend 금지, reverse pending 자동 수락, backend parity, concurrent request atomicity는 보장하지 않습니다. |
-| 후속 연결 | `ffb0a8275a4f`가 기존 데이터를 정규화하고 canonical pair를 DB invariant로 만들며 `34db79005f30`이 memory 표현을 같은 의미로 바꿉니다. |
+| 직전 관련 상태 | 친구 관계 테이블은 초기 스키마에 있었지만 저장소에서 관계를 생성·조회·수락할 연산이 없었습니다. |
+| 해결하려던 문제 | 소셜 라우트가 직접 작성한 SQL을 직접 다루지 않고 양쪽 사용자가 같은 관계를 조회할 수 있어야 했습니다. |
+| 핵심 결정 | 공통 인터페이스에 목록/요청/수락을 추가하고 PostgreSQL은 방향이 있는 행, 메모리는 호출자 관점의 `FriendSummary` 배열로 구현했습니다. |
+| 입력 → 상태 변경 → 출력 | 요청자+상대 핸들 → 사용자 조회 → 대기 중 행/요약 생성; 목록 → 요청자와 수신자 중 어느 쪽인지 계산해 상대 사용자를 포함; 수락 → 수신자가 지정 행 상태를 허용된 상태로 변경합니다. |
+| 소유권·수명·정리 | PostgreSQL 행은 두 사용자 ID와 방향을 소유하지만 메모리 배열은 요청자와 수신자를 버리고 공개 요약만 소유합니다. 이 차이가 이후 동작 일치 문제의 원인입니다. |
+| 실패·되돌리기·재시도 | 동일 방향 재요청은 업서트되지만 역방향 요청은 별도 행이 될 수 있습니다. 자기 자신과의 친구 관계도 허용될 수 있고 메모리 수락은 수행자 권한을 충분히 확인하지 않습니다. |
+| 보장하는 것 | 기본 친구 관계 수명주기와 수신자만 수행할 수 있는 수락 조건을 PostgreSQL 경로에 제공합니다. |
+| 보장하지 않는 것 | 순서와 무관한 쌍당 한 관계, 자기 자신과의 친구 관계 금지, 반대 방향의 대기 중 요청 자동 수락, 백엔드 동작 일치, 동시 요청의 원자성은 보장하지 않습니다. |
+| 후속 연결 | `ffb0a8275a4f`가 기존 데이터를 정규화하고 정규화한 사용자 쌍을 DB 불변 조건으로 만들며 `34db79005f30`이 메모리 표현을 같은 의미로 바꿉니다. |
 
 #### 비교 기준
 
-- parent 상태와 `645e5a3c8e96`의 diff를 먼저 비교합니다.
+- 부모 커밋의 상태와 `645e5a3c8e96`의 변경 내용을 먼저 비교합니다.
 - 후속 관련 SHA `ffb0a8275a4f`가 이 결정의 부족한 점을 보완하거나 검증하는지 확인합니다.
 
-### 5.2. `ffb0a8275a4f` — feat(db): friendship canonical pair 제약 추가
+### 5.2. `ffb0a8275a4f` — feat(db): 친구 관계 정규화한 사용자 쌍 제약 추가
 
 | 항목 | 고정 정보 |
 | --- | --- |
 | SHA | `ffb0a8275a4f` |
-| Importance | A |
-| Tags | PERSISTENCE, RISK |
-| Source role | 기존 directional friendship 데이터를 정리한 뒤 unordered user pair당 하나의 row만 허용하는 migration을 추가합니다. |
+| 중요도 | A |
+| 태그 | PERSISTENCE, RISK |
+| 원문 역할 | 기존 방향이 있는 친구 관계 데이터를 정리한 뒤 순서와 무관한 사용자 쌍당 하나의 행만 허용하는 마이그레이션을 추가합니다. |
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `packages/db/migrations/004_friendship_tournament_invariants.sql`에서 self row 삭제가 가장 먼저 수행되는지 확인합니다.
-- reverse pair가 있고 한쪽이 pending일 때 accepted로 승격하고 `greatest(updated_at)`를 사용하는 update를 추적합니다.
-- `row_number() over (partition by least(...), greatest(...))`의 survivor 우선순위 accepted → created_at → id를 확인합니다.
-- 기존 directional unique constraint drop과 `friendships_distinct_users_check` 추가를 확인합니다.
-- `friendships_canonical_pair_unique` expression index가 requester/addressee 순서를 무시하는지 확인합니다.
-- 데이터 정규화와 constraint 설치가 한 migration apply 안에서 수행되는 이유를 설명합니다.
+- `packages/db/migrations/004_friendship_tournament_invariants.sql`에서 자기 자신 행 삭제가 가장 먼저 수행되는지 확인합니다.
+- 반대 방향 쌍이 있고 한쪽이 대기 중일 때 허용된 상태로 승격하고 `greatest(updated_at)`를 사용하는 갱신을 추적합니다.
+- `row_number() over (partition by least(...), greatest(...))`의 보존할 행 우선순위 허용된 → created_at → id를 확인합니다.
+- 기존 방향별 고유 제약 폐기와 `friendships_distinct_users_check` 추가를 확인합니다.
+- `friendships_canonical_pair_unique` 식 인덱스가 요청자와 수신자 순서를 무시하는지 확인합니다.
+- 데이터 정규화와 제약 설치가 한 마이그레이션 apply 안에서 수행되는 이유를 설명합니다.
 
 #### 학습자 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 직전 관련 상태 | 초기 schema의 unique는 `(requester_id, addressee_id)` 순서를 보존해 A→B와 B→A가 서로 다른 관계로 저장됐고 self row도 막지 못했습니다. |
-| 해결하려던 문제 | 새 constraint만 바로 추가하면 기존 reverse duplicate와 self row 때문에 migration이 실패하거나 어느 상태를 보존할지 불명확했습니다. |
-| 핵심 결정 | migration이 self row를 삭제하고 reverse pending을 accepted로 합친 뒤 canonical pair별 survivor를 deterministic하게 남기고 expression unique/check를 설치합니다. |
-| 입력 → 상태 전이 → 출력 | 기존 rows → self 삭제 → reverse 상태 reconciliation → canonical pair partition/rank → 중복 삭제 → directional unique 제거 → distinct-user CHECK와 unordered expression UNIQUE 설치입니다. |
-| ownership / lifetime / cleanup | migration이 legacy data normalization과 새 DB invariant 설치를 소유합니다. PostgreSQL index가 이후 모든 writer의 unordered identity를 소유합니다. |
-| failure / rollback / retry | 삭제되는 중복 row의 외부 참조가 있었다면 영향이 생길 수 있으나 초기 schema에는 해당 friendship ID를 참조하는 별도 FK가 없습니다. migration 실패 시 새 constraint는 적용되지 않습니다. |
-| 보장하는 것 | 자기 관계를 DB에서 거부하고 requester/addressee 순서와 무관하게 한 pair당 한 row만 저장되도록 합니다. |
-| 보장하지 않는 것 | 요청이 어떤 상태 전이를 해야 하는지, concurrent writer가 어떤 row를 반환하는지, memory backend parity는 아직 보장하지 않습니다. |
-| 후속 연결 | `77c555aba9a0`이 expression index를 conflict target으로 사용하는 atomic upsert를 추가하고 `cdaca35ccf7f`가 실제 DB row 하나를 검증합니다. |
+| 직전 관련 상태 | 초기 스키마의 고유는 `(requester_id, addressee_id)` 순서를 보존해 A→B와 B→A가 서로 다른 관계로 저장됐고 자기 자신 행도 막지 못했습니다. |
+| 해결하려던 문제 | 새 제약만 바로 추가하면 기존 반대 방향 중복과 자기 자신 행 때문에 마이그레이션이 실패하거나 어느 상태를 보존할지 불명확했습니다. |
+| 핵심 결정 | 마이그레이션이 자기 자신 행을 삭제하고 반대 방향의 대기 중 요청을 허용된 상태로 합친 뒤 정규화한 사용자 쌍별 보존할 행을 결정적으로 남기고 식 고유/확인을 설치합니다. |
+| 입력 → 상태 변경 → 출력 | 기존 행 → 자기 자신 삭제 → 반대 방향 요청 상태 병합 → 정규화한 사용자 쌍 분할/순위 → 중복 삭제 → 방향별 고유 제약 제거 → 서로 다른 사용자 CHECK와 순서와 무관한 정규화 식 UNIQUE 설치입니다. |
+| 소유권·수명·정리 | 마이그레이션이 기존 데이터 정규화와 새 DB 불변 조건 설치를 소유합니다. PostgreSQL 인덱스가 이후 모든 작성 기능의 순서와 무관한 신원을 소유합니다. |
+| 실패·되돌리기·재시도 | 삭제되는 중복 행의 외부 참조가 있었다면 영향이 생길 수 있으나 초기 스키마에는 해당 친구 관계 ID를 참조하는 별도 FK가 없습니다. 마이그레이션 실패 시 새 제약은 적용되지 않습니다. |
+| 보장하는 것 | 자기 관계를 DB에서 거부하고 요청자와 수신자 순서와 무관하게 한 쌍당 한 행만 저장되도록 합니다. |
+| 보장하지 않는 것 | 요청이 어떤 상태 전이를 해야 하는지, 동시 작성 기능이 어떤 행을 반환하는지, 메모리 저장소 동작 일치는 아직 보장하지 않습니다. |
+| 후속 연결 | `77c555aba9a0`이 식 인덱스를 충돌 대상으로 사용하는 원자적 업서트를 추가하고 `cdaca35ccf7f`가 실제 DB 행 하나를 검증합니다. |
 
 #### 최소 코드 근거
 
-- `004_friendship_tournament_invariants.sql` — `least(requester_id, addressee_id), greatest(...)` expression unique index가 방향과 무관한 관계 identity를 DB에 강제합니다.
+- `004_friendship_tournament_invariants.sql` — `least(requester_id, addressee_id), greatest(...)` 식 고유 인덱스가 방향과 무관한 관계 신원을 DB에 강제합니다.
 
 #### 비교 기준
 
-- parent 상태와 `ffb0a8275a4f`의 diff를 먼저 비교합니다.
-- 이 Thread의 직전 관련 SHA `645e5a3c8e96`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
+- 부모 커밋의 상태와 `ffb0a8275a4f`의 변경 내용을 먼저 비교합니다.
+- 이 개발 스레드의 직전 관련 SHA `645e5a3c8e96`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
 - 후속 관련 SHA `77c555aba9a0`가 이 결정의 부족한 점을 보완하거나 검증하는지 확인합니다.
 
-### 5.3. `77c555aba9a0` — feat(db): PostgreSQL friendship 요청을 원자화
+### 5.3. `77c555aba9a0` — feat(db): PostgreSQL 친구 관계 요청을 원자화
 
 | 항목 | 고정 정보 |
 | --- | --- |
 | SHA | `77c555aba9a0` |
-| Importance | A |
-| Tags | PERSISTENCE, RISK |
-| Source role | canonical expression index를 conflict target으로 사용해 repeat/reverse friendship request를 한 SQL statement에서 처리합니다. |
+| 중요도 | A |
+| 태그 | PERSISTENCE, RISK |
+| 원문 역할 | 정규화한 식 인덱스를 충돌 대상으로 사용해 반복·반대 방향 친구 관계 요청을 한 SQL 문에서 처리합니다. |
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `PostgresRepository.requestFriend`의 self-check와 상대 user lookup 순서를 확인합니다.
+- `PostgresRepository.requestFriend`의 자기 자신 여부 검사와 상대 사용자 조회 순서를 확인합니다.
 - `insert ... on conflict ((least(...)), (greatest(...))) do update` 전체 SQL을 추적합니다.
-- 기존 pending row의 방향이 `excluded`와 반대일 때만 status를 accepted로 바꾸는 `case`를 확인합니다.
-- 동일 방향 재요청에서는 status와 `updated_at`을 유지해 idempotent readback이 되는지 확인합니다.
-- `returning id, status`가 conflict insert/update 모두에서 같은 relationship identity를 반환하는지 확인합니다.
-- `acceptFriend`가 authorized update 뒤 `returning requester_id`로 상대를 조회하며 0-row update가 `firstRow` failure가 되는지 확인합니다.
+- 기존 대기 중 행의 방향이 `excluded`와 반대일 때만 상태를 허용된 상태로 바꾸는 `case`를 확인합니다.
+- 동일 방향 재요청에서는 상태와 `updated_at`을 유지해 멱등 readback이 되는지 확인합니다.
+- `returning id, status`가 conflict 삽입/갱신 모두에서 같은 relationship 신원을 반환하는지 확인합니다.
+- `acceptFriend`가 authorized 갱신 뒤 `returning requester_id`로 상대를 조회하며 0행 갱신이 `firstRow` 실패가 되는지 확인합니다.
 
 #### 학습자 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 직전 관련 상태 | DB constraint는 unordered duplicate를 막았지만 기존 request code는 directional conflict target을 사용해 새 index와 맞지 않았고 reverse request의 상태 전이를 여러 query로 처리할 수 있었습니다. |
-| 해결하려던 문제 | repeat·reverse 요청이 동시에 와도 한 row ID를 유지하고 reverse pending은 accepted로 바뀌어야 했습니다. |
-| 핵심 결정 | canonical expression conflict target과 conditional `DO UPDATE`를 사용해 insert, same-direction no-op, reverse-pending accept를 한 statement로 표현했습니다. |
-| 입력 → 상태 전이 → 출력 | 상대 handle lookup/self-check → pending insert 시도 → unordered pair conflict 시 existing/excluded 방향 비교 → reverse pending이면 accepted+timestamp 갱신, 아니면 기존 상태 유지 → id/status 반환입니다. |
-| ownership / lifetime / cleanup | PostgreSQL unique index가 pair identity를, single SQL statement가 state transition atomicity를 소유합니다. caller는 반환 summary만 받습니다. |
-| failure / rollback / retry | 없는 상대·self는 statement 전에 실패합니다. accept에서 addressee 조건에 맞는 row가 없으면 `RETURNING`이 비어 `firstRow`가 실패합니다. transaction 밖 상대 user 조회 사이에 account state가 바뀔 수는 있습니다. |
-| 보장하는 것 | 같은 방향 반복은 같은 pending row, 반대 방향 pending request는 같은 row의 accepted 상태를 반환하며 duplicate row를 만들지 않습니다. |
-| 보장하지 않는 것 | memory backend, 분산 DB 간 global uniqueness, friendship 삭제/차단 policy, serializable isolation 전체는 보장하지 않습니다. |
-| 후속 연결 | `34db79005f30`이 동일 state model을 memory에 적용하고 `cdaca35ccf7f`가 양방향·반복 요청과 direct SQL row count를 검증합니다. |
+| 직전 관련 상태 | DB 제약은 순서와 무관한 중복을 막았지만 기존 요청 코드는 방향이 있는 충돌 대상을 사용해 새 인덱스와 맞지 않았고 반대 방향 요청의 상태 전이를 여러 쿼리로 처리할 수 있었습니다. |
+| 해결하려던 문제 | 반복·반대 방향 요청이 동시에 와도 한 행 ID를 유지하고 반대 방향의 대기 중 요청은 허용된 상태로 바뀌어야 했습니다. |
+| 핵심 결정 | 정규화한 식을 충돌 대상으로 사용하고 조건부 `DO UPDATE`를 적용해 신규 요청 삽입, 같은 방향의 반복 요청 무시, 반대 방향의 대기 중 요청 수락을 한 SQL 문으로 표현했습니다. |
+| 입력 → 상태 변경 → 출력 | 상대 핸들 조회/자기 자신 여부 검사 → 대기 중 삽입 시도 → 순서와 무관한 쌍 conflict 시 기존/excluded 방향 비교 → 반대 방향의 대기 중 요청이면 허용된+타임스탬프 갱신, 아니면 기존 상태 유지 → id/상태 반환입니다. |
+| 소유권·수명·정리 | PostgreSQL 고유 인덱스가 쌍 신원을, 단일 SQL 문이 상태 전이 원자성을 소유합니다. 호출자는 반환 요약만 받습니다. |
+| 실패·되돌리기·재시도 | 없는 상대·자기 자신은 SQL 문 전에 실패합니다. 수락 처리에서 수신자 조건에 맞는 행이 없으면 `RETURNING`이 비어 `firstRow`가 실패합니다. 트랜잭션 밖 상대 사용자 조회 사이에 계정 상태가 바뀔 수는 있습니다. |
+| 보장하는 것 | 같은 방향 반복은 같은 대기 중 행, 반대 방향 대기 중 요청은 같은 행의 허용된 상태를 반환하며 중복 행을 만들지 않습니다. |
+| 보장하지 않는 것 | 메모리 저장소, 분산 DB 간 전역 고유성, 친구 관계 삭제/차단 규칙, serializable 격리 전체는 보장하지 않습니다. |
+| 후속 연결 | `34db79005f30`이 동일 상태 모델을 메모리에 적용하고 `cdaca35ccf7f`가 양방향·반복 요청과 직접 SQL 행 개수를 검증합니다. |
 
 #### 최소 코드 근거
 
-- `PostgresRepository.requestFriend` — canonical pair expression을 conflict target으로 사용하고 reverse pending일 때만 `status = 'accepted'`로 바꾸는 단일 upsert입니다.
+- `PostgresRepository.requestFriend` — 정규화한 사용자 쌍 식을 충돌 대상으로 사용하고 반대 방향의 대기 중 요청일 때만 `status = 'accepted'`로 바꾸는 단일 업서트입니다.
 
 #### 비교 기준
 
-- parent 상태와 `77c555aba9a0`의 diff를 먼저 비교합니다.
-- 이 Thread의 직전 관련 SHA `ffb0a8275a4f`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
+- 부모 커밋의 상태와 `77c555aba9a0`의 변경 내용을 먼저 비교합니다.
+- 이 개발 스레드의 직전 관련 SHA `ffb0a8275a4f`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
 - 후속 관련 SHA `34db79005f30`가 이 결정의 부족한 점을 보완하거나 검증하는지 확인합니다.
 
-### 5.4. `34db79005f30` — feat(db): memory friendship invariant 적용
+### 5.4. `34db79005f30` — feat(db): 메모리 친구 관계 불변 조건 적용
 
 | 항목 | 고정 정보 |
 | --- | --- |
 | SHA | `34db79005f30` |
-| Importance | B |
-| Tags | PERSISTENCE |
-| Source role | memory 저장 표현을 caller-specific summary에서 requester/addressee ID를 보존하는 canonical relationship record로 바꿉니다. |
+| 중요도 | B |
+| 태그 | PERSISTENCE |
+| 원문 역할 | 메모리 저장 표현을 호출자 특정 요약에서 요청자와 수신자 ID를 보존하는 표준 relationship 레코드로 바꿉니다. |
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `MemoryFriendship { id, requesterId, addresseeId, status }`와 기존 `FriendSummary[]`를 비교합니다.
-- `listFriends(userId)`가 actor와 관련된 row만 filter하고 other user ID를 계산하는지 확인합니다.
-- `requestFriend`의 self-check, unordered existing lookup, reverse pending→accepted, same-direction repeat 반환을 추적합니다.
+- `listFriends(userId)`가 수행자와 관련된 행만 필터하고 상대 사용자 ID를 계산하는지 확인합니다.
+- `requestFriend`의 자기 자신 여부 검사, 순서와 무관한 기존 조회, 반대 방향의 대기 중 요청→허용된, 같은 방향 반복 반환을 추적합니다.
 - `acceptFriend`가 `friend.addresseeId === userId`를 요구하는지 확인합니다.
-- memory user 원본 lookup 실패와 public projection 생성 경로를 확인합니다.
-- 동시 Promise가 실제 thread lock이 아니라 JS call-stack 수준의 순차 mutation이라는 한계를 기록합니다.
+- 메모리 사용자 원본 조회 실패와 공개 사용자 정보 생성 경로를 확인합니다.
+- 동시 Promise 처리가 실제 스레드 잠금이 아니라 JavaScript 호출 스택 안에서 상태를 순차적으로 바꾼다는 한계를 기록합니다.
 
 #### 학습자 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 직전 관련 상태 | memory backend는 friendship의 두 주체를 저장하지 않아 사용자별 목록·accept authorization·reverse request 의미를 PostgreSQL처럼 재현할 수 없었습니다. |
-| 해결하려던 문제 | 공통 interface 뒤에서 동일 테스트를 돌리려면 memory도 관계 identity와 방향을 원본 상태로 보존해야 했습니다. |
-| 핵심 결정 | `MemoryFriendship` record를 도입하고 list/request/accept가 requester/addressee ID에서 상대와 권한을 계산하도록 했습니다. |
-| 입력 → 상태 전이 → 출력 | requester+상대 → self 검사 → unordered existing 검색 → same 방향이면 기존 반환, reverse pending이면 status accepted, 없으면 새 pending record 저장; list/accept는 actor ID로 projection합니다. |
-| ownership / lifetime / cleanup | memory repository가 relation record와 user Map을 process lifetime 동안 소유하고 반환 시 other user를 새 public projection으로 만듭니다. |
-| failure / rollback / retry | 없는 user/unauthorized accept는 실패합니다. JS memory method에는 DB row lock·transaction rollback이 없으며 여러 process 사이의 상태는 공유되지 않습니다. |
-| 보장하는 것 | self-reject, unordered one-record identity, repeated request idempotence, reverse pending accept와 addressee-only acceptance를 memory semantics에 반영합니다. |
-| 보장하지 않는 것 | durability, cross-process concurrency, DB constraint 수준의 강제, mutation failure rollback은 보장하지 않습니다. |
-| 후속 연결 | `cdaca35ccf7f`가 같은 scenario를 memory와 PostgreSQL에 적용해 observable parity를 검증합니다. |
+| 직전 관련 상태 | 메모리 저장소는 친구 관계의 두 주체를 저장하지 않아 사용자별 목록·수락 권한 검사·반대 방향 요청 의미를 PostgreSQL처럼 재현할 수 없었습니다. |
+| 해결하려던 문제 | 공통 인터페이스 뒤에서 동일 테스트를 돌리려면 메모리도 관계 신원과 방향을 원본 상태로 보존해야 했습니다. |
+| 핵심 결정 | `MemoryFriendship` 레코드를 도입하고 목록/요청/수락이 요청자와 수신자 ID에서 상대와 권한을 계산하도록 했습니다. |
+| 입력 → 상태 변경 → 출력 | 요청자+상대 → 자기 자신 검사 → 순서와 무관한 기존 검색 → 동일한 방향이면 기존 반환, 반대 방향의 대기 중 요청이면 상태 허용된, 없으면 새 대기 중 레코드 저장; 목록/수락은 수행자 ID로 변환합니다. |
+| 소유권·수명·정리 | 메모리 저장소가 관계 레코드와 사용자 Map을 프로세스 수명 동안 소유하고 반환 시 상대 사용자를 새 공개 사용자 정보로 만듭니다. |
+| 실패·되돌리기·재시도 | 없는 사용자/인증되지 않은 상태 수락은 실패합니다. JS 메모리 메서드에는 DB 행 잠금·트랜잭션 되돌리기가 없으며 여러 프로세스 사이의 상태는 공유되지 않습니다. |
+| 보장하는 것 | 자기 자신과의 관계 거부, 순서와 무관한 단일 레코드 신원, 반복 요청 멱등성, 반대 방향의 대기 중 요청 수락과 수신자만 수행할 수 있는 허용을 메모리 동작 의미에 반영합니다. |
+| 보장하지 않는 것 | 영속성, 여러 영역에 걸친 프로세스 동시성, DB 제약 수준의 강제, 변경 실패 되돌리기는 보장하지 않습니다. |
+| 후속 연결 | `cdaca35ccf7f`가 같은 시나리오를 메모리와 PostgreSQL에 적용해 관찰 가능한 동작 일치를 검증합니다. |
 
 #### 비교 기준
 
-- parent 상태와 `34db79005f30`의 diff를 먼저 비교합니다.
-- 이 Thread의 직전 관련 SHA `77c555aba9a0`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
+- 부모 커밋의 상태와 `34db79005f30`의 변경 내용을 먼저 비교합니다.
+- 이 개발 스레드의 직전 관련 SHA `77c555aba9a0`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
 - 후속 관련 SHA `cdaca35ccf7f`가 이 결정의 부족한 점을 보완하거나 검증하는지 확인합니다.
 
-### 5.5. `cdaca35ccf7f` — test(db): friendship와 tournament 경쟁 상태 검증
+### 5.5. `cdaca35ccf7f` — 테스트(db): 친구 관계와 토너먼트 경쟁 상태 검증
 
 | 항목 | 고정 정보 |
 | --- | --- |
 | SHA | `cdaca35ccf7f` |
-| Importance | A |
-| Tags | PERSISTENCE, TOURNAMENT, RISK |
-| Source role | 같은 test commit의 friendship 부분에서 self/repeat/reverse 요청과 canonical DB row를 memory·PostgreSQL 양쪽에 검증합니다. |
+| 중요도 | A |
+| 태그 | PERSISTENCE, TOURNAMENT, RISK |
+| 원문 역할 | 같은 테스트 커밋의 친구 관계 부분에서 자기 자신/반복/반대 방향 요청과 정규화한 DB 행을 메모리·PostgreSQL 양쪽에 검증합니다. |
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `packages/db/src/index.test.ts`의 `keeps one friendship for both request directions`를 확인합니다.
-- self request rejection, same-direction repeat equality, reverse request의 same ID/accepted 상태를 순서대로 추적합니다.
-- 양쪽 `listFriends`가 동일 relationship ID와 상대 user를 반환하는 assertion을 확인합니다.
-- `packages/db/src/postgres.integration.test.ts`의 PostgreSQL 동일 scenario와 direct `select requester_id, addressee_id, status from friendships`를 확인합니다.
-- self row direct insert가 `friendships_distinct_users_check` constraint로 거부되는 assertion을 확인합니다.
-- tournament final-slot test는 Thread 5에서 별도 해석하고 이 Thread에서는 friendship evidence만 사용합니다.
+- 자기 자신 요청 실패, 같은 방향 반복 호출의 동일성, 반대 방향 요청의 동일한 ID/허용된 상태를 순서대로 추적합니다.
+- 양쪽 `listFriends`가 동일 relationship ID와 상대 사용자를 반환하는 검증을 확인합니다.
+- `packages/db/src/postgres.integration.test.ts`의 PostgreSQL 동일 시나리오와 직접 `select requester_id, addressee_id, status from friendships`를 확인합니다.
+- 자기 자신 행 직접 삽입이 `friendships_distinct_users_check` 제약으로 거부되는 검증을 확인합니다.
+- 토너먼트 마지막 슬롯 테스트는 개발 스레드 5에서 별도 해석하고 이 개발 스레드에서는 친구 관계 근거만 사용합니다.
 
 #### 학습자 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 직전 관련 상태 | canonical migration, PostgreSQL upsert, memory record가 구현됐지만 같은 observable scenario에서 한 relationship identity를 유지하는지 regression evidence가 필요했습니다. |
-| 해결하려던 문제 | self request, 같은 방향 반복, 반대 방향 요청은 초기 구현이 각각 self row·duplicate/no-op inconsistency를 만들던 경계입니다. |
-| 핵심 결정 | memory unit scenario와 Testcontainers PostgreSQL scenario에 동일한 요청 순서를 적용하고 public 결과와 raw DB row를 함께 assertion했습니다. |
-| 입력 → 상태 전이 → 출력 | 두 사용자 생성 → self reject → A→B pending → A→B repeat → B→A reverse accepted → 양쪽 list 확인 → PostgreSQL raw table 한 row와 CHECK rejection 확인입니다. |
-| ownership / lifetime / cleanup | 각 test repository가 relationship state를 소유하고 integration harness가 schema/pool cleanup을 소유합니다. |
-| failure / rollback / retry | memory는 실제 병렬 요청이 아니라 Promise가 순차적으로 실행되는 process-local behavior입니다. PostgreSQL test도 reverse request는 순차이며 friendship에 대한 simultaneous race를 직접 발사하지는 않습니다. |
-| 보장하는 것 | self 금지, repeat idempotence, reverse transition, 양쪽 projection, raw canonical one-row invariant가 두 backend에서 유지됨을 코드상 검증합니다. |
-| 보장하지 않는 것 | 분산 transaction, 높은 동시성 throughput, deadlock, 삭제/차단 policy, 이 세션에서의 실제 test 통과는 증명하지 않습니다. |
-| 후속 연결 | 후속 refactor가 pair ordering이나 actor projection을 바꾸면 public/DB assertion이 회귀를 탐지합니다. |
+| 직전 관련 상태 | 표준 마이그레이션, PostgreSQL 업서트, 메모리 레코드가 구현됐지만 같은 관찰 가능한 시나리오에서 한 relationship 신원을 유지하는지 회귀 테스트 근거가 필요했습니다. |
+| 해결하려던 문제 | 자기 자신에게 보내는 요청, 같은 방향의 반복 요청, 반대 방향 요청은 초기 구현에서 자기 참조 행, 중복 또는 백엔드별 동작 불일치를 만들던 경우였습니다. |
+| 핵심 결정 | 메모리 단위 시나리오와 Testcontainers PostgreSQL 시나리오에 동일한 요청 순서를 적용하고 공개 결과와 실제 DB 행을 함께 검증했습니다. |
+| 입력 → 상태 변경 → 출력 | 두 사용자 생성 → 자기 자신 거부 → A→B 대기 중 → A→B 반복 → B→A 역순 처리 허용된 → 양쪽 목록 확인 → PostgreSQL 실제 테이블 한 행과 CHECK 실패 확인입니다. |
+| 소유권·수명·정리 | 각 테스트 저장소가 relationship 상태를 소유하고 통합 테스트 실행 틀이 스키마/풀 정리를 소유합니다. |
+| 실패·되돌리기·재시도 | 메모리는 실제 병렬 요청이 아니라 Promise가 순차적으로 실행되는 프로세스 내부 동작입니다. PostgreSQL 테스트도 반대 방향 요청은 순차이며 친구 관계에 대한 simultaneous 경쟁 상태를 직접 발사하지는 않습니다. |
+| 보장하는 것 | 자기 자신 금지, 반복 멱등성, 반대 방향 요청 상태 전이, 양쪽 변환 결과, 정규화된 실제 단일 행 불변 조건이 두 백엔드에서 유지됨을 코드상 검증합니다. |
+| 보장하지 않는 것 | 분산 트랜잭션, 높은 동시성 처리량, 교착 상태, 삭제/차단 규칙, 이 세션에서의 실제 테스트 통과는 검증하지 않습니다. |
+| 후속 연결 | 후속 리팩터링이 쌍 순서나 수행자 변환 결과를 바꾸면 공개/DB 검증이 회귀를 탐지합니다. |
 
 #### 최소 코드 근거
 
-- `postgres.integration.test.ts` — public repository 결과 뒤 raw `friendships` table이 정확히 한 accepted row인지 확인하고 self insert의 constraint 이름까지 검사합니다.
+- `postgres.integration.test.ts` — 공개 저장소 결과 뒤 원시 `friendships` 테이블이 정확히 한 허용된 행인지 확인하고 자기 자신 삽입의 제약 이름까지 검사합니다.
 
-#### Test commit 학습 기록
+#### 테스트 커밋 학습 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 검증 대상 불변식 | unordered user pair당 하나의 friendship ID가 있고 self relation은 없으며 reverse pending request는 accepted로 전이해야 합니다. |
-| 재현한 실패·경계 | self request, same-direction repeat, reverse-direction request, 양쪽 list view, direct self-row insert입니다. |
-| 시험 기법 | memory behavioral test와 real-PostgreSQL integration/constraint test를 결합합니다. |
-| 통과하는 실제 코드 경로 | `requestFriend`, `listFriends`, `acceptFriend` 관련 memory/PG code, canonical unique index와 distinct-users CHECK입니다. |
-| 시험이 증명하는 것 | 정해진 request sequence에서 두 backend가 같은 public 의미를 보이고 PostgreSQL table에는 한 row만 남는다는 것을 증명합니다. |
-| 시험이 증명하지 않는 것 | friendship 요청을 진짜 동시에 발사하는 race, multi-process memory, production load와 본 세션의 실행 결과는 증명하지 않습니다. |
-| 막으려는 회귀 | directional duplicate, self row, reverse pending이 별도 관계로 남는 회귀를 막습니다. |
+| 검증 대상 불변식 | 순서와 무관한 사용자 쌍당 하나의 친구 관계 ID가 있고 자기 자신과의 관계는 없으며 반대 방향의 대기 중 요청은 허용된 상태로 전이해야 합니다. |
+| 재현한 실패·경계 | 자기 자신 요청, 같은 방향 반복, 반대 방향 요청, 양쪽 목록 조회 결과, 직접 자기 자신을 가리키는 행 삽입입니다. |
+| 시험 기법 | 메모리 동작 테스트와 실제 PostgreSQL 통합/제약 테스트를 결합합니다. |
+| 통과하는 실제 코드 경로 | `requestFriend`, `listFriends`, `acceptFriend` 관련 메모리/PG 코드, 표준 고유 인덱스와 서로 다른 사용자 CHECK입니다. |
+| 테스트가 검증하는 것 | 정해진 요청 순번에서 두 백엔드가 같은 공개 의미를 보이고 PostgreSQL 테이블에는 한 행만 남는다는 것을 검증합니다. |
+| 테스트가 검증하지 않는 것 | 친구 관계 요청을 진짜 동시에 발사하는 경쟁 상태, 여러 프로세스 메모리, 운영 부하와 본 세션의 실행 결과는 검증하지 않습니다. |
+| 막으려는 회귀 | 방향이 있는 중복, 자기 자신 행, 반대 방향의 대기 중 요청이 별도 관계로 남는 회귀를 막습니다. |
 
 #### 비교 기준
 
-- parent 상태와 `cdaca35ccf7f`의 diff를 먼저 비교합니다.
-- 이 Thread의 직전 관련 SHA `34db79005f30`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
+- 부모 커밋의 상태와 `cdaca35ccf7f`의 변경 내용을 먼저 비교합니다.
+- 이 개발 스레드의 직전 관련 SHA `34db79005f30`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
 
-## 6. 불변식 변화
+## 6. 불변 조건 변화
 
 | 단계 | 관련 SHA | 조사 초점 | 학습자 기록 |
 | --- | --- | --- | --- |
-| Directional initial model | `645e5a3c8e96` | 초기 DB·memory 관계 identity와 authorization 차이를 기록합니다. | PostgreSQL은 방향을 가진 두 ID를 저장하지만 reverse duplicate를 허용하고, memory는 actor identity 자체를 버린 `FriendSummary[]`라 양쪽 projection과 accept 권한을 정확히 표현하지 못했습니다. |
-| Canonical DB identity | `ffb0a8275a4f` | legacy cleanup과 새 constraint 설치 순서를 설명합니다. | self rows 제거, reverse 상태 reconciliation, deterministic survivor 선택 뒤 directional unique를 canonical expression index와 distinct-user CHECK로 교체합니다. |
-| Atomic PostgreSQL transition | `77c555aba9a0` | insert/repeat/reverse 상태 전이를 한 statement에서 추적합니다. | unordered expression conflict가 한 row를 선택하고 reverse pending인 경우만 accepted로 갱신합니다. 같은 방향 repeat는 ID·status·timestamp를 유지합니다. |
-| Memory semantic parity | `34db79005f30` | 관계 원본과 caller projection을 분리합니다. | memory는 requester/addressee ID를 원본 record로 저장하고 actor별 other-user projection을 매번 구성합니다. DB lock과 durability는 제공하지 않습니다. |
-| Regression evidence | `cdaca35ccf7f` | public result와 raw row constraint를 연결합니다. | 두 backend에서 self/repeat/reverse/list scenario를 검증하고 PostgreSQL table의 한 accepted row 및 CHECK 위반을 직접 확인합니다. simultaneous friendship race는 직접 실행하지 않습니다. |
+| Directional 초기 모델 | `645e5a3c8e96` | 초기 DB·메모리 관계 신원과 권한 검사 차이를 기록합니다. | PostgreSQL은 방향을 가진 두 ID를 저장하지만 반대 방향 중복을 허용하고, 메모리는 수행자 신원 자체를 버린 `FriendSummary[]`라 양쪽 변환 결과와 수락 권한을 정확히 표현하지 못했습니다. |
+| 표준 DB 신원 | `ffb0a8275a4f` | 기존 정리와 새 제약 설치 순서를 설명합니다. | 자기 자신 행 제거, 반대 방향 요청 상태 병합, 결정적 보존할 행 선택 뒤 방향별 고유 제약을 정규화한 식 인덱스와 서로 다른 사용자 CHECK로 교체합니다. |
+| 원자적 PostgreSQL 상태 전이 | `77c555aba9a0` | 삽입/반복·반대 방향 상태 전이를 한 SQL 문에서 추적합니다. | 순서와 무관한 정규화 식 conflict가 한 행을 선택하고 반대 방향의 대기 중 요청인 경우만 허용된 상태로 갱신합니다. 같은 방향 반복은 ID·상태·타임스탬프를 유지합니다. |
+| 메모리 의미상 동작 일치 | `34db79005f30` | 관계 원본과 호출자 변환 결과를 분리합니다. | 메모리는 요청자와 수신자 ID를 원본 레코드로 저장하고 수행자별 상대 사용자 조회 결과를 매번 구성합니다. DB 잠금과 영속성은 제공하지 않습니다. |
+| 회귀 테스트 근거 | `cdaca35ccf7f` | 공개 결과와 가공 전 행 제약을 연결합니다. | 두 백엔드에서 자기 자신/반복·반대 방향/목록 시나리오를 검증하고 PostgreSQL 테이블의 한 허용된 행 및 CHECK 위반을 직접 확인합니다. 친구 관계 동시 요청 경쟁 상태는 직접 실행하지 않습니다. |
 
-## 7. Failure → Fix → Test 관계
+## 7. 실패 → 수정 → 테스트 관계
 
-| 관계 | Failure / 이전 가정 | Fix / 결정 | Test / 근거 | 학습자 기록 |
+| 관계 | 실패 / 이전 가정 | 수정 / 결정 | 테스트 / 근거 | 학습자 기록 |
 | --- | --- | --- | --- | --- |
-| 1 | A→B와 B→A가 별도 row가 되고 self row도 허용될 수 있었습니다. | `ffb0a8275a4f`가 legacy data를 정리하고 canonical unique/CHECK를 설치했습니다. | `cdaca35ccf7f`가 raw table one-row와 self constraint rejection을 확인합니다. | DB가 unordered identity의 최종 enforcement owner가 됩니다. migration은 기존 데이터를 deterministic하게 수렴시킨 뒤 제약을 설치합니다. |
-| 2 | 초기 request code는 directional conflict만 처리하고 reverse pending의 의미를 여러 operation에 남겼습니다. | `77c555aba9a0`이 canonical conflict target과 conditional update로 한 statement에 넣었습니다. | `cdaca35ccf7f`가 same ID, pending→accepted, 양쪽 projection을 확인합니다. | unique index와 upsert가 같은 canonical expression을 사용해야 conflict detection과 state transition이 일치합니다. |
-| 3 | memory `FriendSummary[]`는 requester/addressee를 잃어 PostgreSQL 의미를 재현하지 못했습니다. | `34db79005f30`이 `MemoryFriendship`을 도입했습니다. | `cdaca35ccf7f`의 memory scenario입니다. | 원본 relation state와 caller-specific read model을 분리해 parity를 복구하지만 process-local mutation이라는 한계는 남습니다. |
+| 1 | A→B와 B→A가 별도 행이 되고 자기 자신 행도 허용될 수 있었습니다. | `ffb0a8275a4f`가 기존 데이터를 정리하고 표준 고유/CHECK를 설치했습니다. | `cdaca35ccf7f`가 실제 테이블 단일 행과 자기 자신 제약 실패를 확인합니다. | DB가 순서와 무관한 신원의 최종 강제 검사 소유 주체가 됩니다. 마이그레이션은 기존 데이터를 결정적으로 수렴시킨 뒤 제약을 설치합니다. |
+| 2 | 초기 요청 코드는 방향이 있는 conflict만 처리하고 반대 방향의 대기 중 요청의 의미를 여러 연산에 남겼습니다. | `77c555aba9a0`이 표준 충돌 대상과 조건부 갱신으로 한 SQL 문에 넣었습니다. | `cdaca35ccf7f`가 동일한 ID, 대기 중→허용된, 양쪽 변환 결과를 확인합니다. | 고유 인덱스와 업서트가 같은 정규화한 식을 사용해야 충돌 감지와 상태 전이가 일치합니다. |
+| 3 | 메모리 `FriendSummary[]`는 요청자와 수신자를 잃어 PostgreSQL 의미를 재현하지 못했습니다. | `34db79005f30`이 `MemoryFriendship`을 도입했습니다. | `cdaca35ccf7f`의 메모리 시나리오입니다. | 원본 관계 상태와 호출자 특정 조회 모델을 분리해 동작 일치를 복구하지만 프로세스 내부 변경이라는 한계는 남습니다. |
 
-## 8. Ownership·상태·책임 변화
+## 8. 소유권·상태·담당 범위 변화
 
 | 구간 | 이전 소유자/표현 | 이후 소유자/표현 | 관련 SHA | 학습자 기록 |
 | --- | --- | --- | --- | --- |
-| 관계 identity | 요청 방향 또는 caller-facing summary가 identity를 사실상 정의했습니다. | DB canonical expression과 memory unordered lookup이 pair identity를 정의합니다. | `ffb0a8275a4f`, `34db79005f30` | ID 하나가 양쪽 사용자에게 공유되고 projection만 actor에 따라 달라집니다. |
-| 상태 전이 | insert·accept·list 조합에 분산됐습니다. | PostgreSQL request upsert가 reverse pending transition을 원자적으로 소유합니다. | `77c555aba9a0` | DB statement completion 시점에 row ID/status가 결정되며 caller는 `RETURNING` 결과를 소비합니다. |
-| Authorization | memory accept가 actor identity를 보존하지 못했습니다. | 두 backend가 addressee ID를 확인합니다. | `645e5a3c8e96`, `34db79005f30` | PostgreSQL은 `WHERE addressee_id=userId`, memory는 record field 비교로 unauthorized accept를 실패시킵니다. |
-| Legacy data | reverse/self rows가 이미 존재할 수 있었습니다. | migration이 cleanup·survivor selection·constraint install을 소유합니다. | `ffb0a8275a4f` | application writer를 바꾸기 전에 저장된 데이터가 새 invariant를 만족하도록 정규화됩니다. |
+| 관계 신원 | 요청 방향 또는 호출자 관점의 요약이 신원을 사실상 정의했습니다. | DB 정규화한 식과 메모리 순서와 무관한 조회가 쌍 신원을 정의합니다. | `ffb0a8275a4f`, `34db79005f30` | ID 하나가 양쪽 사용자에게 공유되고 변환 결과만 수행자에 따라 달라집니다. |
+| 상태 전이 | 삽입·수락·목록 조합에 분산됐습니다. | PostgreSQL 요청 업서트가 반대 방향의 대기 중 요청 상태 전이를 원자적으로 소유합니다. | `77c555aba9a0` | DB SQL 문 완료 시점에 행 ID/상태가 결정되며 호출자는 `RETURNING` 결과를 소비합니다. |
+| 권한 검사 | 메모리 수락이 수행자 신원을 보존하지 못했습니다. | 두 백엔드가 수신자 ID를 확인합니다. | `645e5a3c8e96`, `34db79005f30` | PostgreSQL은 `WHERE addressee_id=userId`, 메모리는 레코드 필드 비교로 인증되지 않은 상태 수락을 실패시킵니다. |
+| 기존 데이터 | 반대 방향·자기 자신 행이 이미 존재할 수 있었습니다. | 마이그레이션이 정리·보존할 행 선택·제약 설치를 소유합니다. | `ffb0a8275a4f` | 애플리케이션 작성 기능을 바꾸기 전에 저장된 데이터가 새 불변 조건을 만족하도록 정규화됩니다. |
 
-## 9. Thread 최종 상태
+## 9. 개발 스레드 최종 상태
 
-최종 상태에서 friendship은 requester/addressee 순서와 무관한 사용자 pair 하나로 식별됩니다. PostgreSQL은 distinct-user CHECK와 canonical expression unique index를 최종 enforcement owner로 사용하고, request는 한 upsert에서 반복·역방향 상태를 결정합니다. memory는 같은 관계 record와 actor-specific projection을 구현합니다. 시험은 주요 sequence와 raw constraint를 검증하지만 simultaneous friendship request 부하나 multi-process memory consistency까지 증명하지 않습니다.
+최종 상태에서 친구 관계는 요청자와 수신자 순서와 무관한 사용자 쌍 하나로 식별됩니다. PostgreSQL은 서로 다른 사용자 CHECK와 정규화한 식 고유 인덱스를 최종 강제 검사 소유 주체로 사용하고, 요청은 한 업서트에서 반복·역방향 상태를 결정합니다. 메모리는 같은 관계 레코드와 수행자별 변환 결과를 구현합니다. 시험은 주요 순번과 실제 DB 제약을 검증하지만 동시에 들어온 친구 관계 요청 부하나 여러 프로세스 메모리 일관성까지 검증하지 않습니다.
 
 ## 10. 최종 실행 흐름
 
-1. caller가 requester ID와 상대 handle로 `requestFriend`를 호출하고 repository가 상대 user를 찾은 뒤 self 요청을 거부합니다.
-2. PostgreSQL은 pending insert를 시도하고 canonical pair conflict 시 existing/excluded 방향을 비교합니다.
-3. same-direction repeat는 기존 row를 유지하고 reverse pending은 같은 row ID에서 accepted로 전이합니다.
-4. memory는 unordered pair를 배열에서 찾아 같은 상태 규칙을 process-local object에 적용합니다.
-5. `listFriends(userId)`는 관계 원본에서 other user ID를 계산해 actor별 `FriendSummary`를 만듭니다.
-6. regression test는 public 결과, 양쪽 view, raw PostgreSQL row와 self CHECK를 서로 연결합니다.
+1. 호출자가 요청자 ID와 상대 핸들로 `requestFriend`를 호출하고 저장소가 상대 사용자를 찾은 뒤 자기 자신 요청을 거부합니다.
+2. PostgreSQL은 대기 중 삽입을 시도하고 정규화한 사용자 쌍 conflict 시 기존/excluded 방향을 비교합니다.
+3. 같은 방향 반복은 기존 행을 유지하고 반대 방향의 대기 중 요청은 같은 행 ID에서 허용된 상태로 전이합니다.
+4. 메모리는 순서와 무관한 쌍을 배열에서 찾아 같은 상태 규칙을 프로세스 내부 객체에 적용합니다.
+5. `listFriends(userId)`는 관계 원본에서 상대 사용자 ID를 계산해 수행자별 `FriendSummary`를 만듭니다.
+6. 회귀 테스트는 공개 결과, 양쪽 조회 결과, 실제 PostgreSQL 행과 자기 자신 CHECK를 서로 연결합니다.
 
 ## 11. 학습 완료 확인
 
-- [x] directional unique와 canonical unordered unique의 차이를 SQL expression으로 설명할 수 있습니다.
-- [x] migration의 self 삭제·상태 reconciliation·survivor rank·constraint 설치 순서를 설명할 수 있습니다.
-- [x] same-direction repeat와 reverse pending upsert의 `CASE` 조건을 설명할 수 있습니다.
-- [x] memory relationship 원본과 caller-specific projection을 구분할 수 있습니다.
-- [x] `cdaca35ccf7f`가 friendship에 대해 실제 simultaneous race를 증명하지 않는다는 점을 명시할 수 있습니다.
+- [x] 방향별 고유 제약과 표준 순서와 무관한 고유의 차이를 SQL 식으로 설명할 수 있습니다.
+- [x] 마이그레이션의 자기 자신 삭제·상태 병합·보존할 행 순위·제약 설치 순서를 설명할 수 있습니다.
+- [x] 같은 방향 반복과 반대 방향의 대기 중 요청 업서트의 `CASE` 조건을 설명할 수 있습니다.
+- [x] 메모리 친구 관계 원본과 호출자별 외부 표현를 구분할 수 있습니다.
+- [x] `cdaca35ccf7f`가 친구 관계에 대해 실제 simultaneous 경쟁 상태를 검증하지 않는다는 점을 명시할 수 있습니다.
 
 ## 12. 실행 및 증거 기록
 
 - 저장소 실행 시험: 실행하지 않았습니다.
-- 이유: 로컬 `git clone --branch web/ft_transcendence --single-branch`가 DNS 해석 실패(`Could not resolve host: github.com`)로 중단되어 의존성을 포함한 실행 가능한 checkout을 만들 수 없었습니다.
-- 코드 근거: 지정 브랜치의 source classification과 각 exact SHA의 GitHub commit diff를 확인했습니다. 따라서 본 문서의 시험 설명은 실제 시험 코드의 정적 검토 결과이며, 이 환경에서의 통과 결과가 아닙니다.
+- 이유: 로컬 `git clone --branch web/ft_transcendence --single-branch`가 DNS 해석 실패(`Could not resolve host: github.com`)로 중단되어 의존성을 포함한 실행 가능한 체크아웃을 만들 수 없었습니다.
+- 코드 근거: 지정 브랜치의 원문 분류와 각 정확한 SHA의 GitHub 커밋 변경 내용을 확인했습니다. 따라서 본 문서의 시험 설명은 실제 시험 코드의 정적 검토 결과이며, 이 환경에서의 통과 결과가 아닙니다.
 ===== END FILE: 04-canonical-friendship-and-concurrent-requests.md =====
 
 ===== BEGIN FILE: 05-tournament-admission-and-capacity-concurrency.md =====
-# Development Thread 05 — Tournament admission과 capacity concurrency
+# 개발 스레드 05 — 토너먼트 참가와 정원 동시성
 
 ## 1. 학습 목표
 
-- 초기 count→seed→insert 구현의 race와 memory capacity 차이를 exact SHA에서 확인합니다.
-- legacy seed normalization과 unique constraint가 capacity control과 다른 불변식임을 구분합니다.
-- tournament row lock을 기준으로 admission·status·bracket를 한 transaction에 묶는 이유를 설명합니다.
-- memory canonical user source 정렬과 PostgreSQL concurrency evidence의 범위 차이를 구분합니다.
+- 초기 개수→시드→삽입 구현의 경쟁 상태와 메모리 용량 차이를 정확한 SHA에서 확인합니다.
+- 기존 시드 정규화와 고유 제약이 용량 제어와 다른 불변식임을 구분합니다.
+- 토너먼트 행 잠금을 기준으로 참가·상태·대진을 한 트랜잭션에 묶는 이유를 설명합니다.
+- 메모리 표준 사용자 소스 정렬과 PostgreSQL 동시성 근거의 범위 차이를 구분합니다.
 
 ## 2. 범위와 경계
 
-- 포함: tournament CRUD의 최초 admission, seed unique migration, PostgreSQL locked transaction, memory entrant source, final-slot concurrency regression.
-- `cdaca35ccf7f`에서는 tournament capacity assertion만 이 Thread의 핵심 근거로 사용합니다. friendship assertion은 Thread 4에서 다룹니다.
-- 제외: tournament match start/completion, final creation, match finalization과 rollback은 독립 tournament/realtime persistence story입니다.
-- 제외: UI join mutation, browser cache, HTTP authorization은 web/auth category에서 다룹니다.
+- 포함: 토너먼트 CRUD의 최초 참가, 시드 고유 마이그레이션, PostgreSQL 잠금 기반 트랜잭션, 메모리 참가자 조회, 마지막 슬롯 동시성 회귀.
+- `cdaca35ccf7f`에서는 토너먼트 정원 검증만 이 개발 스레드의 핵심 근거로 사용합니다. 친구 관계 검증은 개발 스레드 4에서 다룹니다.
+- 제외: 토너먼트 경기 시작/완료, 최종 생성, 경기 결과 확정과 되돌리기는 독립 토너먼트/실시간 영속 저장 과정입니다.
+- 제외: UI 참가 변경, 브라우저 캐시, HTTP 권한 검사는 웹/인증 카테고리에서 다룹니다.
 
 ## 3. 핵심 질문
 
-- 왜 unique seed constraint만으로 exactly one final-slot admission을 보장할 수 없습니까?
-- row lock은 어떤 row를 잠그며 왜 같은 tournament의 모든 admission이 그 row를 먼저 읽어야 합니까?
-- existing-entry check를 capacity check보다 먼저 두면 rejoin semantics가 어떻게 달라집니까?
-- entry insert·status running·semifinal bracket가 같은 transaction이어야 하는 이유는 무엇입니까?
-- commit 후 aggregate 재조회 실패는 durable admission과 API 응답 사이에 어떤 non-guarantee를 남깁니까?
+- 왜 고유 시드 제약만으로 정확히 하나 마지막 슬롯 참가를 보장할 수 없습니까?
+- 행 잠금은 어떤 행을 잠그며 왜 같은 토너먼트의 모든 참가가 그 행을 먼저 읽어야 합니까?
+- 기존 항목 확인을 용량 확인보다 먼저 두면 재참가 동작 의미가 어떻게 달라집니까?
+- 항목 삽입·상태 실행 중·준결승 대진이 같은 트랜잭션이어야 하는 이유는 무엇입니까?
+- 커밋 후 집계 재조회 실패는 영속 참가와 API 응답 사이에 어떤 보장하지 않는 범위를 남깁니까?
 
-## 4. Commit map
+## 4. 커밋 목록
 
-| 순서 | Commit | Subject | Importance | Tags |
+| 순서 | 커밋 | 제목 | 중요도 | 태그 |
 | ---: | --- | --- | :---: | --- |
 | 1 | `9b1dabcc4bb4` | `feat(db): 토너먼트 참가 저장 구현` | B | PERSISTENCE, TOURNAMENT |
 | 2 | `3aa5958bb967` | `feat(db): tournament seed 제약 추가` | B | PERSISTENCE, TOURNAMENT |
@@ -2047,322 +2047,322 @@
 | 4 | `efdb5c3a4932` | `feat(db): memory tournament 참가자 원본 검증` | B | PERSISTENCE, TOURNAMENT |
 | 5 | `cdaca35ccf7f` | `test(db): friendship와 tournament 경쟁 상태 검증` | A | PERSISTENCE, TOURNAMENT, RISK |
 
-## 5. Commit별 조사
+## 5. 커밋별 조사
 
 ### 5.1. `9b1dabcc4bb4` — feat(db): 토너먼트 참가 저장 구현
 
 | 항목 | 고정 정보 |
 | --- | --- |
 | SHA | `9b1dabcc4bb4` |
-| Importance | B |
-| Tags | PERSISTENCE, TOURNAMENT |
-| Source role | tournament list/create/join을 처음 repository에 추가하지만 count→seed→insert가 분리되어 capacity와 concurrency를 보호하지 못합니다. |
+| 중요도 | B |
+| 태그 | PERSISTENCE, TOURNAMENT |
+| 원문 역할 | 토너먼트 목록/생성/참가를 처음 저장소에 추가하지만 개수→시드→삽입이 분리되어 용량과 동시성을 보호하지 못합니다. |
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `AppRepository`의 `listTournaments`, `createTournament`, `joinTournament` signature를 확인합니다.
-- PostgreSQL `createTournament`가 tournament insert 뒤 creator를 `joinTournament`로 참가시키는 순서를 추적합니다.
+- `AppRepository`의 `listTournaments`, `createTournament`, `joinTournament` 서명을 확인합니다.
+- PostgreSQL `createTournament`가 토너먼트 삽입 뒤 생성자를 `joinTournament`로 참가시키는 순서를 추적합니다.
 - 초기 `joinTournament`의 `select count(*)`, `seed = count + 1`, `insert ... on conflict (tournament_id, user_id) do nothing`을 확인합니다.
-- count와 insert 사이에 row lock/transaction이 없고 capacity check도 없는 parent 상태를 명시합니다.
-- `tournamentFromRow`가 entries를 seed 순으로 읽고 mapper에 넘기는지 확인합니다.
-- memory 구현이 중복 user를 막지만 capacity 이상에서도 status만 running으로 바꾸고 신규 참가를 차단하지 않는지 확인합니다.
+- 개수와 삽입 사이에 행 잠금/트랜잭션이 없고 용량 확인도 없는 부모 커밋의 상태를 명시합니다.
+- `tournamentFromRow`가 참가 기록을 시드 순으로 읽고 변환기에 넘기는지 확인합니다.
+- 메모리 구현이 중복 사용자를 막지만 용량 이상에서도 상태만 실행 중으로 바꾸고 신규 참가를 차단하지 않는지 확인합니다.
 
 #### 학습자 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 직전 관련 상태 | tournament table과 row type은 있었지만 repository를 통해 대회를 생성·조회·참가할 operation이 없었습니다. |
-| 해결하려던 문제 | HTTP/tournament UI가 raw SQL을 모르고 creator 자동 참가와 참가자 목록을 일관된 aggregate로 받아야 했습니다. |
-| 핵심 결정 | 공통 interface에 list/create/join을 추가하고 PostgreSQL은 count 기반 seed insert, memory는 entries 배열 append로 구현했습니다. |
-| 입력 → 상태 전이 → 출력 | create → tournament row 저장 → creator join; join → 현재 entry count 조회 → seed=count+1 계산 → unique user insert → aggregate 재조회입니다. |
-| ownership / lifetime / cleanup | PostgreSQL이 rows를, memory tournament object가 entries 배열을 소유합니다. create caller가 별도 transaction 없이 두 operation을 연속 호출합니다. |
-| failure / rollback / retry | 동시 join이 같은 count/seed를 볼 수 있고 capacity를 초과할 수 있습니다. create 후 creator join이 실패하면 빈 tournament row가 남을 수 있습니다. memory도 신규 참가를 capacity에서 거부하지 않습니다. |
-| 보장하는 것 | tournament aggregate의 기본 CRUD와 동일 user 재join의 row-level no-duplicate를 제공합니다. |
-| 보장하지 않는 것 | seed uniqueness, capacity enforcement, final slot serialization, status/bracket atomicity, backend 의미 parity는 보장하지 않습니다. |
-| 후속 연결 | `3aa5958bb967`이 seed unique를 DB에 추가하고 `d9a6d8dd8950`이 row lock transaction으로 admission 전체를 원자화합니다. |
+| 직전 관련 상태 | 토너먼트 테이블과 행 타입은 있었지만 저장소를 통해 대회를 생성·조회·참가할 연산이 없었습니다. |
+| 해결하려던 문제 | HTTP/토너먼트 UI가 직접 작성한 SQL을 모르고 생성자 자동 참가와 참가자 목록을 일관된 집계로 받아야 했습니다. |
+| 핵심 결정 | 공통 인터페이스에 목록/생성/참가를 추가하고 PostgreSQL은 개수 기반 시드 삽입, 메모리는 참가 기록 배열에 추가하는 방식으로 구현했습니다. |
+| 입력 → 상태 변경 → 출력 | 생성 → 토너먼트 행 저장 → 생성자 참가; 참가 → 현재 항목 개수 조회 → 시드=개수+1 계산 → 고유 사용자 삽입 → 집계 재조회입니다. |
+| 소유권·수명·정리 | PostgreSQL이 행을, 메모리 토너먼트 객체가 참가 기록 배열을 소유합니다. 생성 호출자가 별도 트랜잭션 없이 두 연산을 연속 호출합니다. |
+| 실패·되돌리기·재시도 | 동시 참가가 같은 개수/시드를 볼 수 있고 용량을 초과할 수 있습니다. 생성 후 생성자 참가가 실패하면 빈 토너먼트 행이 남을 수 있습니다. 메모리도 신규 참가를 용량에서 거부하지 않습니다. |
+| 보장하는 것 | 토너먼트 집계의 기본 CRUD와 동일 사용자 재참가의 행 수준 중복 방지를 제공합니다. |
+| 보장하지 않는 것 | 시드 고유성, 용량 강제 검사, 최종 슬롯 직렬화, 상태/대진 원자성, 백엔드 의미 동작 일치는 보장하지 않습니다. |
+| 후속 연결 | `3aa5958bb967`이 시드 고유를 DB에 추가하고 `d9a6d8dd8950`이 행 잠금 트랜잭션으로 참가 전체를 원자화합니다. |
 
 #### 비교 기준
 
-- parent 상태와 `9b1dabcc4bb4`의 diff를 먼저 비교합니다.
+- 부모 커밋의 상태와 `9b1dabcc4bb4`의 변경 내용을 먼저 비교합니다.
 - 후속 관련 SHA `3aa5958bb967`가 이 결정의 부족한 점을 보완하거나 검증하는지 확인합니다.
 
-### 5.2. `3aa5958bb967` — feat(db): tournament seed 제약 추가
+### 5.2. `3aa5958bb967` — feat(db): 토너먼트 시드 제약 추가
 
 | 항목 | 고정 정보 |
 | --- | --- |
 | SHA | `3aa5958bb967` |
-| Importance | B |
-| Tags | PERSISTENCE, TOURNAMENT |
-| Source role | 기존 entry seed를 deterministic하게 재번호 매긴 뒤 tournament별 seed uniqueness를 DB constraint로 만듭니다. |
+| 중요도 | B |
+| 태그 | PERSISTENCE, TOURNAMENT |
+| 원문 역할 | 기존 항목 시드를 결정적으로 재번호 매긴 뒤 토너먼트별 시드 고유성을 DB 제약으로 만듭니다. |
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `packages/db/migrations/004_friendship_tournament_invariants.sql`의 `ranked_entries` CTE를 확인합니다.
-- `partition by tournament_id order by seed, created_at, id`의 deterministic rank 기준을 추적합니다.
-- 모든 기존 entry의 seed를 `row_number()` 결과로 갱신해 gap/duplicate를 정규화하는지 확인합니다.
-- `unique (tournament_id, seed)` constraint 추가를 확인합니다.
-- 이 constraint가 capacity나 user uniqueness를 새로 보장하지 않고 seed collision만 막는다는 점을 구분합니다.
+- `partition by tournament_id order by seed, created_at, id`의 결정적 순위 기준을 추적합니다.
+- 모든 기존 항목의 시드를 `row_number()` 결과로 갱신해 차이/중복을 정규화하는지 확인합니다.
+- `unique (tournament_id, seed)` 제약 추가를 확인합니다.
+- 이 제약이 용량이나 사용자 고유성을 새로 보장하지 않고 시드 충돌만 막는다는 점을 구분합니다.
 
 #### 학습자 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 직전 관련 상태 | 초기 join은 `count+1`을 transaction 밖에서 계산해 동일 tournament에서 같은 seed가 생성될 수 있었고 DB는 이를 허용했습니다. |
-| 해결하려던 문제 | 새 unique constraint를 바로 추가하면 기존 duplicate/gap seed 때문에 migration이 실패할 수 있었습니다. |
-| 핵심 결정 | 각 tournament entry를 기존 seed·created_at·id 순으로 rank해 1부터 재번호 매긴 뒤 `(tournament_id, seed)` unique를 설치했습니다. |
-| 입력 → 상태 전이 → 출력 | 기존 entries → tournament별 deterministic sort/rank → seed rewrite → unique constraint install → 이후 duplicate seed insert 거부입니다. |
-| ownership / lifetime / cleanup | migration이 legacy seed normalization을, PostgreSQL constraint가 future seed uniqueness를 소유합니다. |
-| failure / rollback / retry | 동시 writer는 duplicate seed error를 받을 수 있지만 이 commit만으로 retry하거나 다른 seed를 선택하지 않습니다. capacity도 확인하지 않습니다. |
-| 보장하는 것 | 한 tournament 안에서 seed가 유일하고 migration 직후 contiguous 1..N 상태로 정규화됩니다. |
-| 보장하지 않는 것 | 최대 N=capacity, 신규 참가 serialization, creator auto-join atomicity, bracket 생성은 보장하지 않습니다. |
-| 후속 연결 | `d9a6d8dd8950`이 locked transaction 안에서 `max(seed)+1`을 계산해 constraint violation을 예방하고 capacity/status/bracket를 함께 갱신합니다. |
+| 직전 관련 상태 | 초기 참가는 `count+1`을 트랜잭션 밖에서 계산해 동일 토너먼트에서 같은 시드가 생성될 수 있었고 DB는 이를 허용했습니다. |
+| 해결하려던 문제 | 새 고유 제약을 바로 추가하면 기존 중복/차이 시드 때문에 마이그레이션이 실패할 수 있었습니다. |
+| 핵심 결정 | 각 토너먼트 참가 기록을 기존 시드·created_at·id 순으로 순위해 1부터 재번호 매긴 뒤 `(tournament_id, seed)` 고유를 설치했습니다. |
+| 입력 → 상태 변경 → 출력 | 기존 참가 기록 → 토너먼트별 결정적 sort/순위 → 시드 rewrite → 고유 제약 설치 → 이후 중복 시드 삽입 거부입니다. |
+| 소유권·수명·정리 | 마이그레이션이 기존 시드 정규화를, PostgreSQL 제약이 이후 시드 고유성을 소유합니다. |
+| 실패·되돌리기·재시도 | 동시 작성 기능은 중복 시드 오류를 받을 수 있지만 이 커밋만으로 재시도하거나 다른 시드를 선택하지 않습니다. 용량도 확인하지 않습니다. |
+| 보장하는 것 | 한 토너먼트 안에서 시드가 유일하고 마이그레이션 직후 contiguous 1..N 상태로 정규화됩니다. |
+| 보장하지 않는 것 | 최대 참가자 수와 용량의 일치, 신규 참가 직렬화, 생성자의 자동 참가 원자성, 대진 생성은 보장하지 않습니다. |
+| 후속 연결 | `d9a6d8dd8950`이 잠금 기반 트랜잭션 안에서 `max(seed)+1`을 계산해 제약 위반을 예방하고 용량/상태/대진을 함께 갱신합니다. |
 
 #### 최소 코드 근거
 
-- `004_friendship_tournament_invariants.sql` — tournament별 `row_number()`로 기존 seed를 재번호 매긴 뒤 `(tournament_id, seed)` unique를 설치합니다.
+- `004_friendship_tournament_invariants.sql` — 토너먼트별 `row_number()`로 기존 시드를 재번호 매긴 뒤 `(tournament_id, seed)` 고유를 설치합니다.
 
 #### 비교 기준
 
-- parent 상태와 `3aa5958bb967`의 diff를 먼저 비교합니다.
-- 이 Thread의 직전 관련 SHA `9b1dabcc4bb4`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
+- 부모 커밋의 상태와 `3aa5958bb967`의 변경 내용을 먼저 비교합니다.
+- 이 개발 스레드의 직전 관련 SHA `9b1dabcc4bb4`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
 - 후속 관련 SHA `d9a6d8dd8950`가 이 결정의 부족한 점을 보완하거나 검증하는지 확인합니다.
 
-### 5.3. `d9a6d8dd8950` — feat(db): PostgreSQL tournament 참가를 원자화
+### 5.3. `d9a6d8dd8950` — feat(db): PostgreSQL 토너먼트 참가를 원자화
 
 | 항목 | 고정 정보 |
 | --- | --- |
 | SHA | `d9a6d8dd8950` |
-| Importance | A |
-| Tags | PERSISTENCE, TOURNAMENT, RISK |
-| Source role | tournament row lock을 중심으로 duplicate check, capacity, seed, status와 semifinal bracket 생성을 하나의 transaction에 묶습니다. |
+| 중요도 | A |
+| 태그 | PERSISTENCE, TOURNAMENT, RISK |
+| 원문 역할 | 토너먼트 행 잠금을 중심으로 중복 확인, 용량, 시드, 상태와 준결승 대진 생성을 하나의 트랜잭션에 묶습니다. |
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `PostgresRepository.joinTournament`의 `this.db.transaction().execute` 범위를 확인합니다.
-- `select capacity from tournaments where id = ... for update`가 동일 tournament admission을 직렬화하는지 추적합니다.
-- lock 획득 뒤 existing `(tournament_id,user_id)` 확인이 rejoin을 idempotent no-op으로 만드는지 확인합니다.
-- `count(*)`와 `coalesce(max(seed),0)+1`이 같은 transaction/lock 아래 계산되는지 확인합니다.
-- capacity 초과 시 insert 전에 `tournament full`을 던져 transaction rollback되는지 확인합니다.
-- 마지막 자리에서 status=`running`과 `ensureTournamentBracket(tournamentId, transaction)`가 같은 executor를 사용하는지 확인합니다.
-- transaction commit 뒤 aggregate를 재조회하는 부분이 lock snapshot 밖이라는 non-guarantee를 기록합니다.
+- `select capacity from tournaments where id = ... for update`가 동일 토너먼트 참가를 직렬화하는지 추적합니다.
+- 잠금을 얻은 뒤 기존 `(tournament_id, user_id)` 행을 확인해 재참가가 상태를 바꾸지 않는 멱등 연산이 되는지 확인합니다.
+- `count(*)`와 `coalesce(max(seed),0)+1`이 같은 트랜잭션/잠금 아래 계산되는지 확인합니다.
+- 용량 초과 시 삽입 전에 `tournament full`을 던져 트랜잭션 되돌려지는지 확인합니다.
+- 마지막 자리에서 상태=`running`과 `ensureTournamentBracket(tournamentId, transaction)`가 같은 실행 객체를 사용하는지 확인합니다.
+- 트랜잭션 커밋 뒤 집계를 재조회하는 부분이 잠금 스냅샷 밖이라는 보장하지 않는 범위를 기록합니다.
 
 #### 학습자 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 직전 관련 상태 | 초기 admission은 count, seed, insert, status, bracket를 별도 statement로 실행해 동시 요청이 같은 마지막 자리를 모두 통과할 수 있었습니다. |
-| 해결하려던 문제 | seed unique만 추가하면 race가 constraint error로 바뀔 뿐, 정확히 한 참가자를 받고 status/bracket까지 일관되게 전이하는 domain 결과는 보장하지 못했습니다. |
-| 핵심 결정 | tournament row를 `FOR UPDATE`로 잠그는 transaction 안에서 existing check, count/next_seed, capacity check, insert, running status와 bracket 생성을 수행했습니다. |
-| 입력 → 상태 전이 → 출력 | transaction 시작 → tournament row lock → same user existing이면 no-op → count/max seed 조회 → full이면 throw → insert → count가 capacity에 도달하면 status running·semifinal 2개 upsert → commit → aggregate 재조회입니다. |
-| ownership / lifetime / cleanup | PostgreSQL transaction이 해당 tournament admission state와 bracket side effect를 commit/rollback 단위로 소유합니다. helper는 전달받은 transaction executor를 사용합니다. |
-| failure / rollback / retry | 없는 tournament는 `firstRow` failure, full은 insert 전 throw로 rollback됩니다. bracket insert 실패도 entry/status와 함께 rollback됩니다. commit 뒤 summary read가 실패하면 durable admission은 이미 완료됐을 수 있습니다. |
-| 보장하는 것 | 동일 tournament의 concurrent admissions가 row lock에서 직렬화되고 exactly one final slot, unique seed, capacity, running+bracket 전이가 한 transaction으로 결정됩니다. |
-| 보장하지 않는 것 | 여러 tournament 사이의 global ordering, fairness, long lock wait policy, deadlock retry, commit 후 read availability는 보장하지 않습니다. |
-| 후속 연결 | `efdb5c3a4932`가 memory entrant source를 canonical store로 정렬하고 `cdaca35ccf7f`가 10개 concurrent final-slot 요청으로 PostgreSQL 결과를 검증합니다. |
+| 직전 관련 상태 | 초기 참가는 개수, 시드, 삽입, 상태, 대진을 별도 SQL 문으로 실행해 동시 요청이 같은 마지막 자리를 모두 통과할 수 있었습니다. |
+| 해결하려던 문제 | 시드 고유만 추가하면 경쟁 상태가 제약 오류로 바뀔 뿐, 정확히 한 참가자를 받고 상태/대진까지 일관되게 전이하는 도메인 결과는 보장하지 못했습니다. |
+| 핵심 결정 | 토너먼트 행을 `FOR UPDATE`로 잠그는 트랜잭션 안에서 기존 확인, 개수/next_seed, 용량 확인, 삽입, 실행 중 상태와 대진 생성을 수행했습니다. |
+| 입력 → 상태 변경 → 출력 | 트랜잭션 시작 → 토너먼트 행 잠금 → 이미 참가한 사용자면 기존 결과 반환 → 참가자 수와 최대 시드 조회 → 정원이 찼으면 예외 발생 → 참가자 삽입 → 정원에 도달하면 상태를 `running`으로 바꾸고 준결승 2개 업서트 → 커밋 → 집계 재조회 순서입니다. |
+| 소유권·수명·정리 | PostgreSQL 트랜잭션이 해당 토너먼트 참가 상태와 대진 부수 효과를 커밋/되돌리기 단위로 소유합니다. 도우미 함수는 전달받은 트랜잭션 실행 객체를 사용합니다. |
+| 실패·되돌리기·재시도 | 없는 토너먼트는 `firstRow` 실패, 정원 초과는 삽입 전 예외 발생으로 되돌려집니다. 대진 삽입 실패도 항목/상태와 함께 되돌려집니다. 커밋 뒤 요약 읽기가 실패하면 영속 참가는 이미 완료됐을 수 있습니다. |
+| 보장하는 것 | 동일 토너먼트의 동시 참가 요청가 행 잠금에서 직렬화되고 정확히 하나 최종 슬롯, 고유 시드, 용량, 실행 중+대진 전이가 한 트랜잭션으로 결정됩니다. |
+| 보장하지 않는 것 | 여러 토너먼트 사이의 전역 순서, 참가 공정성, 장시간 잠금 대기 규칙, 교착 상태 재시도, 커밋 직후의 조회 가능성은 보장하지 않습니다. |
+| 후속 연결 | `efdb5c3a4932`가 메모리 참가자 조회를 표준 사용자 저장소에 맞추고 `cdaca35ccf7f`가 10개 동시 마지막 슬롯 요청으로 PostgreSQL 결과를 검증합니다. |
 
 #### 최소 코드 근거
 
-- `PostgresRepository.joinTournament` — `SELECT ... FOR UPDATE`로 tournament row를 잠근 transaction 안에서 count·next seed·capacity·entry·status·bracket를 처리합니다.
+- `PostgresRepository.joinTournament` — `SELECT ... FOR UPDATE`로 토너먼트 행을 잠근 트랜잭션 안에서 개수·다음 시드·용량·항목·상태·대진을 처리합니다.
 
 #### 비교 기준
 
-- parent 상태와 `d9a6d8dd8950`의 diff를 먼저 비교합니다.
-- 이 Thread의 직전 관련 SHA `3aa5958bb967`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
+- 부모 커밋의 상태와 `d9a6d8dd8950`의 변경 내용을 먼저 비교합니다.
+- 이 개발 스레드의 직전 관련 SHA `3aa5958bb967`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
 - 후속 관련 SHA `efdb5c3a4932`가 이 결정의 부족한 점을 보완하거나 검증하는지 확인합니다.
 
-### 5.4. `efdb5c3a4932` — feat(db): memory tournament 참가자 원본 검증
+### 5.4. `efdb5c3a4932` — feat(db): 메모리 토너먼트 참가자 원본 검증
 
 | 항목 | 고정 정보 |
 | --- | --- |
 | SHA | `efdb5c3a4932` |
-| Importance | B |
-| Tags | PERSISTENCE, TOURNAMENT |
-| Source role | memory join이 public lookup 결과가 아니라 canonical user Map 원본 존재를 먼저 검증한 뒤 projection을 생성하도록 바꿉니다. |
+| 중요도 | B |
+| 태그 | PERSISTENCE, TOURNAMENT |
+| 원문 역할 | 메모리 참가가 공개 조회 결과가 아니라 기준 사용자 Map 원본 존재를 먼저 검증한 뒤 변환 결과를 생성하도록 바꿉니다. |
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `MemoryRepository.joinTournament`의 `getUserById` 호출이 `this.users.get(userId)`로 바뀐 parent diff를 확인합니다.
+- `MemoryRepository.joinTournament`의 `getUserById` 호출이 `this.users.get(userId)`로 바뀐 부모 커밋 변경 내용을 확인합니다.
 - `rawUser` 존재 확인 뒤 `toPublicUser(rawUser, true)`를 생성하는 순서를 추적합니다.
-- 기존 joined/full/idempotent/status/bracket logic이 그대로 유지되는지 확인합니다.
-- canonical store 존재성 확인이 database row lock과 같은 concurrency mechanism은 아니라는 점을 명시합니다.
+- 기존 참가한/정원 초과/멱등/상태/대진 로직이 그대로 유지되는지 확인합니다.
+- 표준 사용자 저장소의 존재 확인이 데이터베이스 행 잠금과 같은 동시성 방식은 아니라는 점을 명시합니다.
 
 #### 학습자 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 직전 관련 상태 | memory join은 public lookup method를 통해 entrant를 얻어 저장 원본 존재 검증과 projection 생성이 한 호출에 숨겨졌습니다. |
-| 해결하려던 문제 | repository 내부 mutation은 canonical user store의 원본을 기준으로 해야 하며, public read-model helper의 후속 filtering 변화에 영향을 받지 않아야 했습니다. |
-| 핵심 결정 | `this.users.get(userId)`로 원본을 확인하고 그 row에서 `toPublicUser` projection을 만든 뒤 기존 admission 규칙을 적용했습니다. |
-| 입력 → 상태 전이 → 출력 | tournament lookup + canonical user Map lookup → public projection 생성 → existing/full 검사 → entries mutation과 status/bracket update입니다. |
-| ownership / lifetime / cleanup | memory user Map이 entrant identity의 source of truth를 소유하고 tournament aggregate는 projection을 entries로 보유합니다. |
-| failure / rollback / retry | 없는 tournament/user는 동일 오류로 실패합니다. method 중간 mutation rollback이나 true parallel lock은 추가되지 않습니다. |
-| 보장하는 것 | memory admission이 public lookup policy가 아니라 실제 repository 원본 사용자 존재에 의존합니다. |
-| 보장하지 않는 것 | PostgreSQL과 같은 durability·transaction·row lock, stale projection 자동 갱신, multi-process capacity는 보장하지 않습니다. |
-| 후속 연결 | `cdaca35ccf7f`가 memory final-slot scenario에서 capacity·unique entries·bracket와 rejoin idempotence를 검증합니다. |
+| 직전 관련 상태 | 메모리 참가는 공개 조회 메서드를 통해 참가자를 얻어 저장 원본 존재 검증과 변환 결과 생성이 한 호출에 숨겨졌습니다. |
+| 해결하려던 문제 | 저장소 내부 변경은 표준 사용자 store의 원본을 기준으로 해야 하며, 공개 조회 모델 도우미 함수의 후속 필터링 변화에 영향을 받지 않아야 했습니다. |
+| 핵심 결정 | `this.users.get(userId)`로 원본을 확인하고 그 행에서 `toPublicUser`로 공개 사용자 정보를 만든 뒤 기존 참가 규칙을 적용했습니다. |
+| 입력 → 상태 변경 → 출력 | 토너먼트 조회 + 표준 사용자 Map 조회 → 공개 사용자 정보 생성 → 기존/정원 초과 검사 → 참가 기록 변경과 상태/대진 갱신입니다. |
+| 소유권·수명·정리 | 메모리 사용자 Map이 참가자 신원의 기준 데이터를 소유하고 토너먼트 집계는 공개 사용자 정보를 참가 기록으로 보유합니다. |
+| 실패·되돌리기·재시도 | 없는 토너먼트/사용자는 동일 오류로 실패합니다. 메서드 중간 변경 되돌리기나 실제 병렬 잠금은 추가되지 않습니다. |
+| 보장하는 것 | 메모리 참가가 공개 조회 규칙이 아니라 실제 저장소 원본 사용자 존재에 의존합니다. |
+| 보장하지 않는 것 | PostgreSQL과 같은 영속성·트랜잭션·행 잠금, 오래된 참가자 정보의 자동 갱신, 여러 프로세스 용량은 보장하지 않습니다. |
+| 후속 연결 | `cdaca35ccf7f`가 메모리 마지막 슬롯 시나리오에서 용량·고유 참가 기록·대진과 재참가 멱등성을 검증합니다. |
 
 #### 비교 기준
 
-- parent 상태와 `efdb5c3a4932`의 diff를 먼저 비교합니다.
-- 이 Thread의 직전 관련 SHA `d9a6d8dd8950`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
+- 부모 커밋의 상태와 `efdb5c3a4932`의 변경 내용을 먼저 비교합니다.
+- 이 개발 스레드의 직전 관련 SHA `d9a6d8dd8950`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
 - 후속 관련 SHA `cdaca35ccf7f`가 이 결정의 부족한 점을 보완하거나 검증하는지 확인합니다.
 
-### 5.5. `cdaca35ccf7f` — test(db): friendship와 tournament 경쟁 상태 검증
+### 5.5. `cdaca35ccf7f` — 테스트(db): 친구 관계와 토너먼트 경쟁 상태 검증
 
 | 항목 | 고정 정보 |
 | --- | --- |
 | SHA | `cdaca35ccf7f` |
-| Importance | A |
-| Tags | PERSISTENCE, TOURNAMENT, RISK |
-| Source role | 같은 test commit의 tournament 부분에서 10개 concurrent 요청이 마지막 한 자리를 두 backend에서 어떻게 결정하는지 검증합니다. |
+| 중요도 | A |
+| 태그 | PERSISTENCE, TOURNAMENT, RISK |
+| 원문 역할 | 같은 테스트 커밋의 토너먼트 부분에서 10개 동시 요청이 마지막 한 자리를 두 백엔드에서 어떻게 결정하는지 검증합니다. |
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `packages/db/src/index.test.ts`의 `admits one of ten users into the final tournament slot` memory scenario를 확인합니다.
-- creator+두 early entries로 3/4 상태를 만든 뒤 `Promise.allSettled`로 후보 10명의 `joinTournament`를 호출하는지 확인합니다.
-- fulfilled 1, rejected 9, 모든 rejection에 `tournament full`, playerCount 4, unique user 4, semifinal slots [1,2] assertion을 확인합니다.
-- accepted user의 재join이 성공하고 count/bracket가 늘지 않는 idempotence assertion을 확인합니다.
-- `packages/db/src/postgres.integration.test.ts`의 동일 concurrent scenario와 raw entry seed [1,2,3,4], 두 match row assertion을 확인합니다.
-- memory Promise concurrency와 PostgreSQL row-lock concurrency의 실제 의미 차이를 기록합니다.
+- `packages/db/src/index.test.ts`의 `admits one of ten users into the final tournament slot` 메모리 시나리오를 확인합니다.
+- 생성자+두 초기 참가 기록으로 3/4 상태를 만든 뒤 `Promise.allSettled`로 후보 10명의 `joinTournament`를 호출하는지 확인합니다.
+- 성공 1건, 실패 9건, 모든 실패의 `tournament full` 오류, 참가자 수 4명, 고유 사용자 4명, 준결승 슬롯 `[1, 2]` 검증을 확인합니다.
+- 허용된 사용자의 재참가가 성공하고 개수/대진이 늘지 않는 멱등성 검증을 확인합니다.
+- `packages/db/src/postgres.integration.test.ts`의 동일 동시 시나리오와 실제 참가 시드 [1,2,3,4], 두 경기 행 검증을 확인합니다.
+- 메모리 Promise 동시성과 PostgreSQL 행 잠금 동시성의 실제 의미 차이를 기록합니다.
 
 #### 학습자 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 직전 관련 상태 | `d9a6d8dd8950`이 transaction을 도입했지만 마지막 자리 경쟁에서 exactly one admission과 bracket side effect가 실제 SQL path에서 유지되는지 고가치 regression이 필요했습니다. |
-| 해결하려던 문제 | 10개 요청이 모두 count=3을 보거나 duplicate seed/bracket를 만들면 capacity·status·read model이 서로 모순될 수 있었습니다. |
-| 핵심 결정 | memory와 PostgreSQL 모두 3/4 상태를 만든 뒤 후보 10명을 `Promise.allSettled`로 동시에 요청하고 public aggregate와 raw rows를 확인했습니다. |
-| 입력 → 상태 전이 → 출력 | creator 자동 entry + early 2명 → 10 candidate join promises → 1 fulfilled/9 full → entries 4·unique IDs·seeds 1..4 → semifinal slots 1,2 → accepted user rejoin 후 count/matches 불변입니다. |
-| ownership / lifetime / cleanup | PostgreSQL transaction/row lock이 final-slot winner를 소유하고 test harness가 schema/pool cleanup을 소유합니다. memory는 event-loop 내 method mutation 순서가 결과를 결정합니다. |
-| failure / rollback / retry | full 요청은 entry/status/bracket를 남기지 않아야 합니다. PostgreSQL direct query가 committed state를 확인합니다. test 자체가 fairness나 어떤 candidate가 이길지는 고정하지 않습니다. |
-| 보장하는 것 | PostgreSQL에서 concurrent final-slot 요청 중 정확히 하나만 commit되고 seed·entry·bracket가 일관됨을 검증합니다. memory도 observable capacity/idempotence 결과를 맞춥니다. |
-| 보장하지 않는 것 | 높은 부하의 lock wait/deadlock, 여러 API process의 retry policy, createTournament creator join atomicity, 본 세션의 실제 test 통과는 증명하지 않습니다. |
-| 후속 연결 | count-before-insert 구현으로 회귀하거나 bracket helper가 transaction 밖으로 이동하면 success/rejection 수와 raw row assertion이 실패합니다. |
+| 직전 관련 상태 | `d9a6d8dd8950`이 트랜잭션을 도입했지만 마지막 자리 경쟁에서 정확히 하나 참가와 대진 부수 효과가 실제 SQL 경로에서 유지되는지 고가치 회귀가 필요했습니다. |
+| 해결하려던 문제 | 10개 요청이 모두 개수=3을 보거나 중복 시드/대진을 만들면 용량·상태·조회 모델이 서로 모순될 수 있었습니다. |
+| 핵심 결정 | 메모리와 PostgreSQL 모두 3/4 상태를 만든 뒤 후보 10명을 `Promise.allSettled`로 동시에 요청하고 공개 집계와 가공 전 행을 확인했습니다. |
+| 입력 → 상태 변경 → 출력 | 생성자를 자동 참가시킨 뒤 초기 참가자 2명을 추가합니다. 후보 10명의 참가 Promise를 실행하면 1건만 성공하고 9건은 정원 초과로 실패합니다. 최종 참가 기록은 4건, 고유 사용자 ID는 4개, 시드는 1~4이며 준결승 슬롯 1·2가 생성됩니다. 성공한 사용자가 다시 참가해도 참가자 수와 경기 수는 바뀌지 않습니다. |
+| 소유권·수명·정리 | PostgreSQL 트랜잭션/행 잠금이 마지막 슬롯 승자를 소유하고 테스트 실행 틀이 스키마/풀 정리를 소유합니다. 메모리는 이벤트 루프 내 메서드 변경 순서가 결과를 결정합니다. |
+| 실패·되돌리기·재시도 | 정원 초과 요청은 항목/상태/대진을 남기지 않아야 합니다. PostgreSQL 직접 쿼리가 커밋된 상태를 확인합니다. 테스트 자체가 공정성나 어떤 후보가 이길지는 고정하지 않습니다. |
+| 보장하는 것 | PostgreSQL에서 동시 마지막 슬롯 요청 중 정확히 하나만 커밋되고 시드·항목·대진이 일관됨을 검증합니다. 메모리도 관찰 가능한 용량/멱등성 결과를 맞춥니다. |
+| 보장하지 않는 것 | 높은 부하의 잠금 대기/교착 상태, 여러 API 프로세스의 재시도 규칙, createTournament 생성자 참가 원자성, 본 세션의 실제 테스트 통과는 검증하지 않습니다. |
+| 후속 연결 | 개수 확인 후 삽입 구현으로 회귀하거나 대진 도우미 함수가 트랜잭션 밖으로 이동하면 성공/실패 수와 가공 전 행 검증이 실패합니다. |
 
 #### 최소 코드 근거
 
-- `postgres.integration.test.ts` — 10개의 final-slot 요청 뒤 raw `tournament_entries` seed `[1,2,3,4]`와 정확히 두 semifinal row를 확인합니다.
+- `postgres.integration.test.ts` — 10개의 마지막 슬롯 요청 뒤 원시 `tournament_entries` 시드 `[1,2,3,4]`와 정확히 두 준결승 행을 확인합니다.
 
-#### Test commit 학습 기록
+#### 테스트 커밋 학습 기록
 
 | 항목 | 기록 |
 | --- | --- |
-| 검증 대상 불변식 | tournament admission은 capacity를 넘지 않고 final slot 하나만 배정하며 seed와 semifinal bracket가 중복 없이 같은 committed state를 반영해야 합니다. |
-| 재현한 실패·경계 | 3/4 tournament에 10명의 신규 user가 동시에 참가하고 성공한 user가 다시 참가하는 경계입니다. |
-| 시험 기법 | `Promise.allSettled` 기반 concurrent repository test와 Testcontainers PostgreSQL raw-state verification입니다. |
-| 통과하는 실제 코드 경로 | `joinTournament` transaction, tournament row `FOR UPDATE`, entry insert, status update, `ensureTournamentBracket`, memory equivalent입니다. |
-| 시험이 증명하는 것 | PostgreSQL에서 1 success/9 full, entries 4·seeds 1..4·unique users, semifinals 2개와 rejoin idempotence를 증명합니다. |
-| 시험이 증명하지 않는 것 | winner fairness, long-running lock behavior, deadlock retry, production load, 이 세션에서의 실제 실행 결과는 증명하지 않습니다. |
-| 막으려는 회귀 | over-capacity admission, duplicate seed, duplicate/missing bracket, failed request의 partial commit, rejoin side effect 회귀를 막습니다. |
+| 검증 대상 불변식 | 토너먼트 참가는 용량을 넘지 않고 최종 슬롯 하나만 배정하며 시드와 준결승 대진이 중복 없이 같은 커밋된 상태를 반영해야 합니다. |
+| 재현한 실패·경계 | 3/4 토너먼트에 10명의 신규 사용자가 동시에 참가하고 성공한 사용자가 다시 참가하는 경계입니다. |
+| 시험 기법 | `Promise.allSettled` 기반 동시 저장소 테스트와 Testcontainers PostgreSQL 원시 상태 검증입니다. |
+| 통과하는 실제 코드 경로 | `joinTournament` 트랜잭션, 토너먼트 행 `FOR UPDATE`, 항목 삽입, 상태 갱신, `ensureTournamentBracket`, 메모리 equivalent입니다. |
+| 테스트가 검증하는 것 | PostgreSQL에서 1 성공/9 정원 초과, 참가 기록 4·시드 1..4·고유 사용자, 준결승 2개와 재참가 멱등성을 검증합니다. |
+| 테스트가 검증하지 않는 것 | 참가 공정성, 장시간 실행 중 잠금 동작, 교착 상태 재시도, 운영 부하, 이 세션에서의 실제 실행 결과는 검증하지 않습니다. |
+| 막으려는 회귀 | 정원 초과 참가, 중복 시드, 중복/누락된 대진, 실패한 요청의 부분 반영 커밋, 재참가 부수 효과 회귀를 막습니다. |
 
 #### 비교 기준
 
-- parent 상태와 `cdaca35ccf7f`의 diff를 먼저 비교합니다.
-- 이 Thread의 직전 관련 SHA `efdb5c3a4932`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
+- 부모 커밋의 상태와 `cdaca35ccf7f`의 변경 내용을 먼저 비교합니다.
+- 이 개발 스레드의 직전 관련 SHA `efdb5c3a4932`와 책임·상태·보장 범위가 어떻게 달라졌는지 비교합니다.
 
-## 6. 불변식 변화
+## 6. 불변 조건 변화
 
 | 단계 | 관련 SHA | 조사 초점 | 학습자 기록 |
 | --- | --- | --- | --- |
-| 초기 non-atomic admission | `9b1dabcc4bb4` | count·seed·insert·capacity의 분리 상태를 기록합니다. | PostgreSQL은 count+1을 transaction 밖에서 계산하고 capacity를 확인하지 않았으며 memory도 capacity 이후 신규 entry를 막지 않았습니다. 동일 user unique만 존재했습니다. |
-| Seed uniqueness | `3aa5958bb967` | legacy normalization과 future constraint를 구분합니다. | 기존 entry를 deterministic 1..N으로 재번호 매긴 뒤 tournament별 seed unique를 설치합니다. duplicate seed는 막지만 final-slot winner를 선택하거나 capacity를 강제하지 않습니다. |
-| Atomic admission | `d9a6d8dd8950` | lock·idempotence·capacity·status·bracket transaction을 추적합니다. | tournament row `FOR UPDATE`가 동일 tournament의 admission을 직렬화하고 existing user no-op, count/max seed, full reject, insert, running+bracket가 하나의 commit/rollback 단위가 됩니다. |
-| Memory source alignment | `efdb5c3a4932` | entrant identity source와 projection을 분리합니다. | memory는 canonical user Map 원본 존재를 검증한 뒤 public projection을 entries에 넣습니다. 이것은 source alignment이지 DB-style lock이나 rollback이 아닙니다. |
-| Final-slot evidence | `cdaca35ccf7f` | success/rejection 수와 raw state를 연결합니다. | 10개 요청 중 1개만 성공하고 9개는 full, entries/seeds/users가 4개로 유일하며 semifinal 2개와 rejoin no-op을 memory·PostgreSQL에서 확인합니다. |
+| 초기 비 원자적 참가 | `9b1dabcc4bb4` | 개수·시드·삽입·용량의 분리 상태를 기록합니다. | PostgreSQL은 개수+1을 트랜잭션 밖에서 계산하고 용량을 확인하지 않았으며 메모리도 용량 이후 신규 항목을 막지 않았습니다. 동일 사용자 고유만 존재했습니다. |
+| 시드 고유성 | `3aa5958bb967` | 기존 정규화와 이후 제약을 구분합니다. | 기존 항목을 결정적 1..N으로 재번호 매긴 뒤 토너먼트별 시드 고유를 설치합니다. 중복 시드는 막지만 마지막 슬롯 승자를 선택하거나 용량을 강제하지 않습니다. |
+| 원자적 참가 | `d9a6d8dd8950` | 잠금·멱등성·정원·상태·대진 변경을 한 트랜잭션에서 추적합니다. | 토너먼트 행의 `FOR UPDATE`가 같은 토너먼트에 대한 참가 요청을 직렬화합니다. 기존 참가자는 상태를 바꾸지 않고, 참가자 수·최대 시드 조회, 정원 초과 거부, 참가자 삽입, `running` 전환과 대진 생성을 하나의 커밋·되돌리기 단위로 처리합니다. |
+| 메모리 구현의 사용자 원본 정렬 | `efdb5c3a4932` | 참가자 신원의 원본과 공개 변환 결과를 분리합니다. | 메모리 구현은 기준 사용자 Map에 원본 사용자가 있는지 확인한 뒤 공개 사용자 정보를 참가 기록에 넣습니다. 이는 사용자 원본을 일치시키는 처리이며 DB 방식의 잠금이나 되돌리기는 아닙니다. |
+| 마지막 자리 근거 | `cdaca35ccf7f` | 성공·실패 수와 실제 저장 상태를 연결합니다. | 10개 요청 중 1개만 성공하고 9개는 정원 초과로 실패하는지 확인합니다. 최종 참가 기록·시드·사용자는 4개로 고유하고, 준결승은 2개이며, 재참가는 상태를 바꾸지 않는지 메모리와 PostgreSQL에서 검증합니다. |
 
-## 7. Failure → Fix → Test 관계
+## 7. 실패 → 수정 → 테스트 관계
 
-| 관계 | Failure / 이전 가정 | Fix / 결정 | Test / 근거 | 학습자 기록 |
+| 관계 | 실패 / 이전 가정 | 수정 / 결정 | 테스트 / 근거 | 학습자 기록 |
 | --- | --- | --- | --- | --- |
-| 1 | `9b1dabcc4bb4`의 count+1과 insert가 분리돼 같은 seed·over-capacity race가 가능했습니다. | `3aa5958bb967`이 seed unique를 추가했지만 collision을 domain result로 해결하지는 못했습니다. | constraint 자체는 `cdaca35ccf7f`의 raw seed assertion에서 후속 보호됩니다. | DB constraint는 최소 무결성 safety net이며 admission winner 선택과 status/bracket transition은 transaction logic이 별도로 소유해야 합니다. |
-| 2 | capacity check·entry·running status·bracket가 분리되면 partial state가 남을 수 있었습니다. | `d9a6d8dd8950`이 tournament row lock transaction에 모두 묶었습니다. | `cdaca35ccf7f`가 10-way final-slot competition과 raw committed state를 검증합니다. | row lock을 모든 admission의 첫 serialization point로 사용해 exactly one final slot을 만들고 helper도 같은 transaction executor를 사용합니다. |
-| 3 | memory join이 public lookup helper에 entrant source를 의존했습니다. | `efdb5c3a4932`가 canonical user Map을 직접 확인합니다. | `cdaca35ccf7f`의 memory capacity·unique-entry·bracket scenario입니다. | memory의 identity source는 정렬되지만 event-loop 순서에 따른 process-local mutation일 뿐 PostgreSQL의 concurrency mechanism과 같다고 볼 수 없습니다. |
+| 1 | `9b1dabcc4bb4`의 개수+1과 삽입이 분리돼 같은 시드·정원 초과 경쟁 상태가 가능했습니다. | `3aa5958bb967`이 시드 고유를 추가했지만 충돌을 도메인 결과로 해결하지는 못했습니다. | 제약 자체는 `cdaca35ccf7f`의 실제 저장된 시드 검증에서 후속 보호됩니다. | DB 제약은 최소 무결성 안전장치이며 참가 승자 선택과 상태/대진 상태 전이는 트랜잭션 로직이 별도로 소유해야 합니다. |
+| 2 | 용량 확인·항목·실행 중 상태·대진이 분리되면 부분 반영 상태가 남을 수 있었습니다. | `d9a6d8dd8950`이 토너먼트 행 잠금 트랜잭션에 모두 묶었습니다. | `cdaca35ccf7f`가 10개 동시 마지막 슬롯 경쟁과 실제로 커밋된 상태를 검증합니다. | 행 잠금을 모든 참가의 첫 직렬화 지점으로 사용해 정확히 하나 최종 슬롯을 만들고 도우미 함수도 같은 트랜잭션 실행 객체를 사용합니다. |
+| 3 | 메모리 참가가 공개 조회 도우미 함수에 참가자 조회를 의존했습니다. | `efdb5c3a4932`가 표준 사용자 Map을 직접 확인합니다. | `cdaca35ccf7f`의 메모리 용량·고유 항목·대진 시나리오입니다. | 메모리의 신원 소스는 정렬되지만 이벤트 루프 순서에 따른 프로세스 내부 변경일 뿐 PostgreSQL의 동시성 방식과 같다고 볼 수 없습니다. |
 
-## 8. Ownership·상태·책임 변화
+## 8. 소유권·상태·담당 범위 변화
 
 | 구간 | 이전 소유자/표현 | 이후 소유자/표현 | 관련 SHA | 학습자 기록 |
 | --- | --- | --- | --- | --- |
-| Seed identity | application의 stale count가 seed를 사실상 결정했습니다. | DB unique constraint와 locked transaction의 `max(seed)+1`이 결정합니다. | `3aa5958bb967`, `d9a6d8dd8950` | constraint는 collision을 거부하고 transaction은 collision이 발생하지 않도록 serialized state에서 다음 seed를 계산합니다. |
-| Capacity decision | 각 request가 독립 count를 읽고 신규 참가를 허용했습니다. | 잠긴 tournament row 아래 transaction이 capacity와 final-slot winner를 소유합니다. | `d9a6d8dd8950` | 같은 tournament admission은 lock을 통과해야 하며 다른 tournament는 서로 독립적으로 진행할 수 있습니다. |
-| Bracket side effect | entry/status/bracket가 별도 statement/executor일 수 있었습니다. | 마지막 admission transaction이 running status와 semifinal rows를 함께 소유합니다. | `d9a6d8dd8950` | bracket 생성 실패는 entry와 status도 rollback되어 partial running tournament를 막습니다. |
-| Memory entrant | public lookup output이 source처럼 사용됐습니다. | canonical user Map이 identity source, mapper가 entry projection을 소유합니다. | `efdb5c3a4932` | 원본 존재성과 read model 생성이 분리되지만 stored projection freshness는 별도 문제입니다. |
+| 시드 신원 | 애플리케이션의 오래된 개수가 시드를 사실상 결정했습니다. | DB 고유 제약과 잠금 기반 트랜잭션의 `max(seed)+1`이 결정합니다. | `3aa5958bb967`, `d9a6d8dd8950` | 제약은 충돌을 거부하고 트랜잭션은 충돌이 발생하지 않도록 직렬화된 상태에서 다음 시드를 계산합니다. |
+| 용량 판단 | 각 요청이 독립 개수를 읽고 신규 참가를 허용했습니다. | 잠긴 토너먼트 행 아래 트랜잭션이 용량과 마지막 슬롯 승자를 소유합니다. | `d9a6d8dd8950` | 같은 토너먼트 참가는 잠금을 통과해야 하며 다른 토너먼트는 서로 독립적으로 진행할 수 있습니다. |
+| 대진 부수 효과 | 항목/상태/대진이 별도 SQL 문/실행 객체일 수 있었습니다. | 마지막 참가 트랜잭션이 실행 중 상태와 준결승 행을 함께 소유합니다. | `d9a6d8dd8950` | 대진 생성 실패는 항목과 상태도 되돌리기되어 부분 반영 실행 중 토너먼트를 막습니다. |
+| 메모리 참가자 | 공개 조회 결과가 원본처럼 사용됐습니다. | 표준 사용자 Map이 신원 원본을, 변환기가 참가자 변환 결과를 소유합니다. | `efdb5c3a4932` | 원본 존재성과 조회 모델 생성이 분리되지만 저장된 변환 결과의 최신성은 별도 문제입니다. |
 
-## 9. Thread 최종 상태
+## 9. 개발 스레드 최종 상태
 
-최종 상태에서 PostgreSQL tournament admission은 tournament row lock을 얻은 transaction 하나가 existing-entry idempotence, capacity, next seed, entry insert, running status와 semifinal bracket를 결정합니다. seed unique constraint가 DB-level safety net을 제공합니다. memory는 canonical user source와 같은 observable capacity/idempotence를 구현하지만 durable transaction이나 cross-process serialization은 없습니다. concurrency regression은 final slot 결과를 직접 검증하되 fairness·deadlock retry·production 부하까지 보장하지 않습니다.
+최종 상태에서 PostgreSQL 토너먼트 참가는 토너먼트 행 잠금을 얻은 트랜잭션 하나가 기존 항목 멱등성, 용량, 다음 시드, 항목 삽입, 실행 중 상태와 준결승 대진을 결정합니다. 시드 고유 제약이 DB 수준의 최소 안전장치를 제공합니다. 메모리는 표준 사용자 소스와 같은 관찰 가능한 용량/멱등성을 구현하지만 영속 트랜잭션이나 여러 영역에 걸친 프로세스 직렬화는 없습니다. 동시성 회귀는 최종 슬롯 결과를 직접 검증하되 공정성·교착 상태 재시도·운영 부하까지 보장하지 않습니다.
 
 ## 10. 최종 실행 흐름
 
-1. caller가 tournament ID와 user ID로 `joinTournament`를 호출합니다.
-2. PostgreSQL transaction이 tournament row를 `FOR UPDATE`로 읽어 같은 tournament admission의 serialization point를 확보합니다.
-3. 이미 참가한 user면 capacity와 무관하게 no-op하고 기존 aggregate를 반환할 준비를 합니다.
-4. 신규 user면 current count와 max seed를 읽고 full이면 insert 전에 실패합니다.
-5. 자리 있으면 next seed로 entry를 넣고 capacity에 도달한 요청이 status를 running으로 바꾸며 같은 transaction에서 semifinal 두 개를 생성합니다.
-6. commit 뒤 aggregate를 재조회해 caller에 반환합니다. 이 read 실패는 committed write를 되돌리지 않습니다.
-7. memory는 같은 분기를 canonical user Map과 tournament object에 적용하고 test는 10-way final-slot 결과와 raw PostgreSQL rows를 비교합니다.
+1. 호출자가 토너먼트 ID와 사용자 ID로 `joinTournament`를 호출합니다.
+2. PostgreSQL 트랜잭션이 토너먼트 행을 `FOR UPDATE`로 읽어 같은 토너먼트 참가의 직렬화 지점을 확보합니다.
+3. 이미 참가한 사용자라면 정원과 관계없이 상태를 바꾸지 않고 기존 집계를 반환합니다.
+4. 신규 사용자면 현재 개수와 최댓값 시드를 읽고 정원 초과이면 삽입 전에 실패합니다.
+5. 자리 있으면 다음 시드로 항목을 넣고 용량에 도달한 요청이 상태를 실행 중으로 바꾸며 같은 트랜잭션에서 준결승 두 개를 생성합니다.
+6. 커밋 뒤 집계를 재조회해 호출자에 반환합니다. 이 읽기 실패는 committed 쓰기를 되돌리지 않습니다.
+7. 메모리는 같은 분기를 표준 사용자 Map과 토너먼트 객체에 적용하고 테스트는 10개 동시 마지막 슬롯 결과와 실제 PostgreSQL 행을 비교합니다.
 
 ## 11. 학습 완료 확인
 
-- [x] seed uniqueness와 capacity serialization이 서로 다른 불변식임을 설명할 수 있습니다.
-- [x] `FOR UPDATE` row와 모든 admission의 lock 순서를 설명할 수 있습니다.
-- [x] existing-entry check가 full check보다 먼저인 rejoin 의미를 설명할 수 있습니다.
-- [x] entry·status·bracket가 같은 transaction이어야 하는 failure/rollback 이유를 설명할 수 있습니다.
-- [x] commit 후 summary read failure의 non-guarantee를 설명할 수 있습니다.
-- [x] memory Promise test와 실제 PostgreSQL row-lock concurrency evidence를 구분할 수 있습니다.
+- [x] 시드 고유성과 용량 직렬화가 서로 다른 불변식임을 설명할 수 있습니다.
+- [x] `FOR UPDATE` 행과 모든 참가의 잠금 순서를 설명할 수 있습니다.
+- [x] 기존 항목 확인이 정원 초과 확인보다 먼저인 재참가 의미를 설명할 수 있습니다.
+- [x] 항목·상태·대진이 같은 트랜잭션이어야 하는 실패/되돌리기 이유를 설명할 수 있습니다.
+- [x] 커밋 후 요약 읽기 실패의 보장하지 않는 범위를 설명할 수 있습니다.
+- [x] 메모리 Promise 테스트와 실제 PostgreSQL 행 잠금 동시성 근거를 구분할 수 있습니다.
 
 ## 12. 실행 및 증거 기록
 
 - 저장소 실행 시험: 실행하지 않았습니다.
-- 이유: 로컬 `git clone --branch web/ft_transcendence --single-branch`가 DNS 해석 실패(`Could not resolve host: github.com`)로 중단되어 의존성을 포함한 실행 가능한 checkout을 만들 수 없었습니다.
-- 코드 근거: 지정 브랜치의 source classification과 각 exact SHA의 GitHub commit diff를 확인했습니다. 따라서 본 문서의 시험 설명은 실제 시험 코드의 정적 검토 결과이며, 이 환경에서의 통과 결과가 아닙니다.
+- 이유: 로컬 `git clone --branch web/ft_transcendence --single-branch`가 DNS 해석 실패(`Could not resolve host: github.com`)로 중단되어 의존성을 포함한 실행 가능한 체크아웃을 만들 수 없었습니다.
+- 코드 근거: 지정 브랜치의 원문 분류와 각 정확한 SHA의 GitHub 커밋 변경 내용을 확인했습니다. 따라서 본 문서의 시험 설명은 실제 시험 코드의 정적 검토 결과이며, 이 환경에서의 통과 결과가 아닙니다.
 ===== END FILE: 05-tournament-admission-and-capacity-concurrency.md =====
 
 ===== BEGIN FILE: README.md =====
 # 영속성·데이터 무결성
 
-AppRepository 추상화, memory/PostgreSQL parity, migration·seed lifecycle, row mapping,
-friendship canonical identity, tournament admission concurrency와 destructive test reset
+AppRepository 추상화, 메모리/PostgreSQL 동작 일치, 마이그레이션·시드 수명주기, 행 변환,
+친구 관계 정규화한 식별 방식, 토너먼트 참가 동시성과 데이터 삭제를 포함하는 테스트 초기화
 안전성을 다룹니다.
 
 ## 범위
 
-- Repository: `https://github.com/seungwoo7050/42-archive`
-- Branch: `web/ft_transcendence`
-- Category: `02-persistence-and-data-integrity`
-- 상태: Phase 1 감사 완료 후 동결된 scaffold
-- 제품 전달 제외: Docker/Caddy/Compose image, 배포 job, release artifact, dependency
-  보안 패치와 media asset 생성은 이 카테고리의 학습 대상에서 제외합니다.
+- 저장소: `https://github.com/seungwoo7050/42-archive`
+- 브랜치: `web/ft_transcendence`
+- 카테고리: `02-persistence-and-data-integrity`
+- 상태: 1단계 감사 완료 후 동결된 작업 틀
+- 제품 전달 제외: Docker/Caddy/Compose 이미지, 배포 작업, 릴리스 산출물, 의존성
+  보안 패치와 미디어 자산 생성은 이 카테고리의 학습 대상에서 제외합니다.
 
-## Category 감사 결론
+## 카테고리 감사 결론
 
-- 카테고리 경계는 적절합니다. 영속성의 공통 repository·migration·row-mapping
+- 카테고리 경계는 적절합니다. 영속성의 공통 저장소·마이그레이션·행 매핑
   기반과 데이터 무결성 경쟁 상태만 포함합니다.
-- 5개 Thread를 유지합니다. match finalization, 인증 session·WebSocket ticket,
-  guest 격리, chat room 무결성, admin audit atomicity와 tournament match progression은
-  독립된 engineering story이므로 다른 카테고리의 책임으로 남깁니다.
-- Thread 1에는 `035b97ca7c58`, `6b661420e060`을 추가해 가짜 `bestStreak`
-  구현의 fix와 regression test를 연결하고, `e935054ce0c9`를 추가해
-  PostgreSQL integration 실행 경계를 포함했습니다.
-- Thread 2에서는 `e1a0316fbe84`, `5cac4843fd9b`를 2026년 1월의 reset
-  guard 작업보다 앞에 배치해 실제 branch history 순서를 복구했습니다.
+- 5개 개발 스레드를 유지합니다. 경기 결과 확정, 인증 세션·WebSocket 티켓,
+  비회원 격리, 채팅 경기방 무결성, 관리자 감사 원자성과 토너먼트 경기 대진 진행은
+  독립된 구현 과정이므로 다른 카테고리의 책임으로 남깁니다.
+- 개발 스레드 1에는 `035b97ca7c58`, `6b661420e060`을 추가해 가짜 `bestStreak`
+  구현의 수정과 회귀 테스트를 연결하고, `e935054ce0c9`를 추가해
+  PostgreSQL 통합 실행 경계를 포함했습니다.
+- 개발 스레드 2에서는 `e1a0316fbe84`, `5cac4843fd9b`를 2026년 1월의 초기화
+  보호 조건 작업보다 앞에 배치해 실제 브랜치 이력 순서를 복구했습니다.
 - `9b62117a6909`, `d8050004e4ce`, `d2329e8dfc1d`,
-  `7926b1366993`, `1b60b0a79963` 등 C-level formatting-only DB
-  refactor는 독립적인 상태·책임 변화가 없어 Thread 3에 추가하지 않았습니다.
-- 같은 `cdaca35ccf7f`는 friendship identity와 tournament capacity를 한 시험 파일에서
-  함께 검증하므로 Thread 4와 Thread 5에서 각 불변식 관점으로 교차 참조합니다.
+  `7926b1366993`, `1b60b0a79963` 등 중요도 C인 DB 서식 정리 전용
+  리팩터링은 독립적인 상태·책임 변화가 없어 개발 스레드 3에 추가하지 않았습니다.
+- 같은 `cdaca35ccf7f`는 친구 관계 신원과 토너먼트 정원을 한 시험 파일에서
+  함께 검증하므로 개발 스레드 4와 개발 스레드 5에서 각 불변식 관점으로 교차 참조합니다.
 
-## Thread
+## 개발 스레드
 
-1. [Repository 추상화·backend parity·read model](01-repository-abstraction-backend-parity-and-read-models.md)
-2. [Migration·seed·readiness·reset lifecycle](02-migration-seed-readiness-and-reset-lifecycle.md)
-3. [Row mapping과 backend contract 정렬](03-row-mapping-and-backend-contract-alignment.md)
-4. [Canonical friendship과 동시 요청](04-canonical-friendship-and-concurrent-requests.md)
-5. [Tournament admission과 capacity concurrency](05-tournament-admission-and-capacity-concurrency.md)
+1. [저장소 추상화·백엔드 동작 일치·조회 모델](01-repository-abstraction-backend-parity-and-read-models.md)
+2. [마이그레이션·시드·준비 상태·초기화 수명주기](02-migration-seed-readiness-and-reset-lifecycle.md)
+3. [행 매핑과 백엔드 계약 정렬](03-row-mapping-and-backend-contract-alignment.md)
+4. [표준 친구 관계와 동시 요청](04-canonical-friendship-and-concurrent-requests.md)
+5. [토너먼트 참가와 용량 동시성](05-tournament-admission-and-capacity-concurrency.md)
 
 ## 사용 원칙
 
-- 각 문서의 Commit map 순서를 유지합니다.
-- exact SHA의 코드와 parent 상태를 확인합니다.
+- 각 문서의 커밋 목록 순서를 유지합니다.
+- 정확한 SHA의 코드와 부모 커밋의 상태를 확인합니다.
 - 다른 카테고리에서 같은 SHA를 교차 참조하더라도 이 문서의 질문에 맞는 근거만 기록합니다.
-- Phase 2는 이 디렉터리의 동결 이후 scaffold를 수정하지 않고 completed counterpart만 채웁니다.
+- 2단계는 이 디렉터리의 동결 이후 작업 틀을 수정하지 않고 완료된 counterpart만 채웁니다.
 ===== END FILE: README.md =====
 

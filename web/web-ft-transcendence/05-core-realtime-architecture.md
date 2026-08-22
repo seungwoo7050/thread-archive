@@ -1,348 +1,348 @@
 ===== BEGIN FILE: 01-authoritative-deterministic-game-mechanics.md =====
 # 서버 권위형 결정적 게임 메커니즘
 
-원문 Development Thread: `Authoritative and deterministic game mechanics`
+원문 개발 스레드: `Authoritative and deterministic game mechanics`
 
-## 1. Thread 목표
+## 1. 개발 스레드 목표
 
 - `GameHub` 내부 물리 계산에서 출발해 `PongSimulation.step`이 유일한 규칙 소유자가 되는 과정을 복원합니다.
-- 점수, 충돌, 가속, 종료 결과가 transport·socket·timer와 분리된 결정적 상태 전이임을 해당 SHA의 코드와 테스트로 증명합니다.
-- 마이그레이션 뒤 남아 있던 중복 물리 구현이 실제로 제거되고 장기 replay fixture가 호환성 계약을 고정하는지 확인합니다.
+- 점수, 충돌, 가속, 종료 결과가 전송 계층·소켓·타이머와 분리된 결정적 상태 전이임을 해당 SHA의 코드와 테스트로 검증합니다.
+- 마이그레이션 뒤 남아 있던 중복 물리 구현이 실제로 제거되고 장기 재생 픽스처가 호환성 계약을 고정하는지 확인합니다.
 
-### Source에서 확정된 significance
+### 원문에서 확인한 중요성
 
-> The project begins with server-owned gameplay, then extracts the mechanics into a pure, testable simulation and finally removes the duplicate implementation. The thread matters because authority is not merely a deployment choice: one deterministic state transition becomes the source of scores, collisions, timing, and replay compatibility.
+> 프로젝트는 서버가 직접 게임을 계산하는 구현에서 시작해 게임 규칙을 순수하고 테스트 가능한 시뮬레이션으로 분리한 뒤 중복 구현을 제거합니다. 서버 권위성은 배포 위치만의 문제가 아닙니다. 하나의 결정적 상태 전이가 점수, 충돌, 시간 처리, 재생 호환성의 기준이 됩니다.
 
-### 직접 연결되는 Critical Invariants
+### 직접 연결되는 핵심 불변 조건
 
-> The server is the sole authority for game rules, scores, phases, room membership, matchmaking, and persisted outcomes.
+> 게임 규칙, 점수, 단계, 경기방 참가 상태, 대전 상대 연결, 저장된 결과는 서버만 확정합니다.
 
-### 직접 연결되는 Major Engineering Difficulties
+### 직접 연결되는 주요 구현 난점
 
-> Separating deterministic simulation from connection orchestration without changing the observable realtime protocol.
+> 외부에서 관찰되는 실시간 프로토콜을 바꾸지 않고 결정적 시뮬레이션과 연결 관리를 분리해야 합니다.
 
-## 2. 이 Thread를 이해하기 위한 핵심 질문
+## 2. 이 개발 스레드를 이해하기 위한 핵심 질문
 
 - 각 SHA에서 게임 규칙의 실제 소유자는 `GameHub`와 `PongSimulation` 중 어디입니까?
-- simulation 입력, 내부 상태, 반환 상태 사이에 aliasing이나 in-place mutation이 남아 있습니까?
-- paddle 충돌, 득점, serve reset, 속도 증가, 시간 제한, 승자 결정은 어떤 순서로 적용됩니까?
-- wire snapshot을 유지하면서 mechanics ownership만 이동한 연결 지점은 어디입니까?
-- 결정성은 단일 함수 테스트가 아니라 seed, AI, nested state, 1,000-tick replay까지 어떻게 고정됩니까?
-- legacy helper가 제거된 뒤 `GameHub`에 남은 책임은 무엇입니까?
+- 시뮬레이션 입력, 내부 상태, 반환 상태 사이에 같은 객체를 공유하는 문제나 제자리에서 변경이 남아 있습니까?
+- 패들 충돌, 득점, 서브 재설정, 속도 증가, 시간 제한, 승자 결정은 어떤 순서로 적용됩니까?
+- 전송용 스냅샷을 유지하면서 게임 규칙 소유권만 이동한 연결 지점은 어디입니까?
+- 결정성은 단일 함수 테스트가 아니라 시드, AI, 중첩된 상태, 1,000-틱 리플레이까지 어떻게 고정됩니까?
+- 기존 도우미 함수가 제거된 뒤 `GameHub`에 남은 책임은 무엇입니까?
 
 ## 3. 완료 기준
 
-- 입력 수집 → `PongSimulation.step` → 상태 저장 → snapshot projection → broadcast/finish 흐름을 코드 근거와 함께 그릴 수 있습니다.
+- 입력 수집 → `PongSimulation.step` → 상태 저장 → 스냅샷 구성 → 전파/종료 흐름을 코드 근거와 함께 그릴 수 있습니다.
 - 충돌·득점·가속·종료 규칙을 해당 SHA의 실제 조건식과 상태 갱신 순서로 설명할 수 있습니다.
-- immutability와 deterministic replay가 각각 무엇을 검증하고 무엇을 검증하지 않는지 구분할 수 있습니다.
-- 마이그레이션 전후 `GameHub`와 simulation의 책임 표를 완성하고 중복 규칙이 남지 않았음을 확인할 수 있습니다.
-- final HEAD가 아니라 각 commit 시점의 코드와 직전 관련 SHA를 근거로 설명할 수 있습니다.
+- 불변성과 결정적 재생이 각각 무엇을 검증하고 무엇을 검증하지 않는지 구분할 수 있습니다.
+- 마이그레이션 전후 `GameHub`와 시뮬레이션의 책임 표를 완성하고 중복 규칙이 남지 않았음을 확인할 수 있습니다.
+- 최종 상태가 아니라 각 커밋 시점의 코드와 직전 관련 SHA를 근거로 설명할 수 있습니다.
 
-> 검토 방식: 지정 브랜치에 속한 exact SHA의 diff와 해당 시점 파일을 GitHub에서 확인했습니다. 로컬 실행 환경은 GitHub clone이 차단되어 테스트 명령은 실행하지 않았으며, 아래 테스트 결과 설명은 test implementation 검토에 한정합니다.
+> 검토 방식: 지정 브랜치의 정확한 SHA별 변경 내용과 해당 시점 파일을 GitHub에서 확인했습니다. 로컬 환경에서는 GitHub 복제가 차단되어 테스트 명령을 실행하지 못했습니다. 아래 테스트 설명은 테스트 코드 검토 결과에 한정합니다.
 
-## 4. Commit map
+## 4. 커밋 목록
 
-| 순서 | SHA | Subject | Importance | Tags | Source에서 확정된 역할 |
+| 순서 | SHA | 제목 | 중요도 | 태그 | 원문에서 확인한 역할 |
 | ---: | --- | --- | :---: | --- | --- |
-| 1 | `9e3664f5de48` | `feat(game): 서버 주도 퐁 물리 갱신` | A | SIMULATION, REALTIME, WEB | Introduces the first server-owned physics loop. |
-| 2 | `2e4359f0625f` | `refactor(game): Pong simulation 상태와 초기화 분리` | A | SIMULATION, REALTIME, REFACTOR | Creates a transport-independent simulation state boundary. |
-| 3 | `4afec2071e7a` | `refactor(game): 득점과 충돌을 simulation에 통합` | S | SIMULATION, CORE, ARCH | Moves complete scoring and terminal mechanics into one deterministic transition. |
-| 4 | `4ef4beeb8611` | `test(game): 결정적 simulation 검증` | A | SIMULATION, REALTIME, TEST | Locks immutability, seed repeatability, and replay digest behavior. |
-| 5 | `cf14c4052310` | `refactor(game): GameHub frame 계산을 simulation에 위임` | S | SIMULATION, ARCH, REALTIME | Makes GameHub consume the standalone authoritative transition. |
-| 6 | `2cef070188ac` | `refactor(game): GameHub의 중복 물리 계산 제거` | B | SIMULATION, REALTIME | Deletes the competing legacy rules after migration. |
-| 7 | `37a7b2e4611b` | `test(game): versioned match replay fixture 추가` | A | SIMULATION, REALTIME, TEST | Turns long-run deterministic behavior into a versioned compatibility fixture. |
+| 1 | `9e3664f5de48` | `feat(game): 서버 주도 퐁 물리 갱신` | A | SIMULATION, REALTIME, WEB | 서버가 소유하는 첫 물리 계산 반복 실행을 도입합니다. |
+| 2 | `2e4359f0625f` | `refactor(game): Pong simulation 상태와 초기화 분리` | A | SIMULATION, REALTIME, REFACTOR | 전송 계층과 독립적인 시뮬레이션 상태 경계를 만듭니다. |
+| 3 | `4afec2071e7a` | `refactor(game): 득점과 충돌을 simulation에 통합` | S | SIMULATION, CORE, ARCH | 득점과 종료 판정을 포함한 전체 게임 규칙을 하나의 결정적 상태 전이로 옮깁니다. |
+| 4 | `4ef4beeb8611` | `test(game): 결정적 simulation 검증` | A | SIMULATION, REALTIME, TEST | 불변성, 같은 시드의 반복 가능성, 리플레이 해시 동작을 고정합니다. |
+| 5 | `cf14c4052310` | `refactor(game): GameHub frame 계산을 simulation에 위임` | S | SIMULATION, ARCH, REALTIME | GameHub가 독립된 서버 권위형 상태 전이를 사용하게 합니다. |
+| 6 | `2cef070188ac` | `refactor(game): GameHub의 중복 물리 계산 제거` | B | SIMULATION, REALTIME | 전환 뒤 남아 있던 기존 중복 규칙을 제거합니다. |
+| 7 | `37a7b2e4611b` | `test(game): versioned match replay fixture 추가` | A | SIMULATION, REALTIME, TEST | 장시간 결정적 동작을 버전이 명시된 호환성 픽스처로 고정합니다. |
 
-## 5. Commit별 학습 기록
+## 5. 커밋별 학습 기록
 
 ### 5.1. `feat(game): 서버 주도 퐁 물리 갱신`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `9e3664f5de48` |
-| Importance | A |
-| Tags | SIMULATION, REALTIME, WEB |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | SIMULATION, REALTIME, WEB |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Introduces the first server-owned physics loop.
-- Classification summary: Implement the authoritative simulation step inside `GameHub`.
+- 개발 스레드에서의 역할: 서버가 소유하는 첫 물리 계산 반복 실행을 도입합니다.
+- 분류 요약: `GameHub` 내부에 서버 권위형 시뮬레이션 단계를 구현합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | parent에서는 서버가 room과 snapshot을 보유하지만 한 frame의 물리 규칙을 수행하는 `tick` 구현이 없습니다. |
-| 핵심 boundary/decision | `apps/api/src/gameHub.ts`의 `tick`, `collidePaddle`, `resetBall`이 `room.snapshot`을 직접 변경합니다. phase가 `playing`일 때만 tick/serverTime을 올리고 paddle·AI·ball·score를 순서대로 갱신합니다. |
-| 상태 또는 ownership 변화 | 이 SHA의 규칙 owner는 `GameHub`입니다. browser는 direction만 보내며 충돌·득점·serve reset 결과는 서버 snapshot에서 나옵니다. |
-| 주요 failure/edge path | arena clamp와 wall reflection이 위치 이탈을 제한하고, court 바깥으로 나간 ball은 score 증가 뒤 center serve로 재설정됩니다. 다만 diff에는 `tick`을 호출하는 scheduler가 없어 실행 연결은 아직 보장하지 않습니다. |
-| 보장/비보장 | 서버 내부에 하나의 authoritative physics transition이 생겼다는 사실만 보장합니다. timer lifecycle, 독립 simulation, 장기 replay는 보장하지 않습니다. |
-| 다음 관련 commit 연결 | `2e4359...`가 state 초기화와 clone을 transport-independent `PongSimulation`으로 옮길 토대를 만듭니다. |
+| 직전 관련 상태 | 부모 커밋에서는 서버가 경기방과 스냅샷을 보유하지만 한 프레임의 물리 규칙을 수행하는 `tick` 구현이 없습니다. |
+| 핵심 경계/판단 | `apps/api/src/gameHub.ts`의 `tick`, `collidePaddle`, `resetBall`이 `room.snapshot`을 직접 변경합니다. 단계가 `playing`일 때만 틱/serverTime을 올리고 패들·AI·공·점수를 순서대로 갱신합니다. |
+| 상태 또는 소유권 변화 | 이 SHA의 규칙 소유 주체는 `GameHub`입니다. 브라우저는 방향만 보내며 충돌·득점·서브 재설정 결과는 서버 스냅샷에서 나옵니다. |
+| 주요 실패/예외 경로 | 경기장 범위 제한과 벽 반사가 위치 이탈을 제한하고, 경기장 바깥으로 나간 공은 점수 증가 뒤 center 서브로 재설정됩니다. 다만 변경 내용에는 `tick`을 호출하는 스케줄러가 없어 실행 연결은 아직 보장하지 않습니다. |
+| 보장 범위/보장하지 않는 범위 | 서버 내부에 하나의 서버가 확정하는 물리 상태 전이가 생겼다는 사실만 보장합니다. 타이머 수명주기, 독립 시뮬레이션, 장기 리플레이는 보장하지 않습니다. |
+| 다음 관련 커밋 연결 | `2e4359...`가 상태 초기화와 복제를 전송 계층 독립적인 `PongSimulation`으로 옮길 토대를 만듭니다. |
 
 비교 기준:
-- 이 commit의 parent에서 동일 책임을 담당하던 코드를 비교했습니다.
-- 다음 Thread 관련 SHA: `2e4359f0625f` — `refactor(game): Pong simulation 상태와 초기화 분리`
+- 이 커밋의 부모 커밋에서 동일 책임을 담당하던 코드를 비교했습니다.
+- 다음 개발 스레드 관련 SHA: `2e4359f0625f` — `refactor(game): Pong simulation 상태와 초기화 분리`
 
 ### 5.2. `refactor(game): Pong simulation 상태와 초기화 분리`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `2e4359f0625f` |
-| Importance | A |
-| Tags | SIMULATION, REALTIME, REFACTOR |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | SIMULATION, REALTIME, REFACTOR |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Creates a transport-independent simulation state boundary.
-- Classification summary: Extract simulation state, input types, initialization, and cloning from transport concerns.
+- 개발 스레드에서의 역할: 전송 계층과 독립적인 시뮬레이션 상태 경계를 만듭니다.
+- 분류 요약: 시뮬레이션 상태, 입력 타입, 초기화, 복제를 전송 처리에서 분리합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | 게임 상태는 `GameHub`의 wire snapshot과 결합되어 있었고 독립적으로 초기화·복제할 경계가 없었습니다. |
-| 핵심 boundary/decision | 새 `apps/api/src/game/pongSimulation.ts`에 `PongSimulationState`, `PongSimulationInputs`, `initialState`, `cloneState`를 추가합니다. |
-| 상태 또는 ownership 변화 | state shape와 초기화 책임이 simulation module로 이동하지만 이 commit 자체에는 완전한 `step` mechanics가 아직 없습니다. |
-| 주요 failure/edge path | nested paddles와 ball을 별도 객체로 복제해 caller state aliasing의 기초 위험을 제거합니다. 이 시점에는 충돌·득점 규칙 중복이 여전히 남습니다. |
-| 보장/비보장 | transport 없이 simulation state를 만들고 복제할 수 있습니다. GameHub가 이를 사용하거나 rule owner가 바뀌었다고까지 보장하지 않습니다. |
-| 다음 관련 commit 연결 | `4afec2...`가 득점·충돌·가속·종료를 `PongSimulation.step`에 통합합니다. |
+| 직전 관련 상태 | 게임 상태는 `GameHub`의 전송용 스냅샷과 결합되어 있었고 독립적으로 초기화·복제할 경계가 없었습니다. |
+| 핵심 경계/판단 | 새 `apps/api/src/game/pongSimulation.ts`에 `PongSimulationState`, `PongSimulationInputs`, `initialState`, `cloneState`를 추가합니다. |
+| 상태 또는 소유권 변화 | 상태 형식과 초기화 책임이 시뮬레이션 모듈로 이동하지만 이 커밋 자체에는 완전한 `step` 게임 규칙이 아직 없습니다. |
+| 주요 실패/예외 경로 | 중첩된 패들과 공을 별도 객체로 복제해 호출자 상태 같은 객체를 공유하는 문제의 기초 위험을 제거합니다. 이 시점에는 충돌·득점 규칙 중복이 여전히 남습니다. |
+| 보장 범위/보장하지 않는 범위 | 전송 계층 없이 시뮬레이션 상태를 만들고 복제할 수 있습니다. GameHub가 이를 사용하거나 규칙 소유 주체가 바뀌었다고까지 보장하지 않습니다. |
+| 다음 관련 커밋 연결 | `4afec2...`가 득점·충돌·가속·종료를 `PongSimulation.step`에 통합합니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `9e3664f5de48` — `feat(game): 서버 주도 퐁 물리 갱신`
-- 다음 Thread 관련 SHA: `4afec2071e7a` — `refactor(game): 득점과 충돌을 simulation에 통합`
+- 직전 개발 스레드 관련 SHA: `9e3664f5de48` — `feat(game): 서버 주도 퐁 물리 갱신`
+- 다음 개발 스레드 관련 SHA: `4afec2071e7a` — `refactor(game): 득점과 충돌을 simulation에 통합`
 
 ### 5.3. `refactor(game): 득점과 충돌을 simulation에 통합`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `4afec2071e7a` |
-| Importance | S |
-| Tags | SIMULATION, CORE, ARCH |
-| 학습 깊이 | Architecture/invariant 중심으로 직전 상태, 결정, 핵심 전이, ownership, failure, 후속 검증까지 복원했습니다. |
+| 중요도 | S |
+| 태그 | SIMULATION, CORE, ARCH |
+| 학습 깊이 | 아키텍처/불변 조건 중심으로 직전 상태, 결정, 핵심 전이, 소유권, 실패, 후속 검증까지 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Moves complete scoring and terminal mechanics into one deterministic transition.
-- Classification summary: Complete the standalone deterministic state transition.
+- 개발 스레드에서의 역할: 득점과 종료 판정을 포함한 전체 게임 규칙을 하나의 결정적 상태 전이로 옮깁니다.
+- 분류 요약: 독립된 결정적 상태 전이를 완성합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | state boundary는 생겼지만 실제 physics는 여전히 GameHub와 simulation 사이에 분산될 수 있는 상태였습니다. |
-| 핵심 boundary/decision | `PongSimulation.step(state, inputs, deltaMs)`가 clone된 state에 paddle 이동, wall/paddle collision, scoring, serve reset, acceleration, terminal 판정을 순서대로 적용합니다. |
-| 상태 또는 ownership 변화 | 게임 규칙과 terminal result 계산이 pure simulation transition의 책임이 됩니다. input/state는 caller가 소유하고 반환 state는 새 객체입니다. |
-| 주요 failure/edge path | invalid delta는 거부하고 paddle을 arena에 clamp합니다. 속도는 tick당 0.015씩 증가하되 18에서 제한하며, 45초 tick limit 또는 `WINNING_SCORE`에서 종료합니다. 시간 제한 동점은 left를 선택합니다. |
-| 보장/비보장 | 동일 state/input/delta는 동일 next state를 만들고 rule ordering이 한 함수에 모입니다. GameHub가 아직 이 함수를 실제 frame에 사용한다는 보장은 다음 commit 전에는 없습니다. |
-| 다음 관련 commit 연결 | `4ef4be...`가 immutability·delta scaling·seed repeatability·1,000-step digest를 검증하고, `cf14c4...`가 runtime caller를 전환합니다. |
+| 직전 관련 상태 | 상태 경계는 생겼지만 실제 물리 계산은 여전히 GameHub와 시뮬레이션 사이에 분산될 수 있는 상태였습니다. |
+| 핵심 경계/판단 | `PongSimulation.step(state, inputs, deltaMs)`가 복제된 상태에 패들 이동, wall/패들 충돌, 득점, 서브 재설정, 속도 증가, 종료 판정을 순서대로 적용합니다. |
+| 상태 또는 소유권 변화 | 게임 규칙과 종료 결과 계산이 순수 시뮬레이션 상태 전이의 책임이 됩니다. 입력/상태는 호출자가 소유하고 반환 상태는 새 객체입니다. |
+| 주요 실패/예외 경로 | 잘못된 시간 간격은 거부하고 패들을 arena에 범위 제한합니다. 속도는 틱당 0.015씩 증가하되 18에서 제한하며, 45초 틱 상한 또는 `WINNING_SCORE`에서 종료합니다. 시간 제한 동점은 left를 선택합니다. |
+| 보장 범위/보장하지 않는 범위 | 동일 상태/입력/시간 간격은 동일 next 상태를 만들고 기준 순서가 한 함수에 모입니다. GameHub가 아직 이 함수를 실제 프레임에 사용한다는 보장은 다음 커밋 전에는 없습니다. |
+| 다음 관련 커밋 연결 | `4ef4be...`가 불변성·시간 간격 비례 계산·시드 repeatability·1,000-단계 해시를 검증하고, `cf14c4...`가 실행 시점 호출자를 전환합니다. |
 
-#### Architecture / invariant 복원
+#### 아키텍처와 불변 조건 복원
 
 | 축 | 복원 결과 |
 | --- | --- |
-| 문제 | 충돌·득점·가속·종료가 transport orchestration과 함께 있으면 단위 검증과 replay compatibility를 독립적으로 보장할 수 없습니다. |
-| 실패 위험 | GameHub와 별도 simulation이 서로 다른 규칙을 계산하거나 caller state를 in-place 변경하면 서버 내부에서도 결과가 갈라집니다. |
-| 핵심 결정 | 모든 mechanics를 하나의 clone-first `PongSimulation.step`에 집중합니다. |
-| 구현 경로 | 입력 방향 적용 → paddle clamp → ball 적분 → wall/paddle 반사 → score/reset → acceleration → winning/time-limit 판정. |
-| 수명주기·상태 | simulation state는 호출 전 state와 반환 state로 구분되고 socket·timer·repository resource를 소유하지 않습니다. |
-| 실패 처리 | 비정상 delta는 즉시 `RangeError`; 위치·속도는 명시적 bounds; terminal에서는 양쪽 direction을 0으로 고정합니다. |
-| 후속 검증 | `4ef4be...` deterministic unit test와 `37a7b2...` versioned replay fixture가 후속 보호를 제공합니다. |
-| Thread 전체 의미 | 이후 GameHub는 rule engine이 아니라 input/AI 수집, scheduling, projection, persistence를 조정하는 계층이 될 수 있습니다. |
+| 문제 | 충돌·득점·가속·종료가 전송 계층 실행 조정과 함께 있으면 단위 검증과 리플레이 호환성을 독립적으로 보장할 수 없습니다. |
+| 실패 위험 | GameHub와 별도 시뮬레이션이 서로 다른 규칙을 계산하거나 호출자 상태를 제자리에서 변경하면 서버 내부에서도 결과가 갈라집니다. |
+| 핵심 결정 | 모든 게임 규칙을 하나의 복제 첫 `PongSimulation.step`에 집중합니다. |
+| 구현 경로 | 입력 방향 적용 → 패들 범위 제한 → 공 적분 → 벽·패들 반사 → 득점·서브 초기화 → 속도 증가 → 승리 점수·시간 상한 판정. |
+| 수명주기·상태 | 시뮬레이션 상태는 호출 전 상태와 반환 상태로 구분되고 소켓·타이머·저장소 자원을 소유하지 않습니다. |
+| 실패 처리 | 비정상 시간 간격은 즉시 `RangeError`; 위치·속도는 명시적 범위 제한; 종료에서는 양쪽 방향을 0으로 고정합니다. |
+| 후속 검증 | `4ef4be...` 결정적 단위 테스트와 `37a7b2...` 버전이 명시된 재생 픽스처가 후속 보호를 제공합니다. |
+| 개발 스레드 전체 의미 | 이후 GameHub는 기준 실행 엔진이 아니라 입력/AI 수집, 스케줄링, 스냅샷 구성, 영속 저장을 조정하는 계층이 될 수 있습니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `2e4359f0625f` — `refactor(game): Pong simulation 상태와 초기화 분리`
-- 다음 Thread 관련 SHA: `4ef4beeb8611` — `test(game): 결정적 simulation 검증`
+- 직전 개발 스레드 관련 SHA: `2e4359f0625f` — `refactor(game): Pong simulation 상태와 초기화 분리`
+- 다음 개발 스레드 관련 SHA: `4ef4beeb8611` — `test(game): 결정적 simulation 검증`
 
 ### 5.4. `test(game): 결정적 simulation 검증`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `4ef4beeb8611` |
-| Importance | A |
-| Tags | SIMULATION, REALTIME, TEST |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | SIMULATION, REALTIME, TEST |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Locks immutability, seed repeatability, and replay digest behavior.
-- Classification summary: Add deterministic unit and regression tests for simulation and AI.
+- 개발 스레드에서의 역할: 불변성, 같은 시드의 반복 가능성, 리플레이 해시 동작을 고정합니다.
+- 분류 요약: 시뮬레이션과 AI의 결정적 단위·회귀 테스트를 추가합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | `PongSimulation.step`의 설계 의도는 코드에 존재하지만 동일 입력 반복, source mutation, 장기 drift를 자동 검출할 증거가 없었습니다. |
-| 핵심 boundary/decision | `pongSimulation.test.ts`와 `pongAi.test.ts`가 동일 입력 deep equality, 입력 불변성, 25/50ms scaling, bounds, win, invalid delta, seeded PRNG/AI, 1,000-tick SHA-256을 고정합니다. |
-| 상태 또는 ownership 변화 | production state owner는 바뀌지 않으며 test fixture가 deterministic contract의 회귀 감시자 역할을 맡습니다. |
-| 주요 failure/edge path | `Math.random`·`Math.sin` 사용을 source 검사로 막고, 잘못된 delta와 bounds를 명시적으로 재현합니다. |
-| 보장/비보장 | pure mechanics와 AI가 같은 seed/state에서 반복 가능하고 source state를 변경하지 않음을 증명합니다. GameHub·network·scheduler·DB 통합은 증명하지 않습니다. |
-| 다음 관련 commit 연결 | `cf14c4...`에서 GameHub의 frame 계산이 실제로 검증된 simulation을 호출합니다. |
+| 직전 관련 상태 | `PongSimulation.step`의 설계 의도는 코드에 존재하지만 동일 입력 반복, 소스 변경, 장기 편차를 자동 검출할 증거가 없었습니다. |
+| 핵심 경계/판단 | `pongSimulation.test.ts`와 `pongAi.test.ts`는 같은 입력의 깊은 동등성, 입력 불변성, 25ms·50ms 간격에 따른 비례 동작, 위치 제한, 승리 조건, 잘못된 시간 간격 거부, 고정 시드 PRNG·AI, 1,000틱 SHA-256 결과를 고정합니다. |
+| 상태 또는 소유권 변화 | 운영 상태 소유 주체는 바뀌지 않으며 테스트 픽스처가 결정적 계약의 회귀 감시자 역할을 맡습니다. |
+| 주요 실패/예외 경로 | `Math.random`·`Math.sin` 사용을 소스 검사로 막고, 잘못된 시간 간격과 범위 제한을 명시적으로 재현합니다. |
+| 보장 범위/보장하지 않는 범위 | 순수 게임 규칙과 AI가 같은 시드/상태에서 반복 가능하고 소스 상태를 변경하지 않음을 검증합니다. GameHub·네트워크·스케줄러·DB 통합은 검증하지 않습니다. |
+| 다음 관련 커밋 연결 | `cf14c4...`에서 GameHub의 프레임 계산이 실제로 검증된 시뮬레이션을 호출합니다. |
 
-#### Test commit 학습 기록
+#### 테스트 커밋 학습 기록
 
 | 구분 | 기록 |
 | --- | --- |
-| 대상 production invariant | simulation은 입력을 변경하지 않고 동일한 state/input/seed에서 동일한 결과를 냅니다. |
-| 재현하는 failure/boundary | delta scaling, paddle bounds, terminal score, invalid delta, 1,000-step drift, 비결정적 난수 사용. |
-| test technique | Vitest deterministic unit/regression, seeded PRNG, final-state SHA-256, source-pattern assertion. |
-| 통과하는 production path | `PongSimulation.step` 및 `PongAi`를 transport 없이 직접 호출합니다. |
-| 증명하는 것 | rule function과 AI의 반복 가능성·불변성·주요 bounds를 증명합니다. |
-| 증명하지 않는 것 | GameHub scheduling, socket ordering, persistence 또는 multi-process determinism은 증명하지 않습니다. |
-| test 성격 | Deterministic unit and long-run digest regression. |
-| 후속 회귀 방지 설명 | state aliasing, physics ordering, constants, PRNG 구현이 바뀌어 같은 fixture의 결과가 달라지면 실패해야 합니다. |
+| 검증 대상 불변 조건 | 시뮬레이션은 입력을 변경하지 않고 동일한 상태/입력/시드에서 동일한 결과를 냅니다. |
+| 재현하는 실패/경계 | 시간 간격 비례 계산, 패들 범위 제한, 종료 점수, 잘못된 시간 간격, 1,000-단계 편차, 비결정적 난수 사용. |
+| 테스트 기법 | Vitest 결정적 단위/회귀, 고정 시드를 사용한 PRNG, 최종 상태 SHA-256, 소스 방식 검증. |
+| 실행하는 실제 코드 경로 | `PongSimulation.step` 및 `PongAi`를 전송 계층 없이 직접 호출합니다. |
+| 검증하는 것 | 기준 함수와 AI의 반복 가능성·불변성·주요 범위 제한을 검증합니다. |
+| 검증하지 않는 것 | GameHub 스케줄링, 소켓 순서, 영속 저장 또는 여러 프로세스 determinism은 검증하지 않습니다. |
+| 테스트 성격 | 결정적 단위 테스트와 장시간 실행 해시 회귀입니다. |
+| 후속 회귀 방지 설명 | 상태 객체를 공유하는 오류, 물리 계산 순서, 상수, PRNG 구현이 바뀌어 같은 픽스처의 결과가 달라지면 테스트가 실패해야 합니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `4afec2071e7a` — `refactor(game): 득점과 충돌을 simulation에 통합`
-- 다음 Thread 관련 SHA: `cf14c4052310` — `refactor(game): GameHub frame 계산을 simulation에 위임`
+- 직전 개발 스레드 관련 SHA: `4afec2071e7a` — `refactor(game): 득점과 충돌을 simulation에 통합`
+- 다음 개발 스레드 관련 SHA: `cf14c4052310` — `refactor(game): GameHub frame 계산을 simulation에 위임`
 
 ### 5.5. `refactor(game): GameHub frame 계산을 simulation에 위임`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `cf14c4052310` |
-| Importance | S |
-| Tags | SIMULATION, ARCH, REALTIME |
-| 학습 깊이 | Architecture/invariant 중심으로 직전 상태, 결정, 핵심 전이, ownership, failure, 후속 검증까지 복원했습니다. |
+| 중요도 | S |
+| 태그 | SIMULATION, ARCH, REALTIME |
+| 학습 깊이 | 아키텍처/불변 조건 중심으로 직전 상태, 결정, 핵심 전이, 소유권, 실패, 후속 검증까지 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Makes GameHub consume the standalone authoritative transition.
-- Classification summary: Replace GameHub's frame calculation with `PongSimulation.step` while preserving the realtime projection.
+- 개발 스레드에서의 역할: GameHub가 독립된 서버 권위형 상태 전이를 사용하게 합니다.
+- 분류 요약: 실시간 조회 결과를 유지하면서 GameHub의 프레임 계산을 `PongSimulation.step`으로 교체합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | GameHub와 simulation에 모두 mechanics가 있어 standalone transition이 production authority라고 말할 수 없었습니다. |
-| 핵심 boundary/decision | `GameHub.tick`이 AI intent를 계산한 뒤 `PongSimulation.step`에 현재 state와 50ms 입력을 넘기고, 반환 state를 저장한 뒤 `syncSnapshot`으로 wire model을 투영합니다. |
-| 상태 또는 ownership 변화 | mechanics는 simulation, scheduling/input/AI orchestration과 snapshot broadcast/finalization은 GameHub가 소유합니다. |
-| 주요 failure/edge path | terminal 결과는 simulation output에서만 판정해 `finishRoom`으로 연결합니다. snapshot projection은 tick·score·paddle·ball을 복사해 기존 protocol을 유지합니다. |
-| 보장/비보장 | production frame이 standalone rule engine을 사용하며 wire shape를 유지합니다. legacy helper가 실제로 삭제되었다는 보장은 `2cef...`에서 완성됩니다. |
-| 다음 관련 commit 연결 | `2cef07...`가 GameHub의 경쟁 physics helper를 제거하고 single-owner invariant를 완성합니다. |
+| 직전 관련 상태 | GameHub와 시뮬레이션에 모두 게임 규칙이 있어 독립 실행 상태 전이가 운영의 판정 권한이라고 말할 수 없었습니다. |
+| 핵심 경계/판단 | `GameHub.tick`이 AI 요청 의도를 계산한 뒤 `PongSimulation.step`에 현재 상태와 50ms 입력을 넘기고, 반환 상태를 저장한 뒤 `syncSnapshot`으로 전송 형식 모델을 투영합니다. |
+| 상태 또는 소유권 변화 | 게임 규칙은 시뮬레이션, 스케줄링/입력/AI 실행 조정과 스냅샷 전파/결과 확정은 GameHub가 소유합니다. |
+| 주요 실패/예외 경로 | 종료 결과는 시뮬레이션 출력에서만 판정해 `finishRoom`으로 연결합니다. 스냅샷에는 틱·점수·패들·공을 복사해 기존 프로토콜을 유지합니다. |
+| 보장 범위/보장하지 않는 범위 | 운영 프레임이 독립된 시뮬레이션 엔진을 사용하며 전송 형식을 유지합니다. 기존 도우미 함수가 실제로 삭제되었다는 보장은 `2cef...`에서 완성됩니다. |
+| 다음 관련 커밋 연결 | `2cef07...`가 GameHub의 경쟁 물리 계산 도우미 함수를 제거하고 단일 소유 주체 불변 조건을 완성합니다. |
 
-#### Architecture / invariant 복원
+#### 아키텍처와 불변 조건 복원
 
 | 축 | 복원 결과 |
 | --- | --- |
-| 문제 | 순수 simulation이 존재해도 production caller가 기존 코드를 사용하면 authoritative owner가 둘입니다. |
-| 실패 위험 | test가 통과한 mechanics와 실제 socket clients가 받는 결과가 달라질 수 있습니다. |
-| 핵심 결정 | GameHub의 frame path를 `PongSimulation.step` 하나로 교체하고 wire projection은 별도 `syncSnapshot`으로 유지합니다. |
-| 구현 경로 | scheduler → `GameHub.tick` → AI/input 작성 → `PongSimulation.step` → `room.simulation` 저장 → `syncSnapshot` → broadcast/finish. |
-| 수명주기·상태 | GameHub는 room·timer·client를 계속 소유하고 simulation은 resource-free state transition만 수행합니다. |
-| 실패 처리 | terminal output에서만 finalization을 시작하며, 기존 realtime event shape는 projection으로 보존합니다. |
-| 후속 검증 | `2cef...` 중복 삭제와 `37a7b2...` replay fixture가 이 ownership 이동을 고정합니다. |
-| Thread 전체 의미 | 서버 권위는 socket 계층이 아니라 production에서 실제 호출되는 단일 deterministic transition으로 구체화됩니다. |
+| 문제 | 순수 시뮬레이션이 존재해도 운영 호출자가 기존 코드를 사용하면 최종 판정 주체가 둘입니다. |
+| 실패 위험 | 테스트가 통과한 게임 규칙과 실제 소켓 클라이언트가 받는 결과가 달라질 수 있습니다. |
+| 핵심 결정 | GameHub의 프레임 경로를 `PongSimulation.step` 하나로 교체하고 전송 형식은 별도 `syncSnapshot`에서 구성합니다. |
+| 구현 경로 | 스케줄러 → `GameHub.tick` → AI/입력 작성 → `PongSimulation.step` → `room.simulation` 저장 → `syncSnapshot` → 전파/종료. |
+| 수명주기·상태 | GameHub는 경기방·타이머·클라이언트를 계속 소유하고 시뮬레이션은 외부 자원이 없는 상태 전이만 수행합니다. |
+| 실패 처리 | 종료 출력에서만 결과 확정을 시작하며, 기존 실시간 이벤트 형식은 별도 투영 단계에서 유지합니다. |
+| 후속 검증 | `2cef...` 중복 삭제와 `37a7b2...` 재생 픽스처가 이 소유권 이동을 고정합니다. |
+| 개발 스레드 전체 의미 | 서버 권위는 소켓 계층이 아니라 운영에서 실제 호출되는 단일 결정적 상태 전이로 구체화됩니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `4ef4beeb8611` — `test(game): 결정적 simulation 검증`
-- 다음 Thread 관련 SHA: `2cef070188ac` — `refactor(game): GameHub의 중복 물리 계산 제거`
+- 직전 개발 스레드 관련 SHA: `4ef4beeb8611` — `test(game): 결정적 simulation 검증`
+- 다음 개발 스레드 관련 SHA: `2cef070188ac` — `refactor(game): GameHub의 중복 물리 계산 제거`
 
 ### 5.6. `refactor(game): GameHub의 중복 물리 계산 제거`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `2cef070188ac` |
-| Importance | B |
-| Tags | SIMULATION, REALTIME |
-| 학습 깊이 | Thread 흐름에서 맡는 구현 역할과 필요한 상태 변화를 복원했습니다. |
+| 중요도 | B |
+| 태그 | SIMULATION, REALTIME |
+| 학습 깊이 | 개발 스레드 흐름에서 맡는 구현 역할과 필요한 상태 변화를 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Deletes the competing legacy rules after migration.
-- Classification summary: Remove the obsolete GameHub physics and AI helpers after the production handoff.
+- 개발 스레드에서의 역할: 전환 뒤 남아 있던 기존 중복 규칙을 제거합니다.
+- 분류 요약: 운영 경로 전환 뒤 더 이상 쓰지 않는 GameHub 물리 계산·AI 도우미를 제거합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | production call은 simulation으로 전환됐지만 old constants와 collision/reset/AI helper가 파일에 남아 향후 재사용될 가능성이 있었습니다. |
-| 핵심 boundary/decision | `gameHub.ts`에서 legacy physics/AI constants와 `clamp`, reset, collision, acceleration 및 예측 helper를 삭제합니다. |
-| 상태 또는 ownership 변화 | GameHub에는 scheduler, input/AI orchestration, `syncSnapshot`, room lifecycle만 남고 mechanics 구현은 simulation에만 존재합니다. |
-| 주요 failure/edge path | 동작 추가가 아니라 competing implementation 제거입니다. 삭제 뒤에도 protocol projection은 유지됩니다. |
-| 보장/비보장 | 해당 SHA에서 중복 rule implementation이 남지 않습니다. 장기 버전 호환성은 아직 fixture가 필요합니다. |
-| 다음 관련 commit 연결 | `37a7b2...`가 1,000-tick versioned replay를 추가해 이후 mechanics 변경을 검출합니다. |
+| 직전 관련 상태 | 운영 호출은 시뮬레이션으로 전환됐지만 기존 상수와 충돌/초기화/AI 도우미 함수가 파일에 남아 향후 재사용될 가능성이 있었습니다. |
+| 핵심 경계/판단 | `gameHub.ts`에서 기존 물리 계산/AI 상수와 `clamp`, 초기화, 충돌, 속도 증가 및 예측 도우미 함수를 삭제합니다. |
+| 상태 또는 소유권 변화 | GameHub에는 스케줄러, 입력/AI 실행 조정, `syncSnapshot`, 경기방 수명주기만 남고 게임 규칙 구현은 시뮬레이션에만 존재합니다. |
+| 주요 실패/예외 경로 | 동작 추가가 아니라 경쟁하는 중복 구현 제거입니다. 삭제 뒤에도 프로토콜 형식은 유지됩니다. |
+| 보장 범위/보장하지 않는 범위 | 해당 SHA에서 중복 기준 구현이 남지 않습니다. 장기 버전 호환성은 아직 픽스처가 필요합니다. |
+| 다음 관련 커밋 연결 | `37a7b2...`가 1,000-틱 버전이 명시된 재생을 추가해 이후 게임 규칙 변경을 검출합니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `cf14c4052310` — `refactor(game): GameHub frame 계산을 simulation에 위임`
-- 다음 Thread 관련 SHA: `37a7b2e4611b` — `test(game): versioned match replay fixture 추가`
+- 직전 개발 스레드 관련 SHA: `cf14c4052310` — `refactor(game): GameHub frame 계산을 simulation에 위임`
+- 다음 개발 스레드 관련 SHA: `37a7b2e4611b` — `test(game): versioned match replay fixture 추가`
 
 ### 5.7. `test(game): versioned match replay fixture 추가`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `37a7b2e4611b` |
-| Importance | A |
-| Tags | SIMULATION, REALTIME, TEST |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | SIMULATION, REALTIME, TEST |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Turns long-run deterministic behavior into a versioned compatibility fixture.
-- Classification summary: Add an explicit version-one replay input fixture and expected final digest.
+- 개발 스레드에서의 역할: 장시간 결정적 동작을 버전이 명시된 호환성 픽스처로 고정합니다.
+- 분류 요약: 버전 1 리플레이 입력 픽스처와 예상 최종 해시값을 명시적으로 추가합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | inline deterministic tests는 존재하지만 입력 series와 결과 digest를 외부 versioned artifact로 고정하지 않았습니다. |
-| 핵심 boundary/decision | `fixtures/replay-v1.json`에 version, seed, 50ms, 1,000개 입력, initial state, expected final SHA-256을 저장하고 test가 순서대로 `PongSimulation.step`을 재생합니다. |
-| 상태 또는 ownership 변화 | fixture가 replay compatibility의 고정 입력을 소유하고 production simulation이 이를 해석합니다. |
-| 주요 failure/edge path | fixture shape/length/encoded direction을 먼저 검증해 불완전 fixture가 우연히 통과하지 않게 합니다. |
-| 보장/비보장 | 동일 version-one fixture의 final state digest가 `f0a9...3f61`과 일치합니다. network timing, scheduler lag, persistence 결과는 포함하지 않습니다. |
-| 다음 관련 commit 연결 | Thread 최종 상태는 simulation이 mechanics의 유일한 owner이고 GameHub가 이를 projection하는 형태입니다. |
+| 직전 관련 상태 | 인라인 결정적 테스트는 존재하지만 입력 묶음과 결과 해시를 외부의 버전이 명시된 산출물로 고정하지 않았습니다. |
+| 핵심 경계/판단 | `fixtures/replay-v1.json`에 버전, 시드, 50ms, 1,000개 입력, 초기 상태, 예상 최종 SHA-256을 저장하고 테스트가 순서대로 `PongSimulation.step`을 재생합니다. |
+| 상태 또는 소유권 변화 | 픽스처가 리플레이 호환성의 고정 입력을 소유하고 운영 시뮬레이션이 이를 해석합니다. |
+| 주요 실패/예외 경로 | 픽스처 형식/length/인코딩된 방향을 먼저 검증해 불완전 픽스처가 우연히 통과하지 않게 합니다. |
+| 보장 범위/보장하지 않는 범위 | 동일 버전 1 픽스처의 최종 상태 해시가 `f0a9...3f61`과 일치합니다. 네트워크 시간 제어, 스케줄러 lag, 영속 저장 결과는 포함하지 않습니다. |
+| 다음 관련 커밋 연결 | 개발 스레드 최종 상태에서는 시뮬레이션이 게임 규칙을 유일하게 계산하고, GameHub는 그 결과를 전송용 스냅샷으로 변환합니다. |
 
-#### Test commit 학습 기록
+#### 테스트 커밋 학습 기록
 
 | 구분 | 기록 |
 | --- | --- |
-| 대상 production invariant | version-one replay input은 구현·환경과 무관하게 동일 final simulation state를 만듭니다. |
-| 재현하는 failure/boundary | 1,000 fixed steps 동안 작은 physics·AI·serialization 변화가 누적되는 장기 drift. |
-| test technique | Versioned JSON fixture + deterministic replay + final-state SHA-256 regression. |
-| 통과하는 production path | fixture decode → `PongSimulation.step` 1,000회 → canonical state hash 비교. |
-| 증명하는 것 | 해당 fixture에 대한 mechanics 장기 호환성과 deterministic replay를 증명합니다. |
-| 증명하지 않는 것 | 모든 possible input이나 actual WebSocket frame scheduling을 증명하지 않습니다. |
-| test 성격 | Versioned deterministic replay compatibility test. |
-| 후속 회귀 방지 설명 | physics ordering·constants·state serialization이 의도 없이 바뀌면 digest가 달라져 실패해야 합니다. |
+| 검증 대상 불변 조건 | 버전 1 리플레이 입력은 구현·환경과 무관하게 동일 최종 시뮬레이션 상태를 만듭니다. |
+| 재현하는 실패/경계 | 1,000 고정 간격 단계 동안 작은 물리 계산·AI·직렬화 변화가 누적되는 장기 편차. |
+| 테스트 기법 | 버전이 명시된 JSON 픽스처 + 결정적 재생 + 최종 상태 SHA-256 회귀. |
+| 실행하는 실제 코드 경로 | 픽스처 decode → `PongSimulation.step` 1,000회 → 표준 상태 해시 비교. |
+| 검증하는 것 | 해당 픽스처에 대한 게임 규칙 장기 호환성과 결정적 재생을 검증합니다. |
+| 검증하지 않는 것 | 모든 possible 입력이나 실제 WebSocket 프레임 스케줄링을 검증하지 않습니다. |
+| 테스트 성격 | 버전이 명시된 결정적 재생 호환성 테스트. |
+| 후속 회귀 방지 설명 | 물리 계산 순서·상수·상태 직렬화가 의도 없이 바뀌면 해시가 달라져 실패해야 합니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `2cef070188ac` — `refactor(game): GameHub의 중복 물리 계산 제거`
-- 이 Thread의 마지막 상태와 비교해 최종 보장을 정리했습니다.
+- 직전 개발 스레드 관련 SHA: `2cef070188ac` — `refactor(game): GameHub의 중복 물리 계산 제거`
+- 이 개발 스레드의 마지막 상태와 비교해 최종 보장을 정리했습니다.
 
-## 6. Invariant ledger
+## 6. 불변 조건 기록
 
-Source에서 확정된 invariant를 commit 시점별로 연결했습니다. `해당 없음`은 해당 Thread 안에서 별도 fix/test가 없음을 뜻합니다.
+원문에서 확인한 불변 조건을 커밋 시점별로 연결했습니다. `해당 없음`은 해당 개발 스레드에서 별도 수정/테스트가 없음을 뜻합니다.
 
-| Invariant | 처음 도입/관찰한 SHA | 강화한 SHA | 부족함이 드러난 SHA | 복구한 fix | 고정한 regression test | 코드 근거 |
+| 불변 조건 | 처음 도입/관찰한 SHA | 강화한 SHA | 부족함이 드러난 SHA | 복구한 수정 | 고정한 회귀 테스트 | 코드 근거 |
 | --- | --- | --- | --- | --- | --- | --- |
-| The server is the sole authority for game rules, scores, phases, room membership, matchmaking, and persisted outcomes. | `9e3664f5de48` | `4afec2071e7a`, `cf14c4052310` | `cf14c4052310` 전까지 GameHub와 simulation의 rule ownership이 겹침 | `2cef070188ac` 중복 삭제 | `4ef4beeb8611`, `37a7b2e4611b` | `gameHub.ts::tick/syncSnapshot`, `game/pongSimulation.ts::step` |
+| 게임 규칙, 점수, 단계, 경기방 참가 상태, 대전 상대 연결, 저장된 결과는 서버만 확정합니다. | `9e3664f5de48` | `4afec2071e7a`, `cf14c4052310` | `cf14c4052310` 전까지 GameHub와 시뮬레이션의 기준 소유권이 겹침 | `2cef070188ac` 중복 삭제 | `4ef4beeb8611`, `37a7b2e4611b` | `gameHub.ts::tick/syncSnapshot`, `game/pongSimulation.ts::step` |
 
-## 7. Failure → Fix → Test 연결
+## 7. 실패 → 수정 → 테스트 연결
 
-| 기존 상태/가정 | Fix 또는 강화 과정 | Test/evidence | 최종 보장 |
+| 기존 상태/가정 | 수정 또는 강화 과정 | 테스트/근거 | 최종 보장 |
 | --- | --- | --- | --- |
-| GameHub가 mechanics와 transport를 함께 소유 | `2e4359...` state 경계 → `4afec2...` complete step → `cf14c4...` production handoff | `4ef4be...` deterministic tests | 규칙과 resource orchestration 분리 |
-| migration 뒤 legacy physics가 남음 | `2cef07...` constants/helper 삭제 | source inspection + `37a7b2...` replay | competing rule implementation 없음 |
-| 짧은 unit case만으로 장기 drift를 놓침 | `37a7b2...` versioned 1,000-step fixture | final SHA-256 | version-one replay compatibility |
+| GameHub가 게임 규칙과 전송 계층을 함께 소유 | `2e4359...` 상태 경계 → `4afec2...` 완료 처리 단계 → `cf14c4...` 운영 인계 | `4ef4be...` 결정적 테스트 | 규칙과 자원 실행 조정 분리 |
+| 마이그레이션 뒤 기존 물리 계산이 남음 | `2cef07...` 상수·도우미 함수 삭제 | 소스 검토와 `37a7b2...` 리플레이 | 경쟁하는 기준 구현 없음 |
+| 짧은 단위 사례만으로 장기 편차를 놓침 | `37a7b2...` 버전이 명시된 1,000-단계 픽스처 | 최종 SHA-256 | 버전 1 리플레이 호환성 |
 
-## 8. Ownership / state / responsibility 변화
+## 8. 소유권·상태·담당 범위 변화
 
-| 축 | 초기 SHA의 owner/state | 중간 전환 | Thread 최종 owner/state | 해제·cleanup 책임 | 근거 |
+| 축 | 초기 SHA의 소유 주체/상태 | 중간 전환 | 개발 스레드 최종 소유 주체/상태 | 해제·정리 책임 | 근거 |
 | --- | --- | --- | --- | --- | --- |
-| physics/scoring/terminal rules | `9e3664...` GameHub | `4afec2...` PongSimulation에 완전 구현 | `cf14c4...` 이후 `PongSimulation.step` | resource 없음; 반환 state를 GameHub가 보유 | `pongSimulation.ts::step` |
-| simulation state | wire snapshot 내부 | `2e4359...` 독립 state/clone | `room.simulation` | room 제거 시 GameHub가 함께 폐기 | `gameHub.ts`, `pongSimulation.ts` |
-| timing/input/projection | GameHub | mechanics만 분리 | GameHub | scheduler/room lifecycle가 정리 | `gameHub.ts::tick/syncSnapshot` |
-| deterministic evidence | 없음 | `4ef4be...` unit/digest | `37a7b2...` versioned fixture | test fixture가 repository에 고정 | `replayFixture.test.ts`, `replay-v1.json` |
+| 물리 계산/득점/종료 rules | `9e3664...` GameHub | `4afec2...` PongSimulation에 완전 구현 | `cf14c4...` 이후 `PongSimulation.step` | 자원 없음; 반환 상태를 GameHub가 보유 | `pongSimulation.ts::step` |
+| 시뮬레이션 상태 | 전송용 스냅샷 내부 | `2e4359...` 독립 상태/복제 | `room.simulation` | 경기방 제거 시 GameHub가 함께 폐기 | `gameHub.ts`, `pongSimulation.ts` |
+| 시간 제어/입력/스냅샷 구성 | GameHub | 게임 규칙만 분리 | GameHub | 스케줄러/경기방 수명주기가 정리 | `gameHub.ts::tick/syncSnapshot` |
+| 결정적 근거 | 없음 | `4ef4be...` 단위/해시 | `37a7b2...` 버전이 명시된 픽스처 | 테스트 픽스처가 저장소에 고정 | `replayFixture.test.ts`, `replay-v1.json` |
 
-## 9. Thread 최종 상태
+## 9. 개발 스레드 최종 상태
 
-- 최종 authoritative owner: `PongSimulation.step`이 mechanics와 terminal result의 유일한 owner이며 `GameHub`는 frame orchestration과 projection을 소유합니다.
-- 최종 상태/invariant: 동일 state/input/delta/seed는 동일 next state를 만들고 browser는 score·collision을 결정하지 않습니다.
-- 남아 있는 의도적 제한 또는 비보장: replay fixture는 하나의 versioned input series이며 network scheduling·persistence·multi-process를 검증하지 않습니다.
-- 후속 Thread가 의존하는 contract: GameHub와 protocol 계층은 simulation state를 authoritative snapshot으로 투영하고 terminal output만 finalization에 넘깁니다.
+- 최종 판정 주체: `PongSimulation.step`이 게임 규칙과 종료 결과의 유일한 소유 주체이며 `GameHub`는 프레임 실행 조정과 스냅샷 구성을 소유합니다.
+- 최종 상태/불변 조건: 동일 상태/입력/시간 간격/시드는 동일 next 상태를 만들고 브라우저는 점수·충돌을 결정하지 않습니다.
+- 남아 있는 의도적 제한 또는 보장하지 않는 범위: 재생 픽스처는 하나의 버전이 명시된 입력 묶음이며 네트워크 스케줄링, 영속 저장, 여러 프로세스를 검증하지 않습니다.
+- 후속 개발 스레드가 의존하는 계약: GameHub와 프로토콜 계층은 시뮬레이션 상태를 서버가 확정한 스냅샷으로 투영하고 종료 출력만 결과 확정에 넘깁니다.
 - 대표 코드 근거: `4afec2071e7a apps/api/src/game/pongSimulation.ts::PongSimulation.step`, `cf14c4052310 apps/api/src/gameHub.ts::tick/syncSnapshot`, `37a7b2e4611b replayFixture.test.ts`
 
-## 10. 최종 architecture 또는 execution flow 정리
+## 10. 최종 아키텍처와 실행 순서
 
 ```text
 [WebSocket direction / AI intent]
@@ -356,417 +356,417 @@ Source에서 확정된 invariant를 commit 시점별로 연결했습니다. `해
 [37a7b2e4611b replay fixture로 장기 결과 검증]
 ```
 
-- `PongSimulation`은 socket, timer, repository를 소유하지 않습니다.
-- `GameHub`는 입력·AI·room lifecycle을 조정하지만 physics 식을 다시 구현하지 않습니다.
+- `PongSimulation`은 소켓, 타이머, 저장소를 소유하지 않습니다.
+- `GameHub`는 입력·AI·경기방 수명주기를 조정하지만 물리 계산 식을 다시 구현하지 않습니다.
 
-## 11. 학습 완료 자가 점검
+## 11. 학습 완료 확인
 
-- [x] Commit map의 모든 SHA를 원문 순서대로 확인했습니다.
-- [x] 각 commit의 subject, importance, tags를 변경하지 않았습니다.
+- [x] 커밋 목록의 모든 SHA를 원문 순서대로 확인했습니다.
+- [x] 각 커밋의 제목·중요도·태그를 변경하지 않았습니다.
 - [x] S/A/B 깊이를 구분해 코드 근거를 남겼습니다.
-- [x] final HEAD의 구현을 과거 SHA에 소급하지 않았습니다.
-- [x] 핵심 상태 필드, caller/callee, ownership, failure branch, cleanup을 실제 코드로 확인했습니다.
-- [x] Fix를 기존 가정 → failure/risk → root cause → decision → code → regression 순서로 연결했습니다.
-- [x] Test commit에서 production invariant, failure, technique, path, 증명/비증명 범위를 구분했습니다.
-- [x] Thread 최종 execution flow를 별도 프로젝트 재학습 없이 설명할 수 있습니다.
+- [x] 최종 상태의 구현을 과거 SHA에 소급하지 않았습니다.
+- [x] 핵심 상태 필드, 호출자/피호출자, 소유권, 실패 분기, 정리를 실제 코드로 확인했습니다.
+- [x] 수정을 기존 가정 → 실패/위험 → 근본 원인 → 판단 → 코드 → 회귀 순서로 연결했습니다.
+- [x] 테스트 커밋에서 운영 불변 조건, 실패, 기법, 경로, 검증 범위와 미검증 범위를 구분했습니다.
+- [x] 개발 스레드 최종 실행 순서를 별도 프로젝트 재학습 없이 설명할 수 있습니다.
 ===== END FILE: 01-authoritative-deterministic-game-mechanics.md =====
 
 ===== BEGIN FILE: 02-cookie-identity-websocket-admission.md =====
 # 쿠키 신원과 일회용 WebSocket 입장
 
-원문 Development Thread: `Cookie identity and one-time WebSocket admission`
+원문 개발 스레드: `Cookie identity and one-time WebSocket admission`
 
-## 1. Thread 목표
+## 1. 개발 스레드 목표
 
-- 여러 transport로 노출되던 durable session을 HttpOnly cookie 하나로 제한하는 보안 전환을 추적합니다.
-- cookie 인증 HTTP 요청이 hash-only, short-lived, single-use ticket을 발급하고 socket handshake가 이를 원자적으로 소비하는 전체 trust chain을 복원합니다.
-- 인증 지연 중 early message 보존과 unauthenticated buffering 상한, credential log redaction이 같은 경계를 어떻게 완성하는지 확인합니다.
+- 여러 전송 계층으로 노출되던 장기 세션을 HttpOnly 쿠키 하나로 제한하는 보안 전환을 추적합니다.
+- 쿠키 인증 HTTP 요청이 해시만 저장하는, 짧은 수명의, 한 번만 사용할 수 있는 티켓을 발급하고 소켓 핸드셰이크가 이를 원자적으로 소비하는 전체 신뢰 확인 순서를 복원합니다.
+- 인증 지연 중 초기 메시지 보존과 인증되지 않은 사용자의 버퍼링 상한, 인증 정보 로그 비밀값 제거가 같은 경계를 어떻게 완성하는지 확인합니다.
 
-### Source에서 확정된 significance
+### 원문에서 확인한 중요성
 
-> The branch visibly moves away from reusable tokens in JavaScript and URLs. Authentication becomes a two-stage trust chain: the cookie authenticates an HTTP ticket request, and an atomic one-time ticket authenticates exactly one socket. Buffer limits and log redaction complete the security boundary rather than treating ticket issuance alone as sufficient.
+> 이 브랜치는 JavaScript와 URL에서 재사용 가능한 토큰을 제거하는 방향으로 발전합니다. 인증은 두 단계로 나뉩니다. 쿠키가 HTTP 티켓 발급 요청을 인증하고, 원자적으로 소비하는 일회용 티켓이 정확히 한 소켓을 인증합니다. 티켓 발급만으로 끝내지 않고 버퍼 상한과 로그의 비밀값 제거까지 적용해야 보안 경계가 완성됩니다.
 
-### 직접 연결되는 Critical Invariants
+### 직접 연결되는 핵심 불변 조건
 
-> The durable browser session is carried only by an HttpOnly cookie; raw WebSocket tickets are short-lived, single-use, hashed at rest, bounded during authentication, and excluded from logs.
+> 브라우저의 장기 세션은 HttpOnly 쿠키로만 전달합니다. WebSocket 원본 티켓은 수명이 짧고 한 번만 사용할 수 있으며, 저장 시 해시만 보관하고 인증 중 버퍼 크기를 제한하며 로그에서 제외합니다.
 
-### 직접 연결되는 Major Engineering Difficulties
+### 직접 연결되는 주요 구현 난점
 
-> Authenticating WebSockets without exposing durable session credentials while preserving early messages and bounding unauthenticated buffering.
+> 장기 세션 인증 정보를 노출하지 않고 WebSocket을 인증하면서, 인증 전에 도착한 메시지는 보존하고 미인증 버퍼 사용량은 제한해야 합니다.
 
-## 2. 이 Thread를 이해하기 위한 핵심 질문
+## 2. 이 개발 스레드를 이해하기 위한 핵심 질문
 
-- 초기 session은 cookie, bearer, query 중 어디에서 수용되었고 왜 하나의 cookie 경계로 축소되었습니까?
-- 브라우저 JavaScript가 durable credential을 보유하지 않도록 API client와 socket 연결 흐름이 어떻게 바뀝니까?
-- raw ticket, digest, expiry, protocol version, active-user check의 소유 계층은 각각 어디입니까?
-- ticket 소비는 동시 요청과 replay에서도 정확히 한 번만 성공하도록 어떤 SQL/저장소 연산을 사용합니까?
-- 인증 전 message buffering의 message-size, count, total-byte 제한은 어디에서 검사되고 어떤 close path로 수렴합니까?
-- URL serializer와 redaction path가 서로 다른 credential 노출면을 어떻게 막습니까?
+- 초기 세션은 쿠키, Bearer, 쿼리 중 어디에서 수용되었고 왜 하나의 쿠키 경계로 축소되었습니까?
+- 브라우저 JavaScript가 영속 인증 정보를 보유하지 않도록 API 클라이언트와 소켓 연결 흐름이 어떻게 바뀝니까?
+- 원본 티켓, 해시, 만료, 프로토콜 버전, 활성 사용자 확인의 소유 계층은 각각 어디입니까?
+- 티켓 소비는 동시 요청과 리플레이에서도 정확히 한 번만 성공하도록 어떤 SQL/저장소 연산을 사용합니까?
+- 인증 전 메시지 버퍼링의 메시지 크기, 개수, 총 바이트 제한은 어디에서 검사되고 어떤 종료 경로로 수렴합니까?
+- URL 직렬화기와 비밀값 제거 경로가 서로 다른 인증 정보 노출면을 어떻게 막습니까?
 
 ## 3. 완료 기준
 
-- development login부터 cookie 설정, ticket 발급, digest 저장, handshake 소비, `GameHub` 등록까지의 trust chain을 그릴 수 있습니다.
-- durable session과 one-time ticket의 수명·노출·저장·재사용 가능성 차이를 설명할 수 있습니다.
-- forged, expired, reused, suspended, wrong-version ticket 각각의 처리와 소비 여부를 코드와 테스트로 구분할 수 있습니다.
-- pre-auth buffering 제한과 listener/closed-socket cleanup을 실제 branch 순서로 기록할 수 있습니다.
-- 인증 정보가 request URL 및 structured log에 남지 않는 근거를 제시할 수 있습니다.
+- 개발 로그인부터 쿠키 설정, 티켓 발급, 해시 저장, 핸드셰이크 소비, `GameHub` 등록까지의 신뢰 확인 순서를 그릴 수 있습니다.
+- 장기 세션과 일회용 티켓의 수명·노출·저장·재사용 가능성 차이를 설명할 수 있습니다.
+- 위조된, 만료된, 재사용된, 정지된, 잘못된 버전의 티켓 각각의 처리와 소비 여부를 코드와 테스트로 구분할 수 있습니다.
+- 인증 전 버퍼링 제한과 리스너/닫힌 소켓 정리를 실제 브랜치 순서로 기록할 수 있습니다.
+- 인증 정보가 요청 URL 및 구조화된 로그에 남지 않는 근거를 제시할 수 있습니다.
 
-> 검토 방식: 지정 브랜치에 속한 exact SHA의 diff와 해당 시점 파일을 GitHub에서 확인했습니다. 로컬 실행 환경은 GitHub clone이 차단되어 테스트 명령은 실행하지 않았으며, 아래 테스트 결과 설명은 test implementation 검토에 한정합니다.
+> 검토 방식: 지정 브랜치의 정확한 SHA별 변경 내용과 해당 시점 파일을 GitHub에서 확인했습니다. 로컬 환경에서는 GitHub 복제가 차단되어 테스트 명령을 실행하지 못했습니다. 아래 테스트 설명은 테스트 코드 검토 결과에 한정합니다.
 
-## 4. Commit map
+## 4. 커밋 목록
 
-| 순서 | SHA | Subject | Importance | Tags | Source에서 확정된 역할 |
+| 순서 | SHA | 제목 | 중요도 | 태그 | 원문에서 확인한 역할 |
 | ---: | --- | --- | :---: | --- | --- |
-| 1 | `1779df300611` | `feat(api): 로그인과 로비 HTTP 경계 구현` | B | AUTH, PERSISTENCE, WEB | Establishes repository-backed sessions and the initial browser identity boundary. |
-| 2 | `d0531791406b` | `fix(auth): cookie-only session과 환경별 route 적용` | S | AUTH, ARCH, RISK | Restricts durable credentials to the HttpOnly cookie and scopes development login by mode. |
-| 3 | `353ca9a17415` | `fix(web): browser token 저장 제거` | A | AUTH, PROTOCOL, REALTIME | Removes JavaScript-managed durable credentials from the browser. |
-| 4 | `d9bde7485719` | `feat(auth): WebSocket ticket 생성과 HTTP 계약 정의` | A | AUTH, PROTOCOL, REALTIME | Defines high-entropy raw tickets and hash-only storage semantics. |
-| 5 | `c89a455fee06` | `feat(db): PostgreSQL WebSocket ticket 저장 추가` | A | AUTH, SIMULATION, REALTIME | Makes ticket consumption atomic and single-use in PostgreSQL. |
-| 6 | `306d1946afb7` | `feat(auth): ticket 기반 WebSocket 인증 연결` | S | AUTH, REALTIME, RISK | Completes the cookie-to-ticket-to-socket trust handoff with bounded pre-auth buffering. |
-| 7 | `b0ee833313c1` | `test(auth): WebSocket ticket 경계 검증` | A | AUTH, PROTOCOL, REALTIME | Exercises replay, expiry, suspension, protocol version, and concurrent consumption. |
-| 8 | `ec9cb39babef` | `fix(log): 요청 비밀 정보 redaction 적용` | A | AUTH, REALTIME, OBSERVABILITY | Prevents tickets and durable credentials from becoming operational log data. |
+| 1 | `1779df300611` | `feat(api): 로그인과 로비 HTTP 경계 구현` | B | AUTH, PERSISTENCE, WEB | 저장소 기반 세션과 초기 브라우저 신원 경계를 구성합니다. |
+| 2 | `d0531791406b` | `fix(auth): cookie-only session과 환경별 route 적용` | S | AUTH, ARCH, RISK | 영속 인증 정보를 HttpOnly 쿠키로 제한하고 개발 로그인을 실행 모드별로 노출합니다. |
+| 3 | `353ca9a17415` | `fix(web): browser token 저장 제거` | A | AUTH, PROTOCOL, REALTIME | 브라우저에서 JavaScript가 관리하던 영속 인증 정보를 제거합니다. |
+| 4 | `d9bde7485719` | `feat(auth): WebSocket ticket 생성과 HTTP 계약 정의` | A | AUTH, PROTOCOL, REALTIME | 충분한 무작위성을 가진 원본 티켓과 해시만 저장하는 규칙을 정의합니다. |
+| 5 | `c89a455fee06` | `feat(db): PostgreSQL WebSocket ticket 저장 추가` | A | AUTH, SIMULATION, REALTIME | PostgreSQL에서 티켓 소비를 원자적이고 한 번만 성공하도록 구현합니다. |
+| 6 | `306d1946afb7` | `feat(auth): ticket 기반 WebSocket 인증 연결` | S | AUTH, REALTIME, RISK | 인증 전 버퍼에 상한을 두고 쿠키에서 티켓을 거쳐 소켓으로 신뢰를 넘기는 과정을 완성합니다. |
+| 7 | `b0ee833313c1` | `test(auth): WebSocket ticket 경계 검증` | A | AUTH, PROTOCOL, REALTIME | 티켓 재사용, 만료, 계정 정지, 프로토콜 버전, 동시 소비를 검증합니다. |
+| 8 | `ec9cb39babef` | `fix(log): 요청 비밀 정보 redaction 적용` | A | AUTH, REALTIME, OBSERVABILITY | 티켓과 영속 인증 정보가 운영 로그 데이터로 남지 않게 합니다. |
 
-## 5. Commit별 학습 기록
+## 5. 커밋별 학습 기록
 
 ### 5.1. `feat(api): 로그인과 로비 HTTP 경계 구현`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `1779df300611` |
-| Importance | B |
-| Tags | AUTH, PERSISTENCE, WEB |
-| 학습 깊이 | Thread 흐름에서 맡는 구현 역할과 필요한 상태 변화를 복원했습니다. |
+| 중요도 | B |
+| 태그 | AUTH, PERSISTENCE, WEB |
+| 학습 깊이 | 개발 스레드 흐름에서 맡는 구현 역할과 필요한 상태 변화를 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Establishes repository-backed sessions and the initial browser identity boundary.
-- Classification summary: Establish the first HTTP boundary around repository-backed identity and lobby data.
+- 개발 스레드에서의 역할: 저장소 기반 세션과 초기 브라우저 신원 경계를 구성합니다.
+- 분류 요약: 저장소 기반 신원과 로비 데이터를 위한 첫 HTTP 경계를 구성합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | repository user/session 기능은 있었지만 Fastify route에서 login·current user·lobby를 일관되게 연결하는 HTTP boundary가 없었습니다. |
-| 핵심 boundary/decision | `apps/api/src/app.ts`의 dev-login이 user를 생성/재사용하고 server session을 만든 뒤 `pp_session` HttpOnly·SameSite=Lax cookie를 설정합니다. 동시에 JSON에 raw `token`도 반환합니다. |
-| 상태 또는 ownership 변화 | repository가 durable session을 저장하고 app의 `currentUser`가 credential 해석을 중앙화합니다. 당시에는 cookie, Bearer header, `session` query/raw URL query를 모두 허용합니다. |
-| 주요 failure/edge path | durable token이 response body·JavaScript·Authorization header·URL에 재사용될 수 있어 XSS·history·proxy/log 노출면이 넓습니다. |
-| 보장/비보장 | repository-backed identity와 protected `/me`/optional lobby identity는 동작합니다. cookie-only, environment route 제한, WebSocket 전용 credential은 아직 보장하지 않습니다. |
-| 다음 관련 commit 연결 | `d05317...`이 durable credential source를 HttpOnly cookie 하나로 축소하고 dev-login을 mode별로 제한합니다. |
+| 직전 관련 상태 | 저장소 사용자/세션 기능은 있었지만 Fastify 라우트에서 로그인·현재 사용자·로비를 일관되게 연결하는 HTTP 경계가 없었습니다. |
+| 핵심 경계/판단 | `apps/api/src/app.ts`의 개발용 로그인이 사용자를 생성/재사용하고 서버 세션을 만든 뒤 `pp_session` HttpOnly·SameSite=Lax 쿠키를 설정합니다. 동시에 JSON에 원시 `token`도 반환합니다. |
+| 상태 또는 소유권 변화 | 저장소가 장기 세션을 저장하고 애플리케이션의 `currentUser`가 인증 정보 해석을 중앙화합니다. 당시에는 쿠키, Bearer 헤더, `session` 쿼리/정규화하지 않은 URL 쿼리를 모두 허용합니다. |
+| 주요 실패/예외 경로 | 영속 토큰이 응답 본문·JavaScript·권한 검사 헤더·URL에 재사용될 수 있어 XSS·이력·프록시/로그 노출면이 넓습니다. |
+| 보장 범위/보장하지 않는 범위 | 저장소 기반 신원과 보호된 `/me`/선택적 로비 신원은 동작합니다. 쿠키 전용, 실행 환경 라우트 제한, WebSocket 전용 인증 정보는 아직 보장하지 않습니다. |
+| 다음 관련 커밋 연결 | `d05317...`이 영속 인증 정보 출처를 HttpOnly 쿠키 하나로 축소하고 개발용 로그인을 모드별로 제한합니다. |
 
 비교 기준:
-- 이 commit의 parent에서 동일 책임을 담당하던 코드를 비교했습니다.
-- 다음 Thread 관련 SHA: `d0531791406b` — `fix(auth): cookie-only session과 환경별 route 적용`
+- 이 커밋의 부모 커밋에서 동일 책임을 담당하던 코드를 비교했습니다.
+- 다음 개발 스레드 관련 SHA: `d0531791406b` — `fix(auth): cookie-only session과 환경별 route 적용`
 
 ### 5.2. `fix(auth): cookie-only session과 환경별 route 적용`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `d0531791406b` |
-| Importance | S |
-| Tags | AUTH, ARCH, RISK |
-| 학습 깊이 | Architecture/invariant 중심으로 직전 상태, 결정, 핵심 전이, ownership, failure, 후속 검증까지 복원했습니다. |
+| 중요도 | S |
+| 태그 | AUTH, ARCH, RISK |
+| 학습 깊이 | 아키텍처/불변 조건 중심으로 직전 상태, 결정, 핵심 전이, 소유권, 실패, 후속 검증까지 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Restricts durable credentials to the HttpOnly cookie and scopes development login by mode.
-- Classification summary: Replace reusable cross-transport session tokens with a cookie-only durable identity boundary.
+- 개발 스레드에서의 역할: 영속 인증 정보를 HttpOnly 쿠키로 제한하고 개발 로그인을 실행 모드별로 노출합니다.
+- 분류 요약: 여러 전송 계층에서 재사용하던 세션 토큰을 쿠키 전용 영속 신원 경계로 교체합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | dev-login이 raw token을 반환하고 `currentUser`가 cookie·Bearer·query를 모두 신뢰해 동일 durable credential이 여러 transport에 노출됐습니다. |
-| 핵심 boundary/decision | `AppMode`를 도입해 dev-login은 development/test에서만 등록하고, response token과 CORS authorization 허용을 제거하며 `readSessionToken`은 `pp_session` cookie만 읽습니다. production/demo cookie에는 `secure:true`를 적용합니다. |
-| 상태 또는 ownership 변화 | durable browser credential의 전달 owner가 browser cookie jar가 되고 JavaScript/URL/header는 더 이상 인증 source가 아닙니다. |
-| 주요 failure/edge path | 해당 SHA의 `readAppMode`는 알 수 없는 값을 development로 떨어뜨려 mode typo가 fail-open할 수 있습니다. 이 문제는 guest runtime fix에서 별도로 수정됩니다. |
-| 보장/비보장 | durable session은 HttpOnly cookie로만 읽히고 production/demo에서 secure cookie를 사용합니다. WebSocket 입장 자체는 아직 cookie를 대체할 one-time ticket이 없습니다. |
-| 다음 관련 commit 연결 | `353ca9...`가 browser 저장/Authorization 사용을 제거하고, `d9bde7...`부터 one-time ticket chain을 구축합니다. |
+| 직전 관련 상태 | 개발용 로그인이 원본 토큰을 반환하고 `currentUser`가 쿠키·Bearer·쿼리를 모두 신뢰해 동일 영속 인증 정보가 여러 전송 계층에 노출됐습니다. |
+| 핵심 경계/판단 | `AppMode`를 도입해 개발용 로그인은 개발/테스트에서만 등록하고, 응답 토큰과 CORS의 Authorization 헤더 허용을 제거하며 `readSessionToken`은 `pp_session` 쿠키만 읽습니다. 운영/체험 쿠키에는 `secure:true`를 적용합니다. |
+| 상태 또는 소유권 변화 | 영속 브라우저 인증 정보의 전달 소유 주체가 브라우저 쿠키 jar가 되고 JavaScript/URL/헤더는 더 이상 인증 소스가 아닙니다. |
+| 주요 실패/예외 경로 | 해당 SHA의 `readAppMode`는 알 수 없는 값을 개발로 떨어뜨려 모드 typo가 실패 시 허용할 수 있습니다. 이 문제는 비회원 실행 환경 수정에서 별도로 수정됩니다. |
+| 보장 범위/보장하지 않는 범위 | 장기 세션은 HttpOnly 쿠키로만 읽히고 운영/체험에서 보안 쿠키를 사용합니다. WebSocket 입장 자체는 아직 쿠키를 대체할 일회용 티켓이 없습니다. |
+| 다음 관련 커밋 연결 | `353ca9...`가 브라우저 저장/권한 검사 사용을 제거하고, `d9bde7...`부터 일회용 티켓 과정을 구축합니다. |
 
-#### Architecture / invariant 복원
+#### 아키텍처와 불변 조건 복원
 
 | 축 | 복원 결과 |
 | --- | --- |
-| 문제 | 동일한 장기 session token이 cookie, JS response, header, URL에서 재사용돼 한 곳의 노출이 모든 HTTP/WebSocket 접근권으로 이어집니다. |
-| 실패 위험 | XSS, browser storage, access log, referrer, proxy가 durable account credential을 획득할 수 있습니다. |
-| 핵심 결정 | durable credential은 HttpOnly cookie 하나에만 두고 개발 login route를 runtime mode로 제한합니다. |
-| 구현 경로 | dev-login → server session → cookie; subsequent `currentUser` → `request.cookies.pp_session`만 조회. |
-| 수명주기·상태 | cookie 수명은 server session과 결합하고 JavaScript는 값을 읽거나 전달하지 않습니다. |
-| 실패 처리 | unknown `APP_MODE` fail-open은 남아 있으며 WebSocket은 별도 short-lived credential이 필요합니다. |
-| 후속 검증 | `353ca9...` browser token 제거, `b0ee83...` boundary tests, `ec9cb3...` log redaction이 전체 경계를 완성합니다. |
-| Thread 전체 의미 | 인증 architecture가 ‘어디서든 제출 가능한 token’에서 ‘HTTP cookie로 신원을 증명한 뒤 목적별 capability 발급’으로 바뀝니다. |
+| 문제 | 동일한 장기 세션 토큰이 쿠키, JS 응답, 헤더, URL에서 재사용돼 한 곳의 노출이 모든 HTTP/WebSocket 접근권으로 이어집니다. |
+| 실패 위험 | XSS, 브라우저 저장소, 접근 로그, 리퍼러, 프록시가 영속 계정 인증 정보를 획득할 수 있습니다. |
+| 핵심 결정 | 영속 인증 정보는 HttpOnly 쿠키 하나에만 두고 개발 로그인 라우트를 실행 모드로 제한합니다. |
+| 구현 경로 | 개발용 로그인 → 서버 세션 → 쿠키; subsequent `currentUser` → `request.cookies.pp_session`만 조회. |
+| 수명주기·상태 | 쿠키 수명은 서버 세션과 결합하고 JavaScript는 값을 읽거나 전달하지 않습니다. |
+| 실패 처리 | 알 수 없는 `APP_MODE` 실패 시 허용은 남아 있으며 WebSocket은 별도 짧은 수명의 인증 정보가 필요합니다. |
+| 후속 검증 | `353ca9...` 브라우저 토큰 제거, `b0ee83...` 경계 테스트, `ec9cb3...` 로그 비밀값 제거가 전체 경계를 완성합니다. |
+| 개발 스레드 전체 의미 | 인증 아키텍처가 ‘어디서든 제출 가능한 토큰’에서 ‘HTTP 쿠키로 신원을 검증한 뒤 목적별 권한 발급’으로 바뀝니다. |
 
-#### Fix 재구성
+#### 수정 과정 재구성
 
 | 단계 | 근거 |
 | --- | --- |
-| 이전 가정 | 개발 편의상 반환 token과 Bearer/query 인증을 함께 허용해도 안전 경계를 유지할 수 있다는 가정. |
-| 실제 실패 또는 위험 | durable credential이 browser JavaScript와 URL/log를 통과해 재사용 가능한 비밀이 됩니다. |
-| Root cause | credential transport를 route마다 허용해 identity resolution의 신뢰 source가 하나가 아니었습니다. |
-| 수정된 invariant/decision | cookie-only session, mode-scoped dev route, secure cookie, no token response/header CORS. |
-| 변경 코드 | `apps/api/src/app.ts::readSessionToken/readAppMode`, dev-login response/cookie/CORS 변경. |
-| Regression evidence | `b0ee833...`은 WebSocket에서 session cookie/Bearer를 직접 수용하지 않고 ticket만 허용하는 경계를 검사합니다. |
+| 이전 가정 | 개발 편의상 반환 토큰과 Bearer/쿼리 인증을 함께 허용해도 안전 경계를 유지할 수 있다는 가정. |
+| 실제 실패 또는 위험 | 영속 인증 정보가 브라우저 JavaScript와 URL/로그를 통과해 재사용 가능한 비밀이 됩니다. |
+| 루트 원인 | 인증 정보 전달 방식을 라우트마다 허용해 사용자 식별의 신뢰 소스가 하나가 아니었습니다. |
+| 수정된 불변 조건/판단 | 쿠키 전용 세션, 실행 모드에 따라 제한된 개발 라우트, 보안 쿠키, 응답/헤더에서 토큰 제거, CORS 축소. |
+| 변경 코드 | `apps/api/src/app.ts::readSessionToken/readAppMode`, 개발용 로그인 응답/쿠키/CORS 변경. |
+| 회귀 테스트 근거 | `b0ee833...`은 WebSocket에서 세션 쿠키/Bearer를 직접 수용하지 않고 티켓만 허용하는 경계를 검사합니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `1779df300611` — `feat(api): 로그인과 로비 HTTP 경계 구현`
-- 다음 Thread 관련 SHA: `353ca9a17415` — `fix(web): browser token 저장 제거`
+- 직전 개발 스레드 관련 SHA: `1779df300611` — `feat(api): 로그인과 로비 HTTP 경계 구현`
+- 다음 개발 스레드 관련 SHA: `353ca9a17415` — `fix(web): browser token 저장 제거`
 
 ### 5.3. `fix(web): browser token 저장 제거`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `353ca9a17415` |
-| Importance | A |
-| Tags | AUTH, PROTOCOL, REALTIME |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | AUTH, PROTOCOL, REALTIME |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Removes JavaScript-managed durable credentials from the browser.
-- Classification summary: Make browser HTTP and realtime clients consume cookie identity without storing a reusable token.
+- 개발 스레드에서의 역할: 브라우저에서 JavaScript가 관리하던 영속 인증 정보를 제거합니다.
+- 분류 요약: 브라우저 HTTP·실시간 클라이언트가 재사용 토큰을 저장하지 않고 쿠키 신원을 사용하게 합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | 서버가 cookie-only로 바뀌어도 browser code가 localStorage token·Bearer header·token URL을 유지하면 노출면과 불일치가 남습니다. |
-| 핵심 boundary/decision | `apps/web/src/lib/api.ts`와 pages에서 token helper/localStorage/Bearer를 제거하고 모든 fetch에 `credentials:'include'`를 사용합니다. realtime은 `requestWsTicket`을 비동기로 호출하고 pending issuance를 `AbortController`로 취소합니다. |
-| 상태 또는 ownership 변화 | browser는 durable credential 값을 소유하지 않고 cookie jar에 위임합니다. API client는 response schema와 `ApiError`, auth-loss event를 소유합니다. |
-| 주요 failure/edge path | page unmount/replacement 중 ticket response가 늦게 도착하면 stale socket을 열 수 있으므로 abort cleanup으로 차단합니다. 이 commit 시점에는 server ticket route가 뒤 commit에 있어 consumer가 먼저 준비된 상태입니다. |
-| 보장/비보장 | JavaScript storage/header에 durable token이 남지 않고 credentialed cookie request를 사용합니다. ticket의 entropy·storage·single-use는 아직 보장하지 않습니다. |
-| 다음 관련 commit 연결 | `d9bde7...`가 raw ticket 형식과 HTTP handshake 계약을 정의합니다. |
+| 직전 관련 상태 | 서버가 쿠키 전용으로 바뀌어도 브라우저 코드가 로컬 저장소 토큰·Bearer 헤더·토큰 URL을 유지하면 노출면과 불일치가 남습니다. |
+| 핵심 경계/판단 | `apps/web/src/lib/api.ts`와 각 페이지에서 토큰 도우미 함수, 로컬 저장소, Bearer 헤더를 제거하고 모든 조회 요청에 `credentials: "include"`를 사용합니다. 실시간 연결은 `requestWsTicket`을 비동기로 호출하고 진행 중인 티켓 발급은 `AbortController`로 취소합니다. |
+| 상태 또는 소유권 변화 | 브라우저는 영속 인증 정보 값을 소유하지 않고 쿠키 jar에 위임합니다. API 클라이언트는 응답 스키마와 `ApiError`, 인증 만료 이벤트를 소유합니다. |
+| 주요 실패/예외 경로 | 페이지 컴포넌트 해제/교체 중 티켓 응답이 늦게 도착하면 오래된 소켓을 열 수 있으므로 중단 정리로 차단합니다. 이 커밋 시점에는 서버 티켓 라우트가 뒤 커밋에 있어 소비자가 먼저 준비된 상태입니다. |
+| 보장 범위/보장하지 않는 범위 | JavaScript 저장소/헤더에 영속 토큰이 남지 않고 쿠키를 포함한 요청을 사용합니다. 티켓의 무작위성·저장소·한 번만 사용할 수 있는 성질은 아직 보장하지 않습니다. |
+| 다음 관련 커밋 연결 | `d9bde7...`가 원본 티켓 형식과 HTTP 핸드셰이크 계약을 정의합니다. |
 
-#### Fix 재구성
+#### 수정 과정 재구성
 
 | 단계 | 근거 |
 | --- | --- |
-| 이전 가정 | 서버만 cookie-only로 바꾸면 browser에 남은 token code는 무해하다는 가정. |
-| 실제 실패 또는 위험 | localStorage와 Authorization header가 XSS·extension·debug tooling에 durable secret을 계속 노출합니다. |
-| Root cause | client auth state가 server cookie policy와 별개로 token 값을 소유했습니다. |
-| 수정된 invariant/decision | browser auth는 cookie transport와 ephemeral ticket request만 사용합니다. |
-| 변경 코드 | `apps/web/src/lib/api.ts`, lobby/play/admin call sites, ticket request cleanup. |
-| Regression evidence | API client tests가 credentials inclusion, schema error, session expiry event, abort behavior를 고정합니다. |
+| 이전 가정 | 서버만 쿠키 전용으로 바꾸면 브라우저에 남은 토큰 코드는 무해하다는 가정. |
+| 실제 실패 또는 위험 | 로컬 저장소와 권한 검사 헤더가 XSS·확장 기능·debug tooling에 영속 비밀값을 계속 노출합니다. |
+| 루트 원인 | 클라이언트 인증 상태가 서버 쿠키 규칙과 별개로 토큰 값을 소유했습니다. |
+| 수정된 불변 조건/판단 | 브라우저 인증은 쿠키 전송 계층과 ephemeral 티켓 요청만 사용합니다. |
+| 변경 코드 | `apps/web/src/lib/api.ts`, 로비/플레이/관리자 호출 sites, 티켓 요청 정리. |
+| 회귀 테스트 근거 | API 클라이언트 테스트가 쿠키 포함 요청, 스키마 오류, 세션 만료 이벤트, 중단 동작을 고정합니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `d0531791406b` — `fix(auth): cookie-only session과 환경별 route 적용`
-- 다음 Thread 관련 SHA: `d9bde7485719` — `feat(auth): WebSocket ticket 생성과 HTTP 계약 정의`
+- 직전 개발 스레드 관련 SHA: `d0531791406b` — `fix(auth): cookie-only session과 환경별 route 적용`
+- 다음 개발 스레드 관련 SHA: `d9bde7485719` — `feat(auth): WebSocket ticket 생성과 HTTP 계약 정의`
 
 ### 5.4. `feat(auth): WebSocket ticket 생성과 HTTP 계약 정의`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `d9bde7485719` |
-| Importance | A |
-| Tags | AUTH, PROTOCOL, REALTIME |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | AUTH, PROTOCOL, REALTIME |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Defines high-entropy raw tickets and hash-only storage semantics.
-- Classification summary: Define the raw one-time WebSocket ticket and strict HTTP/handshake shape.
+- 개발 스레드에서의 역할: 충분한 무작위성을 가진 원본 티켓과 해시만 저장하는 규칙을 정의합니다.
+- 분류 요약: 원본 일회용 WebSocket 티켓과 엄격한 HTTP·핸드셰이크 형식을 정의합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | cookie-only session은 browser HTTP에는 적합하지만 WebSocket URL에 durable cookie 값을 직접 복제하지 않고 입장시킬 capability가 없었습니다. |
-| 핵심 boundary/decision | `apps/api/src/wsTicket.ts`는 `randomBytes(32).toString('base64url')`로 43자 raw ticket을 만들고 SHA-256 digest만 저장하도록 helper를 제공합니다. TTL은 30초입니다. shared schema는 strict `{ticket, v:'1'}`를 정의합니다. |
-| 상태 또는 ownership 변화 | raw ticket은 발급 response와 client가 짧게 소유하고 repository에는 digest만 전달됩니다. protocol version은 shared schema가 소유합니다. |
-| 주요 failure/edge path | raw ticket 형식·TTL·version을 명시하지 않으면 약한 entropy, 장기 replay, handshake ambiguity가 생깁니다. 실제 atomic consumption은 아직 구현되지 않았습니다. |
-| 보장/비보장 | high-entropy opaque raw value와 hash-only persistence contract, 30초 TTL, version-one query shape를 정의합니다. DB single-use와 socket integration은 다음 SHAs 범위입니다. |
-| 다음 관련 commit 연결 | `c89a45...`가 digest table과 atomic consume를 PostgreSQL에 구현합니다. |
+| 직전 관련 상태 | 쿠키 전용 세션은 브라우저 HTTP에는 적합하지만 WebSocket URL에 장기 세션 쿠키 값을 직접 복제하지 않고 입장시킬 권한이 없었습니다. |
+| 핵심 경계/판단 | `apps/api/src/wsTicket.ts`는 `randomBytes(32).toString('base64url')`로 43자 원본 티켓을 만들고 SHA-256 해시만 저장하도록 도우미 함수를 제공합니다. TTL은 30초입니다. 공유 스키마는 엄격한 `{ticket, v:'1'}`를 정의합니다. |
+| 상태 또는 소유권 변화 | 원본 티켓은 발급 응답과 클라이언트가 짧게 소유하고 저장소에는 해시만 전달됩니다. 프로토콜 버전은 공유 스키마가 소유합니다. |
+| 주요 실패/예외 경로 | 원본 티켓 형식·TTL·버전을 명시하지 않으면 약한 무작위성, 장기 리플레이, 핸드셰이크 해석의 모호함이 생깁니다. 실제 원자적 소비는 아직 구현되지 않았습니다. |
+| 보장 범위/보장하지 않는 범위 | 충분한 무작위성을 가진 불투명한 원본 값과 해시만 저장하는 영속 저장 계약, 30초 TTL, 버전 1 쿼리 형식을 정의합니다. DB에서 티켓을 한 번만 사용할 수 있도록 하는 기능과 소켓 통합은 다음 SHA들 범위입니다. |
+| 다음 관련 커밋 연결 | `c89a45...`가 해시 테이블과 원자적 소비를 PostgreSQL에 구현합니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `353ca9a17415` — `fix(web): browser token 저장 제거`
-- 다음 Thread 관련 SHA: `c89a455fee06` — `feat(db): PostgreSQL WebSocket ticket 저장 추가`
+- 직전 개발 스레드 관련 SHA: `353ca9a17415` — `fix(web): browser token 저장 제거`
+- 다음 개발 스레드 관련 SHA: `c89a455fee06` — `feat(db): PostgreSQL WebSocket ticket 저장 추가`
 
 ### 5.5. `feat(db): PostgreSQL WebSocket ticket 저장 추가`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `c89a455fee06` |
-| Importance | A |
-| Tags | AUTH, SIMULATION, REALTIME |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | AUTH, SIMULATION, REALTIME |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Makes ticket consumption atomic and single-use in PostgreSQL.
-- Classification summary: Persist only ticket digests and consume them with one destructive database operation.
+- 개발 스레드에서의 역할: PostgreSQL에서 티켓 소비를 원자적이고 한 번만 성공하도록 구현합니다.
+- 분류 요약: 티켓 해시값만 저장하고 삭제를 포함한 단일 데이터베이스 연산으로 소비합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | ticket 형식은 정의됐지만 process/DB race에서 두 handshake가 같은 ticket을 동시에 사용할 수 있는 storage semantics가 없었습니다. |
-| 핵심 boundary/decision | `packages/db/migrations/002_ws_tickets.sql`에 digest/user/expiry를 저장하고 `PostgresRepository.consumeWsTicket`은 `DELETE ... RETURNING` CTE로 row를 먼저 제거한 뒤 active user와 expiry를 확인합니다. |
-| 상태 또는 ownership 변화 | PostgreSQL unique row가 pending capability의 authoritative owner이고 소비 시 row 삭제가 ownership 이전의 선형화 지점입니다. |
-| 주요 failure/edge path | expired 또는 suspended user ticket도 destructive consume 뒤 null을 반환하므로 반복 시도에 남지 않습니다. transaction race에서 한 DELETE만 row를 획득합니다. |
-| 보장/비보장 | at-rest에는 64-char digest만 남고 동일 digest 소비는 최대 한 번 성공합니다. HTTP issue route와 pre-auth buffer는 아직 연결되지 않았습니다. |
-| 다음 관련 commit 연결 | `306d19...`가 cookie-authenticated issue route와 `/ws` admission을 연결합니다. |
+| 직전 관련 상태 | 티켓 형식은 정의됐지만 프로세스/DB 경쟁 상태에서 두 핸드셰이크가 같은 티켓을 동시에 사용할 수 있는 저장소 동작 규칙이 없었습니다. |
+| 핵심 경계/판단 | `packages/db/migrations/002_ws_tickets.sql`에 해시/사용자/만료를 저장하고 `PostgresRepository.consumeWsTicket`은 `DELETE ... RETURNING` CTE로 행을 먼저 제거한 뒤 활성 사용자와 만료를 확인합니다. |
+| 상태 또는 소유권 변화 | PostgreSQL 고유 행이 아직 사용되지 않은 입장 권한의 최종 판정 주체이고 소비 시 행 삭제가 소유권 이전의 선형화 지점입니다. |
+| 주요 실패/예외 경로 | 만료된 또는 정지된 사용자 티켓도 삭제를 통한 소비 뒤 null을 반환하므로 반복 시도에 남지 않습니다. 트랜잭션 경쟁 상태에서 한 DELETE만 행을 획득합니다. |
+| 보장 범위/보장하지 않는 범위 | 저장 상태에는 64자 해시만 남고 동일 해시 소비는 최대 한 번 성공합니다. HTTP 발급 라우트와 인증 전 버퍼는 아직 연결되지 않았습니다. |
+| 다음 관련 커밋 연결 | `306d19...`가 쿠키로 인증한 발급 라우트와 `/ws` 참가를 연결합니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `d9bde7485719` — `feat(auth): WebSocket ticket 생성과 HTTP 계약 정의`
-- 다음 Thread 관련 SHA: `306d1946afb7` — `feat(auth): ticket 기반 WebSocket 인증 연결`
+- 직전 개발 스레드 관련 SHA: `d9bde7485719` — `feat(auth): WebSocket ticket 생성과 HTTP 계약 정의`
+- 다음 개발 스레드 관련 SHA: `306d1946afb7` — `feat(auth): ticket 기반 WebSocket 인증 연결`
 
 ### 5.6. `feat(auth): ticket 기반 WebSocket 인증 연결`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `306d1946afb7` |
-| Importance | S |
-| Tags | AUTH, REALTIME, RISK |
-| 학습 깊이 | Architecture/invariant 중심으로 직전 상태, 결정, 핵심 전이, ownership, failure, 후속 검증까지 복원했습니다. |
+| 중요도 | S |
+| 태그 | AUTH, REALTIME, RISK |
+| 학습 깊이 | 아키텍처/불변 조건 중심으로 직전 상태, 결정, 핵심 전이, 소유권, 실패, 후속 검증까지 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Completes the cookie-to-ticket-to-socket trust handoff with bounded pre-auth buffering.
-- Classification summary: Integrate cookie-authenticated issuance, atomic ticket consumption, and bounded asynchronous WebSocket admission.
+- 개발 스레드에서의 역할: 인증 전 버퍼에 상한을 두고 쿠키에서 티켓을 거쳐 소켓으로 신뢰를 넘기는 과정을 완성합니다.
+- 분류 요약: 쿠키 인증 티켓 발급, 원자적 티켓 소비, 상한을 둔 비동기 WebSocket 입장을 통합합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | ticket generator와 DB consume는 존재하지만 browser cookie에서 socket authority로 이어지는 complete route/handshake가 없었습니다. |
-| 핵심 boundary/decision | `POST /auth/ws-ticket`은 cookie-derived active user만 허용해 raw ticket을 한 번 반환하고 digest/30초를 저장합니다. `/ws`는 version을 먼저 검증한 후 ticket을 consume하고 성공 시 buffered payload와 함께 `GameHub.connect`로 handoff합니다. |
-| 상태 또는 ownership 변화 | HTTP app이 issue/admission boundary를, DB가 pending digest를, GameHub가 authenticated socket 이후 lifecycle을 소유합니다. pre-auth listener와 buffers는 handoff 또는 close 전까지 app이 소유합니다. |
-| 주요 failure/edge path | 인증 중 message는 item 8KiB, count 16, total 32KiB로 제한합니다. malformed/version/ticket/size/DB error는 idempotent `closeAuthentication`으로 listener 제거와 close code 1008/1009/1011에 수렴합니다. closed socket에는 handoff하지 않습니다. |
-| 보장/비보장 | durable cookie → short-lived raw ticket → hash-only atomic consume → exactly one authenticated socket handoff가 완성됩니다. cross-process ticket issuance capacity와 operational logging은 별도 문제입니다. |
-| 다음 관련 commit 연결 | `b0ee83...`이 replay·expiry·suspension·wrong version·concurrency·buffer limits를 실제 integration fixture로 검증합니다. |
+| 직전 관련 상태 | 티켓 생성기와 DB 소비는 존재하지만 브라우저 쿠키에서 소켓 판정 권한으로 이어지는 전체 라우트·핸드셰이크 경로가 없었습니다. |
+| 핵심 경계/판단 | `POST /auth/ws-ticket`은 쿠키로 식별한 활성 사용자만 허용해 원본 티켓을 한 번 반환하고 해시/30초를 저장합니다. `/ws`는 버전을 먼저 검증한 후 티켓을 소비하고 성공 시 버퍼에 쌓인 메시지 본문과 함께 `GameHub.connect`로 인계합니다. |
+| 상태 또는 소유권 변화 | HTTP 애플리케이션이 발급·입장 경계를, DB가 대기 중 해시를, GameHub가 인증된 소켓 이후 수명주기를 소유합니다. 인증 전 리스너와 버퍼는 인계 또는 종료 전까지 애플리케이션이 소유합니다. |
+| 주요 실패/예외 경로 | 인증 중 메시지는 메시지당 8KiB, 개수 16, 누적 32KiB로 제한합니다. 형식 오류, 버전 오류, 티켓 오류, 크기 초과, DB 오류는 멱등 `closeAuthentication`으로 리스너 제거와 종료 코드 1008/1009/1011에 수렴합니다. 이미 닫힌 소켓에는 인계하지 않습니다. |
+| 보장 범위/보장하지 않는 범위 | 장기 세션 쿠키 → 짧은 수명의 원본 티켓 → 해시만 저장하는 원자적 소비 → 정확히 하나 인증된 소켓 인계가 완성됩니다. 여러 프로세스에서의 티켓 발급량 상한과 운영 로깅은 별도 문제입니다. |
+| 다음 관련 커밋 연결 | `b0ee83...`이 재사용·만료·계정 정지·잘못된 버전·동시성·버퍼 상한을 실제 통합 픽스처로 검증합니다. |
 
-#### Architecture / invariant 복원
+#### 아키텍처와 불변 조건 복원
 
 | 축 | 복원 결과 |
 | --- | --- |
-| 문제 | WebSocket upgrade 동안 DB 인증이 비동기인데 client는 즉시 message를 보낼 수 있어 credential handoff와 memory bounds를 동시에 해결해야 합니다. |
-| 실패 위험 | ticket replay, wrong-version consumption, early-message loss, unauthenticated memory growth, close/handoff race. |
-| 핵심 결정 | version-first validation, destructive consume, bounded message buffer, 단일 idempotent close/handoff owner를 둡니다. |
-| 구현 경로 | cookie-auth HTTP ticket issue → raw response/digest insert → `/ws?v=1&ticket=...` → query validation → digest consume → active user → `GameHub.connect(pendingPayloads)`. |
-| 수명주기·상태 | pending raw value는 client가 보유하고 DB row는 consume 시 삭제되며 pre-auth listener/buffer는 성공 handoff 또는 close에서 한 번 정리됩니다. |
-| 실패 처리 | 8KiB/16/32KiB 상한, unsupported version before consume, DB failure 1011, invalid auth 1008, oversize 1009. |
-| 후속 검증 | `b0ee833...` live Fastify/WebSocket와 memory/PostgreSQL concurrent consumption tests. |
-| Thread 전체 의미 | 장기 account identity와 socket-specific admission capability가 분리되어 한 ticket 노출의 피해 범위가 한 socket/30초로 제한됩니다. |
+| 문제 | WebSocket 업그레이드 동안 DB 인증이 비동기인데 클라이언트는 즉시 메시지를 보낼 수 있어 인증 정보 인계와 메모리 상한을 동시에 해결해야 합니다. |
+| 실패 위험 | 티켓 재사용, 잘못된 버전의 소비, 초기 메시지 손실, 인증되지 않은 사용자 메모리 증가, 종료/인계 경쟁 상태. |
+| 핵심 결정 | 버전 우선 검증, 삭제를 통한 소비, 상한을 둔 메시지 버퍼, 단일 멱등 종료/인계 소유 주체를 둡니다. |
+| 구현 경로 | 쿠키 인증 HTTP 티켓 발급 → 원본 응답과 해시 저장 → `/ws?v=1&ticket=...` → 쿼리 검증 → 해시 소비 → 활성 사용자 → `GameHub.connect(pendingPayloads)`. |
+| 수명주기·상태 | 대기 중인 원본 값은 클라이언트가 보유하고 DB 행은 소비 시 삭제되며 인증 전 리스너/버퍼는 성공 인계 또는 종료에서 한 번 정리됩니다. |
+| 실패 처리 | 8KiB/16/32KiB 상한, 지원하지 않는 버전은 티켓을 소비하기 전에 거부, DB 실패 1011, 잘못된 인증 1008, 크기 초과 1009. |
+| 후속 검증 | `b0ee833...` 실제 Fastify/WebSocket과 메모리/PostgreSQL 동시 소비 테스트. |
+| 개발 스레드 전체 의미 | 장기 계정 신원과 소켓별 입장 권한이 분리되어 한 티켓 노출의 피해 범위가 한 소켓/30초로 제한됩니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `c89a455fee06` — `feat(db): PostgreSQL WebSocket ticket 저장 추가`
-- 다음 Thread 관련 SHA: `b0ee833313c1` — `test(auth): WebSocket ticket 경계 검증`
+- 직전 개발 스레드 관련 SHA: `c89a455fee06` — `feat(db): PostgreSQL WebSocket ticket 저장 추가`
+- 다음 개발 스레드 관련 SHA: `b0ee833313c1` — `test(auth): WebSocket ticket 경계 검증`
 
 ### 5.7. `test(auth): WebSocket ticket 경계 검증`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `b0ee833313c1` |
-| Importance | A |
-| Tags | AUTH, PROTOCOL, REALTIME |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | AUTH, PROTOCOL, REALTIME |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Exercises replay, expiry, suspension, protocol version, and concurrent consumption.
-- Classification summary: Add deterministic integration and repository tests for the complete ticket boundary.
+- 개발 스레드에서의 역할: 티켓 재사용, 만료, 계정 정지, 프로토콜 버전, 동시 소비를 검증합니다.
+- 분류 요약: 전체 티켓 경계에 대한 결정적 통합·저장소 테스트를 추가합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | trust chain은 구현됐지만 replay·concurrent consume·pre-auth pressure·version order가 회귀하지 않는다는 자동 증거가 없었습니다. |
-| 핵심 boundary/decision | live Fastify/WebSocket fixture와 memory/PostgreSQL repository tests가 cookie-only issue, hash-at-rest, valid-once, forged/expired/suspended, unsupported version non-consumption, direct session rejection, pre-auth limits, concurrent one-winner를 검사합니다. |
-| 상태 또는 ownership 변화 | test의 delayed consume gate가 인증 지연을 제어하고 fake/real socket payload가 buffer path를 재현합니다. |
-| 주요 failure/edge path | 같은 ticket을 동시 consume해 정확히 한 non-null 결과만 허용하며, wrong version은 ticket을 쓰지 않아 뒤의 valid version이 소비할 수 있는지 구분합니다. |
-| 보장/비보장 | ticket trust boundary의 핵심 failure와 memory limits가 deterministic regression으로 보호됩니다. 인터넷 proxy·multi-region latency·장기 capacity는 증명하지 않습니다. |
-| 다음 관련 commit 연결 | `ec9cb3...`가 성공적인 security control이 로그를 통해 다시 비밀을 노출하지 않도록 redaction을 추가합니다. |
+| 직전 관련 상태 | 신뢰 확인 순서는 구현됐지만 재사용·동시 소비·인증 전 부하·버전 순서가 회귀하지 않는다는 자동 증거가 없었습니다. |
+| 핵심 경계/판단 | 실제 Fastify/WebSocket 픽스처와 메모리/PostgreSQL 저장소 테스트가 쿠키 전용 발급, 해시만 저장하는 방식, 한 번만 유효한 티켓, 위조·만료·정지 계정, 지원하지 않는 버전에서 티켓을 소비하지 않는 동작, 세션의 직접 사용 거부, 인증 전 입력 상한, 동시 소비 시 단 하나만 성공하는지 검사합니다. |
+| 상태 또는 소유권 변화 | 테스트의 지연된 소비 검사가 인증 지연을 제어하고 가짜/실제 소켓 메시지 본문이 버퍼 경로를 재현합니다. |
+| 주요 실패/예외 경로 | 같은 티켓을 동시 소비해 정확히 한 null이 아닌 결과만 허용하며, 잘못된 버전은 티켓을 쓰지 않아 뒤의 유효한 버전이 소비할 수 있는지 구분합니다. |
+| 보장 범위/보장하지 않는 범위 | 티켓 신뢰 경계의 핵심 실패와 메모리 상한이 결정적 회귀로 보호됩니다. 인터넷 프록시·multi-region 지연 시간·장기 용량은 검증하지 않습니다. |
+| 다음 관련 커밋 연결 | `ec9cb3...`가 성공적인 보안 제어가 로그를 통해 다시 비밀을 노출하지 않도록 비밀값 제거를 추가합니다. |
 
-#### Test commit 학습 기록
+#### 테스트 커밋 학습 기록
 
 | 구분 | 기록 |
 | --- | --- |
-| 대상 production invariant | raw ticket은 hash-only, 30초, one-time이며 version-one admission에서만 exactly one socket에 권한을 넘깁니다. |
-| 재현하는 failure/boundary | replay, forged/expired/suspended, wrong version, direct cookie/Bearer WS, message size/count/total, concurrent consume. |
-| test technique | Fastify/WebSocket integration, delayed authentication gate, memory and PostgreSQL concurrent repository tests. |
-| 통과하는 production path | login cookie → issue → DB digest → WS handshake/pre-auth messages → consume → GameHub handoff 또는 close. |
-| 증명하는 것 | 검사한 storage와 process 경로에서 single-use 및 bounded admission이 유지됩니다. |
-| 증명하지 않는 것 | cross-region deployment, production proxy logs, sustained load capacity는 증명하지 않습니다. |
-| test 성격 | Deterministic boundary integration plus PostgreSQL concurrency regression. |
-| 후속 회귀 방지 설명 | credential source를 다시 늘리거나, consume order/limits/listener cleanup을 약화하면 테스트가 실패해야 합니다. |
+| 검증 대상 불변 조건 | 원본 티켓은 해시만 저장하는, 30초, 일회용이며 버전 1 참가에서만 정확히 하나 소켓에 권한을 넘깁니다. |
+| 재현하는 실패/경계 | 재사용, 위조·만료·정지, 잘못된 버전, 직접 쿠키/Bearer WS, 메시지 크기/개수/total, 동시 소비. |
+| 테스트 기법 | Fastify/WebSocket 통합, 지연된 인증 검사, 메모리 및 PostgreSQL 동시 저장소 테스트. |
+| 실행하는 실제 코드 경로 | 로그인 쿠키 → 문제 → DB 해시 → WS 핸드셰이크/인증 전 메시지 → 소비 → GameHub 인계 또는 종료. |
+| 검증하는 것 | 검사한 저장소와 프로세스 경로에서 티켓을 한 번만 사용할 수 있고, 인증 전 입력량 상한이 유지됩니다. |
+| 검증하지 않는 것 | 여러 리전 간 배포, 운영 프록시 로그, 장시간 부하 처리 용량은 검증하지 않습니다. |
+| 테스트 성격 | 결정적 경계 통합 plus PostgreSQL 동시성 회귀. |
+| 후속 회귀 방지 설명 | 인증 정보 출처를 다시 늘리거나, 소비 순서/상한/리스너 정리를 약화하면 테스트가 실패해야 합니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `306d1946afb7` — `feat(auth): ticket 기반 WebSocket 인증 연결`
-- 다음 Thread 관련 SHA: `ec9cb39babef` — `fix(log): 요청 비밀 정보 redaction 적용`
+- 직전 개발 스레드 관련 SHA: `306d1946afb7` — `feat(auth): ticket 기반 WebSocket 인증 연결`
+- 다음 개발 스레드 관련 SHA: `ec9cb39babef` — `fix(log): 요청 비밀 정보 redaction 적용`
 
 ### 5.8. `fix(log): 요청 비밀 정보 redaction 적용`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `ec9cb39babef` |
-| Importance | A |
-| Tags | AUTH, REALTIME, OBSERVABILITY |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | AUTH, REALTIME, OBSERVABILITY |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Prevents tickets and durable credentials from becoming operational log data.
-- Classification summary: Redact credential-bearing headers, query objects, ticket fields, and raw URL query strings.
+- 개발 스레드에서의 역할: 티켓과 영속 인증 정보가 운영 로그 데이터로 남지 않게 합니다.
+- 분류 요약: 인증 정보가 포함된 헤더, 쿼리 객체, 티켓 필드, 원본 URL 쿼리 문자열에서 비밀값을 제거합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | ticket 자체는 짧고 one-time이어도 Fastify/Pino request serializer와 structured fields에 URL query·cookie·Authorization·ticket이 기록될 수 있었습니다. |
-| 핵심 boundary/decision | `apps/api/src/requestLogging.ts::createLoggerOptions`가 cookie, authorization, query variants, `ticket`, `*.ticket`을 redact하고 request serializer는 URL의 `?` 이후를 제거합니다. |
-| 상태 또는 ownership 변화 | logger configuration이 operational serialization boundary를 소유하며 application route가 개별적으로 비밀을 지울 필요를 줄입니다. |
-| 주요 failure/edge path | structured query field와 raw URL은 별도 노출면이므로 둘 다 차단합니다. 임의 application message에 비밀을 복사하면 이 path 밖일 수 있습니다. |
-| 보장/비보장 | 표준 request log와 지정 structured paths에서 durable cookie와 raw ticket이 제외됩니다. 모든 제3자 로그·custom string까지 자동 sanitize하지는 않습니다. |
-| 다음 관련 commit 연결 | Thread 최종 trust chain은 cookie-only durable identity, hash-only one-time ticket, bounded admission, request-log redaction입니다. |
+| 직전 관련 상태 | 티켓 자체는 짧고 일회용이어도 Fastify/Pino 요청 직렬화기와 구조화된 필드에 URL 쿼리·쿠키·권한 검사·티켓이 기록될 수 있었습니다. |
+| 핵심 경계/판단 | `apps/api/src/requestLogging.ts::createLoggerOptions`가 쿠키, 권한 검사, 쿼리 매개변수, `ticket`, `*.ticket`을 redact하고 요청 serializer는 URL의 `?` 이후를 제거합니다. |
+| 상태 또는 소유권 변화 | 로거 설정이 운영 직렬화 경계를 소유하며 애플리케이션 라우트가 개별적으로 비밀을 지울 필요를 줄입니다. |
+| 주요 실패/예외 경로 | 구조화된 쿼리 필드와 정규화하지 않은 URL은 별도 노출면이므로 둘 다 차단합니다. 임의 애플리케이션 메시지에 비밀을 복사하면 이 경로 밖일 수 있습니다. |
+| 보장 범위/보장하지 않는 범위 | 표준 요청 로그와 지정 구조화된 경로에서 장기 세션 쿠키와 원본 티켓이 제외됩니다. 모든 제3자 로그·사용자 정의 문자열까지 자동 sanitize하지는 않습니다. |
+| 다음 관련 커밋 연결 | 개발 스레드 최종 신뢰 확인 순서는 쿠키 전용 영속 신원, 해시만 저장하는 일회용 티켓, 상한을 둔 참가, 요청 로그 비밀값 제거입니다. |
 
-#### Fix 재구성
+#### 수정 과정 재구성
 
 | 단계 | 근거 |
 | --- | --- |
-| 이전 가정 | ticket이 short-lived/single-use이면 URL 또는 request log에 남아도 위험이 제한적이라는 가정. |
-| 실제 실패 또는 위험 | valid window 내 replay와 credential telemetry 보존, durable cookie/header 노출이 가능합니다. |
-| Root cause | security boundary가 storage/handshake만 다루고 observability serializer를 포함하지 않았습니다. |
-| 수정된 invariant/decision | field redaction과 raw URL query stripping을 logger의 공통 serializer에서 수행합니다. |
-| 변경 코드 | `apps/api/src/requestLogging.ts::createLoggerOptions`, Fastify logger wiring. |
-| Regression evidence | request logging tests가 cookie/header/query/ticket과 query string이 serialized output에 없는지 확인해야 합니다. |
+| 이전 가정 | 티켓이 짧은 수명의/한 번만 사용할 수 있는이면 URL 또는 요청 로그에 남아도 위험이 제한적이라는 가정. |
+| 실제 실패 또는 위험 | 유효 기간 안의 티켓 재사용과 인증 정보 관측 데이터 보존, 장기 세션 쿠키/헤더 노출이 가능합니다. |
+| 루트 원인 | 보안 경계가 저장소/핸드셰이크만 다루고 관측용 직렬화기를 포함하지 않았습니다. |
+| 수정된 불변 조건/판단 | 필드 비밀값 제거와 정규화하지 않은 URL 쿼리 stripping을 로거의 공통 serializer에서 수행합니다. |
+| 변경 코드 | `apps/api/src/requestLogging.ts::createLoggerOptions`, Fastify 로거 연결. |
+| 회귀 테스트 근거 | 요청 로깅 테스트가 쿠키/헤더/쿼리/티켓과 쿼리 문자열이 직렬화된 출력에 없는지 확인해야 합니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `b0ee833313c1` — `test(auth): WebSocket ticket 경계 검증`
-- 이 Thread의 마지막 상태와 비교해 최종 보장을 정리했습니다.
+- 직전 개발 스레드 관련 SHA: `b0ee833313c1` — `test(auth): WebSocket ticket 경계 검증`
+- 이 개발 스레드의 마지막 상태와 비교해 최종 보장을 정리했습니다.
 
-## 6. Invariant ledger
+## 6. 불변 조건 기록
 
-Source에서 확정된 invariant를 commit 시점별로 연결했습니다. `해당 없음`은 해당 Thread 안에서 별도 fix/test가 없음을 뜻합니다.
+원문에서 확인한 불변 조건을 커밋 시점별로 연결했습니다. `해당 없음`은 해당 개발 스레드에서 별도 수정/테스트가 없음을 뜻합니다.
 
-| Invariant | 처음 도입/관찰한 SHA | 강화한 SHA | 부족함이 드러난 SHA | 복구한 fix | 고정한 regression test | 코드 근거 |
+| 불변 조건 | 처음 도입/관찰한 SHA | 강화한 SHA | 부족함이 드러난 SHA | 복구한 수정 | 고정한 회귀 테스트 | 코드 근거 |
 | --- | --- | --- | --- | --- | --- | --- |
-| The durable browser session is carried only by an HttpOnly cookie; raw WebSocket tickets are short-lived, single-use, hashed at rest, bounded during authentication, and excluded from logs. | `1779df300611` cookie/session | `d0531791406b` cookie-only → `d9bde7485719` ticket → `c89a455fee06` atomic storage → `306d1946afb7` admission → `ec9cb39babef` logging | `1779df300611` token/header/query 노출 | `d0531791406b`, `353ca9a17415`, `ec9cb39babef` | `b0ee833313c1` | `app.ts::readSessionToken,/auth/ws-ticket,/ws`, `postgresRepository::consumeWsTicket`, `requestLogging.ts` |
+| 브라우저의 장기 세션은 HttpOnly 쿠키로만 전달합니다. WebSocket 원본 티켓은 수명이 짧고 한 번만 사용할 수 있으며, 저장 시 해시만 보관하고 인증 중 버퍼 크기를 제한하며 로그에서 제외합니다. | `1779df300611` 쿠키/세션 | `d0531791406b` 쿠키 전용 → `d9bde7485719` 티켓 → `c89a455fee06` 원자적 저장소 → `306d1946afb7` 참가 → `ec9cb39babef` 로깅 | `1779df300611` 토큰/헤더/쿼리 노출 | `d0531791406b`, `353ca9a17415`, `ec9cb39babef` | `b0ee833313c1` | `app.ts::readSessionToken,/auth/ws-ticket,/ws`, `postgresRepository::consumeWsTicket`, `requestLogging.ts` |
 
-## 7. Failure → Fix → Test 연결
+## 7. 실패 → 수정 → 테스트 연결
 
-| 기존 상태/가정 | Fix 또는 강화 과정 | Test/evidence | 최종 보장 |
+| 기존 상태/가정 | 수정 또는 강화 과정 | 테스트/근거 | 최종 보장 |
 | --- | --- | --- | --- |
-| durable session을 cookie·Bearer·query와 JSON token으로 재사용 | `d053179...` cookie-only + `353ca9...` browser token 제거 | API/auth tests | JavaScript와 URL에 durable secret 없음 |
-| WebSocket이 account credential을 직접 사용 | `d9bde7...` raw/hash contract → `c89a45...` atomic consume → `306d19...` handoff | `b0ee83...` replay/concurrency integration | 30초 one-time capability만 socket에 사용 |
-| 비동기 인증 중 unbounded early messages | `306d19...` 8KiB/16/32KiB 및 idempotent close | delayed consume fixture | unauthenticated memory work bounded |
-| 비밀이 request log로 재노출 | `ec9cb3...` redaction + URL strip | logging regression inspection | 표준 operational log에 credential 제외 |
+| 장기 세션을 쿠키·Bearer·쿼리와 JSON 토큰으로 재사용 | `d053179...` 쿠키 전용 + `353ca9...` 브라우저 토큰 제거 | API/인증 테스트 | JavaScript와 URL에 영속 비밀값 없음 |
+| WebSocket이 계정 인증 정보를 직접 사용 | `d9bde7...` 원시/해시 계약 → `c89a45...` 원자적 소비 → `306d19...` 인계 | `b0ee83...` 리플레이/동시성 통합 | 30초 일회용 권한만 소켓에 사용 |
+| 비동기 인증 중 상한이 없는 초기 메시지 | `306d19...` 8KiB/16/32KiB 및 멱등 종료 | 지연된 소비 픽스처 | 인증되지 않은 사용자 메모리 작업 상한을 둔 |
+| 비밀이 요청 로그로 재노출 | `ec9cb3...` 비밀값 제거 + URL strip | 로깅 회귀 검토 | 표준 운영 로그에 인증 정보 제외 |
 
-## 8. Ownership / state / responsibility 변화
+## 8. 소유권·상태·담당 범위 변화
 
-| 축 | 초기 SHA의 owner/state | 중간 전환 | Thread 최종 owner/state | 해제·cleanup 책임 | 근거 |
+| 축 | 초기 SHA의 소유 주체/상태 | 중간 전환 | 개발 스레드 최종 소유 주체/상태 | 해제·정리 책임 | 근거 |
 | --- | --- | --- | --- | --- | --- |
-| durable browser session | `1779df...` cookie + returned token | `d053179...` cookie-only, `353ca9...` JS 제거 | HttpOnly `pp_session` cookie/server repository | logout/expiry가 session과 cookie 정리 | `app.ts::readSessionToken`, web `apiFetch` |
-| pending WS capability | 없음 | `d9bde7...` raw/hash/TTL | PostgreSQL digest row | `DELETE ... RETURNING` consume 또는 expiry cleanup | `002_ws_tickets.sql`, `consumeWsTicket` |
-| pre-auth messages | 직접 handoff 또는 미정 | `306d19...` bounded listener/buffer | Fastify `/ws` admission | success handoff/`closeAuthentication` | `apps/api/src/app.ts` |
-| credential logging | default request serializer | `ec9cb3...` centralized redaction | Pino/Fastify logger options | serializer lifetime follows app | `requestLogging.ts` |
+| 영속 브라우저 세션 | `1779df...` 쿠키와 반환된 토큰 | `d053179...` 쿠키 전용, `353ca9...` JS 제거 | HttpOnly `pp_session` 쿠키/서버 저장소 | 로그아웃/만료가 세션과 쿠키 정리 | `app.ts::readSessionToken`, 웹 `apiFetch` |
+| 대기 중 WS 권한 | 없음 | `d9bde7...` 원시/해시/TTL | PostgreSQL 해시 행 | `DELETE ... RETURNING` 소비 또는 만료 정리 | `002_ws_tickets.sql`, `consumeWsTicket` |
+| 인증 전 메시지 | 직접 인계 또는 미정 | `306d19...` 상한을 둔 리스너/버퍼 | Fastify `/ws` 참가 | 성공 인계/`closeAuthentication` | `apps/api/src/app.ts` |
+| 인증 정보 로깅 | 기본값 요청 serializer | `ec9cb3...` 공통 비밀값 제거 | Pino/Fastify 로거 옵션 | 직렬화기의 수명은 애플리케이션 수명을 따름 | `requestLogging.ts` |
 
-## 9. Thread 최종 상태
+## 9. 개발 스레드 최종 상태
 
-- 최종 authoritative owner: repository-backed session은 HttpOnly cookie가, pending socket capability는 digest store가, authenticated connection은 GameHub가 각각 소유합니다.
-- 최종 상태/invariant: durable credential은 JavaScript·Bearer·query로 수용되지 않고 raw ticket은 30초·single-use·hash-only·bounded·log-excluded입니다.
-- 남아 있는 의도적 제한 또는 비보장: DB/process outage, multi-region capability storage, custom application log 문자열까지 자동으로 해결하지 않습니다.
-- 후속 Thread가 의존하는 contract: HTTP cookie로 `/auth/ws-ticket`을 호출한 active user만 version-one `/ws` admission을 한 번 획득할 수 있습니다.
+- 최종 판정 주체: 저장소 기반 세션은 HttpOnly 쿠키가, 대기 중 소켓 권한은 해시 store가, 인증된 연결은 GameHub가 각각 소유합니다.
+- 최종 상태/불변 조건: 영속 인증 정보는 JavaScript, Bearer 헤더, 쿼리 문자열에서 받지 않습니다. 원본 티켓은 30초 동안 한 번만 사용할 수 있고, 저장소에는 해시만 남으며, 인증 중 자원 사용에 상한을 두고 로그에는 기록하지 않습니다.
+- 남아 있는 의도적 제한 또는 보장하지 않는 범위: DB/프로세스 장애, multi-region 권한 저장소, 애플리케이션이 직접 작성한 로그 문자열까지 자동으로 해결하지 않습니다.
+- 후속 개발 스레드가 의존하는 계약: HTTP 쿠키로 `/auth/ws-ticket`을 호출한 활성 사용자만 버전 1 `/ws` 참가를 한 번 획득할 수 있습니다.
 - 대표 코드 근거: `d0531791406b apps/api/src/app.ts::readSessionToken`, `c89a455fee06 PostgresRepository.consumeWsTicket`, `306d1946afb7 /auth/ws-ticket,/ws`, `b0ee833313c1 ws-ticket.test.ts`, `ec9cb39babef requestLogging.ts`
 
-## 10. 최종 architecture 또는 execution flow 정리
+## 10. 최종 아키텍처와 실행 순서
 
 ```text
 [HttpOnly pp_session cookie]
@@ -782,313 +782,313 @@ Source에서 확정된 invariant를 commit 시점별로 연결했습니다. `해
 [ec9cb39babef request URL/fields redaction]
 ```
 
-- unsupported protocol version은 ticket consume 전에 거부돼 valid version 재시도를 막지 않습니다.
-- invalid·expired·suspended ticket은 consume 후 재사용할 수 없습니다.
+- 지원하지 않는 프로토콜 버전은 티켓 소비 전에 거부돼 유효한 버전 재시도를 막지 않습니다.
+- 잘못된·만료된·정지된 사용자의 티켓은 소비 후 재사용할 수 없습니다.
 
-## 11. 학습 완료 자가 점검
+## 11. 학습 완료 확인
 
-- [x] Commit map의 모든 SHA를 원문 순서대로 확인했습니다.
-- [x] 각 commit의 subject, importance, tags를 변경하지 않았습니다.
+- [x] 커밋 목록의 모든 SHA를 원문 순서대로 확인했습니다.
+- [x] 각 커밋의 제목·중요도·태그를 변경하지 않았습니다.
 - [x] S/A/B 깊이를 구분해 코드 근거를 남겼습니다.
-- [x] final HEAD의 구현을 과거 SHA에 소급하지 않았습니다.
-- [x] 핵심 상태 필드, caller/callee, ownership, failure branch, cleanup을 실제 코드로 확인했습니다.
-- [x] Fix를 기존 가정 → failure/risk → root cause → decision → code → regression 순서로 연결했습니다.
-- [x] Test commit에서 production invariant, failure, technique, path, 증명/비증명 범위를 구분했습니다.
-- [x] Thread 최종 execution flow를 별도 프로젝트 재학습 없이 설명할 수 있습니다.
+- [x] 최종 상태의 구현을 과거 SHA에 소급하지 않았습니다.
+- [x] 핵심 상태 필드, 호출자/피호출자, 소유권, 실패 분기, 정리를 실제 코드로 확인했습니다.
+- [x] 수정을 기존 가정 → 실패/위험 → 근본 원인 → 판단 → 코드 → 회귀 순서로 연결했습니다.
+- [x] 테스트 커밋에서 운영 불변 조건, 실패, 기법, 경로, 검증 범위와 미검증 범위를 구분했습니다.
+- [x] 개발 스레드 최종 실행 순서를 별도 프로젝트 재학습 없이 설명할 수 있습니다.
 ===== END FILE: 02-cookie-identity-websocket-admission.md =====
 
 ===== BEGIN FILE: 03-versioned-realtime-protocol-and-monotonic-state.md =====
 # 버전 기반 실시간 프로토콜과 단조 상태
 
-원문 Development Thread: `Versioned realtime protocol and monotonic state`
+원문 개발 스레드: `Versioned realtime protocol and monotonic state`
 
-## 1. Thread 목표
+## 1. 개발 스레드 목표
 
-- TypeScript 타입 선언 수준의 message vocabulary가 양방향 strict runtime codec으로 발전하는 과정을 추적합니다.
-- snapshot sequence와 input sequence가 서버 및 브라우저 상태를 뒤로 되돌리지 못하게 하는 위치와 범위를 확인합니다.
-- persisted/transient result discriminator와 machine-readable error code가 wire contract에 어떤 의미를 부여하는지 복원합니다.
+- TypeScript 타입 선언 수준의 메시지 이벤트 종류가 양방향 엄격한 실행 시점 codec으로 발전하는 과정을 추적합니다.
+- 스냅샷 순번과 입력 순번이 서버 및 브라우저 상태를 뒤로 되돌리지 못하게 하는 위치와 범위를 확인합니다.
+- 저장된/임시 결과 구분 필드와 기계 판독 가능한 오류 코드가 전송 형식 계약에 어떤 의미를 부여하는지 복원합니다.
 
-### Source에서 확정된 significance
+### 원문에서 확인한 중요성
 
-> The protocol evolves from typed messages to an executable compatibility boundary. Versioning, strict object shapes, input sequence numbers, and snapshot sequence numbers ensure that malformed, stale, duplicated, or structurally incompatible traffic cannot silently mutate authoritative or rendered state.
+> 프로토콜은 타입 선언만 있는 메시지에서 실행 가능한 호환성 경계로 발전합니다. 버전, 엄격한 객체 형식, 입력 순번, 스냅샷 순번을 사용해 잘못되거나 오래되거나 중복되거나 구조가 맞지 않는 메시지가 서버 상태나 화면 상태를 조용히 되돌리지 못하게 합니다.
 
-### 직접 연결되는 Critical Invariants
+### 직접 연결되는 핵심 불변 조건
 
-> Every accepted wire message conforms to the supported versioned runtime schema; snapshot and input ordering cannot move state backward.
+> 허용된 모든 전송 메시지는 지원하는 버전의 런타임 스키마를 따르며, 스냅샷과 입력 순서는 상태를 과거로 되돌릴 수 없습니다.
 
-> The server is the sole authority for game rules, scores, phases, room membership, matchmaking, and persisted outcomes.
+> 게임 규칙, 점수, 단계, 경기방 참가 상태, 대전 상대 연결, 저장된 결과는 서버만 확정합니다.
 
-### 직접 연결되는 Major Engineering Difficulties
+### 직접 연결되는 주요 구현 난점
 
-> Handling slow or stale transports through sequence gates, token buckets, latest-value snapshot delivery, measurable congestion, and hard termination limits.
+> 느리거나 오래된 전송은 순번 검사, 토큰 버킷, 최신 값만 유지하는 스냅샷 전달, 측정 가능한 혼잡, 강제 종료 상한으로 처리해야 합니다.
 
-## 2. 이 Thread를 이해하기 위한 핵심 질문
+## 2. 이 개발 스레드를 이해하기 위한 핵심 질문
 
-- 초기 client validation과 server compile-time typing 사이의 비대칭은 무엇이었습니까?
-- snapshot envelope에서 transport metadata와 nested game state는 어떻게 분리됩니까?
-- `v: 1`은 handshake version과 event version에서 각각 어떤 호환성 경계를 형성합니까?
-- server input gate와 browser snapshot gate는 어떤 key와 비교 규칙으로 stale traffic을 거부합니까?
-- persisted result와 transient result가 잘못 섞이지 않도록 schema가 강제하는 조합은 무엇입니까?
-- producer와 consumer 모두 같은 shared codec을 사용한다는 사실을 실제 call site로 증명할 수 있습니까?
+- 초기 클라이언트 검증과 서버 컴파일 시점 typing 사이의 비대칭은 무엇이었습니까?
+- 스냅샷 응답 구조에서 전송 계층 메타데이터와 중첩된 게임 상태는 어떻게 분리됩니까?
+- `v: 1`은 핸드셰이크 버전과 이벤트 버전에서 각각 어떤 호환성 경계를 형성합니까?
+- 서버 입력 제한기와 브라우저 스냅샷 검사는 어떤 키와 비교 규칙으로 오래된 트래픽을 거부합니까?
+- 저장된 결과와 임시 결과가 잘못 섞이지 않도록 스키마가 강제하는 조합은 무엇입니까?
+- 생성 측과 소비 측 모두 같은 공유 codec을 사용한다는 사실을 실제 호출 site로 검증할 수 있습니까?
 
 ## 3. 완료 기준
 
-- client event parse와 server event encode/parse 경계를 실제 symbol과 함께 정리할 수 있습니다.
-- snapshot의 `tick`, `sequence`, `serverTime`, nested `state` 역할을 구분할 수 있습니다.
-- duplicate/reordered input과 delayed/duplicate snapshot이 각각 어디에서 무시되는지 설명할 수 있습니다.
-- strict object, unknown-field rejection, version rejection, persistence discriminator의 negative tests를 분류할 수 있습니다.
-- 프로토콜 변경 시 server, shared, browser에서 동시에 바뀌어야 하는 지점을 나열할 수 있습니다.
+- 클라이언트 이벤트 파싱과 서버 이벤트 인코딩/파싱 경계를 실제 심벌과 함께 정리할 수 있습니다.
+- 스냅샷의 `tick`, `sequence`, `serverTime`, 중첩된 `state` 역할을 구분할 수 있습니다.
+- 중복/reordered 입력과 지연된/중복 스냅샷이 각각 어디에서 무시되는지 설명할 수 있습니다.
+- 엄격한 객체, 알 수 없는 필드 실패, 버전 실패, 영속 저장 구분 필드의 실패 테스트를 분류할 수 있습니다.
+- 프로토콜 변경 시 서버, 공유, 브라우저에서 동시에 바뀌어야 하는 지점을 나열할 수 있습니다.
 
-> 검토 방식: 지정 브랜치에 속한 exact SHA의 diff와 해당 시점 파일을 GitHub에서 확인했습니다. 로컬 실행 환경은 GitHub clone이 차단되어 테스트 명령은 실행하지 않았으며, 아래 테스트 결과 설명은 test implementation 검토에 한정합니다.
+> 검토 방식: 지정 브랜치의 정확한 SHA별 변경 내용과 해당 시점 파일을 GitHub에서 확인했습니다. 로컬 환경에서는 GitHub 복제가 차단되어 테스트 명령을 실행하지 못했습니다. 아래 테스트 설명은 테스트 코드 검토 결과에 한정합니다.
 
-## 4. Commit map
+## 4. 커밋 목록
 
-| 순서 | SHA | Subject | Importance | Tags | Source에서 확정된 역할 |
+| 순서 | SHA | 제목 | 중요도 | 태그 | 원문에서 확인한 역할 |
 | ---: | --- | --- | :---: | --- | --- |
-| 1 | `a974f8cd9712` | `feat(shared): WebSocket 이벤트 메시지 검증` | A | PROTOCOL, SIMULATION, REALTIME | Introduces the first runtime-validated discriminated event vocabulary. |
-| 2 | `7d3437c49152` | `feat(protocol): versioned game snapshot 계약 정의` | A | PROTOCOL, SIMULATION, REALTIME | Reshapes snapshots and results into strict transport models with sequence and persistence metadata. |
-| 3 | `0595a386000a` | `feat(protocol): versioned WebSocket event codec 연결` | S | PROTOCOL, REALTIME, ARCH | Makes both directions strict version-one codec boundaries. |
-| 4 | `1567f5005ef8` | `feat(game): room별 input sequence 중복을 차단` | A | SIMULATION, REALTIME, PERSISTENCE | Rejects stale or reordered input per client and room. |
-| 5 | `8a8787d03a19` | `feat(play): versioned game input과 snapshot 소비` | A | PROTOCOL, SIMULATION, REALTIME | Adds client-side event parsing and monotonic snapshot acceptance. |
-| 6 | `f655969b0d36` | `test(protocol): versioned realtime contract 검증` | A | PROTOCOL, REALTIME, PERSISTENCE | Protects version, sequence, and persistence discriminator invariants. |
+| 1 | `a974f8cd9712` | `feat(shared): WebSocket 이벤트 메시지 검증` | A | PROTOCOL, SIMULATION, REALTIME | 실행할 때 검증하는 첫 판별 이벤트 집합을 도입합니다. |
+| 2 | `7d3437c49152` | `feat(protocol): versioned game snapshot 계약 정의` | A | PROTOCOL, SIMULATION, REALTIME | 스냅샷과 결과를 순번·영속성 메타데이터를 포함한 엄격한 전송 모델로 바꿉니다. |
+| 3 | `0595a386000a` | `feat(protocol): versioned WebSocket event codec 연결` | S | PROTOCOL, REALTIME, ARCH | 양방향 모두를 엄격한 버전 1 코덱 경계로 만듭니다. |
+| 4 | `1567f5005ef8` | `feat(game): room별 input sequence 중복을 차단` | A | SIMULATION, REALTIME, PERSISTENCE | 클라이언트·경기방별로 오래되거나 순서가 뒤바뀐 입력을 거부합니다. |
+| 5 | `8a8787d03a19` | `feat(play): versioned game input과 snapshot 소비` | A | PROTOCOL, SIMULATION, REALTIME | 클라이언트 측 이벤트 파싱과 단조 증가하는 스냅샷 수락 규칙을 추가합니다. |
+| 6 | `f655969b0d36` | `test(protocol): versioned realtime contract 검증` | A | PROTOCOL, REALTIME, PERSISTENCE | 버전, 순번, 영속성 판별자 불변 조건을 보호합니다. |
 
-## 5. Commit별 학습 기록
+## 5. 커밋별 학습 기록
 
 ### 5.1. `feat(shared): WebSocket 이벤트 메시지 검증`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `a974f8cd9712` |
-| Importance | A |
-| Tags | PROTOCOL, SIMULATION, REALTIME |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | PROTOCOL, SIMULATION, REALTIME |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Introduces the first runtime-validated discriminated event vocabulary.
-- Classification summary: Introduce a discriminated WebSocket protocol and validate client-originated messages before handlers consume them.
+- 개발 스레드에서의 역할: 실행할 때 검증하는 첫 판별 이벤트 집합을 도입합니다.
+- 분류 요약: 판별 가능한 WebSocket 프로토콜을 도입하고 처리 함수가 읽기 전에 클라이언트 메시지를 검증합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | client/server event는 call site별 object와 TypeScript type에 의존해 malformed JSON과 구조 오류가 handler까지 도달할 수 있었습니다. |
-| 핵심 boundary/decision | `packages/shared/src/ws.ts`에 Zod discriminated union과 `parseClientEvent`를 추가합니다. queue, ready, input, chat shape와 direction `-1|0|1`, chat trim/1–240을 runtime 검증합니다. |
-| 상태 또는 ownership 변화 | shared package가 client-originated message vocabulary와 parse boundary를 소유합니다. server event는 이 SHA에서 TypeScript union과 `JSON.stringify`만 사용합니다. |
-| 주요 failure/edge path | JSON parse failure와 schema-invalid object를 구분해 typed event만 handler에 넘깁니다. server output은 runtime validation이 없어 방향별 비대칭이 남습니다. |
-| 보장/비보장 | client event의 알려진 type/payload만 application handler에 도달합니다. event version, strict server output, sequence ordering은 아직 없습니다. |
-| 다음 관련 commit 연결 | `7d3437...`가 snapshot/result를 strict runtime model로 바꾸고 transport ordering metadata를 추가합니다. |
+| 직전 관련 상태 | 클라이언트/서버 이벤트는 호출 site별 객체와 TypeScript 타입에 의존해 잘못된 JSON과 구조 오류가 처리 함수까지 도달할 수 있었습니다. |
+| 핵심 경계/판단 | `packages/shared/src/ws.ts`에 Zod 구분 필드가 있는 유니언 타입과 `parseClientEvent`를 추가합니다. 대기열, 준비 완료, 입력, 채팅 형식과 방향 `-1|0|1`, 채팅 공백 제거/1–240을 실행 중 검증합니다. |
+| 상태 또는 소유권 변화 | 공유 패키지가 클라이언트가 보내는 메시지 종류와 파싱 규칙을 소유합니다. 서버 이벤트는 이 SHA에서 TypeScript 유니언 타입과 `JSON.stringify`만 사용합니다. |
+| 주요 실패/예외 경로 | JSON 파싱 실패와 스키마 잘못된 객체를 구분해 타입이 지정된 이벤트만 처리 함수에 넘깁니다. 서버 출력은 실행 중 검증이 없어 방향별 비대칭이 남습니다. |
+| 보장 범위/보장하지 않는 범위 | 클라이언트 이벤트의 알려진 타입/메시지 본문만 애플리케이션 처리 함수에 도달합니다. 이벤트 버전, 엄격한 서버 출력, 순번 순서는 아직 없습니다. |
+| 다음 관련 커밋 연결 | `7d3437...`가 스냅샷과 결과를 엄격한 런타임 모델로 바꾸고 전송 순서를 나타내는 메타데이터를 추가합니다. |
 
 비교 기준:
-- 이 commit의 parent에서 동일 책임을 담당하던 코드를 비교했습니다.
-- 다음 Thread 관련 SHA: `7d3437c49152` — `feat(protocol): versioned game snapshot 계약 정의`
+- 이 커밋의 부모 커밋에서 동일 책임을 담당하던 코드를 비교했습니다.
+- 다음 개발 스레드 관련 SHA: `7d3437c49152` — `feat(protocol): versioned game snapshot 계약 정의`
 
 ### 5.2. `feat(protocol): versioned game snapshot 계약 정의`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `7d3437c49152` |
-| Importance | A |
-| Tags | PROTOCOL, SIMULATION, REALTIME |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | PROTOCOL, SIMULATION, REALTIME |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Reshapes snapshots and results into strict transport models with sequence and persistence metadata.
-- Classification summary: Replace loose game interfaces with strict schemas for version-ready snapshots and completion results.
+- 개발 스레드에서의 역할: 스냅샷과 결과를 순번·영속성 메타데이터를 포함한 엄격한 전송 모델로 바꿉니다.
+- 분류 요약: 느슨한 게임 인터페이스를 버전이 명시된 스냅샷·완료 결과용 엄격한 스키마로 교체합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | snapshot은 transport metadata와 mechanics state가 평평하게 섞였고 result의 persisted 여부와 matchId/ratingDelta 조합이 타입상 모순될 수 있었습니다. |
-| 핵심 boundary/decision | `packages/shared/src/game.ts`의 strict Zod schemas가 snapshot을 `{roomId,tick,sequence,serverTimeMs,state}`로 분리하고, finished result를 `persisted:true/false` discriminated union으로 정의합니다. |
-| 상태 또는 ownership 변화 | shared game schema가 wire state envelope와 persistence semantics를 소유하며 server/browser 모두 같은 shape를 소비할 수 있습니다. |
-| 주요 failure/edge path | sequence/tick/score는 nonnegative integer, vector는 finite로 제한합니다. `persisted:true`는 non-null matchId, `persisted:false`는 null matchId와 ratingDelta 0만 허용합니다. |
-| 보장/비보장 | snapshot ordering field와 transport/state 분리, contradictory result rejection이 가능해집니다. 모든 WS event에 version이 붙고 양방향 codec이 강제되는 것은 다음 commit입니다. |
-| 다음 관련 commit 연결 | `0595a3...`가 모든 client/server event를 strict version-one codec으로 통합합니다. |
+| 직전 관련 상태 | 스냅샷은 전송 계층 메타데이터와 게임 규칙 상태가 평평하게 섞였고 결과의 저장된 여부와 matchId/ratingDelta 조합이 타입상 모순될 수 있었습니다. |
+| 핵심 경계/판단 | `packages/shared/src/game.ts`의 엄격한 Zod 스키마는 스냅샷을 `{roomId,tick,sequence,serverTimeMs,state}`로 분리하고, 경기 종료 결과를 `persisted: true`와 `persisted: false` 판별 필드가 있는 유니언으로 정의합니다. |
+| 상태 또는 소유권 변화 | 공유 게임 스키마가 전송 형식 상태 응답 구조와 영속 저장 동작 의미를 소유하며 서버/브라우저 모두 같은 형식을 소비할 수 있습니다. |
+| 주요 실패/예외 경로 | 순번/틱/점수는 nonnegative integer, vector는 finite로 제한합니다. `persisted:true`는 null이 아닌 matchId, `persisted:false`는 null matchId와 ratingDelta 0만 허용합니다. |
+| 보장 범위/보장하지 않는 범위 | 스냅샷 순서 필드와 전송 계층/상태 분리, contradictory 결과 실패가 가능해집니다. 모든 WS 이벤트에 버전이 붙고 양방향 codec이 강제되는 것은 다음 커밋입니다. |
+| 다음 관련 커밋 연결 | `0595a3...`가 모든 클라이언트/서버 이벤트를 엄격한 버전 1 codec으로 통합합니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `a974f8cd9712` — `feat(shared): WebSocket 이벤트 메시지 검증`
-- 다음 Thread 관련 SHA: `0595a386000a` — `feat(protocol): versioned WebSocket event codec 연결`
+- 직전 개발 스레드 관련 SHA: `a974f8cd9712` — `feat(shared): WebSocket 이벤트 메시지 검증`
+- 다음 개발 스레드 관련 SHA: `0595a386000a` — `feat(protocol): versioned WebSocket event codec 연결`
 
 ### 5.3. `feat(protocol): versioned WebSocket event codec 연결`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `0595a386000a` |
-| Importance | S |
-| Tags | PROTOCOL, REALTIME, ARCH |
-| 학습 깊이 | Architecture/invariant 중심으로 직전 상태, 결정, 핵심 전이, ownership, failure, 후속 검증까지 복원했습니다. |
+| 중요도 | S |
+| 태그 | PROTOCOL, REALTIME, ARCH |
+| 학습 깊이 | 아키텍처/불변 조건 중심으로 직전 상태, 결정, 핵심 전이, 소유권, 실패, 후속 검증까지 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Makes both directions strict version-one codec boundaries.
-- Classification summary: Turn the shared event vocabulary into a symmetric strict runtime compatibility boundary.
+- 개발 스레드에서의 역할: 양방향 모두를 엄격한 버전 1 코덱 경계로 만듭니다.
+- 분류 요약: 공유 이벤트 집합을 대칭적인 엄격한 실행 시점 호환성 경계로 만듭니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | client input만 runtime 검증되고 server output은 compile-time type에 의존했으며 event version이 없었습니다. |
-| 핵심 boundary/decision | 모든 client/server variant에 literal `v:1`과 `.strict()`를 붙이고 `game.input.inputSeq`, stable error code enum, `parseServerEvent`, validation-before-encode를 추가합니다. |
-| 상태 또는 ownership 변화 | shared codec이 양방향 wire compatibility owner가 됩니다. server producer와 browser consumer가 같은 schemas를 사용합니다. |
-| 주요 failure/edge path | unknown field, wrong/missing version, unsafe/negative inputSeq, malformed nested snapshot/result는 encode 또는 parse 경계에서 fail-closed됩니다. |
-| 보장/비보장 | accepted client와 server message는 모두 version-one strict schema를 만족합니다. 순서상 오래된 message를 무시하는 runtime state는 뒤 commits가 담당합니다. |
-| 다음 관련 commit 연결 | `1567f5...`가 server input sequence gate를, `8a8787...`이 browser snapshot sequence gate를 연결합니다. |
+| 직전 관련 상태 | 클라이언트 입력만 실행 중 검증되고 서버 출력은 컴파일 시점 타입에 의존했으며 이벤트 버전이 없었습니다. |
+| 핵심 경계/판단 | 모든 클라이언트/서버 이벤트 종류에 문자열 `v:1`과 `.strict()`를 붙이고 `game.input.inputSeq`, 안정적인 오류 코드 열거형, `parseServerEvent`, 인코딩 전 검증을 추가합니다. |
+| 상태 또는 소유권 변화 | 공유 코덱이 양방향 전송 형식 호환성을 소유합니다. 서버 생성 측과 브라우저 소비자가 같은 스키마를 사용합니다. |
+| 주요 실패/예외 경로 | 정의되지 않은 필드, 잘못되거나 누락된 버전, 유효하지 않거나 순번 검사를 통과하지 못한 `inputSeq`, 잘못된 중첩된 스냅샷/결과는 인코딩 또는 파싱 경계에서 실패 시 차단됩니다. |
+| 보장 범위/보장하지 않는 범위 | 허용된 클라이언트와 서버 메시지는 모두 버전 1의 엄격한 스키마를 만족합니다. 순서가 오래된 메시지를 무시하는 실행 시점 상태는 이후 커밋이 담당합니다. |
+| 다음 관련 커밋 연결 | `1567f5...`가 서버 입력 순번 검사를, `8a8787...`이 브라우저 스냅샷 순번 검사를 연결합니다. |
 
-#### Architecture / invariant 복원
+#### 아키텍처와 불변 조건 복원
 
 | 축 | 복원 결과 |
 | --- | --- |
-| 문제 | compile-time type는 network에서 받은 JSON이나 producer의 runtime object가 실제 contract를 따르는지 보장하지 못합니다. |
-| 실패 위험 | versionless/extra-field/incompatible nested shape가 조용히 authoritative 또는 rendered state를 변경합니다. |
-| 핵심 결정 | client parse, server encode, browser parse를 같은 strict literal-version schemas에 묶습니다. |
-| 구현 경로 | raw JSON → parse/schema → typed client event; typed server event → schema validation → JSON; browser raw → `parseServerEvent`. |
-| 수명주기·상태 | codec은 상태를 소유하지 않고 각 message admission 순간만 책임집니다. ordering state는 caller별 map/ref가 소유합니다. |
-| 실패 처리 | 구문 오류와 schema 오류 모두 application mutation 전에 차단됩니다. |
-| 후속 검증 | `f655969...` negative protocol tests가 missing version, invalid sequence, persistence contradiction을 고정합니다. |
-| Thread 전체 의미 | protocol change는 shared schema, server producer, browser consumer가 함께 바뀌어야 하는 실행 가능한 compatibility boundary가 됩니다. |
+| 문제 | 컴파일 시점 타입은 네트워크에서 받은 JSON이나 생성 측의 실행 시점 객체가 실제 계약을 따르는지 보장하지 못합니다. |
+| 실패 위험 | 버전이 없는/추가 필드/호환되지 않는 중첩 형식이 조용히 서버가 확정하는 또는 렌더링된 상태를 변경합니다. |
+| 핵심 결정 | 클라이언트 파싱, 서버 인코딩, 브라우저 파싱을 같은 엄격한 문자열 버전 스키마에 묶습니다. |
+| 구현 경로 | 원시 JSON → 파싱/스키마 → 타입이 지정된 클라이언트 이벤트; 타입이 지정된 서버 이벤트 → 스키마 검증 → JSON; 브라우저 원시 → `parseServerEvent`. |
+| 수명주기·상태 | codec은 상태를 소유하지 않고 각 메시지 참가 순간만 책임집니다. 순서 상태는 호출자별 목록/ref가 소유합니다. |
+| 실패 처리 | 구문 오류와 스키마 오류 모두 애플리케이션 변경 전에 차단됩니다. |
+| 후속 검증 | `f655969...` 실패 프로토콜 테스트가 누락된 버전, 잘못된 순번, 영속 저장 모순된 조합을 고정합니다. |
+| 개발 스레드 전체 의미 | 프로토콜 변경은 공유 스키마, 서버 생성 측, 브라우저 소비자가 함께 바뀌어야 하는 실행 가능한 호환성 경계가 됩니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `7d3437c49152` — `feat(protocol): versioned game snapshot 계약 정의`
-- 다음 Thread 관련 SHA: `1567f5005ef8` — `feat(game): room별 input sequence 중복을 차단`
+- 직전 개발 스레드 관련 SHA: `7d3437c49152` — `feat(protocol): versioned game snapshot 계약 정의`
+- 다음 개발 스레드 관련 SHA: `1567f5005ef8` — `feat(game): room별 input sequence 중복을 차단`
 
 ### 5.4. `feat(game): room별 input sequence 중복을 차단`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `1567f5005ef8` |
-| Importance | A |
-| Tags | SIMULATION, REALTIME, PERSISTENCE |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | SIMULATION, REALTIME, PERSISTENCE |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Rejects stale or reordered input per client and room.
-- Classification summary: Apply monotonic input ordering before mutating authoritative paddle intent.
+- 개발 스레드에서의 역할: 클라이언트·경기방별로 오래되거나 순서가 뒤바뀐 입력을 거부합니다.
+- 분류 요약: 서버가 확정하는 패들 입력을 바꾸기 전에 단조 증가 입력 순서를 적용합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | 형식상 valid한 `game.input`이라도 network duplicate/reordering으로 더 오래된 direction이 최신 intent를 덮을 수 있었습니다. |
-| 핵심 boundary/decision | `apps/api/src/gameHub.ts`의 각 `Client`에 `lastInputSequenceByRoom` map을 두고 room/phase/side 확인 뒤 `inputSeq <= previous`를 무시합니다. accepted일 때만 sequence 저장과 paddle direction mutation을 수행합니다. |
-| 상태 또는 ownership 변화 | ordering state는 이 SHA에서 connection별 client가 room key로 소유합니다. server authoritative paddle intent는 monotonic accepted sequence만 반영합니다. |
-| 주요 failure/edge path | stale/duplicate input은 no-op입니다. reconnect는 새 Client map이므로 이전 connection sequence와 연속성은 보장하지 않습니다. |
-| 보장/비보장 | 한 client/room lifetime 안에서 input sequence가 뒤로 가지 않습니다. user-wide rate budget과 reconnect continuity는 Thread 08의 InputGate integration 범위입니다. |
-| 다음 관련 commit 연결 | `8a8787...`이 browser에서 inputSeq를 생성하고 snapshot sequence 역행을 차단합니다. |
+| 직전 관련 상태 | 형식상 유효한한 `game.input`이라도 네트워크 중복/reordering으로 더 오래된 방향이 최신 요청 의도를 덮을 수 있었습니다. |
+| 핵심 경계/판단 | `apps/api/src/gameHub.ts`의 각 `Client`에 `lastInputSequenceByRoom` 목록을 두고 경기방/단계/측 확인 뒤 `inputSeq <= previous`를 무시합니다. 허용된일 때만 순번 저장과 패들 방향 변경을 수행합니다. |
+| 상태 또는 소유권 변화 | 순서 상태는 이 SHA에서 연결별 클라이언트가 경기방 키로 소유합니다. 서버 서버가 확정하는 패들 요청 의도는 단조 증가 허용된 순번만 반영합니다. |
+| 주요 실패/예외 경로 | 오래됐거나 중복된 입력은 상태를 바꾸지 않고 무시합니다. 재연결 시 새 클라이언트 목록을 만들기 때문에 이전 연결의 입력 순번과 연속성은 보장하지 않습니다. |
+| 보장 범위/보장하지 않는 범위 | 한 클라이언트와 경기방의 수명 안에서 입력 순번이 뒤로 가지 않습니다. 사용자별 입력 허용량과 재연결 뒤 순번 연속성은 개발 스레드 08의 `InputGate` 통합 범위입니다. |
+| 다음 관련 커밋 연결 | `8a8787...`이 브라우저에서 inputSeq를 생성하고 스냅샷 순번 역행을 차단합니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `0595a386000a` — `feat(protocol): versioned WebSocket event codec 연결`
-- 다음 Thread 관련 SHA: `8a8787d03a19` — `feat(play): versioned game input과 snapshot 소비`
+- 직전 개발 스레드 관련 SHA: `0595a386000a` — `feat(protocol): versioned WebSocket event codec 연결`
+- 다음 개발 스레드 관련 SHA: `8a8787d03a19` — `feat(play): versioned game input과 snapshot 소비`
 
 ### 5.5. `feat(play): versioned game input과 snapshot 소비`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `8a8787d03a19` |
-| Importance | A |
-| Tags | PROTOCOL, SIMULATION, REALTIME |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | PROTOCOL, SIMULATION, REALTIME |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Adds client-side event parsing and monotonic snapshot acceptance.
-- Classification summary: Make the browser a strict version-one producer and monotonic server-event consumer.
+- 개발 스레드에서의 역할: 클라이언트 측 이벤트 파싱과 단조 증가하는 스냅샷 수락 규칙을 추가합니다.
+- 분류 요약: 브라우저를 엄격한 버전 1 생성자이자 단조 증가 서버 이벤트 소비자로 만듭니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | browser는 versionless command를 보내고 server snapshot을 arrival order대로 렌더링해 delayed frame이 UI를 과거로 되돌릴 수 있었습니다. |
-| 핵심 boundary/decision | play page가 모든 command에 `v:1`을 붙이고 50ms input timer에서 `inputSequenceRef`를 증가시킵니다. incoming data는 `parseServerEvent`를 통과하고 `snapshot.sequence <= last`이면 무시합니다. |
-| 상태 또는 ownership 변화 | browser connection instance가 input sequence와 last snapshot sequence refs를 소유하며 새 connection setup에서 초기화합니다. |
-| 주요 failure/edge path | duplicate/delayed snapshot은 렌더링하지 않습니다. gap을 보충하거나 missed frame을 replay하지는 않습니다. |
-| 보장/비보장 | 한 socket/session에서 rendered snapshot state는 sequence 기준 단조 증가합니다. 서버 authoritative state나 transport delivery completeness를 보장하지 않습니다. |
-| 다음 관련 commit 연결 | `f65596...`가 version/sequence/persistence negative cases를 shared contract regression으로 고정합니다. |
+| 직전 관련 상태 | 브라우저는 버전이 없는 명령을 보내고 서버 스냅샷을 도착 순서대로 렌더링해 지연된 프레임이 UI를 과거로 되돌릴 수 있었습니다. |
+| 핵심 경계/판단 | 플레이 페이지가 모든 명령에 `v:1`을 붙이고 50ms 입력 타이머에서 `inputSequenceRef`를 증가시킵니다. incoming 데이터는 `parseServerEvent`를 통과하고 `snapshot.sequence <= last`이면 무시합니다. |
+| 상태 또는 소유권 변화 | 브라우저 연결 인스턴스가 입력 순번과 마지막 스냅샷 순번을 참조에 보관하고 새 연결을 만들 때 초기화합니다. |
+| 주요 실패/예외 경로 | 중복/지연된 스냅샷은 렌더링하지 않습니다. 차이를 보충하거나 누락된 프레임을 재생하지는 않습니다. |
+| 보장 범위/보장하지 않는 범위 | 한 소켓/세션에서 렌더링된 스냅샷 상태는 순번 기준 단조 증가합니다. 서버 판정 기준 상태나 전송 계층 전달 완전성를 보장하지 않습니다. |
+| 다음 관련 커밋 연결 | `f65596...`가 버전/순번/영속 저장 실패 사례를 공유 계약 회귀로 고정합니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `1567f5005ef8` — `feat(game): room별 input sequence 중복을 차단`
-- 다음 Thread 관련 SHA: `f655969b0d36` — `test(protocol): versioned realtime contract 검증`
+- 직전 개발 스레드 관련 SHA: `1567f5005ef8` — `feat(game): room별 input sequence 중복을 차단`
+- 다음 개발 스레드 관련 SHA: `f655969b0d36` — `test(protocol): versioned realtime contract 검증`
 
 ### 5.6. `test(protocol): versioned realtime contract 검증`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `f655969b0d36` |
-| Importance | A |
-| Tags | PROTOCOL, REALTIME, PERSISTENCE |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | PROTOCOL, REALTIME, PERSISTENCE |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Protects version, sequence, and persistence discriminator invariants.
-- Classification summary: Add negative and round-trip tests for the strict runtime codec.
+- 개발 스레드에서의 역할: 버전, 순번, 영속성 판별자 불변 조건을 보호합니다.
+- 분류 요약: 엄격한 실행 시점 코덱의 실패 사례와 왕복 테스트를 추가합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | strict schemas와 caller gates는 구현됐지만 missing version, invalid sequence, contradictory result가 회귀하지 않는 자동 contract evidence가 부족했습니다. |
-| 핵심 boundary/decision | `packages/shared/src/ws.test.ts`가 client/server variants round-trip과 versionless server event, snapshot sequence -1, `persisted:true + matchId:null` rejection을 검사합니다. |
-| 상태 또는 ownership 변화 | test suite가 shared wire contract의 negative examples를 고정합니다. |
-| 주요 failure/edge path | invalid data가 parse/encode 경계에서 reject되는지를 직접 확인하며 application handler나 renderer를 호출하지 않습니다. |
-| 보장/비보장 | 검사한 contract combinations이 runtime schema에 의해 차단됩니다. 실제 packet reordering, GameHub/browser integration, load behavior는 증명하지 않습니다. |
-| 다음 관련 commit 연결 | Thread 최종 상태는 strict version-one codec과 server/client 양쪽 monotonic gates가 결합된 형태입니다. |
+| 직전 관련 상태 | 엄격한 스키마와 호출자 검사는 구현됐지만 누락된 버전, 잘못된 순번, 서로 모순되는 결과가 다시 허용되지 않는다는 자동 계약 근거가 부족했습니다. |
+| 핵심 경계/판단 | `packages/shared/src/ws.test.ts`가 클라이언트/서버 이벤트 종류별 왕복과 버전이 없는 서버 이벤트, 스냅샷 순번 -1, `persisted:true + matchId:null` 실패를 검사합니다. |
+| 상태 또는 소유권 변화 | 테스트 모음이 공유 전송 형식 계약의 실패 examples를 고정합니다. |
+| 주요 실패/예외 경로 | 잘못된 데이터가 파싱/인코딩 경계에서 거부되는지를 직접 확인하며 애플리케이션 처리 함수나 렌더러를 호출하지 않습니다. |
+| 보장 범위/보장하지 않는 범위 | 검사한 계약 조합이 런타임 스키마에 의해 차단됩니다. 실제 packet reordering, GameHub/브라우저 통합, 부하 동작은 검증하지 않습니다. |
+| 다음 관련 커밋 연결 | 개발 스레드 최종 상태는 엄격한 버전 1 codec과 서버/클라이언트 양쪽 단조 증가 gates가 결합된 형태입니다. |
 
-#### Test commit 학습 기록
+#### 테스트 커밋 학습 기록
 
 | 구분 | 기록 |
 | --- | --- |
-| 대상 production invariant | accepted wire message는 version-one strict schema를 만족하고 ordering/persistence metadata가 유효합니다. |
-| 재현하는 failure/boundary | missing version, negative sequence, persisted result contradiction, variant round-trip. |
-| test technique | Shared Zod codec unit/negative contract tests. |
-| 통과하는 production path | raw/typed event → `parseClientEvent`/`parseServerEvent`/`encodeServerEvent`. |
-| 증명하는 것 | schema-level compatibility와 negative rejection을 증명합니다. |
-| 증명하지 않는 것 | network reordering에서 GameHub와 React state가 실제로 단조적인지는 통합 검증하지 않습니다. |
-| test 성격 | Deterministic runtime contract regression. |
-| 후속 회귀 방지 설명 | version literal, strictness, sequence bounds, persisted discriminator를 약화하면 실패해야 합니다. |
+| 검증 대상 불변 조건 | 허용된 전송 형식 메시지는 버전 1 엄격한 스키마를 만족하고 순서/영속 저장 메타데이터가 유효합니다. |
+| 재현하는 실패/경계 | 누락된 버전, 실패 순번, 저장된 결과 모순된 조합, 이벤트 종류별 왕복. |
+| 테스트 기법 | 공유 Zod 코덱의 단위 테스트와 실패 계약 테스트입니다. |
+| 실행하는 실제 코드 경로 | 원시/타입이 지정된 이벤트 → `parseClientEvent`/`parseServerEvent`/`encodeServerEvent`. |
+| 검증하는 것 | 스키마 수준 호환성과 실패 실패를 검증합니다. |
+| 검증하지 않는 것 | 네트워크 reordering에서 GameHub와 React 상태가 실제로 단조적인지는 통합 검증하지 않습니다. |
+| 테스트 성격 | 결정적 실행 계약 회귀. |
+| 후속 회귀 방지 설명 | 버전 문자열, 엄격성, 순번 범위 제한, 저장된 구분 필드를 약화하면 실패해야 합니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `8a8787d03a19` — `feat(play): versioned game input과 snapshot 소비`
-- 이 Thread의 마지막 상태와 비교해 최종 보장을 정리했습니다.
+- 직전 개발 스레드 관련 SHA: `8a8787d03a19` — `feat(play): versioned game input과 snapshot 소비`
+- 이 개발 스레드의 마지막 상태와 비교해 최종 보장을 정리했습니다.
 
-## 6. Invariant ledger
+## 6. 불변 조건 기록
 
-Source에서 확정된 invariant를 commit 시점별로 연결했습니다. `해당 없음`은 해당 Thread 안에서 별도 fix/test가 없음을 뜻합니다.
+원문에서 확인한 불변 조건을 커밋 시점별로 연결했습니다. `해당 없음`은 해당 개발 스레드에서 별도 수정/테스트가 없음을 뜻합니다.
 
-| Invariant | 처음 도입/관찰한 SHA | 강화한 SHA | 부족함이 드러난 SHA | 복구한 fix | 고정한 regression test | 코드 근거 |
+| 불변 조건 | 처음 도입/관찰한 SHA | 강화한 SHA | 부족함이 드러난 SHA | 복구한 수정 | 고정한 회귀 테스트 | 코드 근거 |
 | --- | --- | --- | --- | --- | --- | --- |
-| Every accepted wire message conforms to the supported versioned runtime schema; snapshot and input ordering cannot move state backward. | `a974f8cd9712` client runtime parse | `7d3437c49152` strict snapshot/result → `0595a386000a` symmetric v1 codec → `1567f5005ef8` input gate → `8a8787d03a19` snapshot gate | 초기 server output runtime validation과 sequence state 부재 | 해당 없음 — 순차 강화 | `f655969b0d36` | `packages/shared/src/ws.ts`, `game.ts`, `gameHub.ts::applyInput`, web play snapshot handler |
-| The server is the sole authority for game rules, scores, phases, room membership, matchmaking, and persisted outcomes. | `7d3437c49152` authoritative snapshot/result shape | `0595a386000a` producer validation, `1567f5005ef8` stale input rejection | 해당 없음 | 해당 없음 | `f655969b0d36` contract evidence | shared schemas + GameHub input mutation path |
+| 허용된 모든 전송 메시지는 지원하는 버전의 런타임 스키마를 따르며, 스냅샷과 입력 순서는 상태를 과거로 되돌릴 수 없습니다. | `a974f8cd9712` 클라이언트 런타임 파싱 | `7d3437c49152` 엄격한 스냅샷/결과 → `0595a386000a` 대칭형 버전 1 코덱 → `1567f5005ef8` 입력 제한기 → `8a8787d03a19` 스냅샷 검사 | 초기 서버 출력 실행 중 검증과 순번 상태 부재 | 해당 없음 — 순차 강화 | `f655969b0d36` | `packages/shared/src/ws.ts`, `game.ts`, `gameHub.ts::applyInput`, 웹 플레이 스냅샷 처리 함수 |
+| 게임 규칙, 점수, 단계, 경기방 참가 상태, 대전 상대 연결, 저장된 결과는 서버만 확정합니다. | `7d3437c49152` 서버가 확정한 스냅샷·결과 형식 | `0595a386000a` 생성 측 검증, `1567f5005ef8` 오래된 입력 거부 | 해당 없음 | 해당 없음 | `f655969b0d36` 계약 근거 | 공유 스키마와 GameHub 입력 변경 경로 |
 
-## 7. Failure → Fix → Test 연결
+## 7. 실패 → 수정 → 테스트 연결
 
-| 기존 상태/가정 | Fix 또는 강화 과정 | Test/evidence | 최종 보장 |
+| 기존 상태/가정 | 수정 또는 강화 과정 | 테스트/근거 | 최종 보장 |
 | --- | --- | --- | --- |
-| client만 runtime 검증, server는 compile-time type | `7d3437...` strict models → `0595a3...` symmetric codec | `f65596...` negative tests | 양방향 version-one compatibility boundary |
-| valid하지만 stale input이 최신 intent를 덮음 | `1567f5...` per-client/per-room sequence gate | code inspection; later InputGate tests | authoritative input state monotonic |
-| delayed snapshot이 UI를 과거로 되돌림 | `8a8787...` browser last-sequence gate | browser reducer/page tests | rendered state monotonic |
+| 클라이언트만 실행 중 검증, 서버는 컴파일 시점 타입 | `7d3437...` 엄격한 모델 → `0595a3...` 대칭 코덱 | `f65596...` 실패 테스트 | 양방향 버전 1 호환성 경계 |
+| 유효한하지만 오래된 입력이 최신 요청 의도를 덮음 | `1567f5...` 클라이언트별/경기방별 순번 검사 | 코드 검토; 이후 InputGate 테스트 | 서버가 확정하는 입력 상태 단조 증가 |
+| 지연된 스냅샷이 UI를 과거로 되돌림 | `8a8787...` 브라우저 마지막 순번 검사 | 브라우저 리듀서/페이지 테스트 | 렌더링된 상태 단조 증가 |
 
-## 8. Ownership / state / responsibility 변화
+## 8. 소유권·상태·담당 범위 변화
 
-| 축 | 초기 SHA의 owner/state | 중간 전환 | Thread 최종 owner/state | 해제·cleanup 책임 | 근거 |
+| 축 | 초기 SHA의 소유 주체/상태 | 중간 전환 | 개발 스레드 최종 소유 주체/상태 | 해제·정리 책임 | 근거 |
 | --- | --- | --- | --- | --- | --- |
-| wire vocabulary/schema | 각 call site/TS type | `a974f8...` client schema, `7d3437...` game schema | `0595a3...` shared strict v1 codec | stateless | `packages/shared/src/ws.ts`, `game.ts` |
-| input ordering | 없음 | `1567f5...` client map keyed room | GameHub connection state | client disconnect/replacement 시 map 폐기 | `gameHub.ts::lastInputSequenceByRoom/applyInput` |
-| snapshot ordering | arrival order | `8a8787...` sequence ref | browser connection instance | new connection setup/cleanup에서 reset | `apps/web/src/app/play/page.tsx` |
-| persistence result meaning | loose interface | `7d3437...` discriminated union | shared schema | stateless | `persistedGameFinishedSchema` |
+| 전송 형식 이벤트 종류/스키마 | 각 호출 지점/TS 타입 | `a974f8...` 클라이언트 스키마, `7d3437...` 게임 스키마 | `0595a3...` 공유 엄격한 v1 codec | 별도 상태 없음 | `packages/shared/src/ws.ts`, `game.ts` |
+| 입력 순서 | 없음 | `1567f5...` 클라이언트 목록 keyed 경기방 | GameHub 연결 상태 | 클라이언트 연결 해제/교체 시 목록 폐기 | `gameHub.ts::lastInputSequenceByRoom/applyInput` |
+| 스냅샷 순서 | 도착 순서 | `8a8787...` 순번 ref | 브라우저 연결 인스턴스 | 새 연결 설정/정리에서 초기화 | `apps/web/src/app/play/page.tsx` |
+| 영속 저장 결과 의미 | 느슨한 인터페이스 | `7d3437...` 구분 필드가 있는 유니언 타입 | 공유 스키마 | 별도 상태 없음 | `persistedGameFinishedSchema` |
 
-## 9. Thread 최종 상태
+## 9. 개발 스레드 최종 상태
 
-- 최종 authoritative owner: shared package가 wire schema/codec을, GameHub가 authoritative input admission을, browser connection이 rendered snapshot admission을 소유합니다.
-- 최종 상태/invariant: version-one strict message만 수용되고 accepted input 및 rendered snapshot sequence는 각 lifetime 안에서 감소하지 않습니다.
-- 남아 있는 의도적 제한 또는 비보장: sequence gap을 복구하지 않고, reconnect 전후 sequence continuity와 actual delivery rate는 이 Thread만으로 보장하지 않습니다.
-- 후속 Thread가 의존하는 contract: server producer와 browser consumer는 동일 shared schemas를 사용하며 persisted/transient 결과 조합도 wire에서 강제됩니다.
+- 최종 판정 주체: 공유 패키지가 전송 형식 스키마/codec을, GameHub가 서버가 확정하는 입력 참가를, 브라우저 연결이 렌더링된 스냅샷 참가를 소유합니다.
+- 최종 상태/불변 조건: 버전 1 엄격한 메시지만 수용되고 허용된 입력 및 렌더링된 스냅샷 순번은 각 수명 안에서 감소하지 않습니다.
+- 남아 있는 의도적 제한 또는 보장하지 않는 범위: 순번 차이를 복구하지 않고, 재연결 전후 순번 continuity와 실제 전달 빈도는 이 개발 스레드만으로 보장하지 않습니다.
+- 후속 개발 스레드가 의존하는 계약: 서버 생성 측과 브라우저 실행 경로는 같은 공유 스키마를 사용하며 영속·임시 결과 조합도 전송 형식에서 강제됩니다.
 - 대표 코드 근거: `0595a386000a packages/shared/src/ws.ts`, `1567f5005ef8 apps/api/src/gameHub.ts`, `8a8787d03a19 apps/web/src/app/play/page.tsx`, `f655969b0d36 ws.test.ts`
 
-## 10. 최종 architecture 또는 execution flow 정리
+## 10. 최종 아키텍처와 실행 순서
 
 ```text
 [Browser command {v:1,inputSeq,...}]
@@ -1102,388 +1102,388 @@ Source에서 확정된 invariant를 commit 시점별로 연결했습니다. `해
 [nested snapshot.state 렌더링 또는 stale drop]
 ```
 
-- schema validation은 구조 호환성을, sequence gate는 시간 순서를 담당합니다.
-- persisted discriminator는 UI가 durable match와 transient result를 혼동하지 않게 합니다.
+- 스키마 검증은 구조 호환성을, 순번 검사는 시간 순서를 담당합니다.
+- 저장된 구분 필드는 UI가 영속 경기와 임시 결과를 혼동하지 않게 합니다.
 
-## 11. 학습 완료 자가 점검
+## 11. 학습 완료 확인
 
-- [x] Commit map의 모든 SHA를 원문 순서대로 확인했습니다.
-- [x] 각 commit의 subject, importance, tags를 변경하지 않았습니다.
+- [x] 커밋 목록의 모든 SHA를 원문 순서대로 확인했습니다.
+- [x] 각 커밋의 제목·중요도·태그를 변경하지 않았습니다.
 - [x] S/A/B 깊이를 구분해 코드 근거를 남겼습니다.
-- [x] final HEAD의 구현을 과거 SHA에 소급하지 않았습니다.
-- [x] 핵심 상태 필드, caller/callee, ownership, failure branch, cleanup을 실제 코드로 확인했습니다.
-- [x] Fix를 기존 가정 → failure/risk → root cause → decision → code → regression 순서로 연결했습니다.
-- [x] Test commit에서 production invariant, failure, technique, path, 증명/비증명 범위를 구분했습니다.
-- [x] Thread 최종 execution flow를 별도 프로젝트 재학습 없이 설명할 수 있습니다.
+- [x] 최종 상태의 구현을 과거 SHA에 소급하지 않았습니다.
+- [x] 핵심 상태 필드, 호출자/피호출자, 소유권, 실패 분기, 정리를 실제 코드로 확인했습니다.
+- [x] 수정을 기존 가정 → 실패/위험 → 근본 원인 → 판단 → 코드 → 회귀 순서로 연결했습니다.
+- [x] 테스트 커밋에서 운영 불변 조건, 실패, 기법, 경로, 검증 범위와 미검증 범위를 구분했습니다.
+- [x] 개발 스레드 최종 실행 순서를 별도 프로젝트 재학습 없이 설명할 수 있습니다.
 ===== END FILE: 03-versioned-realtime-protocol-and-monotonic-state.md =====
 
 ===== BEGIN FILE: 04-atomic-idempotent-match-finalization.md =====
 # 원자적·멱등적 경기 결과 확정
 
-원문 Development Thread: `Atomic and idempotent match finalization`
+원문 개발 스레드: `Atomic and idempotent match finalization`
 
-## 1. Thread 목표
+## 1. 개발 스레드 목표
 
-- 경기 row와 rating update가 순차 실행되던 초기 구현에서 하나의 논리적 `finalizeMatch` command로 수렴하는 과정을 복원합니다.
-- result key, unique constraint, ordered row lock, transaction, rating history, tournament bracket update가 중복·부분 반영을 어떻게 차단하는지 확인합니다.
-- GameHub가 durable boundary를 호출하고 persistence failure 동안 terminal room ownership을 유지하며 같은 idempotency key로 재시도하는 흐름을 추적합니다.
+- 경기 행과 레이팅 갱신이 순차 실행되던 초기 구현에서 하나의 논리적 `finalizeMatch` 명령으로 수렴하는 과정을 복원합니다.
+- 결과 키, 고유 제약, 정렬된 행 잠금, 트랜잭션, 레이팅 이력, 토너먼트 대진 갱신이 중복·부분 반영을 어떻게 차단하는지 확인합니다.
+- GameHub가 영속 경계를 호출하고 영속 저장 실패 동안 종료 경기방 소유권을 유지하며 같은 멱등성 키로 재시도하는 흐름을 추적합니다.
 
-### Source에서 확정된 significance
+### 원문에서 확인한 중요성
 
-> This thread converts a multi-write best-effort workflow into one logical domain command. Database uniqueness, ordered row locks, transaction-scoped tournament progression, runtime integration, and retryable room ownership together ensure that a completed game is neither duplicated nor partially reflected in ratings or brackets.
+> 이 개발 스레드는 여러 쓰기를 최선을 다해 순서대로 실행하던 처리를 하나의 도메인 명령으로 바꿉니다. 데이터베이스 고유 제약, 정해진 행 잠금 순서, 트랜잭션 내부 토너먼트 진행, 실행 코드 연결, 재시도 가능한 경기방 소유권을 결합해 완료된 경기가 중복되거나 레이팅·대진에 일부만 반영되지 않게 합니다.
 
-### 직접 연결되는 Critical Invariants
+### 직접 연결되는 핵심 불변 조건
 
-> A logical match result, participant statistics, rating history, and tournament progression commit atomically and idempotently.
+> 논리적 경기 결과, 참가자 통계, 레이팅 이력, 토너먼트 진행을 원자적이고 멱등하게 확정합니다.
 
-> Timers, schedulers, heartbeat handles, retry work, snapshot buffers, and database resources have explicit single-owner cleanup.
+> 타이머, 스케줄러, 연결 상태 확인 작업, 재시도 작업, 스냅샷 버퍼, 데이터베이스 자원은 각각 하나의 소유 주체가 명시되어 있으며 해당 주체가 정리합니다.
 
-### 직접 연결되는 Major Engineering Difficulties
+### 직접 연결되는 주요 구현 난점
 
-> Preventing duplicate results, ratings, finals, friendship rows, tournament seeds, and admissions under retries or concurrent database operations.
+> 재시도나 동시 데이터베이스 연산에서도 경기 결과, 레이팅, 결승, 친구 관계 행, 토너먼트 시드, 참가 승인이 중복되지 않게 해야 합니다.
 
-> Preserving domain correctness during database failure, tournament-start rollback, match-finalization retry, process drain, and deployment shutdown.
+> 데이터베이스 장애, 토너먼트 시작 되돌리기, 경기 결과 확정 재시도, 프로세스 작업 중단, 배포 종료 중에도 데이터의 올바른 상태를 유지해야 합니다.
 
-## 2. 이 Thread를 이해하기 위한 핵심 질문
+## 2. 이 개발 스레드를 이해하기 위한 핵심 질문
 
-- 초기 `createMatch` 경로는 어떤 write들을 어떤 순서로 실행하며 어디에서 부분 성공할 수 있었습니까?
-- logical result identity와 persisted match identity는 어떻게 다르며 재시도에서 각각 어떤 역할을 합니까?
-- 동시 finalization에서 DB unique constraint와 transaction 내부 readback은 어떻게 수렴합니까?
-- participant lock order, rating floor, history row, missing-user rollback을 실제 SQL 순서로 설명할 수 있습니까?
-- tournament semifinal 두 개가 동시에 끝날 때 final row가 하나만 생기는 근거는 무엇입니까?
-- persistence 실패 뒤 room, reservation, retry timer, drain waiter의 ownership은 어디에 남습니까?
+- 초기 `createMatch` 경로는 어떤 쓰기들을 어떤 순서로 실행하며 어디에서 부분 성공할 수 있었습니까?
+- 논리적으로 같은 결과 신원과 저장된 경기 신원은 어떻게 다르며 재시도에서 각각 어떤 역할을 합니까?
+- 동시 결과 확정에서 DB 고유 제약과 트랜잭션 내부 readback은 어떻게 수렴합니까?
+- 참가자 잠금 순서, 레이팅 floor, 이력 행, 누락된 사용자 되돌리기를 실제 SQL 순서로 설명할 수 있습니까?
+- 토너먼트 준결승 두 개가 동시에 끝날 때 최종 행이 하나만 생기는 근거는 무엇입니까?
+- 영속 저장 실패 뒤 경기방, 예약, 재시도 타이머, 작업 중단 완료를 기다리는 호출자의 소유권은 어디에 남습니까?
 
 ## 3. 완료 기준
 
-- 초기 sequential write와 최종 atomic command의 상태 변화 차이를 표로 완성할 수 있습니다.
-- 동일 result key 20회 동시 호출에서 one creation/one effect가 되는 SQL 및 test 근거를 제시할 수 있습니다.
-- match, counters, ratings, rating history, tournament match, final creation, tournament finish의 transaction 범위를 그릴 수 있습니다.
-- GameHub completion과 repository finalization 사이의 deterministic key, in-flight coalescing, retry 흐름을 설명할 수 있습니다.
-- 성공 broadcast가 durable result 이후에만 발생하는지 해당 SHA의 순서로 확인할 수 있습니다.
+- 초기 순차 쓰기와 최종 원자적 명령의 상태 변화 차이를 표로 완성할 수 있습니다.
+- 동일 결과 키 20회 동시 호출에서 하나 생성/하나 효과가 되는 SQL 및 테스트 근거를 제시할 수 있습니다.
+- 경기, 개수, 레이팅, 레이팅 이력, 토너먼트 경기, 최종 생성, 토너먼트 종료의 트랜잭션 범위를 그릴 수 있습니다.
+- GameHub의 완료 처리와 저장소 결과 확정 사이에서 결정적 키, 진행 중인 동일 작업 공유, 재시도가 어떻게 연결되는지 설명할 수 있습니다.
+- 성공 전파가 영속 결과 이후에만 발생하는지 해당 SHA의 순서로 확인할 수 있습니다.
 
-> 검토 방식: 지정 브랜치에 속한 exact SHA의 diff와 해당 시점 파일을 GitHub에서 확인했습니다. 로컬 실행 환경은 GitHub clone이 차단되어 테스트 명령은 실행하지 않았으며, 아래 테스트 결과 설명은 test implementation 검토에 한정합니다.
+> 검토 방식: 지정 브랜치의 정확한 SHA별 변경 내용과 해당 시점 파일을 GitHub에서 확인했습니다. 로컬 환경에서는 GitHub 복제가 차단되어 테스트 명령을 실행하지 못했습니다. 아래 테스트 설명은 테스트 코드 검토 결과에 한정합니다.
 
-## 4. Commit map
+## 4. 커밋 목록
 
-| 순서 | SHA | Subject | Importance | Tags | Source에서 확정된 역할 |
+| 순서 | SHA | 제목 | 중요도 | 태그 | 원문에서 확인한 역할 |
 | ---: | --- | --- | :---: | --- | --- |
-| 1 | `38504f041a6a` | `feat(db): 경기 결과 저장 구현` | B | REALTIME, PERSISTENCE | Introduces match persistence and rating effects, initially as sequential operations. |
-| 2 | `75bbc762e06d` | `feat(db): match result key와 rating history schema 추가` | A | PERSISTENCE, RISK | Adds durable identities for logical outcomes and auditable participant deltas. |
-| 3 | `83f9aee2522a` | `feat(db): PostgreSQL 경기 결과 중복 생성을 차단` | A | PERSISTENCE, RISK | Uses the unique result key to converge concurrent duplicate finalization. |
-| 4 | `e9d577ebc1ab` | `feat(db): PostgreSQL 참가자 rating을 원자적으로 반영` | A | PERSISTENCE | Locks participants and commits match, counters, ratings, and history together. |
-| 5 | `e338ea32b2a6` | `feat(db): PostgreSQL tournament 경기 확정을 연결` | S | PERSISTENCE, TOURNAMENT, RISK | Adds bracket and tournament progression to the same transaction. |
-| 6 | `582a1615a2c6` | `test(db): 경기 결과 단일 확정 조건 검증` | A | PERSISTENCE, TOURNAMENT, RISK | Proves one creation and one set of effects under repetition, concurrency, and rollback. |
-| 7 | `10bf15723591` | `refactor(game): 경기 결과 확정 boundary 사용` | A | REALTIME, PERSISTENCE, TOURNAMENT | Routes GameHub completion through the canonical repository command. |
-| 8 | `e939a50948b2` | `fix(game): 경기 결과 저장 실패를 재시도 가능한 상태로 유지` | A | REALTIME, RISK | Keeps terminal room ownership and retries with the stable idempotency key. |
+| 1 | `38504f041a6a` | `feat(db): 경기 결과 저장 구현` | B | REALTIME, PERSISTENCE | 경기 영속 저장과 레이팅 반영을 처음에는 순차 연산으로 도입합니다. |
+| 2 | `75bbc762e06d` | `feat(db): match result key와 rating history schema 추가` | A | PERSISTENCE, RISK | 논리적 결과와 감사 가능한 참가자 변동값에 영속 식별자를 추가합니다. |
+| 3 | `83f9aee2522a` | `feat(db): PostgreSQL 경기 결과 중복 생성을 차단` | A | PERSISTENCE, RISK | 고유 결과 키를 사용해 동시 중복 결과 확정을 하나로 수렴시킵니다. |
+| 4 | `e9d577ebc1ab` | `feat(db): PostgreSQL 참가자 rating을 원자적으로 반영` | A | PERSISTENCE | 참가자 행을 잠그고 경기, 통계, 레이팅, 이력을 함께 커밋합니다. |
+| 5 | `e338ea32b2a6` | `feat(db): PostgreSQL tournament 경기 확정을 연결` | S | PERSISTENCE, TOURNAMENT, RISK | 같은 트랜잭션에 대진과 토너먼트 진행을 추가합니다. |
+| 6 | `582a1615a2c6` | `test(db): 경기 결과 단일 확정 조건 검증` | A | PERSISTENCE, TOURNAMENT, RISK | 반복·동시 호출·되돌리기 상황에서도 생성과 부수 효과가 한 번만 적용되는지 검증합니다. |
+| 7 | `10bf15723591` | `refactor(game): 경기 결과 확정 boundary 사용` | A | REALTIME, PERSISTENCE, TOURNAMENT | GameHub 완료 처리가 표준 저장소 명령을 거치게 합니다. |
+| 8 | `e939a50948b2` | `fix(game): 경기 결과 저장 실패를 재시도 가능한 상태로 유지` | A | REALTIME, RISK | 종료 상태 경기방 소유권을 유지하고 안정적인 멱등 키로 재시도합니다. |
 
-## 5. Commit별 학습 기록
+## 5. 커밋별 학습 기록
 
 ### 5.1. `feat(db): 경기 결과 저장 구현`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `38504f041a6a` |
-| Importance | B |
-| Tags | REALTIME, PERSISTENCE |
-| 학습 깊이 | Thread 흐름에서 맡는 구현 역할과 필요한 상태 변화를 복원했습니다. |
+| 중요도 | B |
+| 태그 | REALTIME, PERSISTENCE |
+| 학습 깊이 | 개발 스레드 흐름에서 맡는 구현 역할과 필요한 상태 변화를 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Introduces match persistence and rating effects, initially as sequential operations.
-- Classification summary: Add match completion to the repository contract and initial fixed rating effects.
+- 개발 스레드에서의 역할: 경기 영속 저장과 레이팅 반영을 처음에는 순차 연산으로 도입합니다.
+- 분류 요약: 저장소 계약에 경기 완료와 초기 고정 레이팅 반영을 추가합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | realtime 경기 종료를 repository abstraction으로 durable match와 사용자 통계에 반영하는 command가 없었습니다. |
-| 핵심 boundary/decision | repository `createMatch` contract가 mode, winner/loser IDs, scores를 받고 generated match ID를 반환합니다. PostgreSQL은 match insert 뒤 winner win/+16, loser loss/-12 with 800 floor를 순차 실행합니다. |
-| 상태 또는 ownership 변화 | repository가 persistence effects를 수행하지만 명시적 transaction이 없어 각 SQL statement가 독립 commit될 수 있습니다. memory implementation은 local state를 비슷한 순서로 변경합니다. |
-| 주요 failure/edge path | match insert 후 winner update 또는 loser update가 실패하면 match만 존재하거나 한쪽 통계만 반영되는 부분 상태가 가능합니다. retry identity도 없어 중복 row를 막지 못합니다. |
-| 보장/비보장 | 한 호출의 happy path에서 match ID와 초기 rating effects를 생성합니다. atomicity, idempotency, audit history, tournament progression은 보장하지 않습니다. |
-| 다음 관련 commit 연결 | `75bbc7...`가 logical result key와 rating history schema를 추가해 durable identity와 audit 기반을 만듭니다. |
+| 직전 관련 상태 | 실시간 경기 종료를 저장소 추상화로 영속 경기와 사용자 통계에 반영하는 명령이 없었습니다. |
+| 핵심 경계/판단 | 저장소 `createMatch` 계약이 모드, 승자·패자 ID, 점수를 받고 생성된 경기 ID를 반환합니다. PostgreSQL은 경기 삽입 뒤 승자 승리/+16, 패자 패배/-12 최솟값 800을 적용해를 순차 실행합니다. |
+| 상태 또는 소유권 변화 | 저장소가 영속 저장 효과를 수행하지만 명시적 트랜잭션이 없어 각 SQL 문이 독립 커밋될 수 있습니다. 메모리 구현은 로컬 상태를 비슷한 순서로 변경합니다. |
+| 주요 실패/예외 경로 | 경기 삽입 후 승자 갱신 또는 패자 갱신이 실패하면 경기만 존재하거나 한쪽 통계만 반영되는 부분 상태가 가능합니다. 재시도 신원도 없어 중복 행을 막지 못합니다. |
+| 보장 범위/보장하지 않는 범위 | 한 호출의 정상 경로에서 경기 ID와 초기 레이팅 효과를 생성합니다. 원자성, 멱등성, 감사 이력, 토너먼트 진행은 보장하지 않습니다. |
+| 다음 관련 커밋 연결 | `75bbc7...`가 논리적으로 같은 결과 키와 레이팅 이력 스키마를 추가해 영속 신원과 감사 기반을 만듭니다. |
 
 비교 기준:
-- 이 commit의 parent에서 동일 책임을 담당하던 코드를 비교했습니다.
-- 다음 Thread 관련 SHA: `75bbc762e06d` — `feat(db): match result key와 rating history schema 추가`
+- 이 커밋의 부모 커밋에서 동일 책임을 담당하던 코드를 비교했습니다.
+- 다음 개발 스레드 관련 SHA: `75bbc762e06d` — `feat(db): match result key와 rating history schema 추가`
 
 ### 5.2. `feat(db): match result key와 rating history schema 추가`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `75bbc762e06d` |
-| Importance | A |
-| Tags | PERSISTENCE, RISK |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | PERSISTENCE, RISK |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Adds durable identities for logical outcomes and auditable participant deltas.
-- Classification summary: Introduce a unique logical result key and one rating-history row per match participant.
+- 개발 스레드에서의 역할: 논리적 결과와 감사 가능한 참가자 변동값에 영속 식별자를 추가합니다.
+- 분류 요약: 고유 논리 결과 키와 경기 참가자별 레이팅 이력 행 하나를 도입합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | persisted match ID는 DB insert 후에만 생겨 같은 logical room result의 retry/concurrent call을 미리 식별할 수 없었습니다. rating delta의 독립 audit row도 없었습니다. |
-| 핵심 boundary/decision | migration이 `matches.result_key`를 legacy rows에 backfill하고 NOT NULL/UNIQUE로 만들며 `rating_history`에 `(match_id,user_id)` unique identity를 둡니다. |
-| 상태 또는 ownership 변화 | caller가 stable logical result key를 제공하고 database unique constraint가 duplicate command의 선형화 지점을 소유합니다. history table이 participant delta audit를 소유합니다. |
-| 주요 failure/edge path | schema만으로는 application이 transaction을 사용하거나 rating/tournament effects를 idempotently 실행하지 않습니다. 기존 row는 `legacy:<id>`로 충돌 없이 보존합니다. |
-| 보장/비보장 | 동일 result key의 두 match row와 동일 participant history duplicate를 DB가 거부할 수 있습니다. canonical finalize behavior는 뒤 commits에서 구현됩니다. |
-| 다음 관련 commit 연결 | `83f9ae...`가 `ON CONFLICT DO NOTHING`과 transaction readback으로 duplicate match creation을 수렴시킵니다. |
+| 직전 관련 상태 | 저장된 경기 ID는 DB 삽입 후에만 생겨 같은 논리적 경기방 결과의 재시도/동시 호출을 미리 식별할 수 없었습니다. 레이팅 시간 간격의 독립 감사 행도 없었습니다. |
+| 핵심 경계/판단 | 마이그레이션이 `matches.result_key`를 기존 행에 backfill하고 NOT NULL/UNIQUE로 만들며 `rating_history`에 `(match_id,user_id)` 고유 신원을 둡니다. |
+| 상태 또는 소유권 변화 | 호출자가 안정적인 논리적으로 같은 결과 키를 제공하고 데이터베이스 고유 제약이 중복 명령의 선형화 지점을 소유합니다. 이력 테이블이 참가자 시간 간격 감사를 소유합니다. |
+| 주요 실패/예외 경로 | 스키마만으로는 애플리케이션이 트랜잭션을 사용하거나 레이팅/토너먼트 효과를 idempotently 실행하지 않습니다. 기존 행은 `legacy:<id>`로 충돌 없이 보존합니다. |
+| 보장 범위/보장하지 않는 범위 | 동일 결과 키의 두 경기 행과 동일 참가자 이력 중복을 DB가 거부할 수 있습니다. 표준 결과 확정 동작은 뒤 커밋에서 구현됩니다. |
+| 다음 관련 커밋 연결 | `83f9ae...`가 `ON CONFLICT DO NOTHING`과 트랜잭션 readback으로 중복 경기 생성을 수렴시킵니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `38504f041a6a` — `feat(db): 경기 결과 저장 구현`
-- 다음 Thread 관련 SHA: `83f9aee2522a` — `feat(db): PostgreSQL 경기 결과 중복 생성을 차단`
+- 직전 개발 스레드 관련 SHA: `38504f041a6a` — `feat(db): 경기 결과 저장 구현`
+- 다음 개발 스레드 관련 SHA: `83f9aee2522a` — `feat(db): PostgreSQL 경기 결과 중복 생성을 차단`
 
 ### 5.3. `feat(db): PostgreSQL 경기 결과 중복 생성을 차단`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `83f9aee2522a` |
-| Importance | A |
-| Tags | PERSISTENCE, RISK |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | PERSISTENCE, RISK |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Uses the unique result key to converge concurrent duplicate finalization.
-- Classification summary: Create `finalizeMatch` and make match-row creation idempotent under retries and concurrency.
+- 개발 스레드에서의 역할: 고유 결과 키를 사용해 동시 중복 결과 확정을 하나로 수렴시킵니다.
+- 분류 요약: `finalizeMatch`를 만들고 재시도·동시 호출에서도 경기 행 생성이 멱등하게 동작하도록 합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | unique schema는 있지만 caller가 충돌을 일반 error로 받거나 기존 match ID를 일관되게 재사용할 command path가 없었습니다. |
-| 핵심 boundary/decision | `PostgresRepository.finalizeMatch`가 transaction 안에서 match를 `ON CONFLICT (result_key) DO NOTHING RETURNING`으로 insert합니다. insert가 없으면 existing row를 읽고 `{created:false}`로 즉시 반환합니다. |
-| 상태 또는 ownership 변화 | result key가 logical command identity를, existing/new match row가 persisted identity를 소유합니다. duplicate caller는 동일 match ID에 수렴합니다. |
-| 주요 failure/edge path | 이 SHA에서는 duplicate row 차단만 완성되며 rating/tournament side effect까지 같은 transaction에 포함됐다고 볼 수 없습니다. |
-| 보장/비보장 | 같은 result key로 match row가 둘 생기지 않고 retry가 existing match를 돌려받습니다. participant effects의 atomicity는 `e9d577...` 범위입니다. |
-| 다음 관련 commit 연결 | `e9d577...`가 participant lock·counters·ratings·history를 같은 transaction에 넣습니다. |
+| 직전 관련 상태 | 고유 스키마는 있지만 호출자가 충돌을 일반 오류로 받거나 기존 경기 ID를 일관되게 재사용할 명령 경로가 없었습니다. |
+| 핵심 경계/판단 | `PostgresRepository.finalizeMatch`가 트랜잭션 안에서 경기를 `ON CONFLICT (result_key) DO NOTHING RETURNING`으로 삽입합니다. 삽입이 없으면 기존 행을 읽고 `{created:false}`로 즉시 반환합니다. |
+| 상태 또는 소유권 변화 | 결과 키가 논리적 명령 신원을, 기존/새 경기 행이 저장된 신원을 소유합니다. 중복 호출자는 동일 경기 ID에 수렴합니다. |
+| 주요 실패/예외 경로 | 이 SHA에서는 중복 행 차단만 완성되며 레이팅/토너먼트 부수 효과까지 같은 트랜잭션에 포함됐다고 볼 수 없습니다. |
+| 보장 범위/보장하지 않는 범위 | 같은 결과 키로 경기 행이 둘 생기지 않고 재시도가 기존 경기를 돌려받습니다. 참가자 효과의 원자성은 `e9d577...` 범위입니다. |
+| 다음 관련 커밋 연결 | `e9d577...`가 참가자 잠금·개수·레이팅·이력을 같은 트랜잭션에 넣습니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `75bbc762e06d` — `feat(db): match result key와 rating history schema 추가`
-- 다음 Thread 관련 SHA: `e9d577ebc1ab` — `feat(db): PostgreSQL 참가자 rating을 원자적으로 반영`
+- 직전 개발 스레드 관련 SHA: `75bbc762e06d` — `feat(db): match result key와 rating history schema 추가`
+- 다음 개발 스레드 관련 SHA: `e9d577ebc1ab` — `feat(db): PostgreSQL 참가자 rating을 원자적으로 반영`
 
 ### 5.4. `feat(db): PostgreSQL 참가자 rating을 원자적으로 반영`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `e9d577ebc1ab` |
-| Importance | A |
-| Tags | PERSISTENCE |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | PERSISTENCE |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Locks participants and commits match, counters, ratings, and history together.
-- Classification summary: Extend the idempotent match transaction to participant statistics, ratings, and audit history.
+- 개발 스레드에서의 역할: 참가자 행을 잠그고 경기, 통계, 레이팅, 이력을 함께 커밋합니다.
+- 분류 요약: 멱등 경기 트랜잭션을 참가자 통계, 레이팅, 감사 이력까지 확장합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | match row는 idempotent하지만 user counters/rating/history가 transaction 밖이거나 중복 call에서 다시 실행되면 partial/double effects가 남을 수 있었습니다. |
-| 핵심 boundary/decision | new match인 경우 participant IDs를 정렬해 `FOR UPDATE`로 잠그고 pre-rating을 읽은 뒤 winner +16, loser max(800, -12), win/loss counters, 두 rating history rows를 같은 transaction에서 반영합니다. |
-| 상태 또는 ownership 변화 | transaction이 match와 participant effects의 atomic owner가 됩니다. user ID 정렬은 concurrent matches의 lock order를 고정합니다. |
-| 주요 failure/edge path | participant가 없거나 update/history insert가 실패하면 transaction 전체가 rollback됩니다. duplicate result는 new effects 전에 existing row return path로 빠집니다. |
-| 보장/비보장 | match row, counters, ratings, rating history가 one logical result에 대해 한 번만 all-or-nothing commit됩니다. tournament bracket은 아직 포함되지 않습니다. |
-| 다음 관련 commit 연결 | `e338ea...`가 tournament match와 final creation/finish를 같은 transaction에 편입합니다. |
+| 직전 관련 상태 | 경기 행은 멱등하지만 사용자 개수/레이팅/이력이 트랜잭션 밖이거나 중복 호출에서 다시 실행되면 부분 반영/double 효과가 남을 수 있었습니다. |
+| 핵심 경계/판단 | 새 경기인 경우 참가자 ID를 정렬해 `FOR UPDATE`로 잠그고 변경 전 레이팅을 읽은 뒤 승자 +16, 패자 최댓값(800, -12), 승리/패배 개수, 두 레이팅 이력 행을 같은 트랜잭션에서 반영합니다. |
+| 상태 또는 소유권 변화 | 트랜잭션이 경기와 참가자 효과의 원자적 소유 주체가 됩니다. 사용자 ID 정렬은 동시 경기의 잠금 순서를 고정합니다. |
+| 주요 실패/예외 경로 | 참가자가 없거나 갱신/이력 삽입이 실패하면 트랜잭션 전체가 되돌려집니다. 중복 결과는 새 효과 전에 기존 행 반환 경로로 빠집니다. |
+| 보장 범위/보장하지 않는 범위 | 경기 행, 개수, 레이팅, 레이팅 이력이 하나 논리적으로 같은 결과에 대해 한 번만 전부 반영하거나 전혀 반영하지 않는 방식 커밋됩니다. 토너먼트 대진은 아직 포함되지 않습니다. |
+| 다음 관련 커밋 연결 | `e338ea...`가 토너먼트 경기와 최종 생성/종료를 같은 트랜잭션에 편입합니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `83f9aee2522a` — `feat(db): PostgreSQL 경기 결과 중복 생성을 차단`
-- 다음 Thread 관련 SHA: `e338ea32b2a6` — `feat(db): PostgreSQL tournament 경기 확정을 연결`
+- 직전 개발 스레드 관련 SHA: `83f9aee2522a` — `feat(db): PostgreSQL 경기 결과 중복 생성을 차단`
+- 다음 개발 스레드 관련 SHA: `e338ea32b2a6` — `feat(db): PostgreSQL tournament 경기 확정을 연결`
 
 ### 5.5. `feat(db): PostgreSQL tournament 경기 확정을 연결`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `e338ea32b2a6` |
-| Importance | S |
-| Tags | PERSISTENCE, TOURNAMENT, RISK |
-| 학습 깊이 | Architecture/invariant 중심으로 직전 상태, 결정, 핵심 전이, ownership, failure, 후속 검증까지 복원했습니다. |
+| 중요도 | S |
+| 태그 | PERSISTENCE, TOURNAMENT, RISK |
+| 학습 깊이 | 아키텍처/불변 조건 중심으로 직전 상태, 결정, 핵심 전이, 소유권, 실패, 후속 검증까지 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Adds bracket and tournament progression to the same transaction.
-- Classification summary: Make tournament progression part of the canonical atomic/idempotent match finalization command.
+- 개발 스레드에서의 역할: 같은 트랜잭션에 대진과 토너먼트 진행을 추가합니다.
+- 분류 요약: 토너먼트 진행을 표준 원자적·멱등 경기 결과 확정 명령에 포함합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | 일반 match와 rating은 atomic해졌지만 tournament match state, semifinal winner slots, final creation, tournament winner가 별도 write라면 bracket이 durable result와 어긋날 수 있었습니다. |
-| 핵심 boundary/decision | `finalizeMatch` transaction이 tournament match와 tournament row를 잠그고 final/participant mismatch를 거부하며, 해당 match winner를 조건부 update합니다. 두 semifinal이 완료되면 final row를 한 번 만들고 final 완료 시 tournament를 finished/winner로 변경합니다. |
-| 상태 또는 ownership 변화 | 하나의 database transaction이 logical result, participant effects, bracket progression의 authoritative commit owner가 됩니다. |
-| 주요 failure/edge path | 이미 final인 tournament match, input participant mismatch, missing tournament data는 rollback됩니다. conditional writes와 locked parent state가 concurrent semifinal/final duplicate를 막습니다. |
-| 보장/비보장 | match·ratings·history·tournament progression은 하나의 idempotent transaction으로 commit됩니다. runtime GameHub가 이 boundary를 사용하고 failure를 재시도하는 것은 뒤 commits입니다. |
-| 다음 관련 commit 연결 | `582a16...`이 repetition/concurrency/rollback을 PostgreSQL integration으로 검증하고 `10bf15...`가 GameHub를 연결합니다. |
+| 직전 관련 상태 | 일반 경기와 레이팅은 원자적해졌지만 토너먼트 경기 상태, 준결승 승자 slots, 최종 생성, 토너먼트 승자가 별도 쓰기라면 대진이 영속 결과와 어긋날 수 있었습니다. |
+| 핵심 경계/판단 | `finalizeMatch` 트랜잭션이 토너먼트 경기와 토너먼트 행을 잠그고 최종/참가자 불일치를 거부하며, 해당 경기 승자를 조건부 갱신합니다. 두 준결승이 완료되면 최종 행을 한 번 만들고 최종 완료 시 토너먼트를 종료된/승자로 변경합니다. |
+| 상태 또는 소유권 변화 | 하나의 데이터베이스 트랜잭션이 논리적으로 같은 결과, 참가자 효과, 대진 진행의 서버가 확정하는 커밋 소유 주체가 됩니다. |
+| 주요 실패/예외 경로 | 이미 최종인 토너먼트 경기, 입력 참가자 불일치, 누락된 토너먼트 데이터는 되돌려집니다. 조건부 쓰기와 잠금 기반 부모 커밋의 상태가 동시 준결승/최종 중복을 막습니다. |
+| 보장 범위/보장하지 않는 범위 | 경기·레이팅·이력·토너먼트 진행은 하나의 멱등 트랜잭션으로 커밋됩니다. 실행 시점 GameHub가 이 경계를 사용하고 실패를 재시도하는 것은 뒤 커밋입니다. |
+| 다음 관련 커밋 연결 | `582a16...`이 repetition/동시성/되돌리기를 PostgreSQL 통합으로 검증하고 `10bf15...`가 GameHub를 연결합니다. |
 
-#### Architecture / invariant 복원
+#### 아키텍처와 불변 조건 복원
 
 | 축 | 복원 결과 |
 | --- | --- |
-| 문제 | durable match만 원자적이어도 tournament bracket이 별도 처리되면 semifinal/final duplication과 partial progression이 가능합니다. |
-| 실패 위험 | match는 finished인데 bracket slot이 비거나, final row가 둘 생기거나, tournament winner가 누락될 수 있습니다. |
-| 핵심 결정 | tournament match/parent tournament lock과 progression을 existing finalize transaction에 포함합니다. |
-| 구현 경로 | result-key insert/read → participant locks/effects → tournament match lock/validate → winner update → final create 또는 tournament finish → commit. |
-| 수명주기·상태 | transaction 시작부터 commit까지 DB rows가 command ownership을 갖고 rollback 시 외부에 partial state를 남기지 않습니다. |
-| 실패 처리 | participant mismatch, terminal replay, missing row, any SQL failure는 모두 rollback; duplicate result key는 side effects 전에 existing result로 수렴합니다. |
-| 후속 검증 | `582a161...` concurrent same-key, rating/history once, semifinal/final progression, invalid participant rollback tests. |
-| Thread 전체 의미 | 경기 종료를 여러 테이블 write의 순서가 아니라 하나의 domain command로 취급할 수 있습니다. |
+| 문제 | 영속 경기만 원자적이어도 토너먼트 대진이 별도 처리되면 준결승/최종 duplication과 부분 반영 대진 진행이 가능합니다. |
+| 실패 위험 | 경기는 종료된인데 대진 슬롯이 비거나, 최종 행이 둘 생기거나, 토너먼트 승자가 누락될 수 있습니다. |
+| 핵심 결정 | 토너먼트 경기/부모 커밋 토너먼트 잠금과 대진 진행을 기존 결과 확정 트랜잭션에 포함합니다. |
+| 구현 경로 | 결과 키 삽입/읽기 → 참가자 잠금/효과 → 토너먼트 경기 잠금/validate → 승자 갱신 → 최종 생성 또는 토너먼트 종료 → 커밋. |
+| 수명주기·상태 | 트랜잭션 시작부터 커밋까지 DB 행이 명령 소유권을 갖고 되돌리기 시 외부에 부분 반영 상태를 남기지 않습니다. |
+| 실패 처리 | 참가자 불일치, 종료 결과 중복 적용, 누락된 행, 어떤 SQL 오류라도는 모두 되돌리기; 중복 결과 키는 부수 효과 전에 기존 결과로 수렴합니다. |
+| 후속 검증 | `582a161...` 동시 동일한 키, 레이팅/이력 once, 준결승/최종 대진 진행, 잘못된 참가자 되돌리기 테스트. |
+| 개발 스레드 전체 의미 | 경기 종료를 여러 테이블 쓰기의 순서가 아니라 하나의 도메인 명령으로 취급할 수 있습니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `e9d577ebc1ab` — `feat(db): PostgreSQL 참가자 rating을 원자적으로 반영`
-- 다음 Thread 관련 SHA: `582a1615a2c6` — `test(db): 경기 결과 단일 확정 조건 검증`
+- 직전 개발 스레드 관련 SHA: `e9d577ebc1ab` — `feat(db): PostgreSQL 참가자 rating을 원자적으로 반영`
+- 다음 개발 스레드 관련 SHA: `582a1615a2c6` — `test(db): 경기 결과 단일 확정 조건 검증`
 
 ### 5.6. `test(db): 경기 결과 단일 확정 조건 검증`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `582a1615a2c6` |
-| Importance | A |
-| Tags | PERSISTENCE, TOURNAMENT, RISK |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | PERSISTENCE, TOURNAMENT, RISK |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Proves one creation and one set of effects under repetition, concurrency, and rollback.
-- Classification summary: Add PostgreSQL integration regressions for idempotency, atomic participant effects, and tournament progression.
+- 개발 스레드에서의 역할: 반복·동시 호출·되돌리기 상황에서도 생성과 부수 효과가 한 번만 적용되는지 검증합니다.
+- 분류 요약: 멱등성, 참가자 변경의 원자성, 토너먼트 진행을 검증하는 PostgreSQL 통합 회귀 테스트를 추가합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | transaction code는 존재하지만 concurrent calls와 mid-command failure에서 실제 PostgreSQL constraints/locks/rollback이 의도대로 작동한다는 증거가 부족했습니다. |
-| 핵심 boundary/decision | PostgreSQL integration fixtures가 동일 result key 반복 및 동시 호출에서 created가 한 번만 true인지, ratings/history가 한 번만 변하는지, semifinal/final progression과 invalid participant rollback을 검사합니다. |
-| 상태 또는 ownership 변화 | real PostgreSQL transaction과 constraints를 test fixture가 사용하며 in-memory mock으로 대체하지 않습니다. |
-| 주요 failure/edge path | duplicate 20회, participant/tournament mismatch, command failure에서 partial match/rating/bracket row가 남지 않는지를 DB query로 확인합니다. |
-| 보장/비보장 | 검사한 concurrency와 rollback 사례에서 one creation/one effect를 증명합니다. 모든 isolation anomaly, external process kill, production load를 일반화하지 않습니다. |
-| 다음 관련 commit 연결 | `10bf15...`가 runtime completion을 검증된 repository boundary로 바꿉니다. |
+| 직전 관련 상태 | 트랜잭션 코드는 존재하지만 동시 calls와 명령 실행 중 실패에서 실제 PostgreSQL 제약/잠금/되돌리기가 의도대로 작동한다는 증거가 부족했습니다. |
+| 핵심 경계/판단 | PostgreSQL 통합 테스트 데이터가 동일 결과 키 반복 및 동시 호출에서 created가 한 번만 true인지, 레이팅/이력이 한 번만 변하는지, 준결승/최종 대진 진행과 잘못된 참가자 되돌리기를 검사합니다. |
+| 상태 또는 소유권 변화 | 실제 PostgreSQL 트랜잭션과 제약을 테스트 픽스처가 사용하며 메모리 가짜 객체로 대체하지 않습니다. |
+| 주요 실패/예외 경로 | 중복 20회, 참가자/토너먼트 불일치, 명령 실패에서 부분 반영 경기/레이팅/대진 행이 남지 않는지를 DB 쿼리로 확인합니다. |
+| 보장 범위/보장하지 않는 범위 | 검사한 동시성과 되돌리기 사례에서 하나 생성/하나 효과를 검증합니다. 모든 격리 anomaly, 외부 프로세스 종료, 운영 부하를 일반화하지 않습니다. |
+| 다음 관련 커밋 연결 | `10bf15...`가 실행 시점 완료를 검증된 저장소 경계로 바꿉니다. |
 
-#### Test commit 학습 기록
+#### 테스트 커밋 학습 기록
 
 | 구분 | 기록 |
 | --- | --- |
-| 대상 production invariant | logical result, participant effects, history, tournament progression은 atomic·idempotent합니다. |
-| 재현하는 failure/boundary | 같은 result key 반복/20-way concurrency, participant mismatch, tournament semifinal/final progression, rollback. |
-| test technique | Real PostgreSQL integration tests with concurrent promises and direct post-state queries. |
-| 통과하는 production path | `PostgresRepository.finalizeMatch` → unique insert/locks/updates/history/bracket → commit/rollback. |
-| 증명하는 것 | 해당 DB schema/implementation에서 one creation/one effect와 tested rollback을 증명합니다. |
-| 증명하지 않는 것 | process crash at every possible point, distributed DB topology, GameHub retry lifecycle는 증명하지 않습니다. |
-| test 성격 | PostgreSQL deterministic concurrency and rollback regression. |
-| 후속 회귀 방지 설명 | unique key, lock order, transaction scope, rating/history/tournament writes가 분리되면 실패해야 합니다. |
+| 검증 대상 불변 조건 | 논리적으로 같은 결과, 참가자 효과, 이력, 토너먼트 진행은 원자적·멱등합니다. |
+| 재현하는 실패/경계 | 같은 결과 키 반복/20-way 동시성, 참가자 불일치, 토너먼트 준결승/최종 대진 진행, 되돌리기. |
+| 테스트 기법 | 실제 PostgreSQL 통합 테스트에서 동시에 실행한 Promise와 작업 후 상태 직접 조회. |
+| 실행하는 실제 코드 경로 | `PostgresRepository.finalizeMatch` → 고유 삽입/잠금/updates/이력/대진 → 커밋/되돌리기. |
+| 검증하는 것 | 해당 DB 스키마/구현에서 하나 생성/하나 효과와 tested 되돌리기를 검증합니다. |
+| 검증하지 않는 것 | 프로세스 비정상 종료 가능한 모든 지점에서, 분산 DB 구성, GameHub 재시도 수명주기는 검증하지 않습니다. |
+| 테스트 성격 | PostgreSQL 결정적 동시성 및 되돌리기 회귀. |
+| 후속 회귀 방지 설명 | 고유 키, 잠금 순서, 트랜잭션 범위, 레이팅·이력·토너먼트 쓰기가 분리되면 실패해야 합니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `e338ea32b2a6` — `feat(db): PostgreSQL tournament 경기 확정을 연결`
-- 다음 Thread 관련 SHA: `10bf15723591` — `refactor(game): 경기 결과 확정 boundary 사용`
+- 직전 개발 스레드 관련 SHA: `e338ea32b2a6` — `feat(db): PostgreSQL tournament 경기 확정을 연결`
+- 다음 개발 스레드 관련 SHA: `10bf15723591` — `refactor(game): 경기 결과 확정 boundary 사용`
 
 ### 5.7. `refactor(game): 경기 결과 확정 boundary 사용`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `10bf15723591` |
-| Importance | A |
-| Tags | REALTIME, PERSISTENCE, TOURNAMENT |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | REALTIME, PERSISTENCE, TOURNAMENT |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Routes GameHub completion through the canonical repository command.
-- Classification summary: Replace ad-hoc completion persistence with `finalizeMatch` and a stable room-derived result key.
+- 개발 스레드에서의 역할: GameHub 완료 처리가 표준 저장소 명령을 거치게 합니다.
+- 분류 요약: 임시로 조합한 완료 저장을 `finalizeMatch`와 경기방에서 파생한 안정적인 결과 키로 교체합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | repository command가 atomic해도 GameHub가 기존 `createMatch` 또는 별도 writes를 사용하면 production completion은 invariant를 얻지 못합니다. |
-| 핵심 boundary/decision | `apps/api/src/gameHub.ts::finalizeRoom`이 `repo.finalizeMatch`를 호출하고 result key를 `room:<roomId>:finished`로 고정하며 mode, participants, scores, optional tournamentMatchId를 한 command에 넘깁니다. |
-| 상태 또는 ownership 변화 | GameHub는 terminal room context와 deterministic key를 소유하고 repository는 durable effects를 소유합니다. client event의 matchId는 returned finalization result에서 나옵니다. |
-| 주요 failure/edge path | 동일 room completion의 재호출은 같은 key로 DB existing result에 수렴합니다. 이 SHA에서 persistence reject 후 room을 어떻게 유지하는지는 아직 강화 전입니다. |
-| 보장/비보장 | production completion이 canonical atomic/idempotent boundary를 사용합니다. transient DB failure 중 retry ownership은 `e939a5...`에서 완성됩니다. |
-| 다음 관련 commit 연결 | `e939a5...`가 failed finalization 뒤 room을 버리지 않고 in-flight coalescing과 bounded backoff retry를 추가합니다. |
+| 직전 관련 상태 | 저장소 명령이 원자적해도 GameHub가 기존 `createMatch` 또는 별도 쓰기를 사용하면 운영 완료는 불변 조건을 얻지 못합니다. |
+| 핵심 경계/판단 | `apps/api/src/gameHub.ts::finalizeRoom`이 `repo.finalizeMatch`를 호출하고 결과 키를 `room:<roomId>:finished`로 고정하며 모드, 참가자, 점수, 선택적 tournamentMatchId를 한 명령에 넘깁니다. |
+| 상태 또는 소유권 변화 | GameHub는 종료 경기방 컨텍스트와 결정적 키를 소유하고 저장소는 영속 효과를 소유합니다. 클라이언트 이벤트의 matchId는 저장소가 반환한 확정 결과에서 가져옵니다. |
+| 주요 실패/예외 경로 | 동일 경기방 완료의 재호출은 같은 키로 DB 기존 결과에 수렴합니다. 이 SHA에서 영속 저장 거부 후 경기방을 어떻게 유지하는지는 아직 강화 전입니다. |
+| 보장 범위/보장하지 않는 범위 | 운영 완료가 표준 원자적/멱등 경계를 사용합니다. 임시 DB 실패 중 재시도 소유권은 `e939a5...`에서 완성됩니다. |
+| 다음 관련 커밋 연결 | `e939a5...`는 결과 확정이 실패해도 경기방을 버리지 않고, 진행 중인 동일 작업을 공유하며 재시도 간격을 상한 안에서 늘리는 처리를 추가합니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `582a1615a2c6` — `test(db): 경기 결과 단일 확정 조건 검증`
-- 다음 Thread 관련 SHA: `e939a50948b2` — `fix(game): 경기 결과 저장 실패를 재시도 가능한 상태로 유지`
+- 직전 개발 스레드 관련 SHA: `582a1615a2c6` — `test(db): 경기 결과 단일 확정 조건 검증`
+- 다음 개발 스레드 관련 SHA: `e939a50948b2` — `fix(game): 경기 결과 저장 실패를 재시도 가능한 상태로 유지`
 
 ### 5.8. `fix(game): 경기 결과 저장 실패를 재시도 가능한 상태로 유지`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `e939a50948b2` |
-| Importance | A |
-| Tags | REALTIME, RISK |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | REALTIME, RISK |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Keeps terminal room ownership and retries with the stable idempotency key.
-- Classification summary: Preserve the terminal room and coalesce/retry finalization until durable commit succeeds or the hub is closed.
+- 개발 스레드에서의 역할: 종료 상태 경기방 소유권을 유지하고 안정적인 멱등 키로 재시도합니다.
+- 분류 요약: 영속 커밋에 성공하거나 허브가 닫힐 때까지 종료 경기방을 유지하고 결과 확정 요청을 하나로 합쳐 재시도합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | GameHub가 terminal state에서 repository failure를 받은 뒤 room을 제거하거나 ownership을 놓으면 결과가 영구 누락되고 retry할 context/key가 사라질 수 있었습니다. |
-| 핵심 boundary/decision | room에 shared `finishing` promise와 retry timer를 두고 failure 시 room을 유지합니다. retry delay는 250ms부터 증가해 5초에서 상한이며 모든 시도는 같은 `room:<id>:finished` key를 사용합니다. |
-| 상태 또는 ownership 변화 | terminal room이 successful durable finalization까지 context와 retry ownership을 유지합니다. concurrent finalize caller는 동일 promise를 공유합니다. |
-| 주요 failure/edge path | 실패 시 broadcast/remove를 하지 않고 timer를 예약합니다. 성공 후에만 terminal result를 보내고 room을 제거합니다. room discard/hub close는 retry timer를 정리합니다. process restart를 넘는 retry는 보장하지 않습니다. |
-| 보장/비보장 | transient repository failure가 in-process terminal result를 잃게 하지 않고 duplicate work는 DB idempotency와 promise coalescing으로 제한됩니다. |
-| 다음 관련 commit 연결 | 후속 room/drain Thread는 terminal room이 retry 중에도 owned resource라는 contract에 의존합니다. |
+| 직전 관련 상태 | GameHub가 종료 상태에서 저장소 실패를 받은 뒤 경기방을 제거하거나 소유권을 놓으면 결과가 영구 누락되고 재시도할 컨텍스트/키가 사라질 수 있었습니다. |
+| 핵심 경계/판단 | 경기방에 공유 `finishing` Promise와 재시도 타이머를 두고 실패 시 경기방을 유지합니다. 재시도 지연은 250ms부터 증가해 5초에서 상한이며 모든 시도는 같은 `room:<id>:finished` 키를 사용합니다. |
+| 상태 또는 소유권 변화 | 종료된 경기방은 영속 결과 확정이 성공할 때까지 컨텍스트와 재시도 소유권을 유지합니다. 동시 결과 확정 호출자는 동일 Promise를 공유합니다. |
+| 주요 실패/예외 경로 | 실패 시 전파/제거를 하지 않고 타이머를 예약합니다. 성공 후에만 종료 결과를 보내고 경기방을 제거합니다. 경기방 discard/허브 종료는 재시도 타이머를 정리합니다. 프로세스 재시작을 넘는 재시도는 보장하지 않습니다. |
+| 보장 범위/보장하지 않는 범위 | 일시적인 저장소 실패가 프로세스 내부의 경기 종료 결과를 잃게 하지 않으며, 중복 작업은 DB 멱등성과 동일 Promise 공유로 제한됩니다. |
+| 다음 관련 커밋 연결 | 후속 경기방/작업 중단 개발 스레드는 종료 경기방이 재시도 중에도 소유한 자원라는 계약에 의존합니다. |
 
-#### Fix 재구성
+#### 수정 과정 재구성
 
 | 단계 | 근거 |
 | --- | --- |
-| 이전 가정 | 게임이 terminal이면 persistence 호출 성공 여부와 관계없이 room lifecycle을 끝낼 수 있다는 가정. |
-| 실제 실패 또는 위험 | DB 일시 장애에서 match/rating/tournament 결과가 누락되고 재시도 key/context가 사라집니다. |
-| Root cause | terminal simulation state와 durable finalization 완료 상태를 같은 lifecycle 단계로 취급했습니다. |
-| 수정된 invariant/decision | durable success 전까지 room을 유지하고 하나의 in-flight promise와 bounded backoff timer가 재시도를 소유합니다. |
-| 변경 코드 | `apps/api/src/gameHub.ts` room `finishing`/retry timer, `finalizeRoom`, cleanup paths. |
-| Regression evidence | repository rejection 뒤 room 유지, retry same key, success only-once removal/broadcast를 GameHub tests가 검사해야 합니다. |
+| 이전 가정 | 게임이 종료이면 영속 저장 호출 성공 여부와 관계없이 경기방 수명주기를 끝낼 수 있다는 가정. |
+| 실제 실패 또는 위험 | DB 일시 장애에서 경기/레이팅/토너먼트 결과가 누락되고 재시도 키/컨텍스트가 사라집니다. |
+| 루트 원인 | 종료 시뮬레이션 상태와 영속 결과 확정 완료 상태를 같은 수명주기 단계로 취급했습니다. |
+| 수정된 불변 조건/판단 | 영속 성공 전까지 경기방을 유지하고 하나의 전송 중 Promise와 상한을 둔 재시도 대기 타이머가 재시도를 소유합니다. |
+| 변경 코드 | `apps/api/src/gameHub.ts` 경기방 `finishing`/재시도 타이머, `finalizeRoom`, 정리 경로. |
+| 회귀 테스트 근거 | GameHub 테스트는 저장소 실패 뒤 경기방이 유지되는지, 재시도가 같은 키를 쓰는지, 성공했을 때만 경기방을 한 번 제거하고 결과를 전파하는지 검사해야 합니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `10bf15723591` — `refactor(game): 경기 결과 확정 boundary 사용`
-- 이 Thread의 마지막 상태와 비교해 최종 보장을 정리했습니다.
+- 직전 개발 스레드 관련 SHA: `10bf15723591` — `refactor(game): 경기 결과 확정 boundary 사용`
+- 이 개발 스레드의 마지막 상태와 비교해 최종 보장을 정리했습니다.
 
-## 6. Invariant ledger
+## 6. 불변 조건 기록
 
-Source에서 확정된 invariant를 commit 시점별로 연결했습니다. `해당 없음`은 해당 Thread 안에서 별도 fix/test가 없음을 뜻합니다.
+원문에서 확인한 불변 조건을 커밋 시점별로 연결했습니다. `해당 없음`은 해당 개발 스레드에서 별도 수정/테스트가 없음을 뜻합니다.
 
-| Invariant | 처음 도입/관찰한 SHA | 강화한 SHA | 부족함이 드러난 SHA | 복구한 fix | 고정한 regression test | 코드 근거 |
+| 불변 조건 | 처음 도입/관찰한 SHA | 강화한 SHA | 부족함이 드러난 SHA | 복구한 수정 | 고정한 회귀 테스트 | 코드 근거 |
 | --- | --- | --- | --- | --- | --- | --- |
-| A logical match result, participant statistics, rating history, and tournament progression commit atomically and idempotently. | `75bbc762e06d` durable identities | `83f9aee2522a` match idempotency → `e9d577ebc1ab` participant atomicity → `e338ea32b2a6` tournament transaction | `38504f041a6a` sequential partial-write 위험 | `83f9aee2522a`~`e338ea32b2a6` | `582a1615a2c6` | DB migration, `PostgresRepository.finalizeMatch` |
-| Timers, schedulers, heartbeat handles, retry work, snapshot buffers, and database resources have explicit single-owner cleanup. | `e939a50948b2` finalization retry ownership | 후속 room/drain commits | persistence failure 시 terminal room 제거 위험 | `e939a50948b2` | GameHub retry tests/inspection | `gameHub.ts` finishing promise/retry timer/cleanup |
+| 논리적 경기 결과, 참가자 통계, 레이팅 이력, 토너먼트 진행을 원자적이고 멱등하게 확정합니다. | `75bbc762e06d` 영속 식별자 | `83f9aee2522a` 경기 멱등성 → `e9d577ebc1ab` 참가자 원자성 → `e338ea32b2a6` 토너먼트 트랜잭션 | `38504f041a6a` 순차 쓰기 중 일부만 반영되는 위험 | `83f9aee2522a`~`e338ea32b2a6` | `582a1615a2c6` | DB 마이그레이션, `PostgresRepository.finalizeMatch` |
+| 타이머, 스케줄러, 연결 상태 확인 작업, 재시도 작업, 스냅샷 버퍼, 데이터베이스 자원은 각각 하나의 소유 주체가 명시되어 있으며 해당 주체가 정리합니다. | `e939a50948b2` 결과 확정 재시도 작업의 소유권 | 후속 경기방·작업 중단 커밋 | 영속 저장 실패 시 종료된 경기방을 너무 일찍 제거할 위험 | `e939a50948b2` | GameHub 재시도 테스트와 코드 검사 | `gameHub.ts`의 `finishing` Promise, 재시도 타이머, 정리 경로 |
 
-## 7. Failure → Fix → Test 연결
+## 7. 실패 → 수정 → 테스트 연결
 
-| 기존 상태/가정 | Fix 또는 강화 과정 | Test/evidence | 최종 보장 |
+| 기존 상태/가정 | 수정 또는 강화 과정 | 테스트/근거 | 최종 보장 |
 | --- | --- | --- | --- |
-| match insert와 rating writes가 sequential | result key/history schema → idempotent transaction → ordered participant locks | `582a16...` concurrent/rollback DB tests | match/counters/ratings/history one commit |
-| tournament progression이 durable match 밖 | `e338ea...` bracket locks/updates를 transaction에 편입 | semifinal/final integration cases | final row/winner one-time progression |
-| GameHub가 canonical command를 사용하지 않음 | `10bf15...` stable room key + finalizeMatch | runtime code inspection | production path도 DB invariant 사용 |
-| DB failure 뒤 terminal room ownership 상실 | `e939a5...` coalesced retry/backoff/cleanup | GameHub failure regression inspection | in-process transient failure에서 결과 보존 |
+| 경기 삽입과 레이팅 쓰기가 순차 | 결과 키·이력 스키마 → 멱등 트랜잭션 → 정렬된 참가자 잠금 | `582a16...` 동시 실행·되돌리기 DB 테스트 | 경기·집계값·레이팅·이력을 한 번의 커밋으로 반영 |
+| 토너먼트 진행이 영속 경기 밖 | `e338ea...` 대진 잠금/updates를 트랜잭션에 편입 | 준결승/최종 통합 사례 | 최종 행/승자 일회용 대진 진행 |
+| GameHub가 표준 명령을 사용하지 않음 | `10bf15...` 안정적인 경기방 키 + finalizeMatch | 실행 시점 코드 검토 | 실제 코드 경로도 DB 불변 조건 사용 |
+| DB 실패 뒤 종료 경기방 소유권 상실 | `e939a5...` coalesced 재시도/재시도 대기/정리 | GameHub 실패 회귀 검토 | 프로세스 내부 임시 실패에서 결과 보존 |
 
-## 8. Ownership / state / responsibility 변화
+## 8. 소유권·상태·담당 범위 변화
 
-| 축 | 초기 SHA의 owner/state | 중간 전환 | Thread 최종 owner/state | 해제·cleanup 책임 | 근거 |
+| 축 | 초기 SHA의 소유 주체/상태 | 중간 전환 | 개발 스레드 최종 소유 주체/상태 | 해제·정리 책임 | 근거 |
 | --- | --- | --- | --- | --- | --- |
-| logical result identity | 없음/generated match ID | `75bbc7...` caller result key | stable `room:<id>:finished` | DB unique row lifetime | migration/result_key, `10bf15...` |
-| participant ratings/history | sequential statements | `e9d577...` ordered locks + transaction | finalize transaction | commit/rollback | `PostgresRepository.finalizeMatch` |
-| tournament progression | 별도/없음 | `e338ea...` same transaction | finalize transaction | commit/rollback | tournament SQL path |
-| terminal room/retry | GameHub terminal callback | `10bf15...` canonical command | `e939a5...` room finishing promise/timer | success/remove 또는 hub close | `gameHub.ts::finalizeRoom` |
-| database resource | repository calls | transaction client | repository/pool | transaction release/pool close | DB implementation |
+| 논리적으로 같은 결과 신원 | 없음/생성된 경기 ID | `75bbc7...` 호출자 결과 키 | 안정적인 `room:<id>:finished` | DB 고유 행 수명 | 마이그레이션/result_key, `10bf15...` |
+| 참가자 레이팅/이력 | 순차 SQL 실행 | `e9d577...` 정렬된 잠금 + 트랜잭션 | 결과 확정 트랜잭션 | 커밋/되돌리기 | `PostgresRepository.finalizeMatch` |
+| 토너먼트 진행 | 별도/없음 | `e338ea...` 동일한 트랜잭션 | 결과 확정 트랜잭션 | 커밋/되돌리기 | 토너먼트 SQL 경로 |
+| 종료 경기방/재시도 | GameHub 종료 콜백 | `10bf15...` 표준 명령 | `e939a5...` 경기방 `finishing` Promise/타이머 | 성공/제거 또는 허브 종료 | `gameHub.ts::finalizeRoom` |
+| 데이터베이스 자원 | 저장소 호출 | 트랜잭션 클라이언트 | 저장소·풀 | 트랜잭션 해제·풀 종료 | DB 구현 |
 
-## 9. Thread 최종 상태
+## 9. 개발 스레드 최종 상태
 
-- 최종 authoritative owner: repository `finalizeMatch` transaction이 durable command를 소유하고 GameHub terminal room이 성공 전까지 retry context를 소유합니다.
-- 최종 상태/invariant: 동일 result key는 하나의 match와 한 세트의 participant/history/tournament effects로 수렴하며 부분 commit을 남기지 않습니다.
-- 남아 있는 의도적 제한 또는 비보장: retry timer는 process memory에 있어 crash/restart를 넘는 delivery guarantee는 없고 DB availability 자체를 보장하지 않습니다.
-- 후속 Thread가 의존하는 contract: GameHub는 stable room-derived key와 complete terminal context를 넘기고 durable success 뒤에만 result broadcast/room removal을 수행합니다.
-- 대표 코드 근거: `e338ea32b2a6 PostgresRepository.finalizeMatch`, `582a1615a2c6` PostgreSQL tests, `10bf15723591`/`e939a50948b2 apps/api/src/gameHub.ts`
+- 최종 판정 주체: 저장소 `finalizeMatch` 트랜잭션이 영속 명령을 소유하고 GameHub 종료 경기방이 성공 전까지 재시도 컨텍스트를 소유합니다.
+- 최종 상태/불변 조건: 동일 결과 키는 하나의 경기와 한 세트의 참가자/이력/토너먼트 효과로 수렴하며 부분 커밋을 남기지 않습니다.
+- 남아 있는 의도적 제한 또는 보장하지 않는 범위: 재시도 타이머는 프로세스 메모리에 있어 비정상 종료/재시작을 넘는 전달 보장 범위는 없고 DB 사용 가능 상태 자체를 보장하지 않습니다.
+- 후속 개발 스레드가 의존하는 계약: GameHub는 안정적인 경기방에서 파생한 키와 완료 처리 종료 컨텍스트를 넘기고 영속 성공 뒤에만 결과 전파/경기방 제거를 수행합니다.
+- 대표 코드 근거: `e338ea32b2a6 PostgresRepository.finalizeMatch`, `582a1615a2c6` PostgreSQL 테스트, `10bf15723591`/`e939a50948b2 apps/api/src/gameHub.ts`
 
-## 10. 최종 architecture 또는 execution flow 정리
+## 10. 최종 아키텍처와 실행 순서
 
 ```text
 [terminal PongSimulation result]
@@ -1498,369 +1498,369 @@ Source에서 확정된 invariant를 commit 시점별로 연결했습니다. `해
     ↘ failure: same room + same key + 250ms..5s retry
 ```
 
-- duplicate result key는 participant/tournament effects 전에 existing result로 수렴합니다.
-- failure 중 terminal room은 drain이 기다려야 하는 owned work로 남습니다.
+- 중복 결과 키는 참가자/토너먼트 효과 전에 기존 결과로 수렴합니다.
+- 실패 중 종료 경기방은 작업 중단이 기다려야 하는 소유한 작업으로 남습니다.
 
-## 11. 학습 완료 자가 점검
+## 11. 학습 완료 확인
 
-- [x] Commit map의 모든 SHA를 원문 순서대로 확인했습니다.
-- [x] 각 commit의 subject, importance, tags를 변경하지 않았습니다.
+- [x] 커밋 목록의 모든 SHA를 원문 순서대로 확인했습니다.
+- [x] 각 커밋의 제목·중요도·태그를 변경하지 않았습니다.
 - [x] S/A/B 깊이를 구분해 코드 근거를 남겼습니다.
-- [x] final HEAD의 구현을 과거 SHA에 소급하지 않았습니다.
-- [x] 핵심 상태 필드, caller/callee, ownership, failure branch, cleanup을 실제 코드로 확인했습니다.
-- [x] Fix를 기존 가정 → failure/risk → root cause → decision → code → regression 순서로 연결했습니다.
-- [x] Test commit에서 production invariant, failure, technique, path, 증명/비증명 범위를 구분했습니다.
-- [x] Thread 최종 execution flow를 별도 프로젝트 재학습 없이 설명할 수 있습니다.
+- [x] 최종 상태의 구현을 과거 SHA에 소급하지 않았습니다.
+- [x] 핵심 상태 필드, 호출자/피호출자, 소유권, 실패 분기, 정리를 실제 코드로 확인했습니다.
+- [x] 수정을 기존 가정 → 실패/위험 → 근본 원인 → 판단 → 코드 → 회귀 순서로 연결했습니다.
+- [x] 테스트 커밋에서 운영 불변 조건, 실패, 기법, 경로, 검증 범위와 미검증 범위를 구분했습니다.
+- [x] 개발 스레드 최종 실행 순서를 별도 프로젝트 재학습 없이 설명할 수 있습니다.
 ===== END FILE: 04-atomic-idempotent-match-finalization.md =====
 
 ===== BEGIN FILE: 05-room-lifecycle-connection-replacement-and-recovery.md =====
 # 경기방 수명주기·연결 교체·복구
 
-원문 Development Thread: `Room lifecycle, connection replacement, and recovery`
+원문 개발 스레드: `Room lifecycle, connection replacement, and recovery`
 
-## 1. Thread 목표
+## 1. 개발 스레드 목표
 
-- readiness, play, pause, disconnect, reconnect, expiry, finish를 explicit room-session state machine으로 복원합니다.
-- 동일 사용자 새 socket이 기존 transport를 교체하면서 room side와 authority를 보존하는 atomic handoff를 추적합니다.
-- 실제 disconnect와 same-user replacement를 구분하고 15초 reservation, forfeit/abandonment, browser fresh-ticket retry가 협력하는 방식을 확인합니다.
+- 준비 상태, 플레이, 일시정지, 연결 해제, 재연결, 만료, 종료를 명시적 경기방 세션 상태 기계로 복원합니다.
+- 동일 사용자 새 소켓이 기존 전송 계층을 교체하면서 경기방과 좌석과 판정 권한을 보존하는 원자적 인계를 추적합니다.
+- 실제 연결 해제와 동일한 사용자 교체를 구분하고 15초 예약, 몰수패/포기 처리, 브라우저 새 티켓 재시도가 협력하는 방식을 확인합니다.
 
-### Source에서 확정된 significance
+### 원문에서 확인한 중요성
 
-> Socket loss and socket replacement are treated as lifecycle events, not immediate match termination or fresh matchmaking. The state machine, user-indexed connection map, reserved side, deadline, and browser retry policy cooperate to preserve one room and one player authority across transient transport failure.
+> 소켓 연결 끊김과 연결 교체는 즉시 경기 종료나 새 매칭이 아니라 수명주기 이벤트로 처리합니다. 상태 머신, 사용자별 연결 맵, 예약 좌석, 재연결 기한, 브라우저 재시도 규칙이 함께 동작해 일시적 전송 장애에도 하나의 경기방과 한 명의 플레이어 권한을 유지합니다.
 
-### 직접 연결되는 Critical Invariants
+### 직접 연결되는 핵심 불변 조건
 
-> One user has one authoritative realtime connection, and reconnect replacement transfers ownership without creating a second match or losing the reserved room side.
+> 사용자 한 명에게는 하나의 서버 권위형 실시간 연결만 허용하며, 재연결로 교체할 때도 두 번째 경기를 만들거나 예약 좌석을 잃지 않고 소유권을 이전합니다.
 
-> Timers, schedulers, heartbeat handles, retry work, snapshot buffers, and database resources have explicit single-owner cleanup.
+> 타이머, 스케줄러, 연결 상태 확인 작업, 재시도 작업, 스냅샷 버퍼, 데이터베이스 자원은 각각 하나의 소유 주체가 명시되어 있으며 해당 주체가 정리합니다.
 
-### 직접 연결되는 Major Engineering Difficulties
+### 직접 연결되는 주요 구현 난점
 
-> Coordinating readiness, pause, disconnect, reconnect, replacement, forfeit, retry, and final cleanup across interacting state machines.
+> 서로 연결된 상태 머신에서 준비, 일시정지, 연결 해제, 재연결, 교체, 몰수패, 재시도, 최종 정리를 함께 조정해야 합니다.
 
-## 2. 이 Thread를 이해하기 위한 핵심 질문
+## 2. 이 개발 스레드를 이해하기 위한 핵심 질문
 
-- 어떤 transition이 합법이며 idempotent이고, 어떤 transition이 무시되거나 terminal 결과를 만듭니까?
-- snapshot phase는 state machine을 정의합니까, 아니면 accepted state를 반영합니까?
-- same-user replacement에서 이전 heartbeat/buffer/membership/room side는 어떤 순서로 이전·정리됩니까?
-- 실제 socket loss에서 disconnected-side reservation과 reconnect deadline의 소유자는 누구입니까?
-- 한쪽/양쪽 disconnect expiry가 persisted forfeit와 non-persisted abandonment로 갈리는 조건은 무엇입니까?
-- 브라우저 reconnect는 새 ticket을 쓰면서 왜 원래 queue/AI intent를 재전송하지 않습니까?
+- 어떤 상태 전이가 합법이며 멱등이고, 어떤 상태 전이가 무시되거나 종료 결과를 만듭니까?
+- 스냅샷 단계는 상태 기계를 정의합니까, 아니면 허용된 상태를 반영합니까?
+- 동일한 사용자 교체에서 이전 연결 확인 신호/버퍼/소속 정보/경기방과 좌석은 어떤 순서로 이전·정리됩니까?
+- 실제 소켓 패배에서 연결 해제된 측 예약과 재연결 기한의 소유자는 누구입니까?
+- 한쪽 또는 양쪽의 재연결 기한이 만료됐을 때, 결과를 저장하는 몰수패와 저장하지 않는 경기 포기를 가르는 조건은 무엇입니까?
+- 브라우저 재연결은 새 티켓을 쓰면서 왜 원래 대기열/AI 요청 의도를 재전송하지 않습니까?
 
 ## 3. 완료 기준
 
-- RoomSession의 상태와 transition 표를 실제 메서드 조건으로 완성할 수 있습니다.
-- replacement, recoverable disconnect, expired disconnect 세 경로의 client/room/timer/scheduler 변화를 비교할 수 있습니다.
-- displaced socket의 stale message가 새 room을 만들거나 현재 room을 조작하지 못하는 근거를 제시할 수 있습니다.
-- 15초 경계의 reconnect와 expiry 결과를 deterministic test로 설명할 수 있습니다.
-- browser reducer와 socket client가 recovery 동안 matchmaking을 막는 이유를 설명할 수 있습니다.
+- RoomSession의 상태와 상태 전이 표를 실제 메서드 조건으로 완성할 수 있습니다.
+- 교체, recoverable 연결 해제, 만료된 연결 해제 세 경로의 클라이언트/경기방/타이머/스케줄러 변화를 비교할 수 있습니다.
+- displaced 소켓의 오래된 메시지가 새 경기방을 만들거나 현재 경기방을 조작하지 못하는 근거를 제시할 수 있습니다.
+- 15초 경계의 재연결과 만료 결과를 결정적 테스트로 설명할 수 있습니다.
+- 브라우저 리듀서와 소켓 클라이언트가 복구 동안 대전 상대 연결을 막는 이유를 설명할 수 있습니다.
 
-> 검토 방식: 지정 브랜치에 속한 exact SHA의 diff와 해당 시점 파일을 GitHub에서 확인했습니다. 로컬 실행 환경은 GitHub clone이 차단되어 테스트 명령은 실행하지 않았으며, 아래 테스트 결과 설명은 test implementation 검토에 한정합니다.
+> 검토 방식: 지정 브랜치의 정확한 SHA별 변경 내용과 해당 시점 파일을 GitHub에서 확인했습니다. 로컬 환경에서는 GitHub 복제가 차단되어 테스트 명령을 실행하지 못했습니다. 아래 테스트 설명은 테스트 코드 검토 결과에 한정합니다.
 
-## 4. Commit map
+## 4. 커밋 목록
 
-| 순서 | SHA | Subject | Importance | Tags | Source에서 확정된 역할 |
+| 순서 | SHA | 제목 | 중요도 | 태그 | 원문에서 확인한 역할 |
 | ---: | --- | --- | :---: | --- | --- |
-| 1 | `aa5d6a338690` | `refactor(game): 게임 방 상태 전이 모델링` | S | REALTIME, ARCH, RISK | Defines legal readiness, pause, reconnect, expiry, and finish transitions. |
-| 2 | `8f64dfc117f3` | `feat(game): 게임 방 상태를 RoomSession에 연결` | A | SIMULATION, REALTIME | Makes GameHub lifecycle changes subordinate to the state machine. |
-| 3 | `a06d1705bbc9` | `feat(game): 사용자별 active connection 교체` | S | REALTIME, ARCH, RISK | Enforces one current transport and transfers room ownership atomically. |
-| 4 | `c98d4b1e8b43` | `feat(game): 예약된 room connection 복구` | A | SIMULATION, REALTIME | Reattaches a returning identity only to an explicit reserved side. |
-| 5 | `e593b1dd9fcd` | `feat(game): reconnect 예약 만료와 room 정리` | A | SIMULATION, REALTIME, RISK | Turns disconnect into a bounded reservation, forfeit, or non-persisted abandonment. |
-| 6 | `113e39acc85c` | `test(game): reconnect 복구 동작 검증` | A | REALTIME, PERSISTENCE, RISK | Verifies replacement, deadline recovery, one finalization, and stale-socket rejection. |
-| 7 | `4f5199097284` | `fix(web): 중단된 game reconnect 복구` | A | AUTH, REALTIME, WEB | Makes the browser request fresh tickets without replaying matchmaking intent. |
+| 1 | `aa5d6a338690` | `refactor(game): 게임 방 상태 전이 모델링` | S | REALTIME, ARCH, RISK | 준비 완료, 일시정지, 재연결, 기한 만료, 종료의 허용 상태 전이를 정의합니다. |
+| 2 | `8f64dfc117f3` | `feat(game): 게임 방 상태를 RoomSession에 연결` | A | SIMULATION, REALTIME | GameHub 수명주기 변경이 상태 머신의 결정에 따르게 합니다. |
+| 3 | `a06d1705bbc9` | `feat(game): 사용자별 active connection 교체` | S | REALTIME, ARCH, RISK | 현재 전송 연결을 하나만 허용하고 경기방 소유권을 원자적으로 이전합니다. |
+| 4 | `c98d4b1e8b43` | `feat(game): 예약된 room connection 복구` | A | SIMULATION, REALTIME | 돌아온 사용자를 명시적으로 예약된 좌석에만 다시 연결합니다. |
+| 5 | `e593b1dd9fcd` | `feat(game): reconnect 예약 만료와 room 정리` | A | SIMULATION, REALTIME, RISK | 연결 해제를 시간 상한을 둔 좌석 예약, 몰수패, 영속 저장하지 않는 경기 폐기 중 하나로 처리합니다. |
+| 6 | `113e39acc85c` | `test(game): reconnect 복구 동작 검증` | A | REALTIME, PERSISTENCE, RISK | 연결 교체, 기한 내 복구, 단일 결과 확정, 오래된 소켓 거부를 검증합니다. |
+| 7 | `4f5199097284` | `fix(web): 중단된 game reconnect 복구` | A | AUTH, REALTIME, WEB | 브라우저가 대전 상대 연결 요청을 다시 보내지 않고 새 티켓만 요청하게 합니다. |
 
-## 5. Commit별 학습 기록
+## 5. 커밋별 학습 기록
 
 ### 5.1. `refactor(game): 게임 방 상태 전이 모델링`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `aa5d6a338690` |
-| Importance | S |
-| Tags | REALTIME, ARCH, RISK |
-| 학습 깊이 | Architecture/invariant 중심으로 직전 상태, 결정, 핵심 전이, ownership, failure, 후속 검증까지 복원했습니다. |
+| 중요도 | S |
+| 태그 | REALTIME, ARCH, RISK |
+| 학습 깊이 | 아키텍처/불변 조건 중심으로 직전 상태, 결정, 핵심 전이, 소유권, 실패, 후속 검증까지 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Defines legal readiness, pause, reconnect, expiry, and finish transitions.
-- Classification summary: Introduce an explicit room-session state machine for readiness, play, pause, reconnection, and completion.
+- 개발 스레드에서의 역할: 준비 완료, 일시정지, 재연결, 기한 만료, 종료의 허용 상태 전이를 정의합니다.
+- 분류 요약: 준비 완료, 경기, 일시정지, 재연결, 완료를 위한 명시적 경기방 세션 상태 머신을 도입합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | ready/pause/disconnect/finish가 socket callbacks와 snapshot phase 조건에 흩어져 있어 합법 transition과 idempotency를 한 곳에서 판단할 수 없었습니다. |
-| 핵심 boundary/decision | 새 `apps/api/src/game/roomSession.ts`의 `RoomSession`이 `waiting|playing|paused|reconnecting|finished`, ready/disconnected sides, resume state, 15초 deadline을 소유합니다. |
-| 상태 또는 ownership 변화 | RoomSession이 lifecycle decision을 소유하고 snapshot은 accepted state를 반영하는 projection이 됩니다. socket·scheduler·DB는 이 class가 소유하지 않습니다. |
-| 주요 failure/edge path | 두 side ready 전에는 playing이 되지 않고, pause/resume은 대응 state에서만 유효합니다. disconnect는 prior state를 기억하고, 한쪽 expiry는 opposite winner, 양쪽 expiry는 winner 없음, `finish`는 reconnect data를 제거해 반복 expiry를 막습니다. |
-| 보장/비보장 | legal transition과 15초 recoverability/terminal outcome을 transport에서 분리합니다. GameHub가 이 state machine을 실제 자원 조작에 사용한다는 보장은 다음 commit입니다. |
-| 다음 관련 commit 연결 | `8f64df...`가 GameHub room에 RoomSession을 연결하고 scheduler/snapshot mutation을 accepted transition에 종속시킵니다. |
+| 직전 관련 상태 | 준비 완료/일시정지/연결 해제/종료가 소켓 콜백과 스냅샷 단계 조건에 흩어져 있어 합법 상태 전이와 멱등성을 한 곳에서 판단할 수 없었습니다. |
+| 핵심 경계/판단 | 새 `apps/api/src/game/roomSession.ts`의 `RoomSession`은 `waiting|playing|paused|reconnecting|finished` 상태, 양쪽의 준비·연결 해제 여부, 재개할 이전 상태, 15초 재연결 기한을 소유합니다. |
+| 상태 또는 소유권 변화 | RoomSession이 수명주기 판단을 소유하고 스냅샷은 허용된 상태를 반영하는 외부 표현이 됩니다. 소켓·스케줄러·DB는 이 클래스가 소유하지 않습니다. |
+| 주요 실패/예외 경로 | 두 측 준비 완료 전에는 경기 중이 되지 않고, 일시정지/재개는 대응 상태에서만 유효합니다. 연결 해제는 prior 상태를 기억하고, 한쪽 만료는 opposite 승자, 양쪽 만료는 승자 없음, `finish`는 재연결 데이터를 제거해 반복 만료를 막습니다. |
+| 보장 범위/보장하지 않는 범위 | 허용된 상태 전이와 15초 recoverability/종료 결과를 전송 계층에서 분리합니다. GameHub가 이 상태 기계를 실제 자원 조작에 사용한다는 보장은 다음 커밋입니다. |
+| 다음 관련 커밋 연결 | `8f64df...`가 GameHub 경기방에 RoomSession을 연결하고 스케줄러/스냅샷 변경을 허용된 상태 전이에 종속시킵니다. |
 
-#### Architecture / invariant 복원
+#### 아키텍처와 불변 조건 복원
 
 | 축 | 복원 결과 |
 | --- | --- |
-| 문제 | snapshot phase와 socket callback만으로 lifecycle을 추론하면 replacement, reconnect, forfeit가 중복·역행할 수 있습니다. |
-| 실패 위험 | ready 전 play, finished room resume, 같은 disconnect 두 번, timeout 후 reconnect, 양쪽 disconnect를 잘못된 winner로 확정할 수 있습니다. |
-| 핵심 결정 | lifecycle 상태와 legal transition을 `RoomSession` 한 객체로 모델링합니다. |
-| 구현 경로 | markReady → playing; pause/resume; disconnect(side, now) → reconnecting/deadline; reconnect(side, now) → restore; expireReconnect → winner/null; finish → terminal cleanup. |
-| 수명주기·상태 | ready/disconnected sets, resume state, deadline은 RoomSession lifetime에 귀속되고 finish에서 제거됩니다. |
-| 실패 처리 | 잘못된 current state 또는 deadline 밖의 operation은 state를 변경하지 않으며 expiry 결과는 terminal로 한 번만 전환됩니다. |
-| 후속 검증 | `113e39...` fake-timer replacement/14,999ms/15,000ms/finalize-once tests. |
-| Thread 전체 의미 | transport loss를 곧바로 match loss로 처리하지 않고 domain lifecycle event로 해석할 기반이 됩니다. |
+| 문제 | 스냅샷 단계와 소켓 콜백만으로 수명주기를 추론하면 교체, 재연결, 몰수패가 중복·역행할 수 있습니다. |
+| 실패 위험 | 준비 완료 전 플레이, 종료된 경기방 재개, 같은 연결 해제 두 번, 시간 초과 후 재연결, 양쪽 연결 해제를 잘못된 승자로 확정할 수 있습니다. |
+| 핵심 결정 | 수명주기 상태와 허용된 상태 전이를 `RoomSession` 한 객체로 모델링합니다. |
+| 구현 경로 | `markReady` → 경기 중; 일시정지·재개; `disconnect(side, now)` → 재연결 대기·기한 설정; `reconnect(side, now)` → 이전 상태 복원; `expireReconnect` → 승자 또는 `null`; 종료 → 최종 상태 정리. |
+| 수명주기·상태 | 준비 완료 사용자 집합, 연결 해제 사용자 집합, 재개 상태, 기한은 `RoomSession` 수명에 속하며 경기 종료 때 제거됩니다. |
+| 실패 처리 | 잘못된 현재 상태 또는 기한 밖의 연산은 상태를 변경하지 않으며 만료 결과는 종료로 한 번만 전환됩니다. |
+| 후속 검증 | `113e39...` 가짜 타이머 교체/14,999ms/15,000ms/결과 한 번 확정 테스트. |
+| 개발 스레드 전체 의미 | 전송 계층 패배를 곧바로 경기 패배로 처리하지 않고 도메인 수명주기 이벤트로 해석할 기반이 됩니다. |
 
 비교 기준:
-- 이 commit의 parent에서 동일 책임을 담당하던 코드를 비교했습니다.
-- 다음 Thread 관련 SHA: `8f64dfc117f3` — `feat(game): 게임 방 상태를 RoomSession에 연결`
+- 이 커밋의 부모 커밋에서 동일 책임을 담당하던 코드를 비교했습니다.
+- 다음 개발 스레드 관련 SHA: `8f64dfc117f3` — `feat(game): 게임 방 상태를 RoomSession에 연결`
 
 ### 5.2. `feat(game): 게임 방 상태를 RoomSession에 연결`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `8f64dfc117f3` |
-| Importance | A |
-| Tags | SIMULATION, REALTIME |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | SIMULATION, REALTIME |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Makes GameHub lifecycle changes subordinate to the state machine.
-- Classification summary: Integrate RoomSession decisions with room snapshots and scheduler start/stop.
+- 개발 스레드에서의 역할: GameHub 수명주기 변경이 상태 머신의 결정에 따르게 합니다.
+- 분류 요약: RoomSession의 결정을 경기방 스냅샷과 스케줄러 시작·중지에 연결합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | RoomSession은 독립 model이지만 GameHub가 snapshot phase와 timer를 직접 바꾸면 두 상태가 어긋날 수 있었습니다. |
-| 핵심 boundary/decision | Room이 `session`, reconnect metadata를 보유하고 human/AI ready를 `markReady`에 전달합니다. accepted state만 snapshot phase에 복사하고 playing일 때 scheduler를 시작하며 pause/reconnecting에서 멈춥니다. |
-| 상태 또는 ownership 변화 | RoomSession은 legal state, GameHub는 실제 scheduler/socket/snapshot resource를 소유합니다. GameHub는 반환 state를 projection합니다. |
-| 주요 failure/edge path | invalid transition이면 resource side effect를 적용하지 않습니다. AI room은 right side를 ready로 표시해 left ready 후에만 시작합니다. |
-| 보장/비보장 | domain lifecycle과 runtime scheduler/snapshot이 같은 accepted transition을 따릅니다. 동일 사용자 connection replacement와 reserved reconnect는 아직 없습니다. |
-| 다음 관련 commit 연결 | `a06d17...`가 user-indexed active connection map과 atomic replacement를 구현합니다. |
+| 직전 관련 상태 | RoomSession은 독립 모델이지만 GameHub가 스냅샷 단계와 타이머를 직접 바꾸면 두 상태가 어긋날 수 있었습니다. |
+| 핵심 경계/판단 | 경기방이 `session`, 재연결 메타데이터를 보유하고 사람 사용자/AI 준비 완료를 `markReady`에 전달합니다. 허용된 상태만 스냅샷 단계에 복사하고 경기 중일 때 스케줄러를 시작하며 일시정지/재연결 중에서 멈춥니다. |
+| 상태 또는 소유권 변화 | RoomSession은 허용된 상태, GameHub는 실제 스케줄러/소켓/스냅샷 자원을 소유합니다. GameHub는 반환 상태를 변환합니다. |
+| 주요 실패/예외 경로 | 잘못된 상태 전이이면 자원 부수 효과를 적용하지 않습니다. AI 경기방은 오른쪽 좌석을 준비 완료로 표시해 left 준비 완료 후에만 시작합니다. |
+| 보장 범위/보장하지 않는 범위 | 도메인 수명주기와 실행 시점 스케줄러/스냅샷이 같은 허용된 상태 전이를 따릅니다. 동일 사용자 연결 교체와 예약된 재연결은 아직 없습니다. |
+| 다음 관련 커밋 연결 | `a06d17...`가 사용자 인덱스 기반 활성 연결 목록과 원자적 교체를 구현합니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `aa5d6a338690` — `refactor(game): 게임 방 상태 전이 모델링`
-- 다음 Thread 관련 SHA: `a06d1705bbc9` — `feat(game): 사용자별 active connection 교체`
+- 직전 개발 스레드 관련 SHA: `aa5d6a338690` — `refactor(game): 게임 방 상태 전이 모델링`
+- 다음 개발 스레드 관련 SHA: `a06d1705bbc9` — `feat(game): 사용자별 active connection 교체`
 
 ### 5.3. `feat(game): 사용자별 active connection 교체`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `a06d1705bbc9` |
-| Importance | S |
-| Tags | REALTIME, ARCH, RISK |
-| 학습 깊이 | Architecture/invariant 중심으로 직전 상태, 결정, 핵심 전이, ownership, failure, 후속 검증까지 복원했습니다. |
+| 중요도 | S |
+| 태그 | REALTIME, ARCH, RISK |
+| 학습 깊이 | 아키텍처/불변 조건 중심으로 직전 상태, 결정, 핵심 전이, 소유권, 실패, 후속 검증까지 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Enforces one current transport and transfers room ownership atomically.
-- Classification summary: Add user-indexed connection authority and replace an existing socket without treating it as a match disconnect.
+- 개발 스레드에서의 역할: 현재 전송 연결을 하나만 허용하고 경기방 소유권을 원자적으로 이전합니다.
+- 분류 요약: 사용자별 연결 판정 정보를 추가하고 기존 소켓 교체를 경기 연결 해제로 처리하지 않게 합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | connection map이 socket 중심이면 같은 user가 새 ticket으로 연결할 때 old/new socket이 동시에 room/queue를 조작하거나 old close가 forfeit를 유발할 수 있었습니다. |
-| 핵심 boundary/decision | `clientsByUser`가 current client를 가리키고 replacement 시 이전 heartbeat와 snapshot buffer를 중지한 뒤 map에서 old client를 제거합니다. room side/roomId를 new client로 이전하고 current context/snapshot을 전송한 후 old socket을 4001로 닫습니다. |
-| 상태 또는 ownership 변화 | user authority는 `clientsByUser`의 한 client에만 있습니다. replacement는 match membership을 유지하면서 transport resource owner만 원자적으로 바꿉니다. |
-| 주요 failure/edge path | `receive`는 `clientsByUser.get(userId) !== client`인 stale client를 무시합니다. old close callback은 이미 map에서 제거돼 실제 disconnect/forfeit path로 들어가지 않습니다. |
-| 보장/비보장 | 한 user가 동시에 authoritative realtime client 둘을 갖지 않고 same-user reconnect가 새 matchmaking을 만들지 않습니다. 연결이 완전히 끊긴 뒤 side reservation은 다음 commits 범위입니다. |
-| 다음 관련 commit 연결 | `c98d4b...`가 current client가 없는 returning identity를 disconnected reservation과 연결합니다. |
+| 직전 관련 상태 | 연결 목록이 소켓 중심이면 같은 사용자가 새 티켓으로 연결할 때 기존/새 소켓이 동시에 경기방/대기열을 조작하거나 기존 종료가 몰수패를 유발할 수 있었습니다. |
+| 핵심 경계/판단 | `clientsByUser`가 현재 클라이언트를 가리키고 교체 시 이전 연결 확인 신호와 스냅샷 버퍼를 중지한 뒤 목록에서 이전 클라이언트를 제거합니다. 경기방 측/roomId를 새 클라이언트로 이전하고 현재 컨텍스트/스냅샷을 전송한 후 기존 소켓을 4001로 닫습니다. |
+| 상태 또는 소유권 변화 | 사용자 판정 권한은 `clientsByUser`의 한 클라이언트에만 있습니다. 교체는 경기 소속 정보를 유지하면서 전송 계층 자원 소유 주체만 원자적으로 바꿉니다. |
+| 주요 실패/예외 경로 | `receive`는 `clientsByUser.get(userId) !== client`인 이전 연결의 클라이언트를 무시합니다. 기존 종료 콜백은 이미 목록에서 제거돼 실제 연결 해제/몰수패 경로로 들어가지 않습니다. |
+| 보장 범위/보장하지 않는 범위 | 한 사용자가 동시에 서버가 확정하는 실시간 클라이언트 둘을 갖지 않고 동일한 사용자 재연결이 새 대전 상대 연결을 만들지 않습니다. 연결이 완전히 끊긴 뒤 측 예약은 다음 커밋 범위입니다. |
+| 다음 관련 커밋 연결 | `c98d4b...`가 현재 클라이언트가 없는 돌아온 사용자 신원을 연결 해제된 예약과 연결합니다. |
 
-#### Architecture / invariant 복원
+#### 아키텍처와 불변 조건 복원
 
 | 축 | 복원 결과 |
 | --- | --- |
-| 문제 | socket identity와 user identity가 동일하지 않아 reconnect가 duplicate authority 또는 accidental forfeit로 이어집니다. |
-| 실패 위험 | old socket stale input, two rooms/queue entries, old close가 new connection의 match를 종료. |
-| 핵심 결정 | user-indexed current-client map을 authority source로 두고 replacement 순서를 고정합니다. |
-| 구현 경로 | new connect → old transport stop/remove → map authority 교체 → room side/client pointer 이전 → context/snapshot send → old close 4001. |
-| 수명주기·상태 | heartbeat·snapshot buffer는 transport별, room side는 user/domain별이며 replacement에서 transport resource만 교체됩니다. |
-| 실패 처리 | stale receive no-op, old close는 non-current라 disconnect mutation 없음. |
-| 후속 검증 | `113e39...` replacement가 timeout/forfeit를 만들지 않고 stale socket이 무시되는 test. |
-| Thread 전체 의미 | ‘한 사용자 한 권위 연결’이 명시적인 lookup invariant가 되어 reconnect 설계의 기준이 됩니다. |
+| 문제 | 소켓 신원과 사용자 신원이 동일하지 않아 재연결이 중복 판정 권한 또는 우발적인 몰수패로 이어집니다. |
+| 실패 위험 | 기존 소켓 오래된 입력, two 경기방/대기열 참가 기록, 기존 종료가 새 연결의 경기를 종료. |
+| 핵심 결정 | 사용자 인덱스 기반 현재 클라이언트 목록을 판정 권한 소스로 두고 교체 순서를 고정합니다. |
+| 구현 경로 | 새 연결 → 기존 전송 계층 중지·제거 → 목록 판정 권한 교체 → 경기방 측/클라이언트 참조 이전 → 컨텍스트/스냅샷 전송 → 기존 종료 4001. |
+| 수명주기·상태 | 연결 확인 신호·스냅샷 버퍼는 전송 계층별, 경기방과 좌석은 사용자/도메인별이며 교체에서 전송 계층 자원만 교체됩니다. |
+| 실패 처리 | 오래된 연결에서 들어온 메시지는 무시하고, 현재 연결이 아닌 기존 소켓의 종료 이벤트는 연결 해제 상태를 바꾸지 않습니다. |
+| 후속 검증 | `113e39...` 교체가 시간 초과/몰수패를 만들지 않고 오래된 소켓이 무시되는 테스트. |
+| 개발 스레드 전체 의미 | ‘한 사용자 한 권위 연결’이 명시적인 조회 불변 조건이 되어 재연결 설계의 기준이 됩니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `8f64dfc117f3` — `feat(game): 게임 방 상태를 RoomSession에 연결`
-- 다음 Thread 관련 SHA: `c98d4b1e8b43` — `feat(game): 예약된 room connection 복구`
+- 직전 개발 스레드 관련 SHA: `8f64dfc117f3` — `feat(game): 게임 방 상태를 RoomSession에 연결`
+- 다음 개발 스레드 관련 SHA: `c98d4b1e8b43` — `feat(game): 예약된 room connection 복구`
 
 ### 5.4. `feat(game): 예약된 room connection 복구`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `c98d4b1e8b43` |
-| Importance | A |
-| Tags | SIMULATION, REALTIME |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | SIMULATION, REALTIME |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Reattaches a returning identity only to an explicit reserved side.
-- Classification summary: Recover a disconnected player into the existing room reservation instead of matchmaking again.
+- 개발 스레드에서의 역할: 돌아온 사용자를 명시적으로 예약된 좌석에만 다시 연결합니다.
+- 분류 요약: 연결이 끊긴 플레이어를 새로 매칭하지 않고 기존 경기방 예약으로 복구합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | active replacement은 처리하지만 실제 socket loss 후 `clientsByUser`에 old client가 없으면 returning user와 기존 room side를 연결할 정보가 없었습니다. |
-| 핵심 boundary/decision | GameHub가 rooms의 `disconnectedUsers`를 찾아 user ID와 reserved side를 확인하고 `session.reconnect(side, now)`가 허용할 때 new client를 그 side에 배치합니다. |
-| 상태 또는 ownership 변화 | room이 disconnected user/side reservation을 소유하고 RoomSession이 deadline과 restore state를 판정합니다. new client는 transport ownership만 획득합니다. |
-| 주요 failure/edge path | 명시적 reservation이 없거나 deadline/state가 허용하지 않으면 임의 room에 붙이지 않습니다. 다른 side가 아직 disconnected면 reconnecting 유지와 해당 client snapshot만 전송하고, 모두 돌아오면 timer clear·state projection·scheduler resume·broadcast를 수행합니다. |
-| 보장/비보장 | returning identity가 같은 room/side에만 복구됩니다. reservation expiry와 terminal cleanup은 `e593b1...`에서 완성됩니다. |
-| 다음 관련 commit 연결 | `e593b1...`가 disconnect 시 15초 reservation timer와 expiry forfeit/abandonment를 구현합니다. |
+| 직전 관련 상태 | 활성 교체는 처리하지만 실제 소켓 패배 후 `clientsByUser`에 이전 클라이언트가 없으면 returning 사용자와 기존 경기방 측을 연결할 정보가 없었습니다. |
+| 핵심 경계/판단 | GameHub가 경기방의 `disconnectedUsers`를 찾아 사용자 ID와 예약된 좌석을 확인하고 `session.reconnect(side, now)`가 허용할 때 새 클라이언트를 그 측에 배치합니다. |
+| 상태 또는 소유권 변화 | 경기방이 연결 해제된 사용자/측 예약을 소유하고 RoomSession이 기한과 restore 상태를 판정합니다. 새 클라이언트는 전송 계층 소유권만 획득합니다. |
+| 주요 실패/예외 경로 | 명시적 예약이 없거나 기한/상태가 허용하지 않으면 임의 경기방에 붙이지 않습니다. 다른 쪽이 아직 연결 해제 상태이면 재연결 중 유지와 해당 클라이언트 스냅샷만 전송하고, 모두 돌아오면 타이머 해제·상태 전환·스케줄러 재개·전파를 수행합니다. |
+| 보장 범위/보장하지 않는 범위 | 돌아온 사용자 신원이 같은 경기방/측에만 복구됩니다. 예약 만료와 종료 정리는 `e593b1...`에서 완성됩니다. |
+| 다음 관련 커밋 연결 | `e593b1...`가 연결 해제 시 15초 예약 타이머와 만료 몰수패/포기 처리를 구현합니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `a06d1705bbc9` — `feat(game): 사용자별 active connection 교체`
-- 다음 Thread 관련 SHA: `e593b1dd9fcd` — `feat(game): reconnect 예약 만료와 room 정리`
+- 직전 개발 스레드 관련 SHA: `a06d1705bbc9` — `feat(game): 사용자별 active connection 교체`
+- 다음 개발 스레드 관련 SHA: `e593b1dd9fcd` — `feat(game): reconnect 예약 만료와 room 정리`
 
 ### 5.5. `feat(game): reconnect 예약 만료와 room 정리`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `e593b1dd9fcd` |
-| Importance | A |
-| Tags | SIMULATION, REALTIME, RISK |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | SIMULATION, REALTIME, RISK |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Turns disconnect into a bounded reservation, forfeit, or non-persisted abandonment.
-- Classification summary: Own reconnect deadlines and terminal cleanup for one- and two-sided socket loss.
+- 개발 스레드에서의 역할: 연결 해제를 시간 상한을 둔 좌석 예약, 몰수패, 영속 저장하지 않는 경기 폐기 중 하나로 처리합니다.
+- 분류 요약: 한쪽 또는 양쪽 소켓 연결이 끊겼을 때 재연결 기한과 최종 정리를 관리합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | reserved reconnect path는 있지만 실제 close에서 언제 reservation을 만들고 deadline 후 room을 어떻게 끝낼지 명확한 owner가 없었습니다. |
-| 핵심 boundary/decision | 실제 current socket disconnect는 `session.disconnect(side, Date.now())`, `disconnectedUsers`, stopped scheduler, zero dy, paused snapshot, reconnect timer를 설정합니다. expiry는 RoomSession 결과에 따라 single-side forfeit를 score로 만들거나 both-disconnected room을 abandon합니다. |
-| 상태 또는 ownership 변화 | room reconnect timer가 deadline wake-up을, RoomSession이 winner/null decision을, GameHub가 finalization/abandon cleanup을 소유합니다. |
-| 주요 failure/edge path | winner 없음이면 persistence 없이 room을 버리고, winner가 있으면 winning score를 설정해 canonical finish path를 호출합니다. finalization/remove/close는 timer와 markers를 clear해 stale callback을 막습니다. |
-| 보장/비보장 | disconnect는 최대 15초의 bounded reservation이며 expiry가 한 번의 forfeit 또는 non-persisted abandonment로 수렴합니다. browser가 자동으로 fresh ticket을 요청하는 것은 뒤 fix입니다. |
-| 다음 관련 commit 연결 | `113e39...`가 replacement, 14,999ms recovery, 15,000ms expiry/finalize-once를 deterministic test로 고정합니다. |
+| 직전 관련 상태 | 예약된 재연결 경로는 있지만 실제 종료에서 언제 예약을 만들고 기한 후 경기방을 어떻게 끝낼지 명확한 소유 주체가 없었습니다. |
+| 핵심 경계/판단 | 현재 소켓의 연결이 끊기면 `session.disconnect(side, Date.now())`를 호출하고, `disconnectedUsers`를 갱신하며, 스케줄러를 멈추고 `dy`를 0으로 만든 뒤 일시정지 스냅샷과 재연결 타이머를 설정합니다. 기한이 끝나면 `RoomSession` 결과에 따라 한쪽의 몰수패 점수를 만들거나 양쪽 연결이 모두 끊긴 경기방을 폐기합니다. |
+| 상태 또는 소유권 변화 | 경기방 재연결 타이머가 기한 도래 시점을 알리고, `RoomSession`이 승자 또는 `null`을 결정하며, GameHub가 결과 확정이나 경기방 폐기를 수행합니다. |
+| 주요 실패/예외 경로 | 승자 없음이면 영속 저장 없이 경기방을 버리고, 승자가 있으면 winning 점수를 설정해 표준 종료 경로를 호출합니다. 결과 확정/제거/종료는 타이머와 markers를 해제해 오래된 콜백을 막습니다. |
+| 보장 범위/보장하지 않는 범위 | 연결 해제 후 좌석은 최대 15초 동안 예약되며, 기한이 끝나면 몰수패를 한 번 저장하거나 저장하지 않는 경기 포기로 끝납니다. 브라우저의 자동 티켓 재발급은 이후 수정에서 추가됩니다. |
+| 다음 관련 커밋 연결 | `113e39...`가 연결 교체, 14,999ms 이내 복구, 15,000ms 만료, 결과 한 번 확정을 결정적 테스트로 고정합니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `c98d4b1e8b43` — `feat(game): 예약된 room connection 복구`
-- 다음 Thread 관련 SHA: `113e39acc85c` — `test(game): reconnect 복구 동작 검증`
+- 직전 개발 스레드 관련 SHA: `c98d4b1e8b43` — `feat(game): 예약된 room connection 복구`
+- 다음 개발 스레드 관련 SHA: `113e39acc85c` — `test(game): reconnect 복구 동작 검증`
 
 ### 5.6. `test(game): reconnect 복구 동작 검증`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `113e39acc85c` |
-| Importance | A |
-| Tags | REALTIME, PERSISTENCE, RISK |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | REALTIME, PERSISTENCE, RISK |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Verifies replacement, deadline recovery, one finalization, and stale-socket rejection.
-- Classification summary: Add fake-timer GameHub lifecycle regressions around replacement and the exact reconnect boundary.
+- 개발 스레드에서의 역할: 연결 교체, 기한 내 복구, 단일 결과 확정, 오래된 소켓 거부를 검증합니다.
+- 분류 요약: 연결 교체와 정확한 재연결 기한을 검증하는 가짜 타이머 기반 GameHub 수명주기 회귀 테스트를 추가합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | replacement/reservation/expiry 코드가 상호작용하지만 timer race와 old socket callback에서 exactly-once 결과를 보장하는 test evidence가 없었습니다. |
-| 핵심 boundary/decision | fake sockets, memory repository mock, fake timers로 active replacement, 14,999ms reconnect/current snapshot/play, 15,000ms expiry, one finalization/no duplicate, stale socket rejection을 검사합니다. |
-| 상태 또는 ownership 변화 | test clock이 deadline을 deterministic하게 이동하고 repository spy가 finalize call count를 관찰합니다. |
-| 주요 failure/edge path | replacement는 reconnect timeout을 만들지 않아야 하고, deadline 직전은 recover, exact deadline은 terminal입니다. timer를 더 진행해도 finalize가 두 번 호출되면 실패합니다. |
-| 보장/비보장 | in-process GameHub state machine과 timers에서 검사한 race가 보호됩니다. 실제 TCP proxy, browser process, PostgreSQL transaction은 포함하지 않습니다. |
-| 다음 관련 commit 연결 | `4f5199...`가 browser transport가 같은 reservation window 안에서 fresh ticket으로 재접속하도록 수정합니다. |
+| 직전 관련 상태 | 교체/예약/만료 코드가 상호작용하지만 타이머 경쟁 상태와 기존 소켓 콜백에서 정확히 한 번의 결과를 보장하는 테스트 근거가 없었습니다. |
+| 핵심 경계/판단 | 가짜 소켓, 메모리 저장소 테스트 대역, 가짜 타이머로 활성 소켓 교체, 14,999ms 안의 재연결과 현재 스냅샷·플레이 재개, 15,000ms 만료, 결과 한 번만 확정, 중복 확정 없음, 오래된 소켓 거부를 검사합니다. |
+| 상태 또는 소유권 변화 | 테스트 시계가 기한을 결정적으로 이동하고 저장소 호출 감시 객체가 결과 확정 호출 개수를 관찰합니다. |
+| 주요 실패/예외 경로 | 교체는 재연결 시간 초과를 만들지 않아야 하고, 기한 직전은 recover, 정확한 기한은 종료입니다. 타이머를 더 진행해도 결과 확정이 두 번 호출되면 실패합니다. |
+| 보장 범위/보장하지 않는 범위 | 프로세스 내부 GameHub 상태 기계와 타이머에서 검사한 경쟁 상태가 보호됩니다. 실제 TCP 프록시, 브라우저 프로세스, PostgreSQL 트랜잭션은 포함하지 않습니다. |
+| 다음 관련 커밋 연결 | `4f5199...`가 브라우저 전송 계층이 같은 예약 시간 구간 안에서 새 티켓으로 재접속하도록 수정합니다. |
 
-#### Test commit 학습 기록
+#### 테스트 커밋 학습 기록
 
 | 구분 | 기록 |
 | --- | --- |
-| 대상 production invariant | 한 user 한 authoritative transport, 15초 reserved side, expiry/result exactly once. |
-| 재현하는 failure/boundary | same-user replacement, stale socket, 14,999ms recovery, 15,000ms timeout, repeated timer advancement. |
-| test technique | Vitest fake timers, fake WebSocket, repository spies/memory fixture. |
-| 통과하는 production path | GameHub.connect/close → RoomSession disconnect/reconnect/expire → scheduler/timer → finalize/abandon. |
-| 증명하는 것 | 검사한 in-process lifecycle에서 replacement와 boundary transition이 정확합니다. |
-| 증명하지 않는 것 | real network partition, browser retry, DB failure, process restart는 증명하지 않습니다. |
-| test 성격 | Deterministic state-machine and timer regression. |
-| 후속 회귀 방지 설명 | old socket authority, deadline off-by-one, duplicate finalization, timer leak가 다시 생기면 실패해야 합니다. |
+| 검증 대상 불변 조건 | 한 사용자 한 서버가 확정하는 전송 계층, 15초 예약된 좌석, 만료/결과 exactly once. |
+| 재현하는 실패/경계 | 동일한 사용자 교체, 오래된 소켓, 14,999ms 복구, 15,000ms 시간 초과, repeated 타이머 advancement. |
+| 테스트 기법 | Vitest 가짜 타이머, 가짜 WebSocket, 저장소 감시 객체/메모리 픽스처. |
+| 실행하는 실제 코드 경로 | GameHub.연결/종료 → RoomSession 연결 해제/재연결/expire → 스케줄러/타이머 → 결과 확정/abandon. |
+| 검증하는 것 | 검사한 프로세스 내부 수명주기에서 교체와 경계 상태 전이가 정확합니다. |
+| 검증하지 않는 것 | 실제 네트워크 분할, 브라우저 재시도, DB 실패, 프로세스 재시작은 검증하지 않습니다. |
+| 테스트 성격 | 결정적 상태 실행 장비 및 타이머 회귀. |
+| 후속 회귀 방지 설명 | 이전 소켓의 판정 권한, 기한 경계값 하나 차이, 중복 결과 확정, 타이머 누수가 다시 생기면 실패해야 합니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `e593b1dd9fcd` — `feat(game): reconnect 예약 만료와 room 정리`
-- 다음 Thread 관련 SHA: `4f5199097284` — `fix(web): 중단된 game reconnect 복구`
+- 직전 개발 스레드 관련 SHA: `e593b1dd9fcd` — `feat(game): reconnect 예약 만료와 room 정리`
+- 다음 개발 스레드 관련 SHA: `4f5199097284` — `fix(web): 중단된 game reconnect 복구`
 
 ### 5.7. `fix(web): 중단된 game reconnect 복구`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `4f5199097284` |
-| Importance | A |
-| Tags | AUTH, REALTIME, WEB |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | AUTH, REALTIME, WEB |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Makes the browser request fresh tickets without replaying matchmaking intent.
-- Classification summary: Reconnect the browser transport within the room reservation window using a fresh one-time ticket.
+- 개발 스레드에서의 역할: 브라우저가 대전 상대 연결 요청을 다시 보내지 않고 새 티켓만 요청하게 합니다.
+- 분류 요약: 새 일회용 티켓을 사용해 경기방 예약 시간 안에 브라우저 전송 연결을 복구합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | server는 15초 side reservation을 유지하지만 browser socket client가 close를 terminal로 처리하면 user가 새 ticket으로 돌아오지 못해 항상 forfeit됩니다. |
-| 핵심 boundary/decision | `GameSocketClient`가 roomId가 있는 unexpected close에서 최대 15초 동안 250ms부터 2초 상한의 backoff로 매 시도 새 `/auth/ws-ticket`을 발급받아 연결합니다. reconnect open에는 initial `queue.join`/AI intent를 보내지 않습니다. |
-| 상태 또는 ownership 변화 | browser connection generation이 abort controller와 retry timer를 소유하고 reducer가 recovery state 동안 새 matchmaking intent를 막습니다. |
-| 주요 failure/edge path | room이 없으면 reconnect하지 않고, generation 변경/unmount/terminal event에서 pending ticket과 timer를 취소합니다. 새 ticket은 single-use이므로 재사용하지 않습니다. |
-| 보장/비보장 | 일시 transport 중단에서 existing room reservation으로 복귀할 수 있고 duplicate queue/room intent를 만들지 않습니다. full process/browser E2E나 server restart 복구는 이 commit만으로 증명하지 않습니다. |
-| 다음 관련 commit 연결 | Thread 최종 contract는 server 15초 reservation과 browser 15초 fresh-ticket retry가 같은 room identity를 보존하는 것입니다. |
+| 직전 관련 상태 | 서버는 15초 측 예약을 유지하지만 브라우저 소켓 클라이언트가 종료를 종료로 처리하면 사용자가 새 티켓으로 돌아오지 못해 항상 몰수패됩니다. |
+| 핵심 경계/판단 | `GameSocketClient`가 roomId가 있는 예상 밖의 종료에서 최대 15초 동안 250ms부터 2초 상한의 재시도 대기로 매 시도 새 `/auth/ws-ticket`을 발급받아 연결합니다. 재연결 열기에는 초기 `queue.join`/AI 요청 의도를 보내지 않습니다. |
+| 상태 또는 소유권 변화 | 브라우저 연결 세대 번호가 중단 controller와 재시도 타이머를 소유하고 리듀서가 복구 상태 동안 새 대전 상대 연결 요청 의도를 막습니다. |
+| 주요 실패/예외 경로 | 경기방이 없으면 재연결하지 않고, 세대 번호 변경/컴포넌트 해제/종료 이벤트에서 대기 중 티켓과 타이머를 취소합니다. 새 티켓은 한 번만 사용할 수 있는이므로 재사용하지 않습니다. |
+| 보장 범위/보장하지 않는 범위 | 일시 전송 계층 중단에서 기존 경기방 예약으로 복귀할 수 있고 중복 대기열/경기방 요청 의도를 만들지 않습니다. 정원 초과 프로세스/브라우저 종단 간 테스트나 서버 재시작 복구는 이 커밋만으로 검증하지 않습니다. |
+| 다음 관련 커밋 연결 | 개발 스레드 최종 계약은 서버 15초 예약과 브라우저 15초 새 티켓 재시도가 같은 경기방 신원을 보존하는 것입니다. |
 
-#### Fix 재구성
+#### 수정 과정 재구성
 
 | 단계 | 근거 |
 | --- | --- |
-| 이전 가정 | server가 room side를 예약하면 browser는 별도 retry 정책 없이도 복구할 수 있다는 가정. |
-| 실제 실패 또는 위험 | unexpected close 뒤 client가 socket을 다시 만들지 않아 reservation이 항상 expiry/forfeit로 끝납니다. |
-| Root cause | domain recovery window와 browser transport lifecycle이 연결되지 않았습니다. |
-| 수정된 invariant/decision | room context가 있을 때만 bounded retry하고 각 attempt에 fresh one-time ticket을 사용하며 matchmaking intent는 replay하지 않습니다. |
-| 변경 코드 | web `GameSocketClient`/play reducer의 generation, abort, retry timer, reconnect open branch. |
-| Regression evidence | browser tests는 fresh ticket count, no duplicate queue.join, cleanup, 15초 budget을 검사해야 합니다. |
+| 이전 가정 | 서버가 경기방 측을 예약하면 브라우저는 별도 재시도 정책 없이도 복구할 수 있다는 가정. |
+| 실제 실패 또는 위험 | 예상 밖의 종료 뒤 클라이언트가 소켓을 다시 만들지 않아 예약이 항상 만료/몰수패로 끝납니다. |
+| 루트 원인 | 도메인 복구 시간 구간과 브라우저 전송 계층 수명주기가 연결되지 않았습니다. |
+| 수정된 불변 조건/판단 | 경기방 컨텍스트가 있을 때만 상한을 둔 재시도하고 각 시도에 새 일회용 티켓을 사용하며 대전 상대 연결 요청 의도를 다시 실행하지 않습니다. |
+| 변경 코드 | 웹 `GameSocketClient`/플레이 리듀서의 세대 번호, 중단, 재시도 타이머, 재연결 열기 브랜치. |
+| 회귀 테스트 근거 | 브라우저 테스트는 새로 발급한 티켓 수, `queue.join` 중복 전송이 없는지, 타이머 정리, 15초 재연결 기한을 검사해야 합니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `113e39acc85c` — `test(game): reconnect 복구 동작 검증`
-- 이 Thread의 마지막 상태와 비교해 최종 보장을 정리했습니다.
+- 직전 개발 스레드 관련 SHA: `113e39acc85c` — `test(game): reconnect 복구 동작 검증`
+- 이 개발 스레드의 마지막 상태와 비교해 최종 보장을 정리했습니다.
 
-## 6. Invariant ledger
+## 6. 불변 조건 기록
 
-Source에서 확정된 invariant를 commit 시점별로 연결했습니다. `해당 없음`은 해당 Thread 안에서 별도 fix/test가 없음을 뜻합니다.
+원문에서 확인한 불변 조건을 커밋 시점별로 연결했습니다. `해당 없음`은 해당 개발 스레드에서 별도 수정/테스트가 없음을 뜻합니다.
 
-| Invariant | 처음 도입/관찰한 SHA | 강화한 SHA | 부족함이 드러난 SHA | 복구한 fix | 고정한 regression test | 코드 근거 |
+| 불변 조건 | 처음 도입/관찰한 SHA | 강화한 SHA | 부족함이 드러난 SHA | 복구한 수정 | 고정한 회귀 테스트 | 코드 근거 |
 | --- | --- | --- | --- | --- | --- | --- |
-| One user has one authoritative realtime connection, and reconnect replacement transfers ownership without creating a second match or losing the reserved room side. | `a06d1705bbc9` | `c98d4b1e8b43` reserved recovery → `e593b1dd9fcd` bounded deadline → `4f5199097284` browser retry | 기존 socket 중심 connection map | `a06d1705bbc9`, `4f5199097284` | `113e39acc85c` | `clientsByUser`, `disconnectedUsers`, `RoomSession`, browser `GameSocketClient` |
-| Timers, schedulers, heartbeat handles, retry work, snapshot buffers, and database resources have explicit single-owner cleanup. | `8f64dfc117f3` scheduler follows session | `e593b1dd9fcd` reconnect timer cleanup, `4f5199097284` browser timer/abort cleanup | stale timeout/old socket 가능성 | `a06d1705bbc9`, `e593b1dd9fcd` | `113e39acc85c` | room timers, client heartbeat/snapshot buffer, browser generation |
+| 사용자 한 명에게는 하나의 서버 권위형 실시간 연결만 허용하며, 재연결로 교체할 때도 두 번째 경기를 만들거나 예약 좌석을 잃지 않고 소유권을 이전합니다. | `a06d1705bbc9` | `c98d4b1e8b43` 예약된 복구 → `e593b1dd9fcd` 상한을 둔 기한 → `4f5199097284` 브라우저 재시도 | 기존 소켓 중심 연결 목록 | `a06d1705bbc9`, `4f5199097284` | `113e39acc85c` | `clientsByUser`, `disconnectedUsers`, `RoomSession`, 브라우저 `GameSocketClient` |
+| 타이머, 스케줄러, 연결 상태 확인 작업, 재시도 작업, 스냅샷 버퍼, 데이터베이스 자원은 각각 하나의 소유 주체가 명시되어 있으며 해당 주체가 정리합니다. | `8f64dfc117f3` 스케줄러 follows 세션 | `e593b1dd9fcd` 재연결 타이머 정리, `4f5199097284` 브라우저 타이머/중단 정리 | 오래된 시간 초과/기존 소켓 가능성 | `a06d1705bbc9`, `e593b1dd9fcd` | `113e39acc85c` | 경기방 타이머s, 클라이언트 연결 확인 신호/스냅샷 버퍼, 브라우저 세대 번호 |
 
-## 7. Failure → Fix → Test 연결
+## 7. 실패 → 수정 → 테스트 연결
 
-| 기존 상태/가정 | Fix 또는 강화 과정 | Test/evidence | 최종 보장 |
+| 기존 상태/가정 | 수정 또는 강화 과정 | 테스트/근거 | 최종 보장 |
 | --- | --- | --- | --- |
-| snapshot phase와 callbacks가 lifecycle을 암묵적으로 정의 | `aa5d6...` RoomSession → `8f64df...` GameHub integration | `113e39...` fake-timer tests | legal transition와 runtime side effect 일치 |
-| 같은 user의 old/new socket이 동시에 authoritative | `a06d17...` clientsByUser atomic handoff | replacement/stale-socket test | 한 user 한 current transport |
-| disconnect 즉시 match 종료 또는 room 상실 | `c98d4...` reservation recovery + `e593b1...` 15초 expiry | 14,999/15,000ms tests | bounded recoverable loss |
-| browser가 reservation을 사용하지 못함 | `4f5199...` fresh-ticket retry/no intent replay | browser code/tests | same room transport recovery |
+| 스냅샷 단계와 콜백이 수명주기를 암묵적으로 정의 | `aa5d6...` RoomSession → `8f64df...` GameHub 통합 | `113e39...` 가짜 타이머 테스트 | 허용된 상태 전이와 실행 시점 부수 효과 일치 |
+| 같은 사용자의 기존/새 소켓이 동시에 서버가 확정하는 | `a06d17...` clientsByUser 원자적 인계 | 교체/오래된 소켓 테스트 | 한 사용자 한 현재 전송 계층 |
+| 연결 해제 즉시 경기 종료 또는 경기방 상실 | `c98d4...` 예약 복구 + `e593b1...` 15초 만료 | 14,999/15,000ms 테스트 | 상한을 둔 recoverable 패배 |
+| 브라우저가 예약을 사용하지 못함 | `4f5199...` 새 티켓 재시도/요청 의도 재실행 없음 | 브라우저 코드/테스트 | 동일한 경기방 전송 계층 복구 |
 
-## 8. Ownership / state / responsibility 변화
+## 8. 소유권·상태·담당 범위 변화
 
-| 축 | 초기 SHA의 owner/state | 중간 전환 | Thread 최종 owner/state | 해제·cleanup 책임 | 근거 |
+| 축 | 초기 SHA의 소유 주체/상태 | 중간 전환 | 개발 스레드 최종 소유 주체/상태 | 해제·정리 책임 | 근거 |
 | --- | --- | --- | --- | --- | --- |
-| room domain state | snapshot phase/callbacks | `aa5d6...` RoomSession | RoomSession | finish에서 reconnect state clear | `roomSession.ts` |
-| current connection authority | socket/client collections | `a06d17...` user index | `clientsByUser` | replacement/close/hub close | `gameHub.ts` |
-| reserved side/deadline | 없음 | `c98d4...` disconnectedUsers, `e593b1...` timer | room + RoomSession | reconnect/finalize/abandon/close | GameHub reconnect methods |
-| browser retry | 없음 | `4f5199...` generation/backoff | GameSocketClient | success/terminal/unmount/15초 expiry | web socket client/reducer |
-| scheduler | room timer | session-gated start/stop | GameHub scheduler owner | pause/disconnect/finalize/remove | `startRoomScheduler`, unregister/stop paths |
+| 경기방 도메인 상태 | 스냅샷 단계/콜백 | `aa5d6...` RoomSession | RoomSession | 종료에서 재연결 상태 해제 | `roomSession.ts` |
+| 현재 연결 판정 권한 | 소켓/클라이언트 collections | `a06d17...` 사용자 인덱스 | `clientsByUser` | 교체/종료/허브 종료 | `gameHub.ts` |
+| 예약된 좌석/기한 | 없음 | `c98d4...` disconnectedUsers, `e593b1...` 타이머 | 경기방 + RoomSession | 재연결/결과 확정/abandon/종료 | GameHub 재연결 메서드 |
+| 브라우저 재시도 | 없음 | `4f5199...` 세대 번호/재시도 대기 | GameSocketClient | 성공/종료/컴포넌트 해제/15초 만료 | 웹 소켓 클라이언트/리듀서 |
+| 스케줄러 | 경기방 타이머 | 세션 검사를 통과한 시작/중지 | GameHub 스케줄러 소유 주체 | 일시정지/연결 해제/결과 확정/제거 | `startRoomScheduler`, 등록 해제·중지 경로 |
 
-## 9. Thread 최종 상태
+## 9. 개발 스레드 최종 상태
 
-- 최종 authoritative owner: RoomSession이 lifecycle을, `clientsByUser`가 current transport authority를, room timer가 reservation deadline을, browser generation이 retry work를 소유합니다.
-- 최종 상태/invariant: same-user replacement는 disconnect가 아니며 실제 loss는 15초간 같은 room side를 보존하고 정확히 한 recovery/forfeit/abandonment로 끝납니다.
-- 남아 있는 의도적 제한 또는 비보장: process restart 후 in-memory room 복구, multi-instance routing, real network proxy E2E는 보장하지 않습니다.
-- 후속 Thread가 의존하는 contract: browser는 room context가 있을 때만 fresh ticket으로 재접속하고 queue/AI intent를 다시 보내지 않으며 server는 identity가 일치하는 reserved side만 반환합니다.
-- 대표 코드 근거: `aa5d6a338690 roomSession.ts`, `a06d1705bbc9`/`e593b1dd9fcd gameHub.ts`, `113e39acc85c` tests, `4f5199097284` web reconnect code
+- 최종 판정 주체: RoomSession이 수명주기를, `clientsByUser`가 현재 전송 계층 판정 권한을, 경기방 타이머가 예약 기한을, 브라우저 세대 번호가 재시도 작업을 소유합니다.
+- 최종 상태/불변 조건: 동일한 사용자 교체는 연결 해제가 아니며 실제 패배는 15초간 같은 경기방 측을 보존하고 정확히 한 복구/몰수패/포기 처리로 끝납니다.
+- 남아 있는 의도적 제한 또는 보장하지 않는 범위: 프로세스 재시작 후 메모리 경기방 복구, 여러 인스턴스 라우팅, 실제 네트워크 프록시 E2E는 보장하지 않습니다.
+- 후속 개발 스레드가 의존하는 계약: 브라우저는 경기방 컨텍스트가 있을 때만 새 티켓으로 재접속하고 대기열/AI 요청 의도를 다시 보내지 않으며 서버는 신원이 일치하는 예약된 좌석만 반환합니다.
+- 대표 코드 근거: `aa5d6a338690 roomSession.ts`, `a06d1705bbc9`/`e593b1dd9fcd gameHub.ts`, `113e39acc85c` 테스트, `4f5199097284` 웹 재연결 코드
 
-## 10. 최종 architecture 또는 execution flow 정리
+## 10. 최종 아키텍처와 실행 순서
 
 ```text
 [current socket/user]
@@ -1868,412 +1868,412 @@ Source에서 확정된 invariant를 commit 시점별로 연결했습니다. `해
     └─ actual close
           ↓ RoomSession.disconnect(side, now)
        [reconnecting + 15s deadline, scheduler stopped]
-          ├─ fresh-ticket return before deadline → reserved side reattach
+          ├─ 기한 전에 새 티켓으로 복귀 → 예약 좌석에 다시 연결
           │      ↓ all sides present → prior state + scheduler resume
           └─ deadline expiry
                  ├─ one side absent → opposite winner → canonical finalize
-                 └─ both absent → non-persisted abandonment
+                 └─ 양쪽 모두 없음 → 결과를 저장하지 않고 경기 포기 처리
 ```
 
-- snapshot phase는 RoomSession decision을 반영하며 lifecycle source of truth가 아닙니다.
-- replacement old socket은 current map에서 제거된 뒤 닫히므로 close callback이 forfeit를 만들지 않습니다.
+- 스냅샷 단계는 `RoomSession`의 판단 결과를 반영할 뿐, 수명주기 상태를 결정하는 기준 데이터가 아닙니다.
+- 교체 기존 소켓은 현재 목록에서 제거된 뒤 닫히므로 종료 콜백이 몰수패를 만들지 않습니다.
 
-## 11. 학습 완료 자가 점검
+## 11. 학습 완료 확인
 
-- [x] Commit map의 모든 SHA를 원문 순서대로 확인했습니다.
-- [x] 각 commit의 subject, importance, tags를 변경하지 않았습니다.
+- [x] 커밋 목록의 모든 SHA를 원문 순서대로 확인했습니다.
+- [x] 각 커밋의 제목·중요도·태그를 변경하지 않았습니다.
 - [x] S/A/B 깊이를 구분해 코드 근거를 남겼습니다.
-- [x] final HEAD의 구현을 과거 SHA에 소급하지 않았습니다.
-- [x] 핵심 상태 필드, caller/callee, ownership, failure branch, cleanup을 실제 코드로 확인했습니다.
-- [x] Fix를 기존 가정 → failure/risk → root cause → decision → code → regression 순서로 연결했습니다.
-- [x] Test commit에서 production invariant, failure, technique, path, 증명/비증명 범위를 구분했습니다.
-- [x] Thread 최종 execution flow를 별도 프로젝트 재학습 없이 설명할 수 있습니다.
+- [x] 최종 상태의 구현을 과거 SHA에 소급하지 않았습니다.
+- [x] 핵심 상태 필드, 호출자/피호출자, 소유권, 실패 분기, 정리를 실제 코드로 확인했습니다.
+- [x] 수정을 기존 가정 → 실패/위험 → 근본 원인 → 판단 → 코드 → 회귀 순서로 연결했습니다.
+- [x] 테스트 커밋에서 운영 불변 조건, 실패, 기법, 경로, 검증 범위와 미검증 범위를 구분했습니다.
+- [x] 개발 스레드 최종 실행 순서를 별도 프로젝트 재학습 없이 설명할 수 있습니다.
 ===== END FILE: 05-room-lifecycle-connection-replacement-and-recovery.md =====
 
 ===== BEGIN FILE: 06-matchmaking-reservation-ownership-and-rollback.md =====
 # 매치메이킹 예약 소유권과 롤백
 
-원문 Development Thread: `Matchmaking reservation ownership and rollback`
+원문 개발 스레드: `Matchmaking reservation ownership and rollback`
 
-## 1. Thread 목표
+## 1. 개발 스레드 목표
 
-- GameHub 내부 timer-backed queue에서 독립 `Matchmaker` state machine으로 queue/reservation ownership이 이동하는 과정을 추적합니다.
-- closest-rating pairing, guest/registered pool 분리, six-second AI fallback, duplicate membership, leave/release 의미를 복원합니다.
-- room 생성 중 부분 실패와 모든 terminal path가 reservation을 누락 없이 해제하는 rollback/cleanup 구조를 확인합니다.
+- GameHub 내부 타이머 기반 대기열에서 독립 `Matchmaker` 상태 기계로 대기열/예약 소유권이 이동하는 과정을 추적합니다.
+- 가장 가까운 레이팅 상대 선택, 비회원/등록 사용자 풀 분리, 6초 후 AI 대체 처리, 중복 소속 정보, 이탈/릴리스 의미를 복원합니다.
+- 경기방 생성 중 부분 실패와 모든 종료 경로가 예약을 누락 없이 해제하는 되돌리기/정리 구조를 확인합니다.
 
-### Source에서 확정된 significance
+### 원문에서 확인한 중요성
 
-> The initial timer-backed queue works but leaves GameHub with multiple representations of availability. The later Matchmaker abstraction makes reservation state explicit; integration and cleanup commits then eliminate split ownership. The progression matters because stale reservations would permanently remove users or allow one user to occupy two matches.
+> 초기 타이머 기반 대기열은 동작하지만 GameHub 안에 참가 가능 상태가 여러 형태로 남습니다. 이후 대전 상대 연결 관리자가 예약 상태를 명시하고, 통합·정리 커밋이 분산된 소유권을 제거합니다. 오래된 예약을 남기면 사용자가 대기열에서 영구적으로 빠지거나 한 사용자가 두 경기에 들어갈 수 있습니다.
 
-### 직접 연결되는 Critical Invariants
+### 직접 연결되는 핵심 불변 조건
 
-> Queue and reservation membership have one owner and are released on every leave, disconnect, rollback, drain, abandonment, failure, and finalization path.
+> 대기열 참가와 예약 상태는 한 곳에서 관리하며, 이탈·연결 해제·되돌리기·작업 중단·경기방 폐기·실패·결과 확정 모든 경로에서 해제합니다.
 
-> The server is the sole authority for game rules, scores, phases, room membership, matchmaking, and persisted outcomes.
+> 게임 규칙, 점수, 단계, 경기방 참가 상태, 대전 상대 연결, 저장된 결과는 서버만 확정합니다.
 
-### 직접 연결되는 Major Engineering Difficulties
+### 직접 연결되는 주요 구현 난점
 
-> Coordinating readiness, pause, disconnect, reconnect, replacement, forfeit, retry, and final cleanup across interacting state machines.
+> 서로 연결된 상태 머신에서 준비, 일시정지, 연결 해제, 재연결, 교체, 몰수패, 재시도, 최종 정리를 함께 조정해야 합니다.
 
-> Preserving domain correctness during database failure, tournament-start rollback, match-finalization retry, process drain, and deployment shutdown.
+> 데이터베이스 장애, 토너먼트 시작 되돌리기, 경기 결과 확정 재시도, 프로세스 작업 중단, 배포 종료 중에도 데이터의 올바른 상태를 유지해야 합니다.
 
-## 2. 이 Thread를 이해하기 위한 핵심 질문
+## 2. 이 개발 스레드를 이해하기 위한 핵심 질문
 
-- queued, matched/reserved, duplicate, fallback-ready 상태는 어떤 자료구조와 반환형으로 표현됩니까?
-- closest candidate 선택에서 rating window, pool kind, tie order, injected clock이 어떻게 사용됩니까?
-- `leaveQueue`와 `release`는 왜 분리되며 잘못 사용하면 어떤 invariant가 깨집니까?
-- asynchronous NPC lookup 전후 어떤 socket/room/drain 조건을 다시 검증합니까?
-- GameHub에 남는 transport metadata와 Matchmaker가 소유하는 domain state는 각각 무엇입니까?
-- room publication 도중 observer/send/snapshot failure가 발생하면 어떤 획득 자원을 역순으로 되돌립니까?
+- 대기 중인, 매칭 완료/예약된, 중복, 대체 처리 준비 완료 상태는 어떤 자료구조와 반환형으로 표현됩니까?
+- 가장 가까운 후보를 선택할 때 레이팅 범위, 풀 유형, 동률일 때 순서, 주입한 시계를 어떻게 사용합니까?
+- `leaveQueue`와 `release`는 왜 분리되며 잘못 사용하면 어떤 불변 조건이 깨집니까?
+- 비동기 NPC 조회 전후 어떤 소켓/경기방/작업 중단 조건을 다시 검증합니까?
+- GameHub에 남는 전송 계층 메타데이터와 대전 상대 연결 관리자가 소유하는 도메인 상태는 각각 무엇입니까?
+- 경기방 공개 도중 관측기/전송/스냅샷 실패가 발생하면 어떤 획득 자원을 역순으로 되돌립니까?
 
 ## 3. 완료 기준
 
-- Matchmaker 상태 전이와 반환 outcome을 실제 타입 및 메서드로 그릴 수 있습니다.
-- 동일 사용자가 queued/reserved/active room 중 둘 이상에 동시에 존재하지 않는 근거를 제시할 수 있습니다.
-- normal match, AI fallback, leave, disconnect, drain, room creation failure, finalization/abandonment의 release 경로를 모두 기록할 수 있습니다.
-- GameHub의 duplicate queue 표현이 제거되기 전후 ownership 차이를 설명할 수 있습니다.
-- rollback test가 partial publication과 stale reservation을 어떻게 재현하는지 구분할 수 있습니다.
+- 대전 상대 연결 관리자 상태 전이와 반환 결과를 실제 타입 및 메서드로 그릴 수 있습니다.
+- 동일 사용자가 대기 중인/예약된/진행 중인 경기방 중 둘 이상에 동시에 존재하지 않는 근거를 제시할 수 있습니다.
+- 일반 경기, AI 대체 처리, 이탈, 연결 해제, 작업 중단, 경기방 생성 실패, 결과 확정/포기 처리의 릴리스 경로를 모두 기록할 수 있습니다.
+- GameHub의 중복 대기열 표현이 제거되기 전후 소유권 차이를 설명할 수 있습니다.
+- 되돌리기 테스트가 부분 반영 공개와 오래된 예약을 어떻게 재현하는지 구분할 수 있습니다.
 
-> 검토 방식: 지정 브랜치에 속한 exact SHA의 diff와 해당 시점 파일을 GitHub에서 확인했습니다. 로컬 실행 환경은 GitHub clone이 차단되어 테스트 명령은 실행하지 않았으며, 아래 테스트 결과 설명은 test implementation 검토에 한정합니다.
+> 검토 방식: 지정 브랜치의 정확한 SHA별 변경 내용과 해당 시점 파일을 GitHub에서 확인했습니다. 로컬 환경에서는 GitHub 복제가 차단되어 테스트 명령을 실행하지 못했습니다. 아래 테스트 설명은 테스트 코드 검토 결과에 한정합니다.
 
-## 4. Commit map
+## 4. 커밋 목록
 
-| 순서 | SHA | Subject | Importance | Tags | Source에서 확정된 역할 |
+| 순서 | SHA | 제목 | 중요도 | 태그 | 원문에서 확인한 역할 |
 | ---: | --- | --- | :---: | --- | --- |
-| 1 | `1122e6a4b901` | `feat(game): 대기 플레이어 NPC fallback 구성` | B | REALTIME | Introduces timed AI fallback with explicit timer cleanup. |
-| 2 | `1ec8335b0e75` | `refactor(game): matchmaking player와 fallback 계약 정의` | A | REALTIME, REFACTOR | Defines queued, matched, duplicate, fallback, and release outcomes independently of sockets. |
-| 3 | `a4f59a2e8192` | `refactor(game): rating 기반 closest-pair queue 구현` | A | REALTIME, REFACTOR | Implements deterministic compatible-pool, closest-rating pairing. |
-| 4 | `7871e29278c2` | `refactor(game): AI fallback과 reservation lifecycle 구현` | A | REALTIME, REFACTOR | Separates queue cancellation from releasing an assigned match reservation. |
-| 5 | `e53559ef3a11` | `refactor(game): Matchmaker queue reservation을 GameHub에 연결` | A | REALTIME, REFACTOR | Moves duplicate-user reservation and PvP selection behind Matchmaker. |
-| 6 | `51f36aa50596` | `refactor(game): Matchmaker AI fallback를 GameHub에 연결` | A | REALTIME, OPERATIONS, RISK | Claims delayed fallback through the same state machine and revalidates asynchronous work. |
-| 7 | `a23fc26a7f82` | `refactor(game): queue와 reservation cleanup 일원화` | S | REALTIME, ARCH, RISK | Removes duplicate queue ownership and centralizes every release path. |
-| 8 | `b5bfeee0e23e` | `refactor(game): room 생성과 finalization cleanup 보장` | A | REALTIME, OBSERVABILITY, RISK | Rolls back partially published rooms and guarantees terminal removal. |
-| 9 | `112228db8878` | `test(game): matchmaking lifecycle 검증` | A | REALTIME, RISK, TEST | Protects matchability after failure, abandonment, forfeit, and rollback. |
+| 1 | `1122e6a4b901` | `feat(game): 대기 플레이어 NPC fallback 구성` | B | REALTIME | 명시적 타이머 정리를 포함한 시간 기반 AI 대체 처리를 도입합니다. |
+| 2 | `1ec8335b0e75` | `refactor(game): matchmaking player와 fallback 계약 정의` | A | REALTIME, REFACTOR | 소켓과 독립적으로 대기, 매칭, 중복, 대체 처리, 예약 해제 결과를 정의합니다. |
+| 3 | `a4f59a2e8192` | `refactor(game): rating 기반 closest-pair queue 구현` | A | REALTIME, REFACTOR | 호환되는 풀 안에서 레이팅이 가장 가까운 상대를 결정적으로 선택합니다. |
+| 4 | `7871e29278c2` | `refactor(game): AI fallback과 reservation lifecycle 구현` | A | REALTIME, REFACTOR | 대기열 취소와 이미 배정된 경기 예약 해제를 분리합니다. |
+| 5 | `e53559ef3a11` | `refactor(game): Matchmaker queue reservation을 GameHub에 연결` | A | REALTIME, REFACTOR | 중복 사용자 예약 검사와 PvP 상대 선택을 대전 상대 연결 관리자 내부로 옮깁니다. |
+| 6 | `51f36aa50596` | `refactor(game): Matchmaker AI fallback를 GameHub에 연결` | A | REALTIME, OPERATIONS, RISK | 지연된 대체 처리도 같은 상태 머신에서 선점하고 비동기 작업 결과를 다시 검증합니다. |
+| 7 | `a23fc26a7f82` | `refactor(game): queue와 reservation cleanup 일원화` | S | REALTIME, ARCH, RISK | 중복 대기열 소유 상태를 제거하고 모든 예약 해제 경로를 한곳에 모읍니다. |
+| 8 | `b5bfeee0e23e` | `refactor(game): room 생성과 finalization cleanup 보장` | A | REALTIME, OBSERVABILITY, RISK | 일부만 공개된 경기방을 되돌리고 종료 상태에서 반드시 제거합니다. |
+| 9 | `112228db8878` | `test(game): matchmaking lifecycle 검증` | A | REALTIME, RISK, TEST | 실패, 경기 폐기, 몰수패, 되돌리기 뒤에도 다시 매칭할 수 있는 상태를 보장합니다. |
 
-## 5. Commit별 학습 기록
+## 5. 커밋별 학습 기록
 
 ### 5.1. `feat(game): 대기 플레이어 NPC fallback 구성`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `1122e6a4b901` |
-| Importance | B |
-| Tags | REALTIME |
-| 학습 깊이 | Thread 흐름에서 맡는 구현 역할과 필요한 상태 변화를 복원했습니다. |
+| 중요도 | B |
+| 태그 | REALTIME |
+| 학습 깊이 | 개발 스레드 흐름에서 맡는 구현 역할과 필요한 상태 변화를 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Introduces timed AI fallback with explicit timer cleanup.
-- Classification summary: Add a bounded waiting policy for the human matchmaking queue.
+- 개발 스레드에서의 역할: 명시적 타이머 정리를 포함한 시간 기반 AI 대체 처리를 도입합니다.
+- 분류 요약: 사람 사용자 대기열에 대기 시간 상한 규칙을 추가합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | human queue가 상대를 못 찾으면 무기한 대기하며 queue entry에 fallback lifecycle이 없었습니다. |
-| 핵심 boundary/decision | GameHub `QueueEntry`가 6초 `npcFallbackTimer`를 소유하고 timeout 시 entry가 여전히 queue에 있고 socket open/room 없음이면 rating이 가장 가까운 active NPC로 room을 만듭니다. |
-| 상태 또는 ownership 변화 | fallback timer는 queue entry가 소유하고 normal match, leave, disconnect, prune가 clear합니다. room은 socket이 없는 `npcUser` identity를 별도로 보관합니다. |
-| 주요 failure/edge path | timeout callback은 current membership/socket/room을 재검증해 이미 matched user에게 두 번째 room을 만들지 않습니다. |
-| 보장/비보장 | human wait가 6초로 bounded되고 stale timer cleanup이 있습니다. queue/reservation domain owner는 여전히 GameHub 배열과 timer에 분산돼 있습니다. |
-| 다음 관련 commit 연결 | `1ec833...`이 socket과 독립된 Matchmaker player/outcome contract를 정의합니다. |
+| 직전 관련 상태 | 사람 사용자 대기열이 상대를 못 찾으면 무기한 대기하며 대기열 항목에 대체 처리 수명주기가 없었습니다. |
+| 핵심 경계/판단 | GameHub `QueueEntry`가 6초 `npcFallbackTimer`를 소유하고 시간 초과 시 항목이 여전히 대기열에 있고 소켓 열기/경기방 없음이면 레이팅이 가장 가까운 활성 NPC로 경기방을 만듭니다. |
+| 상태 또는 소유권 변화 | 대체 처리 타이머는 대기열 항목이 소유하고 일반 경기, 이탈, 연결 해제, 정리가 해제합니다. 경기방은 소켓이 없는 `npcUser` 신원을 별도로 보관합니다. |
+| 주요 실패/예외 경로 | 시간 초과 콜백은 현재 소속 정보/소켓/경기방을 재검증해 이미 매칭 완료 사용자에게 두 번째 경기방을 만들지 않습니다. |
+| 보장 범위/보장하지 않는 범위 | 사람 사용자 대기가 6초로 상한이 적용되고 오래된 타이머 정리가 있습니다. 대기열/예약 도메인 소유 주체는 여전히 GameHub 배열과 타이머에 분산돼 있습니다. |
+| 다음 관련 커밋 연결 | `1ec833...`이 소켓과 독립된 대전 상대 연결 관리자 플레이어/결과 계약을 정의합니다. |
 
 비교 기준:
-- 이 commit의 parent에서 동일 책임을 담당하던 코드를 비교했습니다.
-- 다음 Thread 관련 SHA: `1ec8335b0e75` — `refactor(game): matchmaking player와 fallback 계약 정의`
+- 이 커밋의 부모 커밋에서 동일 책임을 담당하던 코드를 비교했습니다.
+- 다음 개발 스레드 관련 SHA: `1ec8335b0e75` — `refactor(game): matchmaking player와 fallback 계약 정의`
 
 ### 5.2. `refactor(game): matchmaking player와 fallback 계약 정의`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `1ec8335b0e75` |
-| Importance | A |
-| Tags | REALTIME, REFACTOR |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | REALTIME, REFACTOR |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Defines queued, matched, duplicate, fallback, and release outcomes independently of sockets.
-- Classification summary: Define Matchmaker types and state transitions without binding them to WebSocket clients.
+- 개발 스레드에서의 역할: 소켓과 독립적으로 대기, 매칭, 중복, 대체 처리, 예약 해제 결과를 정의합니다.
+- 분류 요약: 대전 상대 연결 관리자 타입과 상태 전이를 WebSocket 클라이언트에 결합하지 않고 정의합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | queue state가 GameHub entry/timer와 boolean 조건으로만 표현돼 duplicate, matched reservation, fallback deadline, release 의미가 명시적이지 않았습니다. |
-| 핵심 boundary/decision | `MatchmakingKind`, `MatchmakingPlayer`, pair, join outcomes(`queued|matched|duplicate`), fallback outcomes(`waiting|ready|unavailable`), status와 injected clock/rating window options를 정의합니다. |
-| 상태 또는 ownership 변화 | Matchmaker가 domain status vocabulary를 소유할 준비를 하고 GameHub/socket은 transport metadata로 분리될 수 있습니다. |
-| 주요 failure/edge path | 6,000ms fallback constant와 option validation을 명시합니다. 아직 complete queue algorithm/integration은 뒤 commits 범위입니다. |
-| 보장/비보장 | 상태 전이를 typed outcome으로 설명할 수 있습니다. 실제 closest pairing, leave/release semantics, single ownership은 아직 없습니다. |
-| 다음 관련 commit 연결 | `a4f59a...`가 compatible pool 내 deterministic closest-rating pairing을 구현합니다. |
+| 직전 관련 상태 | 대기열 상태가 GameHub 항목/타이머와 boolean 조건으로만 표현돼 중복, 매칭 예약, 대체 처리 기한, 릴리스 의미가 명시적이지 않았습니다. |
+| 핵심 경계/판단 | `MatchmakingKind`, `MatchmakingPlayer`, 쌍, 참가 결과(`queued | matched | duplicate`), 대체 처리 결과(`waiting | ready | unavailable`), 상태와 주입한 시계·레이팅 범위 옵션을 정의합니다. |
+| 상태 또는 소유권 변화 | 대전 상대 연결 관리자가 도메인 상태 이벤트 종류를 소유할 준비를 하고 GameHub/소켓은 전송 계층 메타데이터로 분리될 수 있습니다. |
+| 주요 실패/예외 경로 | 6,000ms 대체 처리 constant와 옵션 검증을 명시합니다. 아직 완료 처리 대기열 algorithm/통합은 뒤 커밋 범위입니다. |
+| 보장 범위/보장하지 않는 범위 | 상태 변경을 타입이 정해진 결과로 설명할 수 있습니다. 실제로 가장 가까운 상대를 선택하는 규칙, 이탈과 예약 해제의 동작, 단일 상태 소유 주체는 아직 없습니다. |
+| 다음 관련 커밋 연결 | `a4f59a...`가 compatible 풀 내 결정적 가장 가까운 레이팅 상대 선택을 구현합니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `1122e6a4b901` — `feat(game): 대기 플레이어 NPC fallback 구성`
-- 다음 Thread 관련 SHA: `a4f59a2e8192` — `refactor(game): rating 기반 closest-pair queue 구현`
+- 직전 개발 스레드 관련 SHA: `1122e6a4b901` — `feat(game): 대기 플레이어 NPC fallback 구성`
+- 다음 개발 스레드 관련 SHA: `a4f59a2e8192` — `refactor(game): rating 기반 closest-pair queue 구현`
 
 ### 5.3. `refactor(game): rating 기반 closest-pair queue 구현`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `a4f59a2e8192` |
-| Importance | A |
-| Tags | REALTIME, REFACTOR |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | REALTIME, REFACTOR |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Implements deterministic compatible-pool, closest-rating pairing.
-- Classification summary: Implement Matchmaker queue membership and deterministic closest-candidate selection.
+- 개발 스레드에서의 역할: 호환되는 풀 안에서 레이팅이 가장 가까운 상대를 결정적으로 선택합니다.
+- 분류 요약: 대전 상대 연결 관리자의 대기열 소속과 결정적인 최인접 후보 선택을 구현합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | typed contract는 있으나 실제 queue와 candidate selection을 Matchmaker가 소유하지 않았습니다. |
-| 핵심 boundary/decision | Matchmaker가 queue와 `playerStatuses`를 보유하고 같은 kind, rating difference ≤ configured max 중 absolute difference가 가장 작은 기존 candidate를 선택합니다. `< closestDifference` 조건으로 동률이면 먼저 들어온 candidate가 유지됩니다. |
-| 상태 또는 ownership 변화 | queue membership과 queued/matched status가 Matchmaker 내부 map/list로 이동합니다. injected clock이 joined/fallback timing을 결정합니다. |
-| 주요 failure/edge path | duplicate join은 status를 변경하지 않고 duplicate outcome을 반환합니다. 반환 player/pair는 defensive copy로 외부 mutation을 막습니다. |
-| 보장/비보장 | same pool에서 deterministic closest pairing과 duplicate membership 차단을 제공합니다. AI fallback claim과 reservation release 차이는 다음 commit입니다. |
-| 다음 관련 commit 연결 | `7871e2...`가 queued cancellation과 matched reservation release를 분리합니다. |
+| 직전 관련 상태 | 타입이 지정된 계약은 있으나 실제 대기열과 후보 선택을 대전 상대 연결 관리자가 소유하지 않았습니다. |
+| 핵심 경계/판단 | 대전 상대 연결 관리자는 대기열과 `playerStatuses`를 보유합니다. 같은 신원 종류이면서 설정된 최대 레이팅 차이 안에 있는 기존 후보 중 절댓값 차이가 가장 작은 사용자를 선택합니다. 비교식이 `< closestDifference`이므로 차이가 같으면 먼저 들어온 후보가 유지됩니다. |
+| 상태 또는 소유권 변화 | 대기열 소속 정보와 대기 중인/매칭 완료 상태가 대전 상대 연결 관리자 내부 목록/목록으로 이동합니다. 주입한 시계가 참가 시각·대체 처리 시간 제어를 결정합니다. |
+| 주요 실패/예외 경로 | 중복 참가는 상태를 변경하지 않고 중복 결과를 반환합니다. 반환 플레이어/쌍은 defensive 복사로 외부 변경을 막습니다. |
+| 보장 범위/보장하지 않는 범위 | 같은 풀에서 레이팅이 가장 가까운 상대를 결정적으로 선택하고 중복 소속을 차단합니다. AI 대체 처리 선점과 예약 해제의 차이는 다음 커밋에서 다룹니다. |
+| 다음 관련 커밋 연결 | `7871e2...`가 대기 중인 취소와 매칭 예약 릴리스를 분리합니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `1ec8335b0e75` — `refactor(game): matchmaking player와 fallback 계약 정의`
-- 다음 Thread 관련 SHA: `7871e29278c2` — `refactor(game): AI fallback과 reservation lifecycle 구현`
+- 직전 개발 스레드 관련 SHA: `1ec8335b0e75` — `refactor(game): matchmaking player와 fallback 계약 정의`
+- 다음 개발 스레드 관련 SHA: `7871e29278c2` — `refactor(game): AI fallback과 reservation lifecycle 구현`
 
 ### 5.4. `refactor(game): AI fallback과 reservation lifecycle 구현`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `7871e29278c2` |
-| Importance | A |
-| Tags | REALTIME, REFACTOR |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | REALTIME, REFACTOR |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Separates queue cancellation from releasing an assigned match reservation.
-- Classification summary: Implement fallback claiming and distinct leave/release transitions for queued and matched players.
+- 개발 스레드에서의 역할: 대기열 취소와 이미 배정된 경기 예약 해제를 분리합니다.
+- 분류 요약: 대체 처리 선점과 대기 중·매칭된 플레이어의 이탈·예약 해제 전이를 구분해 구현합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | matched pair와 queued player를 같은 remove operation으로 다루면 assigned reservation을 잘못 해제하거나 queued status를 남길 수 있었습니다. |
-| 핵심 boundary/decision | fallback claim은 queued player/deadline에서만 `waiting|ready|unavailable`을 반환하고 ready 시 queue에서 제거해 matched로 표시합니다. `leaveQueue`는 queued만 제거하고 `release`는 queued/matched status 모두 정리합니다. |
-| 상태 또는 ownership 변화 | Matchmaker가 queued→matched reservation lifecycle과 deadline을 authoritative하게 소유합니다. |
-| 주요 failure/edge path | deadline 전 claim은 remaining time과 waiting을 반환하며 이미 matched/unknown이면 unavailable입니다. 잘못된 `leaveQueue`가 matched reservation을 조용히 없애지 않습니다. |
-| 보장/비보장 | queue cancellation과 assigned match cleanup의 의미가 분리됩니다. GameHub가 이 API를 모든 path에서 사용하는지는 integration commits가 필요합니다. |
-| 다음 관련 commit 연결 | `e53559...`가 PvP join/selection을 Matchmaker 뒤로 옮기지만 duplicate GameHub queue 표현은 잠시 남습니다. |
+| 직전 관련 상태 | 매칭 완료 쌍과 대기 중인 플레이어를 같은 제거 연산으로 다루면 assigned 예약을 잘못 해제하거나 대기 중인 상태를 남길 수 있었습니다. |
+| 핵심 경계/판단 | 대체 처리 선점은 대기 중인 플레이어/기한에서만 `waiting | ready | unavailable`을 반환하고 준비 완료 시 대기열에서 제거해 매칭 완료로 표시합니다. `leaveQueue`는 대기 중인만 제거하고 `release`는 대기 중인/매칭 완료 상태 모두 정리합니다. |
+| 상태 또는 소유권 변화 | 대전 상대 연결 관리자가 대기 중인→매칭 예약 수명주기와 기한을 서버가 확정하는하게 소유합니다. |
+| 주요 실패/예외 경로 | 기한 전 선점은 remaining 시간과 대기 중을 반환하며 이미 매칭 완료/알 수 없는이면 unavailable입니다. 잘못된 `leaveQueue`가 매칭 예약을 조용히 없애지 않습니다. |
+| 보장 범위/보장하지 않는 범위 | 대기열 취소와 배정된 경기 정리의 의미가 분리됩니다. GameHub가 이 API를 모든 경로에서 사용하는지는 후속 통합 커밋에서 확인해야 합니다. |
+| 다음 관련 커밋 연결 | `e53559...`가 PvP 참가/선택을 대전 상대 연결 관리자 뒤로 옮기지만 중복 GameHub 대기열 표현은 잠시 남습니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `a4f59a2e8192` — `refactor(game): rating 기반 closest-pair queue 구현`
-- 다음 Thread 관련 SHA: `e53559ef3a11` — `refactor(game): Matchmaker queue reservation을 GameHub에 연결`
+- 직전 개발 스레드 관련 SHA: `a4f59a2e8192` — `refactor(game): rating 기반 closest-pair queue 구현`
+- 다음 개발 스레드 관련 SHA: `e53559ef3a11` — `refactor(game): Matchmaker queue reservation을 GameHub에 연결`
 
 ### 5.5. `refactor(game): Matchmaker queue reservation을 GameHub에 연결`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `e53559ef3a11` |
-| Importance | A |
-| Tags | REALTIME, REFACTOR |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | REALTIME, REFACTOR |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Moves duplicate-user reservation and PvP selection behind Matchmaker.
-- Classification summary: Integrate Matchmaker join outcomes with GameHub transport clients and room creation.
+- 개발 스레드에서의 역할: 중복 사용자 예약 검사와 PvP 상대 선택을 대전 상대 연결 관리자 내부로 옮깁니다.
+- 분류 요약: 대전 상대 연결 관리자 참가 결과를 GameHub 전송 클라이언트와 경기방 생성에 연결합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | GameHub 배열이 membership/selection을 직접 결정해 Matchmaker state와 production behavior가 연결되지 않았습니다. |
-| 핵심 boundary/decision | GameHub가 registered/guest kind와 rating을 `Matchmaker.join`에 넘기고 duplicate/queued/matched outcome에 따라 error, queue metadata, room creation을 수행합니다. rating window는 200입니다. |
-| 상태 또는 ownership 변화 | domain status는 Matchmaker로 이동하지만 이 SHA에는 기존 queue/queueEntries 표현이 함께 남아 split ownership이 완전히 제거되지 않았습니다. |
-| 주요 failure/edge path | matched opponent transport가 없거나 createRoom이 throw하면 두 player를 `release`합니다. 그렇지 않으면 stale reservation이 남습니다. |
-| 보장/비보장 | PvP selection과 duplicate reservation은 Matchmaker outcome에 종속됩니다. AI fallback과 all-path cleanup은 아직 통합 중입니다. |
-| 다음 관련 commit 연결 | `51f36a...`가 fallback timer callback도 Matchmaker claim과 asynchronous revalidation을 사용하게 합니다. |
+| 직전 관련 상태 | GameHub 배열이 소속 정보/선택을 직접 결정해 대전 상대 연결 관리자 상태와 운영 동작이 연결되지 않았습니다. |
+| 핵심 경계/판단 | GameHub가 등록 사용자/비회원 유형과 레이팅을 `Matchmaker.join`에 넘기고 중복/대기 중인/매칭 완료 결과에 따라 오류, 대기열 메타데이터, 경기방 생성을 수행합니다. 레이팅 시간 구간은 200입니다. |
+| 상태 또는 소유권 변화 | 도메인 상태는 대전 상대 연결 관리자로 이동하지만 이 SHA에는 기존 대기열/`queueEntries` 표현이 함께 남아 split 소유권이 완전히 제거되지 않았습니다. |
+| 주요 실패/예외 경로 | 매칭 완료 상대 전송 계층이 없거나 경기방 생성이 예외 발생하면 두 플레이어를 `release`합니다. 그렇지 않으면 오래된 예약이 남습니다. |
+| 보장 범위/보장하지 않는 범위 | PvP 선택과 중복 예약은 대전 상대 연결 관리자 결과에 종속됩니다. AI 대체 처리와 모든 경로 정리는 아직 통합 중입니다. |
+| 다음 관련 커밋 연결 | `51f36a...`가 대체 처리 타이머 콜백도 대전 상대 연결 관리자 선점과 비동기 revalidation을 사용하게 합니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `7871e29278c2` — `refactor(game): AI fallback과 reservation lifecycle 구현`
-- 다음 Thread 관련 SHA: `51f36aa50596` — `refactor(game): Matchmaker AI fallback를 GameHub에 연결`
+- 직전 개발 스레드 관련 SHA: `7871e29278c2` — `refactor(game): AI fallback과 reservation lifecycle 구현`
+- 다음 개발 스레드 관련 SHA: `51f36aa50596` — `refactor(game): Matchmaker AI fallback를 GameHub에 연결`
 
 ### 5.6. `refactor(game): Matchmaker AI fallback를 GameHub에 연결`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `51f36aa50596` |
-| Importance | A |
-| Tags | REALTIME, OPERATIONS, RISK |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | REALTIME, OPERATIONS, RISK |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Claims delayed fallback through the same state machine and revalidates asynchronous work.
-- Classification summary: Route AI fallback deadlines and claims through Matchmaker while guarding async NPC lookup races.
+- 개발 스레드에서의 역할: 지연된 대체 처리도 같은 상태 머신에서 선점하고 비동기 작업 결과를 다시 검증합니다.
+- 분류 요약: AI 대체 처리 기한과 선점을 대전 상대 연결 관리자를 통해 처리하고 비동기 NPC 조회 경쟁 상태를 방어합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | PvP는 Matchmaker를 사용하지만 fallback timer가 GameHub local queue state만 보면 두 ownership model이 충돌합니다. |
-| 핵심 boundary/decision | timer는 Matchmaker fallback deadline에 맞춰 arm하고 callback에서 current entry/socket/room을 확인한 뒤 `claimFallback`을 호출합니다. `waiting`이면 reschedule, `unavailable`이면 metadata cleanup, `ready`이면 NPC lookup 후 조건을 다시 검사합니다. |
-| 상태 또는 ownership 변화 | fallback status/deadline은 Matchmaker, timer/client reference는 GameHub `queueEntries`가 소유합니다. |
-| 주요 failure/edge path | async NPC lookup 동안 drain, disconnect, room 생성, entry replacement가 발생할 수 있어 lookup 전후 acceptingMatches/socket/room/entry를 재검증하고 모든 실패에서 release합니다. |
-| 보장/비보장 | AI fallback도 동일 reservation state machine을 통과합니다. duplicate queue representation과 cleanup scatter는 `a23fc2...`에서 제거됩니다. |
-| 다음 관련 commit 연결 | `a23fc2...`가 GameHub queue array를 없애고 release path를 중앙화해 single owner invariant를 완성합니다. |
+| 직전 관련 상태 | PvP는 대전 상대 연결 관리자를 사용하지만 대체 처리 타이머가 GameHub 로컬 대기열 상태만 보면 두 소유권 모델이 충돌합니다. |
+| 핵심 경계/판단 | 타이머는 대전 상대 연결 관리자의 대체 처리 기한에 맞춰 예약하고 콜백에서 현재 항목/소켓/경기방을 확인한 뒤 `claimFallback`을 호출합니다. `waiting`이면 다시 예약하고, `unavailable`이면 메타데이터 정리, `ready`이면 NPC 조회 후 조건을 다시 검사합니다. |
+| 상태 또는 소유권 변화 | 대체 처리 상태/기한은 대전 상대 연결 관리자, 타이머/클라이언트 참조는 GameHub `queueEntries`가 소유합니다. |
+| 주요 실패/예외 경로 | 비동기 처리 NPC 조회 동안 작업 중단, 연결 해제, 경기방 생성, 항목 교체가 발생할 수 있어 조회 전후 acceptingMatches/소켓/경기방/항목을 재검증하고 모든 실패에서 릴리스합니다. |
+| 보장 범위/보장하지 않는 범위 | AI 대체 처리도 동일 예약 상태 기계를 통과합니다. 중복 대기열 표현과 정리 scatter는 `a23fc2...`에서 제거됩니다. |
+| 다음 관련 커밋 연결 | `a23fc2...`가 GameHub 대기열 배열을 없애고 릴리스 경로를 중앙화해 단일 소유 주체 불변 조건을 완성합니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `e53559ef3a11` — `refactor(game): Matchmaker queue reservation을 GameHub에 연결`
-- 다음 Thread 관련 SHA: `a23fc26a7f82` — `refactor(game): queue와 reservation cleanup 일원화`
+- 직전 개발 스레드 관련 SHA: `e53559ef3a11` — `refactor(game): Matchmaker queue reservation을 GameHub에 연결`
+- 다음 개발 스레드 관련 SHA: `a23fc26a7f82` — `refactor(game): queue와 reservation cleanup 일원화`
 
 ### 5.7. `refactor(game): queue와 reservation cleanup 일원화`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `a23fc26a7f82` |
-| Importance | S |
-| Tags | REALTIME, ARCH, RISK |
-| 학습 깊이 | Architecture/invariant 중심으로 직전 상태, 결정, 핵심 전이, ownership, failure, 후속 검증까지 복원했습니다. |
+| 중요도 | S |
+| 태그 | REALTIME, ARCH, RISK |
+| 학습 깊이 | 아키텍처/불변 조건 중심으로 직전 상태, 결정, 핵심 전이, 소유권, 실패, 후속 검증까지 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Removes duplicate queue ownership and centralizes every release path.
-- Classification summary: Make Matchmaker the sole domain owner and reduce GameHub state to transport/timer metadata.
+- 개발 스레드에서의 역할: 중복 대기열 소유 상태를 제거하고 모든 예약 해제 경로를 한곳에 모읍니다.
+- 분류 요약: 대전 상대 연결 관리자를 대전 상대 연결 상태의 유일한 소유 주체로 두고 GameHub에는 전송·타이머 메타데이터만 남깁니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | Matchmaker status와 GameHub queue array/entry map이 동시에 user availability를 표현해 한쪽 cleanup 누락이 stale reservation 또는 duplicate match를 만들 수 있었습니다. |
-| 핵심 boundary/decision | legacy queue array/findClosest를 삭제하고 Matchmaker를 sole domain owner로 둡니다. GameHub `queueEntries`는 client와 fallback timer를 찾는 transport metadata만 보관하며 shared cleanup helper가 leave/prune/drain/close/abandon/failure/finalization에서 `release`를 호출합니다. |
-| 상태 또는 ownership 변화 | queued/matched membership은 Matchmaker 한 곳, timer/socket reference는 GameHub 한 곳으로 분리됩니다. release는 idempotent domain cleanup primitive입니다. |
-| 주요 failure/edge path | normal match, AI fallback, disconnect, drain, room abandonment, finalization failure, hub close 중 하나라도 release를 빠뜨리면 user가 영구 matched로 남습니다. 공통 helper로 모든 terminal path를 수렴시킵니다. |
-| 보장/비보장 | availability의 competing representation이 없고 every known terminal path가 reservation을 해제합니다. room publication 중 partial resource rollback은 다음 commit에서 강화됩니다. |
-| 다음 관련 commit 연결 | `b5bfee...`가 createRoom publish failure와 finalization observer/broadcast failure에서도 acquired resource를 rollback/finally cleanup합니다. |
+| 직전 관련 상태 | 대전 상대 연결 관리자 상태와 GameHub 대기열 배열/항목 목록이 동시에 사용자 사용 가능 상태를 표현해 한쪽 정리 누락이 오래된 예약 또는 중복 경기를 만들 수 있었습니다. |
+| 핵심 경계/판단 | 기존 대기열 배열/findClosest를 삭제하고 대전 상대 연결 관리자를 유일한 도메인 상태 소유 주체로 둡니다. GameHub `queueEntries`는 클라이언트와 대체 처리 타이머를 찾는 전송 계층 메타데이터만 보관하며 공유 정리 도우미 함수가 이탈/정리/작업 중단/종료/abandon/실패/결과 확정에서 `release`를 호출합니다. |
+| 상태 또는 소유권 변화 | 대기 중인/매칭 완료 소속 정보는 대전 상대 연결 관리자 한 곳, 타이머/소켓 참조는 GameHub 한 곳으로 분리됩니다. 릴리스는 멱등 도메인 정리 기본 요소입니다. |
+| 주요 실패/예외 경로 | 일반 경기, AI 대체 처리, 연결 해제, 작업 중단, 경기방 포기 처리, 결과 확정 실패, 허브 종료 중 하나라도 릴리스를 빠뜨리면 사용자가 영구 매칭 완료로 남습니다. 공통 도우미 함수로 모든 종료 경로를 수렴시킵니다. |
+| 보장 범위/보장하지 않는 범위 | 사용 가능 상태를 나타내는 중복 자료가 없고 알려진 모든 종료 경로가 예약을 해제합니다. 경기방을 공개하다가 일부 자원만 만들어진 경우의 되돌리기는 다음 커밋에서 강화됩니다. |
+| 다음 관련 커밋 연결 | `b5bfee...`가 경기방 공개 실패와 결과 확정 관측·전파 실패에서도 이미 획득한 자원을 되돌리고 `finally`에서 정리합니다. |
 
-#### Architecture / invariant 복원
+#### 아키텍처와 불변 조건 복원
 
 | 축 | 복원 결과 |
 | --- | --- |
-| 문제 | domain queue와 transport queue가 동일 사실을 각각 보유해 cleanup 원자성이 깨집니다. |
-| 실패 위험 | user가 영구 queue 밖/예약 상태에 남거나 두 match에 동시에 배정됩니다. |
-| 핵심 결정 | Matchmaker를 sole status owner로 하고 GameHub에는 transport/timer metadata만 남깁니다. |
-| 구현 경로 | join/claim/leave/release는 Matchmaker; GameHub path는 metadata helper를 거쳐 timer clear + release. |
-| 수명주기·상태 | queued → matched/reserved → room active → release; fallback timer는 queued metadata lifetime에만 존재합니다. |
-| 실패 처리 | leave, socket prune, drain, async lookup failure, create failure, abandon, finalization/remove 모두 shared cleanup에 수렴합니다. |
-| 후속 검증 | `112228...` forfeit/abandon/observer throw 뒤 같은 users가 즉시 다시 match되는 regression. |
-| Thread 전체 의미 | matchability가 여러 array의 우연한 동기화가 아니라 단일 state machine invariant가 됩니다. |
+| 문제 | 도메인 대기열과 전송 계층 대기열이 동일 사실을 각각 보유해 정리 원자성이 깨집니다. |
+| 실패 위험 | 사용자가 영구 대기열 밖/예약 상태에 남거나 두 경기에 동시에 배정됩니다. |
+| 핵심 결정 | 대전 상대 연결 관리자를 유일한 상태 소유 주체로 하고 GameHub에는 전송 계층/타이머 메타데이터만 남깁니다. |
+| 구현 경로 | 참가/선점/이탈/릴리스는 대전 상대 연결 관리자; GameHub 경로는 메타데이터 도우미 함수를 거쳐 타이머 해제 + 릴리스. |
+| 수명주기·상태 | 대기 중인 → 매칭 완료/예약된 → 경기방 활성 → 릴리스; 대체 처리 타이머는 대기 중인 메타데이터 수명에만 존재합니다. |
+| 실패 처리 | 이탈, 소켓 정리, 작업 중단, 비동기 처리 조회 실패, 생성 실패, abandon, 결과 확정/제거 모두 공유 정리에 수렴합니다. |
+| 후속 검증 | `112228...` 몰수패/abandon/관측기 예외 발생 뒤 같은 사용자가 즉시 다시 경기되는 회귀. |
+| 개발 스레드 전체 의미 | matchability가 여러 배열의 우연한 동기화가 아니라 단일 상태 기계 불변 조건이 됩니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `51f36aa50596` — `refactor(game): Matchmaker AI fallback를 GameHub에 연결`
-- 다음 Thread 관련 SHA: `b5bfeee0e23e` — `refactor(game): room 생성과 finalization cleanup 보장`
+- 직전 개발 스레드 관련 SHA: `51f36aa50596` — `refactor(game): Matchmaker AI fallback를 GameHub에 연결`
+- 다음 개발 스레드 관련 SHA: `b5bfeee0e23e` — `refactor(game): room 생성과 finalization cleanup 보장`
 
 ### 5.8. `refactor(game): room 생성과 finalization cleanup 보장`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `b5bfeee0e23e` |
-| Importance | A |
-| Tags | REALTIME, OBSERVABILITY, RISK |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | REALTIME, OBSERVABILITY, RISK |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Rolls back partially published rooms and guarantees terminal removal.
-- Classification summary: Treat room publication as an acquisition sequence with explicit rollback and terminal cleanup in `finally`.
+- 개발 스레드에서의 역할: 일부만 공개된 경기방을 되돌리고 종료 상태에서 반드시 제거합니다.
+- 분류 요약: 경기방 공개를 자원 획득 순서로 처리하고 명시적 되돌리기와 `finally`의 최종 정리를 적용합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | reservation을 release해도 createRoom 중 room map/client roomId/scheduler/timer/observer 일부가 publish된 뒤 throw하면 ghost room과 stale ownership이 남을 수 있었습니다. |
-| 핵심 boundary/decision | createRoom publication을 `try/catch`로 감싸 scheduler/reconnect timer/rooms/client roomIds 등 이미 획득한 자원을 역순 rollback하고 original error를 재throw합니다. finalization observer/broadcast는 `try/finally`로 room removal을 보장합니다. |
-| 상태 또는 ownership 변화 | createRoom call이 publication transaction의 in-memory owner이며 success 전 자원은 provisional입니다. terminal cleanup은 `finally`가 소유합니다. |
-| 주요 failure/edge path | observer/send/snapshot setup가 throw해도 active room과 reservation이 남지 않습니다. cleanup error로 original failure를 덮지 않도록 원래 exception을 보존합니다. |
-| 보장/비보장 | partial room publication이 외부 state에 남지 않고 terminal observer failure도 room removal을 막지 않습니다. DB transaction 자체는 Thread 04 invariant를 사용합니다. |
-| 다음 관련 commit 연결 | `112228...`가 observer throw failure injection 뒤 activeRooms/queuedPlayers=0과 immediate rematch를 검증합니다. |
+| 직전 관련 상태 | 예약을 릴리스해도 경기방 생성 중 경기방 목록/클라이언트 roomId/스케줄러/타이머/관측기 일부가 공개된 뒤 예외 발생하면 유령 경기방과 오래된 소유권이 남을 수 있었습니다. |
+| 핵심 경계/판단 | 경기방 생성 공개를 `try/catch`로 감싸 스케줄러/재연결 타이머/경기방/클라이언트 경기방 ID 등 이미 획득한 자원을 역순 되돌리기하고 원래 오류를 재예외 발생합니다. 결과 확정 관측기/전파는 `try/finally`로 경기방 제거를 보장합니다. |
+| 상태 또는 소유권 변화 | 경기방 생성 호출이 공개 트랜잭션의 메모리 소유 주체이며 성공 전 자원은 provisional입니다. 종료 정리는 `finally`가 소유합니다. |
+| 주요 실패/예외 경로 | 관측기/전송/스냅샷 설정이 예외를 던져도 진행 중인 경기방과 예약이 남지 않습니다. 정리 오류로 원래 실패를 덮지 않도록 원래 예외를 보존합니다. |
+| 보장 범위/보장하지 않는 범위 | 부분 반영 경기방 공개가 외부 상태에 남지 않고 종료 관측기 실패도 경기방 제거를 막지 않습니다. DB 트랜잭션 자체는 개발 스레드 04 불변 조건을 사용합니다. |
+| 다음 관련 커밋 연결 | `112228...`은 경기방 생성 관측기가 예외를 던진 뒤 `activeRooms`와 `queuedPlayers`가 0인지, 같은 사용자가 즉시 다시 매칭될 수 있는지를 검증합니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `a23fc26a7f82` — `refactor(game): queue와 reservation cleanup 일원화`
-- 다음 Thread 관련 SHA: `112228db8878` — `test(game): matchmaking lifecycle 검증`
+- 직전 개발 스레드 관련 SHA: `a23fc26a7f82` — `refactor(game): queue와 reservation cleanup 일원화`
+- 다음 개발 스레드 관련 SHA: `112228db8878` — `test(game): matchmaking lifecycle 검증`
 
 ### 5.9. `test(game): matchmaking lifecycle 검증`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `112228db8878` |
-| Importance | A |
-| Tags | REALTIME, RISK, TEST |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | REALTIME, RISK, TEST |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Protects matchability after failure, abandonment, forfeit, and rollback.
-- Classification summary: Add deterministic GameHub/Matchmaker lifecycle regressions including injected room-publication failure.
+- 개발 스레드에서의 역할: 실패, 경기 폐기, 몰수패, 되돌리기 뒤에도 다시 매칭할 수 있는 상태를 보장합니다.
+- 분류 요약: 경기방 공개 실패 주입을 포함한 결정적 GameHub·대전 상대 연결 관리자 수명주기 회귀 테스트를 추가합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | single-owner와 rollback code는 있지만 모든 terminal path 후 user가 실제로 다시 matchable한지를 상태와 behavior 모두로 검증하지 않았습니다. |
-| 핵심 boundary/decision | fake timers/GameHub fixtures가 rating window, forfeit release/rematch, empty-room abandonment/rematch를 검사하고 observer가 room creation에서 한 번 throw하도록 deterministic failure injection합니다. |
-| 상태 또는 ownership 변화 | observer throw가 publication sequence의 지정 지점에서 실패를 주입하고 stats가 `activeRooms:0`, `queuedPlayers:0`을 관찰합니다. |
-| 주요 failure/edge path | 첫 create가 실패한 뒤 같은 두 user를 다시 join시켜 즉시 match되는지 확인해 단순 map size뿐 아니라 reservation 재획득 가능성을 증명합니다. |
-| 보장/비보장 | 검사한 in-process failure/terminal paths가 stale reservation과 ghost room을 남기지 않습니다. 장기 fairness, multi-instance queue, production load는 증명하지 않습니다. |
-| 다음 관련 commit 연결 | Thread 최종 상태는 Matchmaker sole ownership과 all-path release/room rollback입니다. |
+| 직전 관련 상태 | 단일 소유 주체와 되돌리기 코드는 있지만 모든 종료 경로 후 사용자가 실제로 다시 매칭 가능한 상태가 되었는지를 상태와 동작 모두로 검증하지 않았습니다. |
+| 핵심 경계/판단 | 가짜 타이머/GameHub 테스트 데이터가 레이팅 시간 구간, 몰수패 릴리스/rematch, 빈 경기방 포기 처리/rematch를 검사하고 관측기가 경기방 생성에서 한 번 예외 발생하도록 결정적 실패 주입합니다. |
+| 상태 또는 소유권 변화 | 관측기 예외 발생이 공개 순번의 지정 지점에서 실패를 주입하고 통계가 `activeRooms:0`, `queuedPlayers:0`을 관찰합니다. |
+| 주요 실패/예외 경로 | 첫 생성이 실패한 뒤 같은 두 사용자를 다시 참가시켜 즉시 경기되는지 확인해 단순 목록 크기뿐 아니라 예약 재획득 가능성을 검증합니다. |
+| 보장 범위/보장하지 않는 범위 | 검사한 프로세스 내부 실패/종료 경로가 오래된 예약과 유령 경기방을 남기지 않습니다. 장기 공정성, 여러 인스턴스 대기열, 운영 부하는 검증하지 않습니다. |
+| 다음 관련 커밋 연결 | 개발 스레드 최종 상태는 대전 상대 연결 관리자 유일한 소유권과 모든 경로 릴리스/경기방 되돌리기입니다. |
 
-#### Test commit 학습 기록
+#### 테스트 커밋 학습 기록
 
 | 구분 | 기록 |
 | --- | --- |
-| 대상 production invariant | queued/reserved/active room ownership은 중복되지 않고 terminal/rollback 뒤 모두 재획득 가능합니다. |
-| 재현하는 failure/boundary | rating window, forfeit, empty abandonment, room-created observer throw after partial publication. |
-| test technique | Fake timers, GameHub state inspection, deterministic observer failure injection, behavioral rematch assertion. |
-| 통과하는 production path | Matchmaker.join/release → GameHub createRoom/rollback → terminal cleanup → same users rejoin. |
-| 증명하는 것 | 검사한 path에서 activeRooms/queuedPlayers가 0으로 수렴하고 stale reservation이 남지 않습니다. |
-| 증명하지 않는 것 | global fairness, starvation, distributed queue coordination, sustained fault load는 증명하지 않습니다. |
-| test 성격 | Deterministic lifecycle, rollback, and failure-injection regression. |
-| 후속 회귀 방지 설명 | release 누락, provisional room leak, original error masking, rematch 불가 상태가 생기면 실패해야 합니다. |
+| 검증 대상 불변 조건 | 대기 중인/예약된/진행 중인 경기방 소유권은 중복되지 않고 종료/되돌리기 뒤 모두 재획득 가능합니다. |
+| 재현하는 실패/경계 | 레이팅 허용 구간, 몰수패, 빈 경기방 폐기, 경기방 생성 관측기가 일부 자원 공개 뒤 예외를 던지는 경우입니다. |
+| 테스트 기법 | 가짜 타이머, GameHub 상태 검토, 결정적 관측기 실패 주입, 동작 rematch 검증. |
+| 실행하는 실제 코드 경로 | 대전 상대 연결 관리자.참가/릴리스 → GameHub 경기방 생성/되돌리기 → 종료 정리 → 동일한 사용자 재참가. |
+| 검증하는 것 | 검사한 경로에서 activeRooms/queuedPlayers가 0으로 수렴하고 오래된 예약이 남지 않습니다. |
+| 검증하지 않는 것 | 전역 공정성, 기아 상태, 분산 대기열 조정, 장시간 장애 부하는 검증하지 않습니다. |
+| 테스트 성격 | 결정적 수명주기, 되돌리기 및 실패 주입 회귀. |
+| 후속 회귀 방지 설명 | 릴리스 누락, provisional 경기방 누수, 원래 오류 가림, rematch 불가 상태가 생기면 실패해야 합니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `b5bfeee0e23e` — `refactor(game): room 생성과 finalization cleanup 보장`
-- 이 Thread의 마지막 상태와 비교해 최종 보장을 정리했습니다.
+- 직전 개발 스레드 관련 SHA: `b5bfeee0e23e` — `refactor(game): room 생성과 finalization cleanup 보장`
+- 이 개발 스레드의 마지막 상태와 비교해 최종 보장을 정리했습니다.
 
-## 6. Invariant ledger
+## 6. 불변 조건 기록
 
-Source에서 확정된 invariant를 commit 시점별로 연결했습니다. `해당 없음`은 해당 Thread 안에서 별도 fix/test가 없음을 뜻합니다.
+원문에서 확인한 불변 조건을 커밋 시점별로 연결했습니다. `해당 없음`은 해당 개발 스레드에서 별도 수정/테스트가 없음을 뜻합니다.
 
-| Invariant | 처음 도입/관찰한 SHA | 강화한 SHA | 부족함이 드러난 SHA | 복구한 fix | 고정한 regression test | 코드 근거 |
+| 불변 조건 | 처음 도입/관찰한 SHA | 강화한 SHA | 부족함이 드러난 SHA | 복구한 수정 | 고정한 회귀 테스트 | 코드 근거 |
 | --- | --- | --- | --- | --- | --- | --- |
-| Queue and reservation membership have one owner and are released on every leave, disconnect, rollback, drain, abandonment, failure, and finalization path. | `1ec8335b0e75` explicit statuses | `a4f59a2e8192` queue owner → `7871e29278c2` release semantics → `a23fc26a7f82` sole ownership → `b5bfeee0e23e` rollback | `e53559ef3a11`~`51f36aa50596` 동안 GameHub duplicate representation | `a23fc26a7f82`, `b5bfeee0e23e` | `112228db8878` | `Matchmaker`, GameHub queueEntries/cleanup/createRoom |
-| The server is the sole authority for game rules, scores, phases, room membership, matchmaking, and persisted outcomes. | `1122e6a4b901` server fallback | `a4f59a2e8192` deterministic selection, `a23fc26a7f82` sole owner | 해당 없음 | 해당 없음 | `112228db8878` | server-side Matchmaker outcomes |
+| 대기열 참가와 예약 상태는 한 곳에서 관리하며, 이탈·연결 해제·되돌리기·작업 중단·경기방 폐기·실패·결과 확정 모든 경로에서 해제합니다. | `1ec8335b0e75` 명시적 상태 값 | `a4f59a2e8192` 대기열 소유 주체 → `7871e29278c2` 릴리스 동작 의미 → `a23fc26a7f82` 유일한 소유권 → `b5bfeee0e23e` 되돌리기 | `e53559ef3a11`~`51f36aa50596` 동안 GameHub 중복 표현 | `a23fc26a7f82`, `b5bfeee0e23e` | `112228db8878` | `Matchmaker`, GameHub `queueEntries`/정리/경기방 생성 |
+| 게임 규칙, 점수, 단계, 경기방 참가 상태, 대전 상대 연결, 저장된 결과는 서버만 확정합니다. | `1122e6a4b901` 서버의 AI 대체 처리 | `a4f59a2e8192` 결정적 상대 선택, `a23fc26a7f82` 단일 상태 소유자 | 해당 없음 | 해당 없음 | `112228db8878` | 서버 측 대전 상대 연결 관리자의 결과 |
 
-## 7. Failure → Fix → Test 연결
+## 7. 실패 → 수정 → 테스트 연결
 
-| 기존 상태/가정 | Fix 또는 강화 과정 | Test/evidence | 최종 보장 |
+| 기존 상태/가정 | 수정 또는 강화 과정 | 테스트/근거 | 최종 보장 |
 | --- | --- | --- | --- |
-| timer-backed GameHub queue가 availability를 직접 소유 | Matchmaker contract/algorithm/fallback integration | unit/GameHub lifecycle tests | socket-independent explicit statuses |
-| Matchmaker와 GameHub가 queue를 중복 표현 | `a23fc2...` legacy queue 삭제 + centralized release | forfeit/abandon/rematch tests | single domain owner |
-| room publication 중 throw가 partial resources를 남김 | `b5bfee...` reverse rollback/finally removal | `112228...` observer throw injection | ghost room·stale reservation 없음 |
+| 타이머 기반 GameHub 대기열이 사용 가능 상태를 직접 소유 | 대전 상대 연결 관리자 호출 규칙·선택 알고리즘·AI 대체 처리 통합 | 단위 테스트와 GameHub 수명주기 테스트 | 소켓과 분리된 명시적 상태 값 |
+| 대전 상대 연결 관리자와 GameHub가 대기열을 중복 표현 | `a23fc2...` 기존 대기열 삭제 + 공통 예약 해제 | 몰수패·경기방 폐기·재대결 테스트 | 단일 상태 소유 주체 |
+| 경기방 공개 중 예외 발생이 부분 반영 자원을 남김 | `b5bfee...` 역순으로 되돌리기/finally 제거 | `112228...` 관측기 예외 발생 주입 | 유령 경기방·오래된 예약 없음 |
 
-## 8. Ownership / state / responsibility 변화
+## 8. 소유권·상태·담당 범위 변화
 
-| 축 | 초기 SHA의 owner/state | 중간 전환 | Thread 최종 owner/state | 해제·cleanup 책임 | 근거 |
+| 축 | 초기 SHA의 소유 주체/상태 | 중간 전환 | 개발 스레드 최종 소유 주체/상태 | 해제·정리 책임 | 근거 |
 | --- | --- | --- | --- | --- | --- |
-| queued/matched status | GameHub queue array | `a4f59...` Matchmaker + temporary duplicate | Matchmaker | leave/release/close/drain/final paths | `matchmaker.ts`, `a23fc...` |
-| transport/timer metadata | QueueEntry | `51f36...` deadline integration | GameHub `queueEntries` | metadata cleanup helper | `gameHub.ts` |
-| fallback deadline/claim | entry timer | `7871e...` Matchmaker claim | Matchmaker status + GameHub timer | claim/leave/release | fallback methods |
-| provisional room resources | ad-hoc create | `b5bfee...` publication transaction | GameHub createRoom scope | catch rollback/finally remove | createRoom/finalization |
+| 대기·매칭 완료 상태 | GameHub 대기열 배열 | `a4f59...` 대전 상대 연결 관리자와 임시 중복 상태 | 대전 상대 연결 관리자 | 이탈·예약 해제·종료·작업 중단·최종 정리 경로 | `matchmaker.ts`, `a23fc...` |
+| 전송 계층/타이머 메타데이터 | QueueEntry | `51f36...` 기한 통합 | GameHub `queueEntries` | 메타데이터 정리 도우미 함수 | `gameHub.ts` |
+| 대체 처리 기한/선점 | 항목 타이머 | `7871e...` 대전 상대 연결 관리자 선점 | 대전 상대 연결 관리자 상태 + GameHub 타이머 | 선점/이탈/릴리스 | 대체 처리 메서드 |
+| provisional 경기방 자원 | 임시로 만든 생성 | `b5bfee...` 공개 트랜잭션 | GameHub 경기방 생성 범위 | 오류 처리 되돌리기/finally 제거 | 경기방 생성/결과 확정 |
 
-## 9. Thread 최종 상태
+## 9. 개발 스레드 최종 상태
 
-- 최종 authoritative owner: Matchmaker가 queue/reservation domain state를 유일하게 소유하고 GameHub는 socket/timer metadata와 room publication을 소유합니다.
-- 최종 상태/invariant: user는 queued·reserved·active room 중 하나에만 있고 모든 leave/disconnect/drain/rollback/abandon/failure/finalization path가 release합니다.
-- 남아 있는 의도적 제한 또는 비보장: single-process in-memory queue이며 distributed matchmaking, persistence, fairness/starvation guarantee는 없습니다.
-- 후속 Thread가 의존하는 contract: GameHub는 Matchmaker outcome만으로 room을 만들고 async 작업 후 상태를 재검증하며 publication 실패 시 획득 자원을 역순으로 되돌립니다.
-- 대표 코드 근거: `a4f59a2e8192`/`7871e29278c2 Matchmaker`, `a23fc26a7f82` centralized cleanup, `b5bfeee0e23e` rollback, `112228db8878` failure injection tests
+- 최종 판정 주체: 대전 상대 연결 관리자가 대기열/예약 도메인 상태를 유일하게 소유하고 GameHub는 소켓/타이머 메타데이터와 경기방 공개를 소유합니다.
+- 최종 상태/불변 조건: 사용자는 대기 중인·예약된·진행 중인 경기방 중 하나에만 있고 모든 이탈/연결 해제/작업 중단/되돌리기/abandon/실패/결과 확정 경로가 릴리스합니다.
+- 남아 있는 의도적 제한 또는 보장하지 않는 범위: 단일 프로세스 메모리 대기열이며 distributed 대전 상대 연결, 영속 저장, 공정성/기아 상태 보장 범위는 없습니다.
+- 후속 개발 스레드가 의존하는 계약: GameHub는 대전 상대 연결 관리자 결과만으로 경기방을 만들고 비동기 처리 작업 후 상태를 재검증하며 공개 실패 시 획득 자원을 역순으로 되돌립니다.
+- 대표 코드 근거: `a4f59a2e8192`/`7871e29278c2 Matchmaker`, `a23fc26a7f82` 공통 정리, `b5bfeee0e23e` 되돌리기, `112228db8878` 실패 주입 테스트
 
-## 10. 최종 architecture 또는 execution flow 정리
+## 10. 최종 아키텍처와 실행 순서
 
 ```text
 [queue.join user/kind/rating]
@@ -2288,377 +2288,377 @@ Source에서 확정된 invariant를 commit 시점별로 연결했습니다. `해
 [timer clear + metadata delete + idempotent Matchmaker.release]
 ```
 
-- `leaveQueue`는 queued cancellation만, `release`는 queued/matched reservation 전체 정리입니다.
-- failure test는 map size와 함께 같은 users의 즉시 rematch를 확인합니다.
+- `leaveQueue`는 대기 중인 취소만, `release`는 대기 중인/매칭 예약 전체 정리입니다.
+- 실패 테스트는 목록 크기와 함께 같은 사용자의 즉시 rematch를 확인합니다.
 
-## 11. 학습 완료 자가 점검
+## 11. 학습 완료 확인
 
-- [x] Commit map의 모든 SHA를 원문 순서대로 확인했습니다.
-- [x] 각 commit의 subject, importance, tags를 변경하지 않았습니다.
+- [x] 커밋 목록의 모든 SHA를 원문 순서대로 확인했습니다.
+- [x] 각 커밋의 제목·중요도·태그를 변경하지 않았습니다.
 - [x] S/A/B 깊이를 구분해 코드 근거를 남겼습니다.
-- [x] final HEAD의 구현을 과거 SHA에 소급하지 않았습니다.
-- [x] 핵심 상태 필드, caller/callee, ownership, failure branch, cleanup을 실제 코드로 확인했습니다.
-- [x] Fix를 기존 가정 → failure/risk → root cause → decision → code → regression 순서로 연결했습니다.
-- [x] Test commit에서 production invariant, failure, technique, path, 증명/비증명 범위를 구분했습니다.
-- [x] Thread 최종 execution flow를 별도 프로젝트 재학습 없이 설명할 수 있습니다.
+- [x] 최종 상태의 구현을 과거 SHA에 소급하지 않았습니다.
+- [x] 핵심 상태 필드, 호출자/피호출자, 소유권, 실패 분기, 정리를 실제 코드로 확인했습니다.
+- [x] 수정을 기존 가정 → 실패/위험 → 근본 원인 → 판단 → 코드 → 회귀 순서로 연결했습니다.
+- [x] 테스트 커밋에서 운영 불변 조건, 실패, 기법, 경로, 검증 범위와 미검증 범위를 구분했습니다.
+- [x] 개발 스레드 최종 실행 순서를 별도 프로젝트 재학습 없이 설명할 수 있습니다.
 ===== END FILE: 06-matchmaking-reservation-ownership-and-rollback.md =====
 
 ===== BEGIN FILE: 07-guest-mode-as-isolated-transient-trust-domain.md =====
 # 격리된 임시 신뢰 도메인으로서의 게스트 모드
 
-원문 Development Thread: `Guest mode as an isolated transient trust domain`
+원문 개발 스레드: `Guest mode as an isolated transient trust domain`
 
-## 1. Thread 목표
+## 1. 개발 스레드 목표
 
-- guest를 약한 registered account가 아니라 별도의 signed identity, ticket, lease, capability, matchmaking, persistence domain으로 추적합니다.
-- database 없이 발급·검증되는 guest cookie와 one-time ticket, IP/process capacity lease의 lifecycle을 복원합니다.
-- registered data 조회와 write, mixed matchmaking, durable result를 차단하면서 제한된 reconnect recovery만 허용하는 경계를 확인합니다.
+- 비회원을 약한 등록 사용자 계정이 아니라 별도의 서명된 신원, 티켓, 임대, 권한, 대전 상대 연결, 영속 저장 도메인으로 추적합니다.
+- 데이터베이스 없이 발급·검증되는 비회원 쿠키와 일회용 티켓, IP/프로세스 용량 임대의 수명주기를 복원합니다.
+- 등록 사용자 데이터 조회와 쓰기, 서로 다른 신원 종류를 섞는 대전 상대 연결, 영속 결과를 차단하면서 제한된 재연결 복구만 허용하는 경계를 확인합니다.
 
-### Source에서 확정된 significance
+### 원문에서 확인한 중요성
 
-> Guest mode is not implemented as a weaker registered account. It is a separate signed identity, capability, matchmaking, persistence, and resource domain. The sequence is significant because each integration point explicitly prevents transient public traffic from acquiring durable data or unbounded process state.
+> 비회원 모드는 권한이 약한 등록 계정으로 구현하지 않습니다. 서명된 신원, 권한, 대전 상대 연결, 영속 저장 여부, 자원 사용 수명을 분리한 별도 영역입니다. 각 연결 지점에서 일시적 공개 트래픽이 영속 데이터나 제한 없는 프로세스 상태를 얻지 못하게 막는 순서가 중요합니다.
 
-### 직접 연결되는 Critical Invariants
+### 직접 연결되는 핵심 불변 조건
 
-> Guest identities, matchmaking pools, capabilities, persistence, tickets, leases, and retained results remain isolated and resource-bounded.
+> 비회원 신원, 대전 상대 연결 풀, 권한, 영속성, 티켓, 임대 상태, 보관 결과는 등록 사용자 영역과 분리하고 자원 상한을 둡니다.
 
-> The durable browser session is carried only by an HttpOnly cookie; raw WebSocket tickets are short-lived, single-use, hashed at rest, bounded during authentication, and excluded from logs.
+> 브라우저의 장기 세션은 HttpOnly 쿠키로만 전달합니다. WebSocket 원본 티켓은 수명이 짧고 한 번만 사용할 수 있으며, 저장 시 해시만 보관하고 인증 중 버퍼 크기를 제한하며 로그에서 제외합니다.
 
-> Timers, schedulers, heartbeat handles, retry work, snapshot buffers, and database resources have explicit single-owner cleanup.
+> 타이머, 스케줄러, 연결 상태 확인 작업, 재시도 작업, 스냅샷 버퍼, 데이터베이스 자원은 각각 하나의 소유 주체가 명시되어 있으며 해당 주체가 정리합니다.
 
-### 직접 연결되는 Major Engineering Difficulties
+### 직접 연결되는 주요 구현 난점
 
-> Offering a public guest mode without allowing transient identities to cross into registered data, social features, ratings, or unbounded in-memory resources.
+> 공개 비회원 모드를 제공하되 임시 신원이 등록 사용자 데이터, 소셜 기능, 레이팅, 제한 없는 메모리 자원에 접근하지 못하게 해야 합니다.
 
-## 2. 이 Thread를 이해하기 위한 핵심 질문
+## 2. 이 개발 스레드를 이해하기 위한 핵심 질문
 
-- guest token payload와 signature는 어떤 값으로 구성되며 address/version/expiry를 어디에서 검증합니까?
-- ticket issuance limit과 live connection lease limit은 왜 별도이며 reconnect replacement에서 stale release를 어떻게 막습니까?
-- demo mode가 registered session/database fallback을 하지 않는 branch는 어디입니까?
-- guest route가 repository data를 조회한 뒤 필터링하는 것이 아니라 호출 자체를 피하는 근거는 무엇입니까?
-- guest와 registered matchmaking pool 및 AI fallback source는 어떻게 분리됩니까?
-- non-persisted result의 2분 보존은 어떤 map/timer ownership과 race guard를 사용합니까?
-- IP window와 pending ticket map이 무한 증가하지 않도록 어떤 capacity와 prune path를 둡니까?
+- 비회원 토큰 메시지 본문과 서명은 어떤 값으로 구성되며 address/버전/만료를 어디에서 검증합니까?
+- 티켓 발급 상한과 실시간 연결 임대 상한은 왜 별도이며 재연결 교체에서 오래된 릴리스를 어떻게 막습니까?
+- 체험 모드가 등록 사용자 세션/데이터베이스 대체 처리를 하지 않는 브랜치는 어디입니까?
+- 비회원 라우트가 저장소 데이터를 조회한 뒤 필터링하는 것이 아니라 호출 자체를 피하는 근거는 무엇입니까?
+- 비회원과 등록 사용자 대전 상대 연결 풀 및 AI 대체 처리 소스는 어떻게 분리됩니까?
+- 비영속 결과를 2분 동안 보관할 때 어떤 목록과 타이머가 이를 관리하며, 경쟁 상태는 어떻게 막습니까?
+- IP 시간 구간과 대기 중 티켓 목록이 무한 증가하지 않도록 어떤 용량과 정리 경로를 둡니까?
 
 ## 3. 완료 기준
 
-- signed cookie → in-memory ticket → live lease의 trust chain과 각 TTL/capacity를 설명할 수 있습니다.
-- guest가 접근 가능한 HTTP/WebSocket 기능과 registered-only 기능을 코드 branch로 구분할 수 있습니다.
-- guest room이 registered user/NPC/persistence와 섞이지 않는 근거를 제시할 수 있습니다.
-- transient result recovery가 durable history나 rating을 만들지 않는지 확인할 수 있습니다.
-- fake-timer tests가 window/ticket/result cleanup과 reconnect intent를 어떻게 검증하는지 정리할 수 있습니다.
+- 서명된 쿠키 → 메모리 티켓 → 실시간 임대의 신뢰 확인 순서와 각 TTL/용량을 설명할 수 있습니다.
+- 비회원이 접근 가능한 HTTP/WebSocket 기능과 등록 사용자 전용 기능을 코드 브랜치로 구분할 수 있습니다.
+- 비회원 경기방이 등록 사용자와 NPC/영속 저장과 섞이지 않는 근거를 제시할 수 있습니다.
+- 임시 결과 복구가 영속 기록이나 레이팅을 만들지 않는지 확인할 수 있습니다.
+- 가짜 타이머 테스트가 시간 구간/티켓/결과 정리와 재연결 요청 의도를 어떻게 검증하는지 정리할 수 있습니다.
 
-> 검토 방식: 지정 브랜치에 속한 exact SHA의 diff와 해당 시점 파일을 GitHub에서 확인했습니다. 로컬 실행 환경은 GitHub clone이 차단되어 테스트 명령은 실행하지 않았으며, 아래 테스트 결과 설명은 test implementation 검토에 한정합니다.
+> 검토 방식: 지정 브랜치의 정확한 SHA별 변경 내용과 해당 시점 파일을 GitHub에서 확인했습니다. 로컬 환경에서는 GitHub 복제가 차단되어 테스트 명령을 실행하지 못했습니다. 아래 테스트 설명은 테스트 코드 검토 결과에 한정합니다.
 
-## 4. Commit map
+## 4. 커밋 목록
 
-| 순서 | SHA | Subject | Importance | Tags | Source에서 확정된 역할 |
+| 순서 | SHA | 제목 | 중요도 | 태그 | 원문에서 확인한 역할 |
 | ---: | --- | --- | :---: | --- | --- |
-| 1 | `cacd4c22d705` | `feat(guest): signed guest session token 정의` | A | AUTH, PERSISTENCE | Creates tamper-evident, address-bound, expiring guest identity without database sessions. |
-| 2 | `17a1dd501b1b` | `feat(guest): guest resource lease 수명주기 추가` | A | AUTH, PROTOCOL, REALTIME | Binds guest connection limits to lease identity and socket lifetime. |
-| 3 | `a5c06c561e00` | `feat(guest): guest session과 WebSocket 인증 연결` | A | AUTH, REALTIME, PERSISTENCE | Connects signed cookies, one-time tickets, and bounded live leases. |
-| 4 | `27ddc3fca2f1` | `feat(guest): guest 조회 범위와 lobby 격리` | A | AUTH, PERSISTENCE, TOURNAMENT | Avoids fetching registered social and historical data for demo traffic. |
-| 5 | `77a7c205ccd0` | `feat(game): guest matchmaking과 room을 격리` | A | REALTIME, PERSISTENCE, RISK | Partitions matchmaking and AI fallback by identity kind. |
-| 6 | `eaa4fdaba361` | `feat(game): guest 경기 결과 영속화 차단과 임시 보존` | A | SIMULATION, REALTIME | Skips durable finalization while retaining a short in-memory recovery result. |
-| 7 | `2b274686e6d4` | `fix(guest): 체험 환경의 runtime 복구 제한` | A | AUTH, REALTIME, RISK | Bounds IP windows and pending ticket structures and validates runtime mode. |
-| 8 | `06d2eb7a93cc` | `test(guest): 체험 환경의 복구 경계 검증` | A | AUTH, SIMULATION, REALTIME | Verifies bounded cleanup, fresh-ticket reconnect, and no duplicate match intent. |
+| 1 | `cacd4c22d705` | `feat(guest): signed guest session token 정의` | A | AUTH, PERSISTENCE | 데이터베이스 세션 없이 위변조를 확인할 수 있고 주소에 묶이며 만료되는 비회원 신원을 만듭니다. |
+| 2 | `17a1dd501b1b` | `feat(guest): guest resource lease 수명주기 추가` | A | AUTH, PROTOCOL, REALTIME | 비회원 연결 상한을 임대 식별자와 소켓 수명에 연결합니다. |
+| 3 | `a5c06c561e00` | `feat(guest): guest session과 WebSocket 인증 연결` | A | AUTH, REALTIME, PERSISTENCE | 서명 쿠키, 일회용 티켓, 상한을 둔 활성 연결 임대를 연결합니다. |
+| 4 | `27ddc3fca2f1` | `feat(guest): guest 조회 범위와 lobby 격리` | A | AUTH, PERSISTENCE, TOURNAMENT | 데모 트래픽에서는 등록 사용자의 소셜·이력 데이터를 조회하지 않습니다. |
+| 5 | `77a7c205ccd0` | `feat(game): guest matchmaking과 room을 격리` | A | REALTIME, PERSISTENCE, RISK | 신원 종류에 따라 대전 상대 연결과 AI 대체 처리를 분리합니다. |
+| 6 | `eaa4fdaba361` | `feat(game): guest 경기 결과 영속화 차단과 임시 보존` | A | SIMULATION, REALTIME | 영속 결과 확정을 생략하되 짧은 시간 동안 메모리 복구 결과를 보관합니다. |
+| 7 | `2b274686e6d4` | `fix(guest): 체험 환경의 runtime 복구 제한` | A | AUTH, REALTIME, RISK | IP 시간 구간과 대기 중 티켓 자료구조에 상한을 두고 실행 모드를 검증합니다. |
+| 8 | `06d2eb7a93cc` | `test(guest): 체험 환경의 복구 경계 검증` | A | AUTH, SIMULATION, REALTIME | 상한을 둔 정리, 새 티켓 재연결, 대전 요청 중복 방지를 검증합니다. |
 
-## 5. Commit별 학습 기록
+## 5. 커밋별 학습 기록
 
 ### 5.1. `feat(guest): signed guest session token 정의`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `cacd4c22d705` |
-| Importance | A |
-| Tags | AUTH, PERSISTENCE |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | AUTH, PERSISTENCE |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Creates tamper-evident, address-bound, expiring guest identity without database sessions.
-- Classification summary: Introduce a self-contained signed session representation for transient guests.
+- 개발 스레드에서의 역할: 데이터베이스 세션 없이 위변조를 확인할 수 있고 주소에 묶이며 만료되는 비회원 신원을 만듭니다.
+- 분류 요약: 임시 비회원을 위한 자체 완결형 서명 세션 표현을 도입합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | public demo identity를 만들려면 DB account/session을 생성하거나 검증 없는 client-supplied identity를 신뢰해야 하는 상태였습니다. |
-| 핵심 boundary/decision | `apps/api/src/guestAccess.ts`가 server-generated guest ID/handle/displayName과 `{v:1,user,ip,expiresAtMs}` payload를 Base64URL로 직렬화하고 HMAC-SHA-256으로 서명합니다. TTL은 2시간이며 secret은 최소 32 bytes입니다. |
-| 상태 또는 ownership 변화 | server가 identity fields와 signature를 만들고 HttpOnly guest cookie가 signed payload를 운반합니다. database는 guest identity를 소유하지 않습니다. |
-| 주요 failure/edge path | verify는 malformed, signature length/mismatch, wrong version, non-guest/non-user/non-active, nonfinite/expired, request IP mismatch를 거부하며 `timingSafeEqual`을 사용합니다. |
-| 보장/비보장 | DB 없이 tamper-evident·address-bound·expiring guest identity를 제공합니다. live connection 수와 ticket issuance capacity는 아직 제한하지 않습니다. |
-| 다음 관련 commit 연결 | `17a1dd...`가 guest WebSocket connection capacity를 lease identity와 socket lifetime에 결합합니다. |
+| 직전 관련 상태 | 공개 체험 신원을 만들려면 DB 계정/세션을 생성하거나 검증 없는 클라이언트가 제공한 신원을 신뢰해야 하는 상태였습니다. |
+| 핵심 경계/판단 | `apps/api/src/guestAccess.ts`는 서버가 생성한 비회원 ID·핸들·표시 이름과 `{v:1,user,ip,expiresAtMs}` 데이터를 Base64URL로 직렬화하고 HMAC-SHA-256으로 서명합니다. TTL은 2시간이며 서명 비밀값은 최소 32바이트입니다. |
+| 상태 또는 소유권 변화 | 서버가 신원 필드와 서명을 만들고 HttpOnly 비회원 쿠키가 서명된 메시지 본문을 운반합니다. 데이터베이스는 비회원 신원을 소유하지 않습니다. |
+| 주요 실패/예외 경로 | 검증은 잘못된, 서명 길이 오류나 불일치, 잘못된 버전, 비회원이 아니거나 사용자가 아니거나 비활성인 상태, 유한하지 않거나 만료된, 요청 IP 불일치를 거부하며 `timingSafeEqual`을 사용합니다. |
+| 보장 범위/보장하지 않는 범위 | DB 없이 위변조를 확인할 수 있는·주소에 묶인·만료되는 비회원 신원을 제공합니다. 실시간 연결 수와 티켓 발급 용량은 아직 제한하지 않습니다. |
+| 다음 관련 커밋 연결 | `17a1dd...`가 비회원 WebSocket 연결 용량을 임대 신원과 소켓 수명에 결합합니다. |
 
 비교 기준:
-- 이 commit의 parent에서 동일 책임을 담당하던 코드를 비교했습니다.
-- 다음 Thread 관련 SHA: `17a1dd501b1b` — `feat(guest): guest resource lease 수명주기 추가`
+- 이 커밋의 부모 커밋에서 동일 책임을 담당하던 코드를 비교했습니다.
+- 다음 개발 스레드 관련 SHA: `17a1dd501b1b` — `feat(guest): guest resource lease 수명주기 추가`
 
 ### 5.2. `feat(guest): guest resource lease 수명주기 추가`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `17a1dd501b1b` |
-| Importance | A |
-| Tags | AUTH, PROTOCOL, REALTIME |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | AUTH, PROTOCOL, REALTIME |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Binds guest connection limits to lease identity and socket lifetime.
-- Classification summary: Add bounded live-connection leases with stale-release protection.
+- 개발 스레드에서의 역할: 비회원 연결 상한을 임대 식별자와 소켓 수명에 연결합니다.
+- 분류 요약: 오래된 해제 요청을 방어하는 상한을 둔 활성 연결 임대를 추가합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | signed identity만으로는 같은 IP나 process 전체에서 무제한 live guest sockets을 만들어 memory/socket 자원을 소모할 수 있었습니다. |
-| 핵심 boundary/decision | GuestAccess가 default IP당 4, process 전체 200 live connection limit을 두고 `connections: Map<guestId,{ip,leaseId}>`에서 lease를 획득합니다. reconnect는 새 leaseId로 current record를 교체합니다. |
-| 상태 또는 ownership 변화 | GuestAccess connection map이 live capacity를 소유하고 각 socket admission은 opaque lease handle을 보유합니다. |
-| 주요 failure/edge path | release는 current record의 `leaseId`가 일치할 때만 delete해 old socket의 stale close가 replacement lease를 제거하지 못합니다. IP가 바뀌는 replacement도 target IP capacity를 다시 검사합니다. |
-| 보장/비보장 | live guest sockets이 per-IP/process 상한을 따르고 replacement stale release가 current lease를 깨지 않습니다. signed cookie와 ticket/route integration은 다음 commit입니다. |
-| 다음 관련 commit 연결 | `a5c06c...`이 signed guest cookie, one-time ticket, admission lease를 실제 HTTP/WebSocket boundary에 연결합니다. |
+| 직전 관련 상태 | 서명된 신원만으로는 같은 IP나 프로세스 전체에서 무제한 실시간 비회원 소켓을 만들어 메모리/소켓 자원을 소모할 수 있었습니다. |
+| 핵심 경계/판단 | GuestAccess가 기본값 IP당 4, 프로세스 전체 200 실시간 연결 상한을 두고 `connections: Map<guestId,{ip,leaseId}>`에서 임대를 획득합니다. 재연결은 새 임대 ID로 현재 레코드를 교체합니다. |
+| 상태 또는 소유권 변화 | `GuestAccess`의 연결 Map이 실시간 연결 수 상한을 관리하고 각 소켓 입장은 외부에서 내용을 해석할 수 없는 임대 핸들을 보유합니다. |
+| 주요 실패/예외 경로 | 릴리스는 현재 레코드의 `leaseId`가 일치할 때만 삭제해 기존 소켓의 오래된 종료가 교체 임대를 제거하지 못합니다. IP가 바뀌는 교체도 대상 IP 용량을 다시 검사합니다. |
+| 보장 범위/보장하지 않는 범위 | 실시간 비회원 소켓이 per-IP/프로세스 상한을 따르고 교체 오래된 릴리스가 현재 임대를 깨지 않습니다. 서명된 쿠키와 티켓/라우트 통합은 다음 커밋입니다. |
+| 다음 관련 커밋 연결 | `a5c06c...`이 서명된 비회원 쿠키, 일회용 티켓, 참가 임대를 실제 HTTP/WebSocket 경계에 연결합니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `cacd4c22d705` — `feat(guest): signed guest session token 정의`
-- 다음 Thread 관련 SHA: `a5c06c561e00` — `feat(guest): guest session과 WebSocket 인증 연결`
+- 직전 개발 스레드 관련 SHA: `cacd4c22d705` — `feat(guest): signed guest session token 정의`
+- 다음 개발 스레드 관련 SHA: `a5c06c561e00` — `feat(guest): guest session과 WebSocket 인증 연결`
 
 ### 5.3. `feat(guest): guest session과 WebSocket 인증 연결`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `a5c06c561e00` |
-| Importance | A |
-| Tags | AUTH, REALTIME, PERSISTENCE |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | AUTH, REALTIME, PERSISTENCE |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Connects signed cookies, one-time tickets, and bounded live leases.
-- Classification summary: Integrate demo guest identity with HTTP login/logout, in-memory one-time tickets, and WebSocket admission.
+- 개발 스레드에서의 역할: 서명 쿠키, 일회용 티켓, 상한을 둔 활성 연결 임대를 연결합니다.
+- 분류 요약: 데모 비회원 신원을 HTTP 로그인·로그아웃, 메모리 일회용 티켓, WebSocket 입장과 통합합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | guest token과 lease는 독립 primitives였고 route가 DB session fallback을 하거나 WebSocket admission이 registered path와 섞일 수 있었습니다. |
-| 핵심 boundary/decision | demo `POST /auth/guest`가 secure HttpOnly SameSite=Lax `pp_guest`를 설정합니다. ws-ticket은 guest면 in-memory ticket을 발급하고 `/ws`는 guest ticket을 먼저 consume해 lease를 획득하며 close에서 정확히 한 번 release합니다. demo mode는 registered DB fallback을 하지 않습니다. |
-| 상태 또는 ownership 변화 | GuestAccess가 signed identity·pending ticket·lease를, app route가 cookie/trust handoff를, GameHub가 admitted socket 이후를 소유합니다. |
-| 주요 failure/edge path | lease acquisition failure는 socket auth close로 수렴하고 logout은 guest에서 DB session delete를 호출하지 않으며 두 auth cookies를 지웁니다. `requireRegistered`가 durable-only route의 공통 guard가 됩니다. |
-| 보장/비보장 | signed cookie → in-memory one-time ticket → bounded live lease trust chain이 동작하고 demo guest는 DB session으로 승격되지 않습니다. data/read/match/persistence isolation은 뒤 commits입니다. |
-| 다음 관련 commit 연결 | `27ddc3...`가 HTTP read surface에서 registered repository calls를 호출 전에 차단합니다. |
+| 직전 관련 상태 | 비회원 토큰과 임대는 독립 primitives였고 라우트가 DB 세션 대체 처리를 하거나 WebSocket 참가가 등록 사용자 경로와 섞일 수 있었습니다. |
+| 핵심 경계/판단 | 체험 `POST /auth/guest`가 `Secure`, `HttpOnly`, `SameSite=Lax` 속성의 `pp_guest`를 설정합니다. WebSocket 티켓은 비회원이면 메모리 티켓을 발급하고 `/ws`는 비회원 티켓을 먼저 소비해 임대를 획득하며 종료에서 정확히 한 번 릴리스합니다. 체험 모드는 등록 사용자 DB 대체 처리를 하지 않습니다. |
+| 상태 또는 소유권 변화 | `GuestAccess`가 서명된 신원, 대기 중인 티켓, 임대를 관리합니다. 애플리케이션 라우트가 쿠키에서 티켓으로 신뢰를 넘기고, `GameHub`는 인증이 끝난 소켓의 이후 수명주기를 관리합니다. |
+| 주요 실패/예외 경로 | 임대 acquisition 실패는 소켓 인증 종료로 수렴하고 로그아웃은 비회원에서 DB 세션 삭제를 호출하지 않으며 두 인증 cookies를 지웁니다. `requireRegistered`가 영속 전용 라우트의 공통 보호 조건이 됩니다. |
+| 보장 범위/보장하지 않는 범위 | 서명된 쿠키 → 메모리 일회용 티켓 → 상한을 둔 실시간 임대 신뢰 확인 순서가 동작하고 체험 비회원은 DB 세션으로 승격되지 않습니다. 데이터/읽기/경기/영속 저장 격리는 뒤 커밋입니다. |
+| 다음 관련 커밋 연결 | `27ddc3...`는 HTTP 읽기 경로에서 등록 사용자용 저장소 호출을 실행 전에 차단합니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `17a1dd501b1b` — `feat(guest): guest resource lease 수명주기 추가`
-- 다음 Thread 관련 SHA: `27ddc3fca2f1` — `feat(guest): guest 조회 범위와 lobby 격리`
+- 직전 개발 스레드 관련 SHA: `17a1dd501b1b` — `feat(guest): guest resource lease 수명주기 추가`
+- 다음 개발 스레드 관련 SHA: `27ddc3fca2f1` — `feat(guest): guest 조회 범위와 lobby 격리`
 
 ### 5.4. `feat(guest): guest 조회 범위와 lobby 격리`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `27ddc3fca2f1` |
-| Importance | A |
-| Tags | AUTH, PERSISTENCE, TOURNAMENT |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | AUTH, PERSISTENCE, TOURNAMENT |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Avoids fetching registered social and historical data for demo traffic.
-- Classification summary: Partition public guest reads from registered profile, social, leaderboard, history, and tournament data.
+- 개발 스레드에서의 역할: 데모 트래픽에서는 등록 사용자의 소셜·이력 데이터를 조회하지 않습니다.
+- 분류 요약: 공개 비회원 조회를 등록 사용자 프로필, 소셜, 순위표, 이력, 토너먼트 데이터와 분리합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | 인증이 guest여도 일반 route가 repository를 조회한 뒤 response에서 일부 field만 숨기면 transient traffic이 registered data access와 DB load를 획득합니다. |
-| 핵심 boundary/decision | `/me`는 guest identity를 허용하지만 profile, leaderboard, tournaments, social/history routes는 `requireRegistered`로 repository 호출 전에 거부합니다. demo/guest lobby는 repository match/chat/history를 조회하지 않고 제한된 empty/ephemeral view를 반환합니다. |
-| 상태 또는 ownership 변화 | HTTP mode/identity guard가 capability boundary를 소유하고 repository는 registered data만 처리합니다. |
-| 주요 failure/edge path | post-filter 방식이 아니라 call-before-data branch이므로 accidental leakage와 guest-triggered durable read workload를 함께 막습니다. |
-| 보장/비보장 | guest가 registered social/history/leaderboard/tournament data를 조회하지 않습니다. realtime matchmaking과 AI/persistence isolation은 다음 commits입니다. |
-| 다음 관련 commit 연결 | `77a7c2...`가 guest/registered pool과 AI fallback source를 분리합니다. |
+| 직전 관련 상태 | 인증이 비회원여도 일반 라우트가 저장소를 조회한 뒤 응답에서 일부 필드만 숨기면 임시 트래픽이 등록 사용자 데이터 access와 DB 부하를 획득합니다. |
+| 핵심 경계/판단 | `/me`는 비회원 신원을 허용하지만 프로필, 순위표, tournaments, 소셜/이력 라우트는 `requireRegistered`로 저장소 호출 전에 거부합니다. 체험/비회원 로비는 저장소 경기/채팅/이력을 조회하지 않고 제한된 빈/임시 조회 결과를 반환합니다. |
+| 상태 또는 소유권 변화 | HTTP 모드/신원 보호 조건이 권한 경계를 소유하고 저장소는 등록 사용자 데이터만 처리합니다. |
+| 주요 실패/예외 경로 | 응답을 만든 뒤 필터링하지 않고 저장소 호출 전부터 분기하므로, 우발적인 데이터 노출과 비회원 요청이 유발하는 영속 저장소 조회 부하를 함께 막습니다. |
+| 보장 범위/보장하지 않는 범위 | 비회원이 등록 사용자 소셜/이력/순위표/토너먼트 데이터를 조회하지 않습니다. 실시간 대전 상대 연결과 AI/영속 저장 격리는 다음 커밋입니다. |
+| 다음 관련 커밋 연결 | `77a7c2...`가 비회원/등록 사용자 풀과 AI 대체 처리 소스를 분리합니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `a5c06c561e00` — `feat(guest): guest session과 WebSocket 인증 연결`
-- 다음 Thread 관련 SHA: `77a7c205ccd0` — `feat(game): guest matchmaking과 room을 격리`
+- 직전 개발 스레드 관련 SHA: `a5c06c561e00` — `feat(guest): guest session과 WebSocket 인증 연결`
+- 다음 개발 스레드 관련 SHA: `77a7c205ccd0` — `feat(game): guest matchmaking과 room을 격리`
 
 ### 5.5. `feat(game): guest matchmaking과 room을 격리`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `77a7c205ccd0` |
-| Importance | A |
-| Tags | REALTIME, PERSISTENCE, RISK |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | REALTIME, PERSISTENCE, RISK |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Partitions matchmaking and AI fallback by identity kind.
-- Classification summary: Prevent guest and registered players or persistent NPC sources from entering the same room.
+- 개발 스레드에서의 역할: 신원 종류에 따라 대전 상대 연결과 AI 대체 처리를 분리합니다.
+- 분류 요약: 비회원과 등록 사용자 또는 영속 NPC가 같은 경기방에 들어가지 못하게 합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | common queue/AI fallback이 identity kind를 고려하지 않으면 guest가 registered user/NPC와 매칭돼 durable ratings·identity가 room에 섞일 수 있었습니다. |
-| 핵심 boundary/decision | matchmaking candidate selection은 guest kind가 일치하지 않으면 skip하고 room에 `guest` flag를 저장합니다. guest fallback은 repository NPC lookup 대신 process-local practice opponent를 사용합니다. |
-| 상태 또는 ownership 변화 | Matchmaker/GameHub가 pool kind와 room trust domain을 소유합니다. DB NPC repository는 registered rooms에만 사용됩니다. |
-| 주요 failure/edge path | mixed pair나 guest의 durable NPC lookup을 candidate 단계에서 차단해 room 생성 후 filtering에 의존하지 않습니다. |
-| 보장/비보장 | guest room participant source와 registered queue가 격리됩니다. terminal result가 DB finalize를 우회하는 것은 다음 commit입니다. |
-| 다음 관련 commit 연결 | `eaa4fd...`가 guest finalization을 non-persisted result와 2분 process-local retention으로 분리합니다. |
+| 직전 관련 상태 | 공통 대기열/AI 대체 처리가 신원 유형을 고려하지 않으면 비회원이 등록 사용자와 NPC와 매칭돼 영속 레이팅·신원이 경기방에 섞일 수 있었습니다. |
+| 핵심 경계/판단 | 대전 상대 연결 후보 선택은 비회원 유형이 일치하지 않으면 skip하고 경기방에 `guest` 표시값을 저장합니다. 비회원 대체 처리는 저장소 NPC 조회 대신 프로세스 내부 practice 상대를 사용합니다. |
+| 상태 또는 소유권 변화 | 대전 상대 연결 관리자/GameHub가 풀 유형과 경기방 신뢰 도메인을 소유합니다. DB NPC 저장소는 등록 사용자 경기방에만 사용됩니다. |
+| 주요 실패/예외 경로 | mixed 쌍이나 비회원의 영속 NPC 조회를 후보 단계에서 차단해 경기방 생성 후 필터링에 의존하지 않습니다. |
+| 보장 범위/보장하지 않는 범위 | 비회원 경기방 참가자 소스와 등록 사용자 대기열이 격리됩니다. 종료 결과가 DB 결과 확정을 우회하는 것은 다음 커밋입니다. |
+| 다음 관련 커밋 연결 | `eaa4fd...`가 비회원 경기 결과를 DB에 저장하지 않고 프로세스 메모리에 2분 동안만 보관하도록 분리합니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `27ddc3fca2f1` — `feat(guest): guest 조회 범위와 lobby 격리`
-- 다음 Thread 관련 SHA: `eaa4fdaba361` — `feat(game): guest 경기 결과 영속화 차단과 임시 보존`
+- 직전 개발 스레드 관련 SHA: `27ddc3fca2f1` — `feat(guest): guest 조회 범위와 lobby 격리`
+- 다음 개발 스레드 관련 SHA: `eaa4fdaba361` — `feat(game): guest 경기 결과 영속화 차단과 임시 보존`
 
 ### 5.6. `feat(game): guest 경기 결과 영속화 차단과 임시 보존`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `eaa4fdaba361` |
-| Importance | A |
-| Tags | SIMULATION, REALTIME |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | SIMULATION, REALTIME |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Skips durable finalization while retaining a short in-memory recovery result.
-- Classification summary: Return a non-persisted guest result and retain it briefly for reconnect recovery without touching ratings/history.
+- 개발 스레드에서의 역할: 영속 결과 확정을 생략하되 짧은 시간 동안 메모리 복구 결과를 보관합니다.
+- 분류 요약: 레이팅·이력을 바꾸지 않고 비영속 비회원 결과를 반환하며 재연결 복구를 위해 잠시 보관합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | common terminal path가 `repo.finalizeMatch`를 호출하면 guest identity가 match/rating/history/tournament persistence에 들어갑니다. 반대로 즉시 폐기하면 disconnect 직후 결과를 못 받을 수 있습니다. |
-| 핵심 boundary/decision | guest room은 repository finalize 전에 branch해 `{matchId:null,persisted:false,ratingDelta:0}`를 만들고 user별 recent result map에 2분 timer와 함께 보존합니다. |
-| 상태 또는 ownership 변화 | GameHub process memory가 transient result와 cleanup timer를 소유합니다. 같은 guest의 새 result는 이전 timer를 clear하고 교체합니다. |
-| 주요 failure/edge path | timer callback은 stored `expiresAtMs` identity를 다시 확인해 replacement entry를 stale timer가 삭제하지 못합니다. reconnect 시 active/recovered room이 없을 때만 retained result를 전송합니다. |
-| 보장/비보장 | guest match는 DB match/rating/history/tournament를 만들지 않으며 2분 안에서 result recovery가 가능합니다. process restart/multi-instance를 넘는 보존은 의도적으로 없습니다. |
-| 다음 관련 commit 연결 | `2b2746...`가 ticket/rate IP maps와 runtime mode를 fail-closed bounded state로 강화합니다. |
+| 직전 관련 상태 | 공통 종료 경로가 `repo.finalizeMatch`를 호출하면 비회원 신원이 경기/레이팅/이력/토너먼트 영속 저장에 들어갑니다. 반대로 즉시 폐기하면 연결 해제 직후 결과를 못 받을 수 있습니다. |
+| 핵심 경계/판단 | 비회원 경기방은 저장소 결과 확정 전에 브랜치해 `{matchId:null,persisted:false,ratingDelta:0}`를 만들고 사용자별 최근 결과 목록에 2분 타이머와 함께 보존합니다. |
+| 상태 또는 소유권 변화 | GameHub 프로세스 메모리가 임시 결과와 정리 타이머를 소유합니다. 같은 비회원의 새 결과는 이전 타이머를 해제하고 교체합니다. |
+| 주요 실패/예외 경로 | 타이머 콜백은 저장된 `expiresAtMs` 신원을 다시 확인해 교체 항목을 오래된 타이머가 삭제하지 못합니다. 재연결 시 활성/recovered 경기방이 없을 때만 보존된 결과를 전송합니다. |
+| 보장 범위/보장하지 않는 범위 | 비회원 경기는 DB 경기/레이팅/이력/토너먼트를 만들지 않으며 2분 안에서 결과 복구가 가능합니다. 프로세스 재시작/여러 인스턴스를 넘는 보존은 의도적으로 없습니다. |
+| 다음 관련 커밋 연결 | `2b2746...`가 티켓/빈도 IP Map와 실행 모드를 실패 시 차단 상한을 둔 상태로 강화합니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `77a7c205ccd0` — `feat(game): guest matchmaking과 room을 격리`
-- 다음 Thread 관련 SHA: `2b274686e6d4` — `fix(guest): 체험 환경의 runtime 복구 제한`
+- 직전 개발 스레드 관련 SHA: `77a7c205ccd0` — `feat(game): guest matchmaking과 room을 격리`
+- 다음 개발 스레드 관련 SHA: `2b274686e6d4` — `fix(guest): 체험 환경의 runtime 복구 제한`
 
 ### 5.7. `fix(guest): 체험 환경의 runtime 복구 제한`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `2b274686e6d4` |
-| Importance | A |
-| Tags | AUTH, REALTIME, RISK |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | AUTH, REALTIME, RISK |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Bounds IP windows and pending ticket structures and validates runtime mode.
-- Classification summary: Close unbounded in-memory growth and fail-open runtime-mode behavior in the public guest surface.
+- 개발 스레드에서의 역할: IP 시간 구간과 대기 중 티켓 자료구조에 상한을 두고 실행 모드를 검증합니다.
+- 분류 요약: 공개 비회원 기능에서 제한 없는 메모리 증가와 실행 모드 검증 실패 시 허용 동작을 제거합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | TTL이 있어도 공격자가 계속 새 IP/window/ticket key를 만들면 cleanup 전에 maps가 무한 증가할 수 있고 unknown `APP_MODE`가 development로 해석될 수 있었습니다. |
-| 핵심 boundary/decision | tracked IP windows는 10,000개, pending guest tickets는 IP당 4개, issuance는 IP당 분당 30회로 제한합니다. ticket map/reverse index/timer는 공통 delete path로 정리하고 runtime mode는 알려진 enum만 허용합니다. |
-| 상태 또는 ownership 변화 | GuestAccess가 rate window·pending ticket·reverse index·timer capacity를 명시적으로 소유하며 app startup mode parser가 deployment capability를 fail-closed합니다. |
-| 주요 failure/edge path | capacity 초과는 새 state 할당 전에 거부합니다. consume/expiry/replacement/close가 같은 cleanup 함수를 사용해 timer와 양방향 index를 동시에 제거합니다. unknown mode는 development route를 열지 않고 error입니다. |
-| 보장/비보장 | guest public endpoint의 주요 process-local maps가 TTL뿐 아니라 hard cardinality/rate/pending limits를 갖습니다. distributed IP identity와 proxy correctness는 별도 trust 설정에 의존합니다. |
-| 다음 관련 commit 연결 | `06d2eb...`가 fake timers와 browser recovery fixture로 bounded cleanup과 fresh-ticket/no-duplicate-intent를 검증합니다. |
+| 직전 관련 상태 | TTL이 있어도 공격자가 계속 새 IP/시간 구간/티켓 키를 만들면 정리 전에 Map이 무한 증가할 수 있고 알 수 없는 `APP_MODE`가 개발로 해석될 수 있었습니다. |
+| 핵심 경계/판단 | 추적하는 IP 시간 구간은 10,000개, 대기 중 비회원 티켓은 IP당 4개, 티켓 발급은 IP당 분당 30회로 제한합니다. 티켓 Map, 역방향 인덱스, 타이머는 공통 삭제 경로로 정리하고 실행 모드는 알려진 열거형만 허용합니다. |
+| 상태 또는 소유권 변화 | GuestAccess가 빈도 제한 시간 구간·대기 중 티켓·역방향 인덱스·타이머 용량을 명시적으로 소유하며 애플리케이션 시작 모드 파서가 배포 모드의 기능을 실패 시 차단합니다. |
+| 주요 실패/예외 경로 | 용량 초과는 새 상태 할당 전에 거부합니다. 소비/만료/교체/종료가 같은 정리 함수를 사용해 타이머와 양방향 인덱스를 동시에 제거합니다. 알 수 없는 모드는 개발 라우트를 열지 않고 오류입니다. |
+| 보장 범위/보장하지 않는 범위 | 비회원 공개 엔드포인트의 주요 프로세스 내부 Map이 TTL뿐 아니라 강제 라벨 조합 수/빈도/대기 중 상한을 갖습니다. 분산 환경의 IP 신원과 프록시 정확성은 별도 신뢰 설정에 의존합니다. |
+| 다음 관련 커밋 연결 | `06d2eb...`는 가짜 타이머와 브라우저 복구 픽스처로 상한이 있는 정리와 새 티켓 발급 시 중복 참가 요청을 보내지 않는 동작을 검증합니다. |
 
-#### Fix 재구성
+#### 수정 과정 재구성
 
 | 단계 | 근거 |
 | --- | --- |
-| 이전 가정 | 각 entry에 TTL이 있으면 public guest runtime state가 충분히 bounded하다는 가정. |
-| 실제 실패 또는 위험 | expiry 속도보다 빠르게 distinct IP/ticket keys를 만들면 map/timer 수가 계속 증가하고 mode typo가 dev capability를 노출합니다. |
-| Root cause | 시간 제한은 있었지만 cardinality·issuance rate·per-IP pending 상한과 shared cleanup invariant가 없었습니다. |
-| 수정된 invariant/decision | 10,000 tracked IP, 30/min issuance, 4 pending/IP, 공통 delete path, strict runtime mode validation. |
-| 변경 코드 | `apps/api/src/guestAccess.ts` capacity/rate/ticket indexes 및 environment mode parser. |
-| Regression evidence | `06d2eb...` fake-timer window/ticket cleanup과 limit tests가 보호합니다. |
+| 이전 가정 | 각 항목에 TTL이 있으면 공개 비회원 실행 환경 상태가 충분히 상한을 둔하다는 가정. |
+| 실제 실패 또는 위험 | 만료 속도보다 빠르게 서로 다른 IP와 티켓 키를 만들면 목록/타이머 수가 계속 증가하고 모드 typo가 개발 모드 기능을 노출합니다. |
+| 루트 원인 | 시간 제한은 있었지만 라벨 조합 수·발급 빈도·per-IP 대기 중 상한과 공유 정리 불변 조건이 없었습니다. |
+| 수정된 불변 조건/판단 | 추적 중인 IP 10,000개, 분당 30회 발급, IP당 대기 중 티켓 4개, 공통 삭제 경로, 엄격한 실행 모드 검증. |
+| 변경 코드 | `apps/api/src/guestAccess.ts` 용량/빈도/티켓 인덱스 및 실행 환경 모드 파서. |
+| 회귀 테스트 근거 | `06d2eb...` 가짜 타이머 시간 구간/티켓 정리와 상한 테스트가 보호합니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `eaa4fdaba361` — `feat(game): guest 경기 결과 영속화 차단과 임시 보존`
-- 다음 Thread 관련 SHA: `06d2eb7a93cc` — `test(guest): 체험 환경의 복구 경계 검증`
+- 직전 개발 스레드 관련 SHA: `eaa4fdaba361` — `feat(game): guest 경기 결과 영속화 차단과 임시 보존`
+- 다음 개발 스레드 관련 SHA: `06d2eb7a93cc` — `test(guest): 체험 환경의 복구 경계 검증`
 
 ### 5.8. `test(guest): 체험 환경의 복구 경계 검증`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `06d2eb7a93cc` |
-| Importance | A |
-| Tags | AUTH, SIMULATION, REALTIME |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | AUTH, SIMULATION, REALTIME |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Verifies bounded cleanup, fresh-ticket reconnect, and no duplicate match intent.
-- Classification summary: Add deterministic guest runtime and browser recovery regressions for bounded transient state.
+- 개발 스레드에서의 역할: 상한을 둔 정리, 새 티켓 재연결, 대전 요청 중복 방지를 검증합니다.
+- 분류 요약: 상한을 둔 임시 상태를 검증하는 결정적 비회원 런타임·브라우저 복구 회귀 테스트를 추가합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | guest domain은 격리·bounded하도록 구현됐지만 rate window, pending tickets, leases, retained result timers와 browser reconnect intent가 함께 회귀하지 않는 evidence가 부족했습니다. |
-| 핵심 boundary/decision | fake timers와 guest/app/GameHub/browser fixtures가 issuance rate/pending cap/expiry cleanup, stale lease release, retained result expiry/replacement, fresh-ticket reconnect, reconnect 시 queue intent 미재전송을 검사합니다. |
-| 상태 또는 ownership 변화 | test clock이 window/ticket/result timer를 deterministic하게 전진시키고 spies가 repository 호출 부재와 ticket/queue call counts를 관찰합니다. |
-| 주요 failure/edge path | limit에 도달한 뒤 expiry/window 이동으로 capacity가 실제 반환되는지, old timer/lease가 new entry를 지우지 않는지, reconnect가 매 attempt fresh ticket을 쓰면서 duplicate match를 만들지 않는지 확인합니다. |
-| 보장/비보장 | 검사한 process/browser 경계에서 isolation과 bounded cleanup을 증명합니다. source IP spoofing 방지, proxy configuration, multi-instance/global cap은 증명하지 않습니다. |
-| 다음 관련 commit 연결 | Thread 최종 상태는 database-independent signed identity와 bounded transient capability domain입니다. |
+| 직전 관련 상태 | 비회원 도메인은 격리·상한을 둔하도록 구현됐지만 빈도 제한 시간 구간, 대기 중 티켓, 임대, 보존된 결과 타이머와 브라우저 재연결 요청 의도가 함께 회귀하지 않는 근거가 부족했습니다. |
+| 핵심 경계/판단 | 가짜 타이머와 비회원/애플리케이션/GameHub/브라우저 테스트 데이터가 발급 빈도/대기 중 상한/만료 정리, 오래된 임대 릴리스, 보존된 결과 만료/교체, 새 티켓 재연결, 재연결 시 대기열 요청 의도 미재전송을 검사합니다. |
+| 상태 또는 소유권 변화 | 가짜 시계가 시간 구간, 티켓, 결과 만료 타이머를 결정적으로 진행시키고 감시 객체가 저장소 호출이 없었는지와 티켓·대기열 호출 횟수를 확인합니다. |
+| 주요 실패/예외 경로 | 상한에 도달한 뒤 만료/시간 구간 이동으로 용량이 실제 반환되는지, 기존 타이머/임대가 새 항목을 지우지 않는지, 재연결이 매 시도 새 티켓을 쓰면서 중복 경기를 만들지 않는지 확인합니다. |
+| 보장 범위/보장하지 않는 범위 | 검사한 프로세스/브라우저 경계에서 격리와 상한을 둔 정리를 검증합니다. 소스 IP spoofing 방지, 프록시 설정, 여러 인스턴스/전역 상한은 검증하지 않습니다. |
+| 다음 관련 커밋 연결 | 개발 스레드 최종 상태는 데이터베이스 독립적인 서명된 신원과 상한을 둔 임시 권한 도메인입니다. |
 
-#### Test commit 학습 기록
+#### 테스트 커밋 학습 기록
 
 | 구분 | 기록 |
 | --- | --- |
-| 대상 production invariant | guest identity/tickets/leases/results는 registered data와 분리되고 모든 process-local state는 bounded·cleanup됩니다. |
-| 재현하는 failure/boundary | rate window, pending per-IP cap, expiry, replacement stale release/timer, retained result, fresh-ticket reconnect/no queue replay. |
-| test technique | Vitest fake timers, app/GameHub fixtures, repository spies, browser socket-client tests. |
-| 통과하는 production path | guest cookie → in-memory ticket → lease → guest room → non-persisted result → reconnect/expiry cleanup. |
-| 증명하는 것 | 검사한 single-process trust domain과 browser recovery behavior가 의도한 bounds를 지킵니다. |
-| 증명하지 않는 것 | multi-instance aggregate capacity, real reverse proxy IP trust, internet adversarial load는 증명하지 않습니다. |
-| test 성격 | Deterministic bounded-resource, isolation, and reconnect regression. |
-| 후속 회귀 방지 설명 | TTL-only growth, stale release deletion, DB access, durable result, duplicate matchmaking intent가 생기면 실패해야 합니다. |
+| 검증 대상 불변 조건 | 비회원 신원/티켓/임대/results는 등록 사용자 데이터와 분리되고 모든 프로세스 내부 상태는 상한을 둔·정리됩니다. |
+| 재현하는 실패/경계 | 빈도 제한 시간 구간, 대기 중 per-IP 상한, 만료, 교체 오래된 릴리스/타이머, 보존된 결과, 새 티켓 재연결/없음 대기열 요청 재실행. |
+| 테스트 기법 | Vitest 가짜 타이머, 애플리케이션/GameHub 테스트 데이터, 저장소 감시 객체, 브라우저 소켓 클라이언트 테스트. |
+| 실행하는 실제 코드 경로 | 비회원 쿠키 → 메모리 티켓 → 임대 → 비회원 경기방 → 비영속 결과 → 재연결 또는 만료 정리 순서입니다. |
+| 검증하는 것 | 검사한 단일 프로세스 신뢰 도메인과 브라우저 복구 동작이 의도한 범위 제한을 지킵니다. |
+| 검증하지 않는 것 | 여러 인스턴스 집계 용량, 실제 리버스 프록시 IP 신뢰, internet adversarial 부하는 검증하지 않습니다. |
+| 테스트 성격 | 결정적 상한을 둔 자원, 격리 및 재연결 회귀. |
+| 후속 회귀 방지 설명 | TTL에만 의존한 상태 증가, 오래된 임대 해제에 따른 잘못된 삭제, DB 접근, 영속 결과, 중복 대전 상대 연결 요청 의도가 생기면 실패해야 합니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `2b274686e6d4` — `fix(guest): 체험 환경의 runtime 복구 제한`
-- 이 Thread의 마지막 상태와 비교해 최종 보장을 정리했습니다.
+- 직전 개발 스레드 관련 SHA: `2b274686e6d4` — `fix(guest): 체험 환경의 runtime 복구 제한`
+- 이 개발 스레드의 마지막 상태와 비교해 최종 보장을 정리했습니다.
 
-## 6. Invariant ledger
+## 6. 불변 조건 기록
 
-Source에서 확정된 invariant를 commit 시점별로 연결했습니다. `해당 없음`은 해당 Thread 안에서 별도 fix/test가 없음을 뜻합니다.
+원문에서 확인한 불변 조건을 커밋 시점별로 연결했습니다. `해당 없음`은 해당 개발 스레드에서 별도 수정/테스트가 없음을 뜻합니다.
 
-| Invariant | 처음 도입/관찰한 SHA | 강화한 SHA | 부족함이 드러난 SHA | 복구한 fix | 고정한 regression test | 코드 근거 |
+| 불변 조건 | 처음 도입/관찰한 SHA | 강화한 SHA | 부족함이 드러난 SHA | 복구한 수정 | 고정한 회귀 테스트 | 코드 근거 |
 | --- | --- | --- | --- | --- | --- | --- |
-| Guest identities, matchmaking pools, capabilities, persistence, tickets, leases, and retained results remain isolated and resource-bounded. | `cacd4c22d705` signed identity | `17a1dd501b1b` leases → `a5c06c561e00` trust handoff → `27ddc3fca2f1` reads → `77a7c205ccd0` matchmaking → `eaa4fdaba361` persistence → `2b274686e6d4` hard bounds | TTL-only structures와 unknown mode fail-open | `2b274686e6d4` | `06d2eb7a93cc` | `guestAccess.ts`, app guards, GameHub guest branches |
-| The durable browser session is carried only by an HttpOnly cookie; raw WebSocket tickets are short-lived, single-use, hashed at rest, bounded during authentication, and excluded from logs. | Thread 02 contract 재사용 | `a5c06c561e00` guest in-memory ticket/lease, `2b274686e6d4` pending/rate bounds | guest public issuance의 별도 capacity 문제 | `2b274686e6d4` | `06d2eb7a93cc` | guest cookie/ticket/admission paths |
-| Timers, schedulers, heartbeat handles, retry work, snapshot buffers, and database resources have explicit single-owner cleanup. | `17a1dd501b1b` lease handle | `eaa4fdaba361` result timer guard, `2b274686e6d4` shared ticket cleanup | stale close/timer가 replacement 삭제 위험 | leaseId/expiresAt identity guards | `06d2eb7a93cc` | GuestAccess maps/timers, recentGuestResults |
+| 비회원 신원, 대전 상대 연결 풀, 권한, 영속성, 티켓, 임대 상태, 보관 결과는 등록 사용자 영역과 분리하고 자원 상한을 둡니다. | `cacd4c22d705` 서명된 신원 | `17a1dd501b1b` 임대 → `a5c06c561e00` 신뢰 인계 → `27ddc3fca2f1` 조회 제한 → `77a7c205ccd0` 대전 상대 연결 → `eaa4fdaba361` 임시 결과 보관 → `2b274686e6d4` 강제 상한 | TTL에만 의존한 자료구조 증가와 알 수 없는 모드의 실패 시 허용 | `2b274686e6d4` | `06d2eb7a93cc` | `guestAccess.ts`, 애플리케이션 검사, GameHub 비회원 분기 |
+| 브라우저의 장기 세션은 HttpOnly 쿠키로만 전달합니다. WebSocket 원본 티켓은 수명이 짧고 한 번만 사용할 수 있으며, 저장 시 해시만 보관하고 인증 중 버퍼 크기를 제한하며 로그에서 제외합니다. | 개발 스레드 02의 인증 규칙 재사용 | `a5c06c561e00` 비회원 메모리 티켓·임대, `2b274686e6d4` 대기 티켓·발급 빈도 상한 | 비회원 공개 발급의 별도 용량 문제 | `2b274686e6d4` | `06d2eb7a93cc` | 비회원 쿠키·티켓·입장 경로 |
+| 타이머, 스케줄러, 연결 상태 확인 작업, 재시도 작업, 스냅샷 버퍼, 데이터베이스 자원은 각각 하나의 소유 주체가 명시되어 있으며 해당 주체가 정리합니다. | `17a1dd501b1b` 임대 핸들 | `eaa4fdaba361` 결과 타이머 보호 조건, `2b274686e6d4` 공유 티켓 정리 | 오래된 종료 처리나 타이머가 교체된 자원을 삭제할 위험 | `leaseId`와 `expiresAt` 일치 검사 | `06d2eb7a93cc` | `GuestAccess` Map과 타이머, `recentGuestResults` |
 
-## 7. Failure → Fix → Test 연결
+## 7. 실패 → 수정 → 테스트 연결
 
-| 기존 상태/가정 | Fix 또는 강화 과정 | Test/evidence | 최종 보장 |
+| 기존 상태/가정 | 수정 또는 강화 과정 | 테스트/근거 | 최종 보장 |
 | --- | --- | --- | --- |
-| guest를 DB registered session의 약한 변형으로 취급 | signed DB-less identity + no DB fallback + registered-only guards | guest route/repository spy tests | 별도 trust/capability domain |
-| guest/registered pool·NPC·result가 섞임 | pool kind/room guest flag + transient finalization branch | GameHub guest tests | mixed matchmaking/durable result 없음 |
-| TTL만으로 public in-memory state를 제한 | `2b274...` hard cardinality/rate/pending caps + shared cleanup | `06d2eb...` fake-timer/limit tests | process-local state bounded |
-| old socket/timer가 replacement resource를 삭제 | leaseId/expiresAt identity checks | stale release/timer regression | current owner만 cleanup 가능 |
+| 비회원을 DB 등록 사용자 세션의 약한 변형으로 취급 | 서명된 DB 없이 실행하는 신원 + 없음 DB 대체 처리 + 등록 사용자 전용 검사 조건 | 비회원 라우트/저장소 호출 감시 객체 테스트 | 별도 신뢰/권한 도메인 |
+| 비회원/등록 사용자 풀·NPC·결과가 섞임 | 풀 유형/경기방 비회원 표시값 + 임시 결과 확정 브랜치 | GameHub 비회원 테스트 | 서로 다른 신원 종류를 섞는 대전 상대 연결/영속 결과 없음 |
+| TTL만으로 공개 메모리 상태를 제한 | `2b274...` 강제 라벨 조합 수/빈도/대기 중 caps + 공유 정리 | `06d2eb...` 가짜 타이머/상한 테스트 | 프로세스 내부 상태 상한을 둔 |
+| 기존 소켓이나 타이머가 교체된 자원을 삭제 | `leaseId`와 `expiresAt` 일치 검사 | 오래된 임대 해제·타이머 회귀 | 현재 소유자만 정리 가능 |
 
-## 8. Ownership / state / responsibility 변화
+## 8. 소유권·상태·담당 범위 변화
 
-| 축 | 초기 SHA의 owner/state | 중간 전환 | Thread 최종 owner/state | 해제·cleanup 책임 | 근거 |
+| 축 | 초기 SHA의 소유 주체/상태 | 중간 전환 | 개발 스레드 최종 소유 주체/상태 | 해제·정리 책임 | 근거 |
 | --- | --- | --- | --- | --- | --- |
-| guest identity | 없음/DB account 가능성 | `cacd4c...` signed payload | GuestAccess + HttpOnly guest cookie | expiry/logout | `guestAccess.ts::issue/verify` |
-| pending ticket | registered DB ticket | `a5c06...` in-memory guest ticket | GuestAccess bounded maps | consume/expiry/shared delete | guest ticket methods |
-| live capacity | 없음 | `17a1dd...` lease map | GuestAccess leaseId record | current lease release/socket close | connection lease methods |
-| read/match capability | common route/queue | `27ddc...` route guards, `77a7c...` pool kind | app guard + Matchmaker/GameHub | request/room lifetime | registered guards/guest flag |
-| result | common DB finalize | `eaa4fd...` transient branch | GameHub recentGuestResults | 2분 timer/replacement | guest finalization path |
+| 비회원 신원 | 없음 또는 DB 계정으로 오인 가능 | `cacd4c...` 서명된 데이터 | `GuestAccess`와 HttpOnly 비회원 쿠키 | 만료·로그아웃 | `guestAccess.ts::issue/verify` |
+| 대기 중 티켓 | 등록 사용자 DB 티켓 | `a5c06...` 메모리 비회원 티켓 | GuestAccess 상한을 둔 Map | 소비/만료/공유 삭제 | 비회원 티켓 메서드 |
+| 실시간 용량 | 없음 | `17a1dd...` 임대 목록 | GuestAccess 임대 ID 레코드 | 현재 임대 릴리스/소켓 종료 | 연결 임대 메서드 |
+| 읽기/경기 권한 | 공통 라우트·대기열 | `27ddc...` 라우트 검사 조건, `77a7c...` 풀 유형 | 애플리케이션 보호 조건 + 대전 상대 연결 관리자/GameHub | 요청/경기방 수명 | 등록 사용자 검사 조건/비회원 표시값 |
+| 결과 | 공통 DB 결과 확정 | `eaa4fd...` 임시 결과 분기 | GameHub의 `recentGuestResults` | 2분 타이머 또는 결과 교체 | 비회원 결과 확정 경로 |
 
-## 9. Thread 최종 상태
+## 9. 개발 스레드 최종 상태
 
-- 최종 authoritative owner: GuestAccess가 signed identity·pending tickets·live leases·rate windows를, app guards가 capabilities를, GameHub가 guest room/transient result를 소유합니다.
-- 최종 상태/invariant: guest는 registered data·pool·NPC·ratings·history·tournament와 섞이지 않고 모든 transient state는 TTL과 hard capacity를 함께 가집니다.
-- 남아 있는 의도적 제한 또는 비보장: single-process state라 restart/multi-instance 복구·global capacity를 제공하지 않으며 IP binding은 trusted proxy 설정에 의존합니다.
-- 후속 Thread가 의존하는 contract: signed `pp_guest` cookie는 in-memory one-time ticket을 발급할 수 있고 admitted lease 범위 안에서 guest-only room과 non-persisted result만 사용합니다.
-- 대표 코드 근거: `cacd4c22d705`/`17a1dd501b1b`/`2b274686e6d4 apps/api/src/guestAccess.ts`, `27ddc3fca2f1 app.ts`, `77a7c205ccd0`/`eaa4fdaba361 gameHub.ts`, `06d2eb7a93cc` tests
+- 최종 판정 주체: `GuestAccess`가 서명된 신원, 대기 중인 티켓, 활성 임대, 요청 빈도 제한 구간을 관리합니다. 애플리케이션 검사 함수는 허용 권한을 판정하고, `GameHub`는 비회원 경기방과 임시 결과를 관리합니다.
+- 최종 상태/불변 조건: 비회원은 등록 사용자 데이터·풀·NPC·레이팅·이력·토너먼트와 섞이지 않고 모든 임시 상태는 TTL과 강제 용량을 함께 가집니다.
+- 남아 있는 의도적 제한 또는 보장하지 않는 범위: 단일 프로세스 상태라 재시작/여러 인스턴스 복구·전역 용량을 제공하지 않으며 IP 결합은 trusted 프록시 설정에 의존합니다.
+- 후속 개발 스레드가 의존하는 계약: 서명된 `pp_guest` 쿠키로 메모리 일회용 티켓을 발급할 수 있으며, 승인된 임대 범위에서만 비회원 전용 경기방과 비영속 결과를 사용합니다.
+- 대표 코드 근거: `cacd4c22d705`/`17a1dd501b1b`/`2b274686e6d4 apps/api/src/guestAccess.ts`, `27ddc3fca2f1 app.ts`, `77a7c205ccd0`/`eaa4fdaba361 gameHub.ts`, `06d2eb7a93cc` 테스트
 
-## 10. 최종 architecture 또는 execution flow 정리
+## 10. 최종 아키텍처와 실행 순서
 
 ```text
 [POST /auth/guest: server-generated identity + HMAC cookie, IP/2h bound]
@@ -2667,7 +2667,7 @@ Source에서 확정된 invariant를 commit 시점별로 연결했습니다. `해
     ↓ one-time consume
 [live lease: 4/IP, 200/process, leaseId stale-release guard]
     ↓
-[registered data call-before-read guards + guest-only matchmaking/AI]
+[등록 사용자 데이터 조회 전 접근 제한 + 비회원 전용 대전 상대 연결·AI]
     ↓
 [guest room simulation]
     ↓ terminal
@@ -2675,409 +2675,409 @@ Source에서 확정된 invariant를 commit 시점별로 연결했습니다. `해
     ↓ 2-minute process-local retained result → cleanup/reconnect
 ```
 
-- demo mode는 registered session/database fallback을 하지 않습니다.
-- hard caps는 TTL cleanup이 따라가지 못하는 공격에서도 state cardinality를 제한합니다.
+- 체험 모드는 등록 사용자 세션/데이터베이스 대체 처리를 하지 않습니다.
+- 강제 caps는 TTL 정리가 따라가지 못하는 공격에서도 상태 라벨 조합 수를 제한합니다.
 
-## 11. 학습 완료 자가 점검
+## 11. 학습 완료 확인
 
-- [x] Commit map의 모든 SHA를 원문 순서대로 확인했습니다.
-- [x] 각 commit의 subject, importance, tags를 변경하지 않았습니다.
+- [x] 커밋 목록의 모든 SHA를 원문 순서대로 확인했습니다.
+- [x] 각 커밋의 제목·중요도·태그를 변경하지 않았습니다.
 - [x] S/A/B 깊이를 구분해 코드 근거를 남겼습니다.
-- [x] final HEAD의 구현을 과거 SHA에 소급하지 않았습니다.
-- [x] 핵심 상태 필드, caller/callee, ownership, failure branch, cleanup을 실제 코드로 확인했습니다.
-- [x] Fix를 기존 가정 → failure/risk → root cause → decision → code → regression 순서로 연결했습니다.
-- [x] Test commit에서 production invariant, failure, technique, path, 증명/비증명 범위를 구분했습니다.
-- [x] Thread 최종 execution flow를 별도 프로젝트 재학습 없이 설명할 수 있습니다.
+- [x] 최종 상태의 구현을 과거 SHA에 소급하지 않았습니다.
+- [x] 핵심 상태 필드, 호출자/피호출자, 소유권, 실패 분기, 정리를 실제 코드로 확인했습니다.
+- [x] 수정을 기존 가정 → 실패/위험 → 근본 원인 → 판단 → 코드 → 회귀 순서로 연결했습니다.
+- [x] 테스트 커밋에서 운영 불변 조건, 실패, 기법, 경로, 검증 범위와 미검증 범위를 구분했습니다.
+- [x] 개발 스레드 최종 실행 순서를 별도 프로젝트 재학습 없이 설명할 수 있습니다.
 ===== END FILE: 07-guest-mode-as-isolated-transient-trust-domain.md =====
 
 ===== BEGIN FILE: 08-runtime-timing-backpressure-drain-and-operational-evidence.md =====
 # 런타임 타이밍·백프레셔·드레인·운영 증거
 
-원문 Development Thread: `Runtime timing, backpressure, drain, and operational evidence`
+원문 개발 스레드: `Runtime timing, backpressure, drain, and operational evidence`
 
-## 1. Thread 목표
+## 1. 개발 스레드 목표
 
-- simulation catch-up, socket liveness, input burst, snapshot backlog, timer topology, shutdown work를 각각 명시적으로 제한하는 runtime 경계를 추적합니다.
-- per-room timing이 shared scheduler로 이동하며 runnable room membership이 lifecycle 상태와 일치하는지 확인합니다.
-- drain/readiness/signal shutdown과 database/edge fault harness가 같은 운영 invariant를 어떻게 검증하는지 복원합니다.
+- 시뮬레이션 누적 시간 보정, 소켓 생존 상태, 입력 폭주, 스냅샷 대기열, 타이머 구성, 종료 작업을 각각 명시적으로 제한하는 실행 경계를 추적합니다.
+- 경기방별 시간 제어가 공유 스케줄러로 이동하며 실행 가능한 경기방 참가 상태가 수명주기 상태와 일치하는지 확인합니다.
+- 작업 중단/준비 상태/신호 종료와 데이터베이스/외부 구간 장애 테스트 실행 틀이 같은 운영 불변 조건을 어떻게 검증하는지 복원합니다.
 
-### Source에서 확정된 significance
+### 원문에서 확인한 중요성
 
-> The completed runtime bounds every major source of unbounded work: elapsed catch-up, dead sockets, input bursts, snapshot backlog, timer multiplicity, and shutdown. Observability and fault tooling then measure the same boundaries under process and network degradation rather than relying only on unit behavior.
+> 완성된 실행 환경은 누적 시간 보정, 죽은 소켓, 입력 폭주, 스냅샷 적체, 타이머 중복, 종료처럼 작업량이 끝없이 늘 수 있는 주요 지점에 상한을 둡니다. 관측 지표와 장애 도구는 단위 테스트에만 의존하지 않고 프로세스·네트워크 성능 저하 중에도 같은 상한을 측정합니다.
 
-### 직접 연결되는 Critical Invariants
+### 직접 연결되는 핵심 불변 조건
 
-> Timers, schedulers, heartbeat handles, retry work, snapshot buffers, and database resources have explicit single-owner cleanup.
+> 타이머, 스케줄러, 연결 상태 확인 작업, 재시도 작업, 스냅샷 버퍼, 데이터베이스 자원은 각각 하나의 소유 주체가 명시되어 있으며 해당 주체가 정리합니다.
 
-> Draining rejects new work immediately, allows owned rooms to finish within a bounded budget, and remains aligned with the container termination grace period.
+> 작업 중단 상태에서는 새 작업을 즉시 거부하고, 이미 소유한 경기방은 정해진 시간 안에 끝낼 수 있게 하며, 컨테이너 종료 유예 시간과 맞춥니다.
 
-> Every accepted wire message conforms to the supported versioned runtime schema; snapshot and input ordering cannot move state backward.
+> 허용된 모든 전송 메시지는 지원하는 버전의 런타임 스키마를 따르며, 스냅샷과 입력 순서는 상태를 과거로 되돌릴 수 없습니다.
 
-### 직접 연결되는 Major Engineering Difficulties
+### 직접 연결되는 주요 구현 난점
 
-> Handling slow or stale transports through sequence gates, token buckets, latest-value snapshot delivery, measurable congestion, and hard termination limits.
+> 느리거나 오래된 전송은 순번 검사, 토큰 버킷, 최신 값만 유지하는 스냅샷 전달, 측정 가능한 혼잡, 강제 종료 상한으로 처리해야 합니다.
 
-> Preserving domain correctness during database failure, tournament-start rollback, match-finalization retry, process drain, and deployment shutdown.
+> 데이터베이스 장애, 토너먼트 시작 되돌리기, 경기 결과 확정 재시도, 프로세스 작업 중단, 배포 종료 중에도 데이터의 올바른 상태를 유지해야 합니다.
 
-## 2. 이 Thread를 이해하기 위한 핵심 질문
+## 2. 이 개발 스레드를 이해하기 위한 핵심 질문
 
-- wall-clock 지연이 fixed 50 ms step으로 변환될 때 remainder, five-tick cap, 250 ms ceiling은 어떻게 적용됩니까?
-- heartbeat의 ping interval과 authoritative deadline은 어떤 timer ownership과 idempotent cleanup을 사용합니까?
-- input sequence와 per-user token bucket은 어떤 순서로 검사되며 왜 stale input이 budget을 쓰지 않습니까?
-- latest snapshot buffer는 obsolete frame replacement와 measurable congestion을 어떻게 구분합니까?
-- shared scheduler registry는 room register/unregister 중 iteration mutation을 어떻게 격리합니까?
-- draining 시작 직후 readiness, waiting clients, active rooms, final close 상태는 어떻게 바뀝니까?
-- fault harness가 database path와 edge path를 분리해 어떤 evidence를 수집합니까?
+- 벽시계 지연이 고정된 50 ms 단계로 변환될 때 남은 시간, 5틱 상한, 250ms 누적 상한은 어떻게 적용됩니까?
+- 연결 확인 신호의 ping 주기와 서버가 확정하는 기한은 어떤 타이머 소유권과 멱등 정리를 사용합니까?
+- 입력 순번과 각 사용자 토큰 버킷은 어떤 순서로 검사되며 왜 오래된 입력이 허용 시간을 쓰지 않습니까?
+- 최신 스냅샷 버퍼는 더 이상 사용하지 않는 형식 프레임 교체와 측정 가능한 혼잡을 어떻게 구분합니까?
+- 공유 스케줄러 레지스트리는 경기방 등록/등록 해제 중 순회 중 변경을 어떻게 격리합니까?
+- 작업 중단 시작 직후 준비 상태, 대기 중인 클라이언트, 진행 중인 경기방, 최종 종료 상태는 어떻게 바뀝니까?
+- 장애 테스트 실행 틀이 데이터베이스 경로와 예외 경로를 분리해 어떤 근거를 수집합니까?
 
 ## 3. 완료 기준
 
-- 각 runtime limiter의 key, threshold, timer, cleanup owner를 표로 완성할 수 있습니다.
-- room이 simulation 가능한 동안에만 shared scheduler에 등록된다는 lifecycle invariant를 설명할 수 있습니다.
-- snapshot delivery가 lossy 최신 상태 전송이고 control event는 다른 경계를 갖는 이유를 설명할 수 있습니다.
-- 첫 signal부터 60초 drain, Fastify close, repository release까지 단일 teardown sequence를 그릴 수 있습니다.
-- load/fault test가 unit test와 달리 어떤 실제 service-level 경로와 실패를 증명하는지 구분할 수 있습니다.
+- 각 실행 시점 호출 제한기의 키, 임계값, 타이머, 정리 소유 주체를 표로 완성할 수 있습니다.
+- 경기방이 시뮬레이션 가능한 동안에만 공유 스케줄러에 등록된다는 수명주기 불변 조건을 설명할 수 있습니다.
+- 스냅샷 전달이 lossy 최신 상태 전송이고 제어 이벤트는 다른 경계를 갖는 이유를 설명할 수 있습니다.
+- 첫 신호부터 60초 작업 중단, Fastify 종료, 저장소 릴리스까지 단일 종료 정리 순번을 그릴 수 있습니다.
+- 부하/장애 테스트가 단위 테스트와 달리 어떤 실제 서비스 수준 경로와 실패를 검증하는지 구분할 수 있습니다.
 
-> 검토 방식: 지정 브랜치에 속한 exact SHA의 diff와 해당 시점 파일을 GitHub에서 확인했습니다. 로컬 실행 환경은 GitHub clone이 차단되어 테스트 명령은 실행하지 않았으며, 아래 테스트 결과 설명은 test implementation 검토에 한정합니다.
+> 검토 방식: 지정 브랜치의 정확한 SHA별 변경 내용과 해당 시점 파일을 GitHub에서 확인했습니다. 로컬 환경에서는 GitHub 복제가 차단되어 테스트 명령을 실행하지 못했습니다. 아래 테스트 설명은 테스트 코드 검토 결과에 한정합니다.
 
-## 4. Commit map
+## 4. 커밋 목록
 
-| 순서 | SHA | Subject | Importance | Tags | Source에서 확정된 역할 |
+| 순서 | SHA | 제목 | 중요도 | 태그 | 원문에서 확인한 역할 |
 | ---: | --- | --- | :---: | --- | --- |
-| 1 | `3a2943ff385d` | `feat(game): fixed-step scheduler 추가` | A | SIMULATION, REALTIME, OBSERVABILITY | Separates monotonic elapsed time from bounded 50 ms simulation work. |
-| 2 | `10a656e59864` | `feat(game): WebSocket heartbeat 추가` | A | REALTIME, RISK | Adds deterministic liveness ownership and timeout cleanup. |
-| 3 | `207df3f47935` | `feat(game): 입력 순서와 rate limit 보호` | A | SIMULATION, REALTIME, RISK | Combines monotonic input admission with per-user token-bucket limits. |
-| 4 | `8589ff3c4821` | `feat(game): latest snapshot buffer 추가` | A | SIMULATION, REALTIME, OPERATIONS | Defines latest-value delivery and congestion termination rules. |
-| 5 | `d21a47ee92d2` | `refactor(game): shared room scheduler 추가` | A | SIMULATION, REALTIME, REFACTOR | Creates one fixed-step clock for all registered rooms. |
-| 6 | `fb5b1abc97f5` | `refactor(game): GameHub가 shared room scheduler 사용` | A | SIMULATION, REALTIME, REFACTOR | Makes runnable-room membership the hub’s single timing topology. |
-| 7 | `44ef3e07e1a5` | `feat(game): 새 작업 차단과 active room drain 추가` | A | PROTOCOL, REALTIME, TOURNAMENT | Rejects new work while waiting for owned rooms to finish. |
-| 8 | `1c9981393973` | `feat(ops): graceful shutdown 절차 추가` | A | REALTIME, PERSISTENCE, OPERATIONS | Makes signals enter one bounded drain-and-close sequence. |
-| 9 | `7b0b5f086b41` | `test(load): 실시간 fault injection 도구 추가` | A | AUTH, REALTIME, PERSISTENCE | Provides separate database and edge degradation paths for service-level evidence. |
+| 1 | `3a2943ff385d` | `feat(game): fixed-step scheduler 추가` | A | SIMULATION, REALTIME, OBSERVABILITY | 단조 증가 경과 시간과 50ms 단위로 상한을 둔 시뮬레이션 작업을 분리합니다. |
+| 2 | `10a656e59864` | `feat(game): WebSocket heartbeat 추가` | A | REALTIME, RISK | 결정적인 연결 생존 확인 소유권과 시간 초과 정리를 추가합니다. |
+| 3 | `207df3f47935` | `feat(game): 입력 순서와 rate limit 보호` | A | SIMULATION, REALTIME, RISK | 단조 증가 입력 수락과 사용자별 토큰 버킷 상한을 결합합니다. |
+| 4 | `8589ff3c4821` | `feat(game): latest snapshot buffer 추가` | A | SIMULATION, REALTIME, OPERATIONS | 최신 값 전달과 혼잡 시 종료 규칙을 정의합니다. |
+| 5 | `d21a47ee92d2` | `refactor(game): shared room scheduler 추가` | A | SIMULATION, REALTIME, REFACTOR | 등록된 모든 경기방이 공유하는 고정 간격 시계 하나를 만듭니다. |
+| 6 | `fb5b1abc97f5` | `refactor(game): GameHub가 shared room scheduler 사용` | A | SIMULATION, REALTIME, REFACTOR | 실행 가능한 경기방 목록을 허브의 유일한 시간 제어 대상 집합으로 둡니다. |
+| 7 | `44ef3e07e1a5` | `feat(game): 새 작업 차단과 active room drain 추가` | A | PROTOCOL, REALTIME, TOURNAMENT | 이미 소유한 경기방이 끝나기를 기다리는 동안 새 작업을 거부합니다. |
+| 8 | `1c9981393973` | `feat(ops): graceful shutdown 절차 추가` | A | REALTIME, PERSISTENCE, OPERATIONS | 종료 신호가 시간 상한을 둔 하나의 작업 중단·종료 순서로 들어가게 합니다. |
+| 9 | `7b0b5f086b41` | `test(load): 실시간 fault injection 도구 추가` | A | AUTH, REALTIME, PERSISTENCE | 서비스 수준 근거를 위해 데이터베이스와 외부 경계 성능 저하 경로를 분리해 제공합니다. |
 
-## 5. Commit별 학습 기록
+## 5. 커밋별 학습 기록
 
 ### 5.1. `feat(game): fixed-step scheduler 추가`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `3a2943ff385d` |
-| Importance | A |
-| Tags | SIMULATION, REALTIME, OBSERVABILITY |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | SIMULATION, REALTIME, OBSERVABILITY |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Separates monotonic elapsed time from bounded 50 ms simulation work.
-- Classification summary: Introduce a fixed-step accumulator that separates elapsed wall-clock time from simulation updates.
+- 개발 스레드에서의 역할: 단조 증가 경과 시간과 50ms 단위로 상한을 둔 시뮬레이션 작업을 분리합니다.
+- 분류 요약: 경과한 벽시계 시간과 시뮬레이션 갱신을 분리하는 고정 간격 누산기를 도입합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | parent에는 elapsed wall-clock 지연을 simulation step 수로 바꾸면서 catch-up 양을 제한하는 독립 accumulator/scheduler가 없습니다. |
-| 핵심 boundary/decision | `apps/api/src/game/fixedStepScheduler.ts`의 `FixedStepAccumulator.advance`가 `elapsed=max(0, now-previous)`를 250 ms까지 누적하고, 50 ms 단위 whole ticks 중 한 loop 최대 5개만 반환합니다. `FixedStepScheduler`는 injectable monotonic clock과 interval을 소유합니다. |
-| 상태 또는 ownership 변화 | accumulator가 `previousTimeMs`와 remainder `lagMs`를, scheduler가 interval handle과 현재 accumulator를 단독 소유합니다. `start`/`stop`은 중복 호출에 안전합니다. |
-| 주요 failure/edge path | non-finite time은 0 tick, backward clock은 elapsed 0으로 처리하고 previous time을 뒤로 옮기지 않습니다. invalid timestep/cap/ceiling은 constructor에서 거부합니다. callback이 scheduler를 stop하면 loop 조건의 `this.timer`가 같은 batch의 남은 tick을 중단합니다. |
-| 보장/비보장 | event-loop stall 뒤에도 한 loop work는 5 ticks, backlog는 250 ms로 제한되고 remainder는 유지됩니다. 아직 room lifecycle이나 GameHub timing owner가 이 abstraction을 사용한다는 보장은 없습니다. |
-| 다음 관련 commit 연결 | `10a656...`가 socket liveness timer ownership을 별도 abstraction으로 추가합니다. |
+| 직전 관련 상태 | 부모 커밋에는 경과 시간 벽시계 지연을 시뮬레이션 단계 수로 바꾸면서 누적 시간 보정 양을 제한하는 독립 누적 시간/스케줄러가 없습니다. |
+| 핵심 경계/판단 | `apps/api/src/game/fixedStepScheduler.ts`의 `FixedStepAccumulator.advance`는 `elapsed=max(0, now-previous)`를 최대 250ms까지 누적하고, 한 번의 반복에서 50ms 단위 틱을 최대 5개 반환합니다. `FixedStepScheduler`는 주입할 수 있는 단조 증가 시계와 실행 주기를 소유합니다. |
+| 상태 또는 소유권 변화 | 누적 시간이 `previousTimeMs`와 남은 시간 `lagMs`를, 스케줄러가 주기 핸들과 현재 누적 시간을 단독 소유합니다. `start`/`stop`은 중복 호출에 안전합니다. |
+| 주요 실패/예외 경로 | 유한하지 않은 시간 값은 0틱으로, 뒤로 이동한 시계는 경과 시간 0으로 처리하고 이전 시간을 뒤로 옮기지 않습니다. 잘못된 시간 간격, 누적 틱 상한, 최대 누적 틱 수는 생성자에서 거부합니다. 콜백이 스케줄러를 중지하면 루프 조건의 `this.timer`가 같은 실행 묶음에 남은 틱을 중단합니다. |
+| 보장 범위/보장하지 않는 범위 | 이벤트 루프 정지 뒤에도 한 루프 작업은 5 틱, 대기열은 250 ms로 제한되고 남은 시간은 유지됩니다. 아직 경기방 수명주기나 GameHub 시간 제어 소유 주체가 이 추상화를 사용한다는 보장은 없습니다. |
+| 다음 관련 커밋 연결 | `10a656...`가 소켓 생존 상태 타이머 소유권을 별도 추상화로 추가합니다. |
 
 비교 기준:
-- 이 commit의 parent에서 동일 책임을 담당하던 코드를 비교했습니다.
-- 다음 Thread 관련 SHA: `10a656e59864` — `feat(game): WebSocket heartbeat 추가`
+- 이 커밋의 부모 커밋에서 동일 책임을 담당하던 코드를 비교했습니다.
+- 다음 개발 스레드 관련 SHA: `10a656e59864` — `feat(game): WebSocket heartbeat 추가`
 
 ### 5.2. `feat(game): WebSocket heartbeat 추가`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `10a656e59864` |
-| Importance | A |
-| Tags | REALTIME, RISK |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | REALTIME, RISK |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Adds deterministic liveness ownership and timeout cleanup.
-- Classification summary: Introduce an explicit heartbeat lifecycle for realtime connections.
+- 개발 스레드에서의 역할: 결정적인 연결 생존 확인 소유권과 시간 초과 정리를 추가합니다.
+- 분류 요약: 실시간 연결의 명시적 연결 확인 신호 수명주기를 도입합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | socket close event만 기다리면 peer가 사라졌지만 transport가 즉시 닫히지 않는 경우 connection·room resource가 남을 수 있습니다. |
-| 핵심 boundary/decision | `apps/api/src/game/heartbeat.ts::ConnectionHeartbeat`는 start 시 45초 timeout을 먼저 arm하고 15초마다 transport ping을 보냅니다. `acknowledge`는 기존 deadline timer를 clear한 뒤 새 45초 deadline으로 교체합니다. |
-| 상태 또는 ownership 변화 | heartbeat instance 하나가 `pingTimer`와 `timeoutTimer`를 모두 소유합니다. socket owner는 pong에서 `acknowledge`, close에서 `stop`을 호출하고 heartbeat는 stale/throw에서 target termination을 호출합니다. |
-| 주요 failure/edge path | ping synchronous exception과 deadline expiry는 모두 `terminate`로 수렴하며, `terminate`가 먼저 `stop`해 두 handle을 null로 만든 뒤 socket을 종료합니다. start/ack/stop 재호출은 새 competing timer를 만들지 않습니다. |
-| 보장/비보장 | 응답 없는 connection은 최대 45초 liveness budget 안에서 정리되고 close race 뒤 timer가 남지 않습니다. 실제 GameHub socket에 연결되는 통합은 이 abstraction만으로 증명하지 않습니다. |
-| 다음 관련 commit 연결 | `207df3...`가 stale ordering과 per-user token budget을 하나의 input admission 결과로 만듭니다. |
+| 직전 관련 상태 | 소켓 종료 이벤트만 기다리면 peer가 사라졌지만 전송 계층이 즉시 닫히지 않는 경우 연결·경기방 자원이 남을 수 있습니다. |
+| 핵심 경계/판단 | `apps/api/src/game/heartbeat.ts::ConnectionHeartbeat`는 시작 시 45초 시간 초과를 먼저 arm하고 15초마다 전송 계층 ping을 보냅니다. `acknowledge`는 기존 기한 타이머를 해제한 뒤 새 45초 기한으로 교체합니다. |
+| 상태 또는 소유권 변화 | 연결 확인 신호 인스턴스 하나가 `pingTimer`와 `timeoutTimer`를 모두 소유합니다. 소켓 소유 주체는 pong에서 `acknowledge`, 종료에서 `stop`을 호출하고 연결 확인 신호는 오래된/예외 발생에서 대상 프로세스 종료를 호출합니다. |
+| 주요 실패/예외 경로 | `ping` 호출의 동기 예외와 응답 기한 만료는 모두 `terminate`로 수렴합니다. `terminate`는 먼저 `stop`을 호출해 두 타이머 핸들을 `null`로 만든 뒤 소켓을 종료합니다. 시작·ack·중지 함수를 다시 호출해도 중복 타이머를 만들지 않습니다. |
+| 보장 범위/보장하지 않는 범위 | 응답 없는 연결은 최대 45초 생존 상태 허용 시간 안에서 정리되고 종료 경쟁 상태 뒤 타이머가 남지 않습니다. 실제 GameHub 소켓에 연결되는 통합은 이 추상화만으로 검증하지 않습니다. |
+| 다음 관련 커밋 연결 | `207df3...`가 오래된 순서와 각 사용자 토큰 허용 시간을 하나의 입력 참가 결과로 만듭니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `3a2943ff385d` — `feat(game): fixed-step scheduler 추가`
-- 다음 Thread 관련 SHA: `207df3f47935` — `feat(game): 입력 순서와 rate limit 보호`
+- 직전 개발 스레드 관련 SHA: `3a2943ff385d` — `feat(game): fixed-step scheduler 추가`
+- 다음 개발 스레드 관련 SHA: `207df3f47935` — `feat(game): 입력 순서와 rate limit 보호`
 
 ### 5.3. `feat(game): 입력 순서와 rate limit 보호`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `207df3f47935` |
-| Importance | A |
-| Tags | SIMULATION, REALTIME, RISK |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | SIMULATION, REALTIME, RISK |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Combines monotonic input admission with per-user token-bucket limits.
-- Classification summary: Introduce an input gate that combines sequence ordering with per-user token-bucket throttling.
+- 개발 스레드에서의 역할: 단조 증가 입력 수락과 사용자별 토큰 버킷 상한을 결합합니다.
+- 분류 요약: 순번 검사와 사용자별 토큰 버킷 제한을 결합한 입력 검사를 도입합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | input sequence만 검사하면 순서는 보호해도 한 사용자가 유효한 새 sequence를 무제한 보내 server work를 만들 수 있고, room별 bucket이면 room 수로 budget을 늘릴 수 있습니다. |
-| 핵심 boundary/decision | `apps/api/src/game/inputGate.ts::InputGate.check`는 sequence key를 `userId\u0000roomId`, bucket key를 `userId`로 둡니다. stale/duplicate를 먼저 반환한 뒤 default burst 8, refill 30/s token을 검사하고 accepted일 때만 token과 last sequence를 갱신합니다. |
-| 상태 또는 ownership 변화 | InputGate가 모든 user bucket과 user-room last sequence를 소유하며 caller는 `accepted | stale | rate_limited` 결과만 해석합니다. `releaseUser`가 bucket과 해당 user의 모든 room sequence를 제거합니다. |
-| 주요 failure/edge path | `inputSeq <= previous`는 bucket refill/charge 전에 탈락하므로 stale replay가 정상 사용자의 rate budget을 소모하지 않습니다. backward/non-advancing clock은 refill하지 않고 constructor는 nonpositive rate/capacity를 거부합니다. |
-| 보장/비보장 | 여러 room/connection을 열어도 user 전체 throughput은 같은 bucket에 묶이고 room별 ordering은 독립적으로 단조 증가합니다. transport가 outcome을 어떻게 노출하는지는 caller 통합 범위입니다. |
-| 다음 관련 commit 연결 | `8589ff...`가 outbound snapshot backlog를 latest-value 하나와 congestion deadline으로 제한합니다. |
+| 직전 관련 상태 | 입력 순번만 검사하면 순서는 보호해도 한 사용자가 유효한 새 순번을 무제한 보내 서버 작업을 만들 수 있고, 경기방별 버킷이면 경기방 수로 허용 시간을 늘릴 수 있습니다. |
+| 핵심 경계/판단 | `apps/api/src/game/inputGate.ts::InputGate.check`는 순번 키를 `userId\u0000roomId`, 버킷 키를 `userId`로 둡니다. 오래된/중복을 먼저 반환한 뒤 기본값 폭주 8, 초당 보충량 30/s 토큰을 검사하고 허용된일 때만 토큰과 마지막 순번을 갱신합니다. |
+| 상태 또는 소유권 변화 | InputGate가 모든 사용자 버킷과 사용자·경기방별 마지막 순번을 소유하며 호출자는 `accepted | stale | rate_limited` 결과만 해석합니다. `releaseUser`가 버킷과 해당 사용자의 모든 경기방 순번을 제거합니다. |
+| 주요 실패/예외 경로 | `inputSeq <= previous`인 입력은 토큰을 보충하거나 차감하기 전에 거부하므로 오래된 입력 재전송이 정상 사용자의 입력 허용량을 소모하지 않습니다. 뒤로 가거나 진행하지 않는 시계에서는 토큰을 보충하지 않으며, 생성자는 0 이하의 빈도와 용량을 거부합니다. |
+| 보장 범위/보장하지 않는 범위 | 여러 경기방/연결을 열어도 사용자 전체 처리량은 같은 버킷에 묶이고 경기방별 순서는 독립적으로 단조 증가합니다. 전송 계층이 결과를 어떻게 노출하는지는 호출자 통합 범위입니다. |
+| 다음 관련 커밋 연결 | `8589ff...`가 외부 전송 스냅샷 대기열을 최신 값만 유지하는 하나와 혼잡 기한으로 제한합니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `10a656e59864` — `feat(game): WebSocket heartbeat 추가`
-- 다음 Thread 관련 SHA: `8589ff3c4821` — `feat(game): latest snapshot buffer 추가`
+- 직전 개발 스레드 관련 SHA: `10a656e59864` — `feat(game): WebSocket heartbeat 추가`
+- 다음 개발 스레드 관련 SHA: `8589ff3c4821` — `feat(game): latest snapshot buffer 추가`
 
 ### 5.4. `feat(game): latest snapshot buffer 추가`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `8589ff3c4821` |
-| Importance | A |
-| Tags | SIMULATION, REALTIME, OPERATIONS |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | SIMULATION, REALTIME, OPERATIONS |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Defines latest-value delivery and congestion termination rules.
-- Classification summary: Introduce a latest-value outbound buffer for game snapshots.
+- 개발 스레드에서의 역할: 최신 값 전달과 혼잡 시 종료 규칙을 정의합니다.
+- 분류 요약: 게임 스냅샷의 최신 값만 유지하는 송신 버퍼를 도입합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | 각 simulation snapshot을 그대로 queue하면 느린 client가 obsolete frames와 application memory를 무제한 누적시킬 수 있습니다. |
-| 핵심 boundary/decision | `apps/api/src/game/latestSnapshotBuffer.ts::LatestSnapshotBuffer`는 send in-flight 하나와 `pendingSnapshot` 하나만 유지하며 새 enqueue가 pending old snapshot을 교체합니다. `bufferedAmount` 256 KiB 초과는 50 ms retry, 5초 지속은 terminate, 1 MiB 이상은 즉시 terminate합니다. |
-| 상태 또는 ownership 변화 | connection별 buffer가 pending payload, in-flight flag, congestion start, retry timer, closed state를 단독 소유합니다. `close`가 pending과 timer를 제거합니다. |
-| 주요 failure/edge path | closed socket, hard threshold, soft congestion timeout, async send error, synchronous send throw가 모두 idempotent `terminate`/`close`로 수렴합니다. retry timer는 하나만 arm되고 종료 뒤 재실행하지 않습니다. |
-| 보장/비보장 | application-level snapshot backlog는 latest pending 하나로 제한되고 recovering client는 obsolete queue 대신 최신 상태를 받습니다. 이 lossy 정책은 snapshot에만 적합하며 control/result event 전달 보장은 별도입니다. |
-| 다음 관련 commit 연결 | `d21a47...`가 여러 room을 하나의 bounded fixed-step clock으로 구동할 registry를 만듭니다. |
+| 직전 관련 상태 | 각 시뮬레이션 스냅샷을 그대로 대기열하면 느린 클라이언트가 더 이상 사용하지 않는 형식 frames와 애플리케이션 메모리를 무제한 누적시킬 수 있습니다. |
+| 핵심 경계/판단 | `apps/api/src/game/latestSnapshotBuffer.ts::LatestSnapshotBuffer`는 전송 중 하나와 `pendingSnapshot` 하나만 유지하며 새 추가가 대기 중 기존 스냅샷을 교체합니다. `bufferedAmount` 256 KiB 초과는 50 ms 재시도, 5초 지속은 강제 종료, 1 MiB 이상은 즉시 강제 종료합니다. |
+| 상태 또는 소유권 변화 | 연결별 버퍼가 대기 중 메시지 본문, 전송 중 표시값, 혼잡 시작, 재시도 타이머, 닫힌 상태를 단독 소유합니다. `close`가 대기 중과 타이머를 제거합니다. |
+| 주요 실패/예외 경로 | 이미 닫힌 소켓, 강제 임계값, 완화된 혼잡 시간 초과, 비동기 처리 전송 오류, 동기 전송 예외 발생이 모두 멱등 `terminate`/`close`로 수렴합니다. 재시도 타이머는 하나만 arm되고 종료 뒤 재실행하지 않습니다. |
+| 보장 범위/보장하지 않는 범위 | 애플리케이션 수준 스냅샷 대기열은 최신 대기 중 하나로 제한되고 recovering 클라이언트는 더 이상 사용하지 않는 형식 대기열 대신 최신 상태를 받습니다. 이 lossy 정책은 스냅샷에만 적합하며 제어/결과 이벤트 전달 보장은 별도입니다. |
+| 다음 관련 커밋 연결 | `d21a47...`가 여러 경기방을 하나의 상한을 둔 고정 간격 단계 시계로 구동할 레지스트리를 만듭니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `207df3f47935` — `feat(game): 입력 순서와 rate limit 보호`
-- 다음 Thread 관련 SHA: `d21a47ee92d2` — `refactor(game): shared room scheduler 추가`
+- 직전 개발 스레드 관련 SHA: `207df3f47935` — `feat(game): 입력 순서와 rate limit 보호`
+- 다음 개발 스레드 관련 SHA: `d21a47ee92d2` — `refactor(game): shared room scheduler 추가`
 
 ### 5.5. `refactor(game): shared room scheduler 추가`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `d21a47ee92d2` |
-| Importance | A |
-| Tags | SIMULATION, REALTIME, REFACTOR |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | SIMULATION, REALTIME, REFACTOR |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Creates one fixed-step clock for all registered rooms.
-- Classification summary: Introduce a scheduler abstraction capable of driving all active rooms from one fixed-step clock.
+- 개발 스레드에서의 역할: 등록된 모든 경기방이 공유하는 고정 간격 시계 하나를 만듭니다.
+- 분류 요약: 하나의 고정 간격 시계로 모든 활성 경기방을 구동할 수 있는 스케줄러를 도입합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | room마다 timer를 소유하면 active match 수만큼 interval이 생기고 register/unregister 중 callback collection mutation이 iteration을 흔들 수 있습니다. |
-| 핵심 boundary/decision | `apps/api/src/game/sharedRoomScheduler.ts::SharedRoomScheduler`는 room ID→step callback map과 하나의 `FixedStepScheduler(50 ms, 5 ticks, 250 ms)`를 가집니다. 첫 register가 clock을 시작하고 마지막 unregister가 멈춥니다. |
-| 상태 또는 ownership 변화 | shared scheduler가 runnable room registry와 단일 timing loop를 소유합니다. `stop`은 registry와 underlying scheduler를 함께 clear합니다. |
-| 주요 failure/edge path | `stepRooms`는 `[...roomSteps.values()]` snapshot을 순회하므로 한 callback이 자신을 unregister하거나 다른 room을 register해도 현재 tick의 iteration이 손상되지 않습니다. 같은 room ID register는 callback을 교체합니다. |
-| 보장/비보장 | room 수와 무관하게 하나의 bounded clock으로 registered callbacks를 실행하고 empty registry에는 timer가 없습니다. GameHub lifecycle이 정확히 register/unregister하는지는 다음 commit 범위입니다. |
-| 다음 관련 commit 연결 | `fb5b1a...`가 per-room scheduler를 제거하고 GameHub lifecycle을 registry membership에 연결합니다. |
+| 직전 관련 상태 | 경기방마다 타이머를 소유하면 활성 경기 수만큼 주기가 생기고 등록/등록 해제 중 콜백 컬렉션 변경이 순회를 흔들 수 있습니다. |
+| 핵심 경계/판단 | `apps/api/src/game/sharedRoomScheduler.ts::SharedRoomScheduler`는 경기방 ID→단계 콜백 목록과 하나의 `FixedStepScheduler(50 ms, 5 ticks, 250 ms)`를 가집니다. 첫 등록이 시계를 시작하고 마지막 등록 해제가 멈춥니다. |
+| 상태 또는 소유권 변화 | 공유 스케줄러가 실행 가능한 경기방 레지스트리와 단일 시간 제어 루프를 소유합니다. `stop`은 레지스트리와 내부 스케줄러를 함께 해제합니다. |
+| 주요 실패/예외 경로 | `stepRooms`는 `[...roomSteps.values()]` 스냅샷을 순회하므로 한 콜백이 자신을 등록 해제하거나 다른 경기방을 등록해도 현재 틱의 순회가 손상되지 않습니다. 같은 경기방 ID 등록은 콜백을 교체합니다. |
+| 보장 범위/보장하지 않는 범위 | 경기방 수와 무관하게 하나의 상한을 둔 시계로 등록 사용자 콜백을 실행하고 빈 레지스트리에는 타이머가 없습니다. GameHub 수명주기가 정확히 등록/등록 해제하는지는 다음 커밋 범위입니다. |
+| 다음 관련 커밋 연결 | `fb5b1a...`가 경기방별 스케줄러를 제거하고 GameHub 수명주기를 레지스트리 소속 정보에 연결합니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `8589ff3c4821` — `feat(game): latest snapshot buffer 추가`
-- 다음 Thread 관련 SHA: `fb5b1abc97f5` — `refactor(game): GameHub가 shared room scheduler 사용`
+- 직전 개발 스레드 관련 SHA: `8589ff3c4821` — `feat(game): latest snapshot buffer 추가`
+- 다음 개발 스레드 관련 SHA: `fb5b1abc97f5` — `refactor(game): GameHub가 shared room scheduler 사용`
 
 ### 5.6. `refactor(game): GameHub가 shared room scheduler 사용`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `fb5b1abc97f5` |
-| Importance | A |
-| Tags | SIMULATION, REALTIME, REFACTOR |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | SIMULATION, REALTIME, REFACTOR |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Makes runnable-room membership the hub’s single timing topology.
-- Classification summary: Move simulation timing ownership from each room to one scheduler owned by `GameHub`.
+- 개발 스레드에서의 역할: 실행 가능한 경기방 목록을 허브의 유일한 시간 제어 대상 집합으로 둡니다.
+- 분류 요약: 시뮬레이션 시간 제어 소유권을 각 경기방에서 `GameHub`가 소유하는 스케줄러 하나로 옮깁니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | 각 `Room`이 `FixedStepScheduler | null`을 가졌으므로 timer ownership이 room object마다 흩어지고 모든 terminal/pause path가 개별 handle을 기억해야 했습니다. |
-| 핵심 boundary/decision | `apps/api/src/gameHub.ts`에서 room scheduler field를 제거하고 GameHub에 `roomScheduler = new SharedRoomScheduler()` 하나를 둡니다. play/resume은 register하고 pause, disconnect, abandonment, finalization, finished-room removal은 unregister합니다. |
-| 상태 또는 ownership 변화 | GameHub가 application-wide timing topology를 소유하고 room은 simulation state만 보유합니다. `scheduledRoomCount`는 registry size를 관찰 가능한 상태로 노출합니다. |
-| 주요 failure/edge path | unregister는 absent ID에도 안전하며 terminal path가 반복돼도 timer가 중복 정리되지 않습니다. disconnect/finish 전에 unregister해 paused/terminal room이 같은 tick에 더 진행하지 못하게 합니다. |
-| 보장/비보장 | room은 simulation이 advance 가능한 동안에만 shared registry에 존재하고 active room 수와 무관하게 interval은 하나입니다. process admission/drain은 아직 별도입니다. |
-| 다음 관련 commit 연결 | `44ef3e...`가 새 work를 차단하면서 이미 소유한 rooms만 bounded wait하는 drain state를 추가합니다. |
+| 직전 관련 상태 | 각 `Room`이 `FixedStepScheduler | null`을 가졌으므로 타이머 소유권이 경기방 객체마다 흩어지고 모든 종료/일시정지 경로가 개별 핸들을 기억해야 했습니다. |
+| 핵심 경계/판단 | `apps/api/src/gameHub.ts`에서 경기방 스케줄러 필드를 제거하고 GameHub에 `roomScheduler = new SharedRoomScheduler()` 하나를 둡니다. 플레이/재개는 등록하고 일시정지, 연결 해제, 포기 처리, 결과 확정, 종료된 경기방 제거는 등록 해제합니다. |
+| 상태 또는 소유권 변화 | GameHub가 애플리케이션 전체의 시간 제어 구성을 소유하고 경기방은 시뮬레이션 상태만 보유합니다. `scheduledRoomCount`는 레지스트리 크기를 관찰 가능한 상태로 노출합니다. |
+| 주요 실패/예외 경로 | 등록 해제는 absent ID에도 안전하며 종료 경로가 반복돼도 타이머가 중복 정리되지 않습니다. 연결 해제/종료 전에 등록 해제해 일시정지/종료 경기방이 같은 틱에 더 진행하지 못하게 합니다. |
+| 보장 범위/보장하지 않는 범위 | 경기방은 시뮬레이션을 진행할 수 있는 동안에만 공유 레지스트리에 존재하고 진행 중인 경기방 수와 무관하게 주기는 하나입니다. 프로세스 참가/작업 중단은 아직 별도입니다. |
+| 다음 관련 커밋 연결 | `44ef3e...`가 새 작업을 차단하면서 이미 소유한 경기방만 시간 제한된 시간 동안 대기하는 작업 중단 상태를 추가합니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `d21a47ee92d2` — `refactor(game): shared room scheduler 추가`
-- 다음 Thread 관련 SHA: `44ef3e07e1a5` — `feat(game): 새 작업 차단과 active room drain 추가`
+- 직전 개발 스레드 관련 SHA: `d21a47ee92d2` — `refactor(game): shared room scheduler 추가`
+- 다음 개발 스레드 관련 SHA: `44ef3e07e1a5` — `feat(game): 새 작업 차단과 active room drain 추가`
 
 ### 5.7. `feat(game): 새 작업 차단과 active room drain 추가`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `44ef3e07e1a5` |
-| Importance | A |
-| Tags | PROTOCOL, REALTIME, TOURNAMENT |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | PROTOCOL, REALTIME, TOURNAMENT |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Rejects new work while waiting for owned rooms to finish.
-- Classification summary: Introduce an explicit draining state shared by the Fastify readiness boundary and GameHub.
+- 개발 스레드에서의 역할: 이미 소유한 경기방이 끝나기를 기다리는 동안 새 작업을 거부합니다.
+- 분류 요약: Fastify 준비 상태 경계와 GameHub가 공유하는 명시적 작업 중단 상태를 도입합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | shutdown 직전에 readiness가 계속 ready이고 queue/tournament admission이 열려 있으면 active room을 기다리는 동안 새 room이 계속 생겨 drain completion이 수렴하지 않습니다. |
-| 핵심 boundary/decision | `app.beginDrain`은 lifecycle을 draining으로 바꾸고 `GameHub.beginDrain`은 `acceptingMatches=false`로 설정합니다. queued/tournament waiters를 `server_draining`으로 해제하고 existing rooms만 유지하며, room set empty 또는 timeout까지 하나의 waiter를 반환합니다. |
-| 상태 또는 ownership 변화 | Fastify app가 readiness lifecycle을, GameHub가 admission flag·active room set·single drain promise/timer를 소유합니다. room removal이 `notifyDrainProgress`를 통해 waiter를 완료합니다. |
-| 주요 failure/edge path | 재진입은 기존 promise를 반환해 competing deadline을 만들지 않습니다. timeout은 `{drained:false, activeRooms}`를 반환하고 즉시 room을 파괴하지 않습니다. final `close`는 shared scheduler, queue/reconnect/result timers, rooms, clients, heartbeat, snapshot buffer와 sockets를 정리합니다. |
-| 보장/비보장 | drain 시작 즉시 readiness는 not_ready이고 새 queue/tournament match는 거부되며 owned rooms는 주어진 budget 안에서 끝날 기회를 가집니다. timeout 뒤 결과 보존 여부는 caller의 close 결정에 달려 있습니다. |
-| 다음 관련 commit 연결 | `1c9981...`가 SIGTERM/SIGINT를 60초 drain→app close의 single-entry process sequence로 연결합니다. |
+| 직전 관련 상태 | 종료 직전에 준비 상태가 계속 준비 완료이고 대기열/토너먼트 참가가 열려 있으면 진행 중인 경기방을 기다리는 동안 새 경기방이 계속 생겨 작업 중단 완료가 수렴하지 않습니다. |
+| 핵심 경계/판단 | `app.beginDrain`은 수명주기를 draining으로 바꾸고 `GameHub.beginDrain`은 `acceptingMatches=false`로 설정합니다. 대기 중인/토너먼트 대기 참가자를 `server_draining`으로 해제하고 기존 경기방만 유지하며, 경기방 집합 빈 또는 시간 초과까지 하나의 대기 참가자를 반환합니다. |
+| 상태 또는 소유권 변화 | Fastify 애플리케이션이 준비 상태 수명주기를, GameHub가 참가 표시값·진행 중인 경기방 집합·단일 작업 중단 Promise/타이머를 소유합니다. 경기방 제거가 `notifyDrainProgress`를 통해 대기 참가자를 완료합니다. |
+| 주요 실패/예외 경로 | 작업 중단을 다시 요청하면 기존 Promise를 반환해 기한 타이머를 중복 생성하지 않습니다. 시간 초과 시 `{drained:false, activeRooms}`를 반환하되 경기방을 즉시 파괴하지 않습니다. 최종 `close`는 공유 스케줄러, 대기열·재연결·결과 타이머, 경기방, 클라이언트, 연결 상태 확인 작업, 스냅샷 버퍼, 소켓을 정리합니다. |
+| 보장 범위/보장하지 않는 범위 | 작업 중단 시작 즉시 준비 상태는 not_ready이고 새 대기열/토너먼트 경기는 거부되며 소유한 경기방은 주어진 허용 시간 안에서 끝날 기회를 가집니다. 시간 초과 뒤 결과 보존 여부는 호출자의 종료 결정에 달려 있습니다. |
+| 다음 관련 커밋 연결 | `1c9981...`가 SIGTERM/SIGINT를 60초 작업 중단→애플리케이션 종료의 단일 항목 프로세스 순번으로 연결합니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `fb5b1abc97f5` — `refactor(game): GameHub가 shared room scheduler 사용`
-- 다음 Thread 관련 SHA: `1c9981393973` — `feat(ops): graceful shutdown 절차 추가`
+- 직전 개발 스레드 관련 SHA: `fb5b1abc97f5` — `refactor(game): GameHub가 shared room scheduler 사용`
+- 다음 개발 스레드 관련 SHA: `1c9981393973` — `feat(ops): graceful shutdown 절차 추가`
 
 ### 5.8. `feat(ops): graceful shutdown 절차 추가`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `1c9981393973` |
-| Importance | A |
-| Tags | REALTIME, PERSISTENCE, OPERATIONS |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | REALTIME, PERSISTENCE, OPERATIONS |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Makes signals enter one bounded drain-and-close sequence.
-- Classification summary: Install a single-entry graceful-shutdown handler for SIGTERM and SIGINT.
+- 개발 스레드에서의 역할: 종료 신호가 시간 상한을 둔 하나의 작업 중단·종료 순서로 들어가게 합니다.
+- 분류 요약: SIGTERM과 SIGINT를 한 번만 처리하는 단계적 종료 처리 함수를 설치합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | drain API가 있어도 process signal handler가 이를 호출하지 않거나 여러 signal이 parallel close를 시작하면 repository/socket cleanup 순서가 경쟁할 수 있습니다. |
-| 핵심 boundary/decision | `apps/api/src/gracefulShutdown.ts::installGracefulShutdown`은 SIGTERM/SIGINT listener와 `started` guard를 설치합니다. 첫 signal이 `app.beginDrain(60_000)` 뒤 `app.close()`를 호출하고 onClose hook이 listeners와 repository를 해제합니다. |
-| 상태 또는 ownership 변화 | signal installer가 one-shot guard/listeners를, app shutdown callback이 drain/close 순서를 소유합니다. 반환 disposer는 normal close 시 두 listener를 제거합니다. |
-| 주요 failure/edge path | 두 번째 signal은 `started` guard로 무시됩니다. drain/close reject는 error callback이 `process.exitCode=1`을 설정하고 `app.close()`를 다시 best-effort로 시도합니다. |
-| 보장/비보장 | process teardown은 첫 signal에서 한 번만 시작되고 60초 room budget 뒤 Fastify/GameHub/repository cleanup으로 수렴합니다. OS/container가 그보다 짧게 강제 종료하면 completion은 보장하지 않습니다. |
-| 다음 관련 commit 연결 | `7b0b5f...`가 실제 HTTP/WebSocket/database/edge path에서 같은 limits를 측정하는 load/fault harness를 추가합니다. |
+| 직전 관련 상태 | 작업 중단 API가 있어도 프로세스 신호 처리 함수가 이를 호출하지 않거나 여러 신호가 parallel 종료를 시작하면 저장소/소켓 정리 순서가 경쟁할 수 있습니다. |
+| 핵심 경계/판단 | `apps/api/src/gracefulShutdown.ts::installGracefulShutdown`은 SIGTERM/SIGINT 리스너와 `started` 보호 조건을 설치합니다. 첫 신호가 `app.beginDrain(60_000)` 뒤 `app.close()`를 호출하고 onClose 훅이 리스너와 저장소를 해제합니다. |
+| 상태 또는 소유권 변화 | 신호 설치기가 일회성 보호 조건/리스너를, 애플리케이션 종료 콜백이 작업 중단/종료 순서를 소유합니다. 반환 disposer는 일반 종료 시 두 리스너를 제거합니다. |
+| 주요 실패/예외 경로 | 두 번째 신호는 `started` 검사로 무시합니다. 작업 중단 또는 종료가 실패하면 오류 콜백이 `process.exitCode = 1`을 설정하고 가능한 범위에서 `app.close()`를 다시 시도합니다. |
+| 보장 범위/보장하지 않는 범위 | 프로세스 종료 정리는 첫 신호에서 한 번만 시작되고 60초 경기방 허용 시간 뒤 Fastify/GameHub/저장소 정리로 수렴합니다. OS/컨테이너가 그보다 짧게 강제 종료하면 완료는 보장하지 않습니다. |
+| 다음 관련 커밋 연결 | `7b0b5f...`가 실제 HTTP/WebSocket/데이터베이스/예외 경로에서 같은 상한을 측정하는 부하/장애 테스트 실행 틀을 추가합니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `44ef3e07e1a5` — `feat(game): 새 작업 차단과 active room drain 추가`
-- 다음 Thread 관련 SHA: `7b0b5f086b41` — `test(load): 실시간 fault injection 도구 추가`
+- 직전 개발 스레드 관련 SHA: `44ef3e07e1a5` — `feat(game): 새 작업 차단과 active room drain 추가`
+- 다음 개발 스레드 관련 SHA: `7b0b5f086b41` — `test(load): 실시간 fault injection 도구 추가`
 
 ### 5.9. `test(load): 실시간 fault injection 도구 추가`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `7b0b5f086b41` |
-| Importance | A |
-| Tags | AUTH, REALTIME, PERSISTENCE |
-| 학습 깊이 | 주요 subsystem·boundary·failure path의 코드와 설계 판단을 복원했습니다. |
+| 중요도 | A |
+| 태그 | AUTH, REALTIME, PERSISTENCE |
+| 학습 깊이 | 주요 하위 시스템·경계·실패 경로의 코드와 설계 판단을 복원했습니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Provides separate database and edge degradation paths for service-level evidence.
-- Classification summary: Add a k6 realtime-load harness and independent Toxiproxy controls for persistence and transport faults.
+- 개발 스레드에서의 역할: 서비스 수준 근거를 위해 데이터베이스와 외부 경계 성능 저하 경로를 분리해 제공합니다.
+- 분류 요약: k6 실시간 부하 실행 틀과 영속 저장·전송 장애를 독립적으로 제어하는 Toxiproxy 설정을 추가합니다.
 
 #### 해당 SHA에서 확인한 실제 코드
 
 | 기록 항목 | 해당 SHA의 근거 |
 | --- | --- |
-| 직전 관련 상태 | unit/fake-timer tests는 local state machine과 cleanup을 결정적으로 검증하지만 실제 process/network 경로의 latency, reconnect, snapshot gap, duplicate finalization을 함께 측정하지 못합니다. |
-| 핵심 boundary/decision | `tests/load` k6 harness는 기본 500 connections/50 rooms(extended 1,000), dev-login→ticket→WebSocket→queue/input→fresh-ticket reconnect를 실행합니다. Compose overlay는 PostgreSQL과 public edge를 별도 Toxiproxy endpoint로 라우팅하고 control script가 latency/reset/down/up을 독립 적용합니다. |
-| 상태 또는 ownership 변화 | k6 VU가 connection/room lifecycle과 sequence/result sets를, custom metrics가 connection/reconnect success, snapshot delay/gap, online/room count, finalization uniqueness를 소유합니다. Toxiproxy control utility가 named proxy/toxic lifecycle을 소유합니다. |
-| 주요 failure/edge path | profile은 connections≥2×rooms를 검증하고 99% connection/reconnect, snapshot p95≤150 ms/p99≤250 ms, normal drop<1%, finalize failures/duplicates=0 등의 thresholds를 둡니다. DB fault와 edge fault를 분리해 persistence degradation과 transport degradation을 혼동하지 않습니다. |
-| 보장/비보장 | 실제 service-level auth/ticket/socket/reconnect/snapshot/finalize 경로를 장애 아래 측정할 수 있는 executable evidence를 제공합니다. 이 환경에서는 harness를 실행하지 않았으므로 수치 통과를 주장하지 않으며 장기 production capacity를 일반화하지 않습니다. |
-| 다음 관련 commit 연결 | Thread 최종 상태는 모든 주요 runtime work source에 bound·owner·cleanup·operational measurement가 있는 구조입니다. |
+| 직전 관련 상태 | 단위/가짜 타이머 테스트는 로컬 상태 기계와 정리를 결정적으로 검증하지만 실제 프로세스/네트워크 경로의 지연 시간, 재연결, 스냅샷 차이, 중복 결과 확정을 함께 측정하지 못합니다. |
+| 핵심 경계/판단 | `tests/load` k6 테스트 실행 틀은 기본 500 연결/50 경기방(extended 1,000), 개발용 로그인→티켓→WebSocket→대기열/입력→새 티켓 재연결을 실행합니다. Compose 추가 Compose 설정은 PostgreSQL과 공개 경계를 별도 Toxiproxy 엔드포인트로 라우팅하고 제어 스크립트가 지연 시간/초기화/중단·복구를 독립 적용합니다. |
+| 상태 또는 소유권 변화 | k6 VU는 연결과 경기방 수명, 순번과 결과 집합을 소유합니다. 사용자 정의 지표는 연결·재연결 성공, 스냅샷 지연과 순번 차이, 온라인 사용자·경기방 수, 결과 확정의 고유성을 기록합니다. Toxiproxy 제어 도우미는 이름이 있는 프록시와 장애 조건의 수명을 관리합니다. |
+| 주요 실패/예외 경로 | 프로필은 연결≥2×경기방을 검증하고 99% 연결/재연결, 스냅샷 p95≤150 ms/p99≤250 ms, 정상 상태의 스냅샷 폐기율이 1% 미만, 결과 확정 실패·중복이 0건 등의 임계값을 둡니다. DB 장애와 외부 구간 장애를 분리해 영속 저장 성능 저하와 전송 계층 성능 저하를 혼동하지 않습니다. |
+| 보장 범위/보장하지 않는 범위 | 실제 서비스 수준 인증/티켓/소켓/재연결/스냅샷/결과 확정 경로를 장애 아래 측정할 수 있는 실행 가능한 근거를 제공합니다. 이 환경에서는 테스트 실행 틀을 실행하지 않았으므로 수치 통과를 주장하지 않으며 장기 운영 용량을 일반화하지 않습니다. |
+| 다음 관련 커밋 연결 | 개발 스레드 최종 상태에서는 모든 주요 런타임 작업에 상한, 소유 주체, 정리 절차, 운영 측정값이 있습니다. |
 
-#### Test commit 학습 기록
+#### 테스트 커밋 학습 기록
 
 | 구분 | 기록 |
 | --- | --- |
-| 대상 production invariant | database와 edge degradation을 분리해도 server-authoritative admission, reconnect, snapshot delivery와 one-result finalization을 관찰할 수 있습니다. |
-| 재현하는 failure/boundary | connection population, room creation, forced reconnect, snapshot latency/gaps, DB latency/outage, edge latency/reset/outage, duplicate finalization. |
-| test technique | k6 multi-connection load, Docker Compose overlay, independent Toxiproxy controls, custom thresholds/metrics. |
-| 통과하는 production path | dev-login/cookie → one-time ticket → WebSocket queue/ready/input → snapshot → forced fresh-ticket reconnect → durable game.finished. |
-| 증명하는 것 | 실행 시 actual process/network path에서 fault source별 service metrics와 threshold pass/fail을 수집합니다. |
-| 증명하지 않는 것 | unit-level physics correctness, 모든 production topology, 장기 soak/capacity, 그리고 이 작업 환경에서 실제 threshold 통과를 증명하지 않습니다. |
-| test 성격 | Broad service-level load and fault-injection evidence. |
-| 후속 회귀 방지 설명 | ticket/reconnect protocol, snapshot monotonicity, liveness, finalization uniqueness, DB/edge fault controls가 깨지면 명시된 metric/threshold가 실패해야 합니다. |
+| 검증 대상 불변 조건 | 데이터베이스와 경계 성능 저하를 분리해도 서버 서버가 확정하는 참가, 재연결, 스냅샷 전달과 하나 결과 확정을 관찰할 수 있습니다. |
+| 재현하는 실패/경계 | 연결 수, 경기방 생성, 강제 재연결, 스냅샷 지연 시간과 전송 간격, DB 지연 시간/장애, 경계 지연 시간/초기화/장애, 중복 결과 확정. |
+| 테스트 기법 | k6 다중 연결 부하, Docker Compose 추가 설정, 독립적인 Toxiproxy 장애 제어, 사용자 정의 임계값과 지표를 사용합니다. |
+| 실행하는 실제 코드 경로 | 개발용 로그인과 쿠키 → 일회용 티켓 → WebSocket 대기열·준비 완료·입력 → 스냅샷 → 새 티켓을 사용한 강제 재연결 → 영속 저장된 경기 종료 결과. |
+| 검증하는 것 | 실행 시 실제 프로세스/네트워크 경로에서 장애 소스별 서비스 지표와 임계값 통과/fail을 수집합니다. |
+| 검증하지 않는 것 | 단위 수준 물리 계산 정확성, 모든 운영 구성, 장기 soak/용량, 그리고 이 작업 환경에서 실제 임계값 통과를 검증하지 않습니다. |
+| 테스트 성격 | Broad 서비스 수준 부하 및 장애 주입 근거. |
+| 후속 회귀 방지 설명 | 티켓/재연결 프로토콜, 스냅샷 monotonicity, 생존 상태, 결과 확정 고유성, DB/외부 구간 장애 조작 요소가 깨지면 명시된 지표/임계값이 실패해야 합니다. |
 
 비교 기준:
-- 직전 Thread 관련 SHA: `1c9981393973` — `feat(ops): graceful shutdown 절차 추가`
-- 이 Thread의 마지막 상태와 비교해 최종 보장을 정리했습니다.
+- 직전 개발 스레드 관련 SHA: `1c9981393973` — `feat(ops): graceful shutdown 절차 추가`
+- 이 개발 스레드의 마지막 상태와 비교해 최종 보장을 정리했습니다.
 
-## 6. Invariant ledger
+## 6. 불변 조건 기록
 
-Source에서 확정된 invariant를 commit 시점별로 연결했습니다. `해당 없음`은 해당 Thread 안에서 별도 fix/test가 없음을 뜻합니다.
+원문에서 확인한 불변 조건을 커밋 시점별로 연결했습니다. `해당 없음`은 해당 개발 스레드에서 별도 수정/테스트가 없음을 뜻합니다.
 
-| Invariant | 처음 도입/관찰한 SHA | 강화한 SHA | 부족함이 드러난 SHA | 복구한 fix | 고정한 regression test | 코드 근거 |
+| 불변 조건 | 처음 도입/관찰한 SHA | 강화한 SHA | 부족함이 드러난 SHA | 복구한 수정 | 고정한 회귀 테스트 | 코드 근거 |
 | --- | --- | --- | --- | --- | --- | --- |
-| Timers, schedulers, heartbeat handles, retry work, snapshot buffers, and database resources have explicit single-owner cleanup. | `3a2943ff385d` scheduler handles | `10a656e59864` heartbeat → `8589ff3c4821` snapshot retry → `d21a47ee92d2` shared clock → `fb5b1abc97f5` lifecycle membership → `44ef3e07e1a5` final close | per-room timer multiplicity와 shutdown competing ownership | `fb5b1abc97f5`/`44ef3e07e1a5` | 각 abstraction unit tests와 `7b0b5f086b41` operational harness | fixedStepScheduler.ts, heartbeat.ts, latestSnapshotBuffer.ts, sharedRoomScheduler.ts, GameHub.close |
-| Draining rejects new work immediately, allows owned rooms to finish within a bounded budget, and remains aligned with the container termination grace period. | `44ef3e07e1a5` | `1c9981393973` 60초 single signal sequence | signal 경쟁과 readiness/admission 불일치 | `1c9981393973` | graceful shutdown tests와 load/fault 운영 evidence | app.beginDrain, GameHub.beginDrain, installGracefulShutdown |
-| Every accepted wire message conforms to the supported versioned runtime schema; snapshot and input ordering cannot move state backward. | Thread 03 versioned codec/sequence | `207df3f47935` stale-before-token admission, `8589ff3c4821` latest-value delivery | 유효한 새 sequence burst와 slow consumer backlog | input rate gate/latest buffer | InputGate/LatestSnapshotBuffer tests + `7b0b5f086b41` metrics | inputGate.ts, latestSnapshotBuffer.ts, k6 sequence metrics |
+| 타이머, 스케줄러, 연결 상태 확인 작업, 재시도 작업, 스냅샷 버퍼, 데이터베이스 자원은 각각 하나의 소유 주체가 명시되어 있으며 해당 주체가 정리합니다. | `3a2943ff385d` 스케줄러 핸들 | `10a656e59864` 연결 상태 확인 → `8589ff3c4821` 스냅샷 재시도 → `d21a47ee92d2` 공유 시계 → `fb5b1abc97f5` 수명주기 소속 정보 → `44ef3e07e1a5` 최종 종료 | 경기방별 타이머 중복과 종료 작업의 소유권 경쟁 | `fb5b1abc97f5`/`44ef3e07e1a5` | 각 구성 요소의 단위 테스트와 `7b0b5f086b41` 운영 테스트 실행 틀 | `fixedStepScheduler.ts`, `heartbeat.ts`, `latestSnapshotBuffer.ts`, `sharedRoomScheduler.ts`, `GameHub.close` |
+| 작업 중단 상태에서는 새 작업을 즉시 거부하고, 이미 소유한 경기방은 정해진 시간 안에 끝낼 수 있게 하며, 컨테이너 종료 유예 시간과 맞춥니다. | `44ef3e07e1a5` | `1c9981393973` 60초 단일 신호 순번 | 신호 경쟁과 준비 상태/참가 불일치 | `1c9981393973` | 단계적 종료 테스트와 부하/장애 운영 근거 | 애플리케이션.beginDrain, `GameHub.beginDrain`, installGracefulShutdown |
+| 허용된 모든 전송 메시지는 지원하는 버전의 런타임 스키마를 따르며, 스냅샷과 입력 순서는 상태를 과거로 되돌릴 수 없습니다. | 개발 스레드 03의 버전 코덱·순번 | `207df3f47935` 오래된 입력은 토큰 차감 전에 거부, `8589ff3c4821` 최신 값만 유지하는 전달 | 유효한 새 순번의 폭주와 느린 소비 측의 전송 적체 | 입력 빈도 검사·최신 값 버퍼 | `InputGate`·`LatestSnapshotBuffer` 테스트와 `7b0b5f086b41` 지표 | `inputGate.ts`, `latestSnapshotBuffer.ts`, k6 순번 지표 |
 
-## 7. Failure → Fix → Test 연결
+## 7. 실패 → 수정 → 테스트 연결
 
-| 기존 상태/가정 | Fix 또는 강화 과정 | Test/evidence | 최종 보장 |
+| 기존 상태/가정 | 수정 또는 강화 과정 | 테스트/근거 | 최종 보장 |
 | --- | --- | --- | --- |
-| long event-loop stall이 무제한 catch-up을 유발 | `3a2943ff385d` 50 ms step, 5-tick loop cap, 250 ms lag ceiling | deterministic accumulator/scheduler tests | bounded simulation work와 remainder |
-| dead·abusive·slow client가 timer/input/snapshot work를 누적 | `10a656e59864` heartbeat → `207df3f47935` input gate → `8589ff3c4821` latest buffer | 각 abstraction tests와 k6 connection/snapshot metrics | bounded connection work와 hard termination |
-| room마다 timer를 갖고 lifecycle path마다 개별 cleanup | `d21a47ee92d2` shared scheduler → `fb5b1abc97f5` complete register/unregister integration | scheduler/GameHub lifecycle tests | runnable-room registry가 timing topology의 단일 owner |
-| shutdown 중 readiness와 admission이 열리고 여러 signal이 경쟁 | `44ef3e07e1a5` drain → `1c9981393973` one-shot signal sequence | drain/shutdown tests와 fault harness | bounded operational teardown |
-| DB와 edge degradation을 구분하지 못하는 측정 | `7b0b5f086b41` separate proxies와 source-specific controls | k6 metrics/thresholds | failure source별 service-level evidence |
+| 긴 이벤트 루프 정지가 무제한 누적 시간 보정을 유발 | `3a2943ff385d` 50ms 단계, 반복당 최대 5틱, 250ms 지연 상한 | 결정적 누산기·스케줄러 테스트 | 상한을 둔 시뮬레이션 작업량과 남은 누적 시간 |
+| 응답하지 않거나 과도한 입력을 보내거나 처리 속도가 느린 클라이언트가 타이머·입력·스냅샷 작업을 누적 | `10a656e59864` 연결 확인 → `207df3f47935` 입력 제한 → `8589ff3c4821` 최신 스냅샷 버퍼 | 각 구성 요소 테스트와 k6 연결·스냅샷 지표 | 상한이 있는 연결 작업과 강제 종료 |
+| 경기방마다 타이머를 갖고 수명주기 경로마다 개별 정리 | `d21a47ee92d2` 공유 스케줄러 → `fb5b1abc97f5` 완료 처리 등록/등록 해제 통합 | 스케줄러/GameHub 수명주기 테스트 | 실행 가능한 경기방 레지스트리가 시간 제어 구성의 단일 소유 주체 |
+| 종료 중 준비 상태와 참가가 열리고 여러 신호가 경쟁 | `44ef3e07e1a5` 작업 중단 → `1c9981393973` 일회성 신호 순번 | 작업 중단/종료 테스트와 장애 테스트 실행 틀 | 상한을 둔 운영 종료 정리 |
+| DB와 경계 성능 저하를 구분하지 못하는 측정 | `7b0b5f086b41` separate 프록시와 소스 특정 조작 요소 | k6 지표/임계값 | 실패 소스별 서비스 수준 근거 |
 
-## 8. Ownership / state / responsibility 변화
+## 8. 소유권·상태·담당 범위 변화
 
-| 축 | 초기 SHA의 owner/state | 중간 전환 | Thread 최종 owner/state | 해제·cleanup 책임 | 근거 |
+| 축 | 초기 SHA의 소유 주체/상태 | 중간 전환 | 개발 스레드 최종 소유 주체/상태 | 해제·정리 책임 | 근거 |
 | --- | --- | --- | --- | --- | --- |
-| elapsed-time accumulation and simulation steps | `3a2943...` accumulator/scheduler | `d21a47...` room registry | `fb5b1...` GameHub-owned shared scheduler | last unregister/GameHub.close | fixedStepScheduler.ts, sharedRoomScheduler.ts, gameHub.ts |
-| heartbeat timers | 없음 | `10a656...` connection heartbeat | connection별 heartbeat instance | stop/terminate/socket close | heartbeat.ts |
-| input budget and sequence state | sequence-only or scattered checks | `207df3...` user bucket + user-room sequence | InputGate | releaseUser | inputGate.ts |
-| snapshot queue and congestion retry | transport send backlog | `8589ff...` latest pending + one retry | LatestSnapshotBuffer | close/terminate | latestSnapshotBuffer.ts |
-| shared room scheduler membership | room별 scheduler | `d21a47...` abstraction | `fb5b1...` GameHub registry | pause/disconnect/abandon/finalize/remove/close | SharedRoomScheduler/GameHub |
-| drain waiter and process signal teardown | 없음/즉시 close | `44ef3...` single drain waiter | `1c998...` one-shot signal→60초 drain→close | finishDrain/dispose listeners/app.close | GameHub.beginDrain, gracefulShutdown.ts |
-| fault experiment | unit evidence만 존재 | `7b0b5...` DB/edge proxies | k6 profile + toxiproxy control | reset/up/down commands/compose teardown | tests/load, compose overlay |
+| 경과 시간 누적과 시뮬레이션 단계 | `3a2943...` 누산기·스케줄러 | `d21a47...` 경기방 레지스트리 | `fb5b1...` GameHub가 소유한 공유 스케줄러 | 마지막 등록 해제 또는 `GameHub.close` | `fixedStepScheduler.ts`, `sharedRoomScheduler.ts`, `gameHub.ts` |
+| 연결 확인 신호 타이머 | 없음 | `10a656...` 연결 확인 신호 | 연결별 연결 확인 신호 인스턴스 | 중지/강제 종료/소켓 종료 | heartbeat.ts |
+| 입력 허용 시간 및 순번 상태 | 순번만 검사하거나 여러 곳에 흩어진 검사 | `207df3...` 사용자 버킷 + 사용자·경기방별 순번 | InputGate | releaseUser | inputGate.ts |
+| 스냅샷 대기열과 혼잡 재시도 | 전송 계층의 전송 적체 | `8589ff...` 최신 대기 값 1개와 재시도 작업 1개 | `LatestSnapshotBuffer` | 정상 종료·강제 종료 | `latestSnapshotBuffer.ts` |
+| 공유 경기방 스케줄러 소속 정보 | 경기방별 스케줄러 | `d21a47...` 추상화 | `fb5b1...` GameHub 레지스트리 | 일시정지/연결 해제/abandon/결과 확정/제거/종료 | SharedRoomScheduler/GameHub |
+| 작업 중단 완료 대기와 프로세스 신호 정리 | 없음 또는 즉시 종료 | `44ef3...` 단일 작업 중단 대기 Promise | `1c998...` 일회성 신호 → 최대 60초 작업 중단 → 종료 | `finishDrain`, `dispose`, 신호 리스너, `app.close` | `GameHub.beginDrain`, `gracefulShutdown.ts` |
+| 장애 실험 | 단위 근거만 존재 | `7b0b5...` DB/경계 프록시 | k6 프로필 + Toxiproxy 제어 | 초기화/up/중단 명령/compose 종료 정리 | 테스트/부하, 추가 Compose 설정 |
 
-## 9. Thread 최종 상태
+## 9. 개발 스레드 최종 상태
 
-- 최종 authoritative owner: GameHub가 shared room scheduler와 drain lifecycle을, connection abstractions가 heartbeat/input/snapshot resources를, process entrypoint가 signal→close sequence를 소유합니다.
-- 최종 상태/invariant: elapsed catch-up, liveness, input burst, snapshot backlog, timer multiplicity, admission과 shutdown이 모두 hard bound와 단일 cleanup owner를 가집니다.
-- 남아 있는 의도적 제한 또는 비보장: snapshot 전송은 의도적으로 lossy latest-value이며 drain timeout 뒤 unfinished room 보존을 보장하지 않습니다. load/fault harness의 threshold는 실행 환경과 topology에 종속됩니다.
-- 후속 Thread가 의존하는 contract: runnable room만 shared scheduler에 등록되고 draining은 새 work를 즉시 거부한 뒤 60초 budget에서 existing room completion을 기다리고 전체 runtime resource를 한 번 정리합니다.
+- 최종 판정 주체: GameHub가 공유 경기방 스케줄러와 작업 중단 수명주기를, 연결 abstractions가 연결 확인 신호/입력/스냅샷 자원을, 프로세스 진입점이 신호→종료 순번을 소유합니다.
+- 최종 상태/불변 조건: 경과 시간 누적 보정, 연결 생존 확인, 입력 폭주, 스냅샷 대기열, 타이머 수, 참가와 종료에는 모두 명확한 상한과 하나의 정리 소유 주체가 있습니다.
+- 남아 있는 의도적 제한 또는 보장하지 않는 범위: 스냅샷 전송은 의도적으로 손실을 허용하며 최신 값만 유지하고 작업 중단 시간 초과 뒤 완료되지 않은 경기방 보존을 보장하지 않습니다. 부하/장애 테스트 실행 틀의 임계값은 실행 환경과 구성에 종속됩니다.
+- 후속 개발 스레드가 의존하는 계약: 실행 가능한 경기방만 공유 스케줄러에 등록되고 작업 중단 상태는 새 작업을 즉시 거부한 뒤 60초 허용 시간에서 기존 경기방 완료를 기다리고 전체 실행 시점 자원을 한 번 정리합니다.
 - 대표 코드 근거: `3a2943ff385d fixedStepScheduler.ts`, `10a656e59864 heartbeat.ts`, `207df3f47935 inputGate.ts`, `8589ff3c4821 latestSnapshotBuffer.ts`, `fb5b1abc97f5`/`44ef3e07e1a5 gameHub.ts`, `1c9981393973 gracefulShutdown.ts`, `7b0b5f086b41 tests/load`
 
-## 10. 최종 architecture 또는 execution flow 정리
+## 10. 최종 아키텍처와 실행 순서
 
 ```text
-[wall-clock / client input / socket state]
-    ↓ monotonic accumulator + version/sequence/token admission
-[shared 50 ms scheduler: ≤5 ticks/loop, ≤250 ms lag]
-    ↓ runnable room callbacks
-[authoritative simulation snapshot]
-    ↓ latest-value buffer: one pending, 256 KiB soft, 1 MiB hard, 5 s deadline
+[벽시계 시간 / 클라이언트 입력 / 소켓 상태]
+    ↓ 단조 증가 누산기 + 버전·순번·토큰 검사
+[공유 50ms 스케줄러: 반복당 최대 5틱, 지연 최대 250ms]
+    ↓ 실행 가능한 경기방 콜백
+[서버가 확정한 시뮬레이션 스냅샷]
+    ↓ 최신 값 버퍼: 대기 1개, 권고 상한 256KiB, 강제 상한 1MiB, 기한 5초
 [WebSocket client + heartbeat: 15 s ping / 45 s deadline]
 
 [SIGTERM/SIGINT]
@@ -3091,32 +3091,32 @@ Source에서 확정된 invariant를 commit 시점별로 연결했습니다. `해
 [k6 workload] → [separate DB/edge Toxiproxy faults] → [latency/gap/reconnect/finalize metrics]
 ```
 
-- stale input은 token budget을 쓰기 전에 제거되고 accepted input만 simulation intent를 바꿉니다.
-- snapshot은 최신 상태가 가치이므로 obsolete pending frame을 교체하지만 `game.finished` 같은 control event의 delivery 정책과 동일하지 않습니다.
-- 이 작업에서는 load/fault command를 실행하지 않았으며 harness와 threshold의 구현만 검토했습니다.
+- 오래된 입력은 토큰 허용 시간을 쓰기 전에 제거되고 허용된 입력만 시뮬레이션 요청 의도를 바꿉니다.
+- 스냅샷은 최신 상태가 가치이므로 더 이상 사용하지 않는 형식 대기 중 프레임을 교체하지만 `game.finished` 같은 제어 이벤트의 전달 정책과 동일하지 않습니다.
+- 이 작업에서는 부하/장애 명령을 실행하지 않았으며 테스트 실행 틀과 임계값의 구현만 검토했습니다.
 
-## 11. 학습 완료 자가 점검
+## 11. 학습 완료 확인
 
-- [x] Commit map의 모든 SHA를 원문 순서대로 확인했습니다.
-- [x] 각 commit의 subject, importance, tags를 변경하지 않았습니다.
+- [x] 커밋 목록의 모든 SHA를 원문 순서대로 확인했습니다.
+- [x] 각 커밋의 제목·중요도·태그를 변경하지 않았습니다.
 - [x] S/A/B 깊이를 구분해 코드 근거를 남겼습니다.
-- [x] final HEAD의 구현을 과거 SHA에 소급하지 않았습니다.
-- [x] 핵심 상태 필드, caller/callee, ownership, failure branch, cleanup을 실제 코드로 확인했습니다.
-- [x] Fix를 기존 가정 → failure/risk → root cause → decision → code → regression 순서로 연결했습니다.
-- [x] Test commit에서 production invariant, failure, technique, path, 증명/비증명 범위를 구분했습니다.
-- [x] Thread 최종 execution flow를 별도 프로젝트 재학습 없이 설명할 수 있습니다.
+- [x] 최종 상태의 구현을 과거 SHA에 소급하지 않았습니다.
+- [x] 핵심 상태 필드, 호출자/피호출자, 소유권, 실패 분기, 정리를 실제 코드로 확인했습니다.
+- [x] 수정을 기존 가정 → 실패/위험 → 근본 원인 → 판단 → 코드 → 회귀 순서로 연결했습니다.
+- [x] 테스트 커밋에서 운영 불변 조건, 실패, 기법, 경로, 검증 범위와 미검증 범위를 구분했습니다.
+- [x] 개발 스레드 최종 실행 순서를 별도 프로젝트 재학습 없이 설명할 수 있습니다.
 ===== END FILE: 08-runtime-timing-backpressure-drain-and-operational-evidence.md =====
 
 ===== BEGIN FILE: README.md =====
-# ft_transcendence Development Thread 학습 골격
+# ft_transcendence 개발 스레드 학습 골격
 
 ## 목적
 
-이 문서 세트는 완성형 프로젝트 해설서가 아닙니다. 학습자가 실제 commit history와 해당 SHA의 코드를 읽고
+이 문서 세트는 완성형 프로젝트 해설서가 아닙니다. 학습자가 실제 커밋 이력과 해당 SHA의 코드를 읽고
 설계 → 구현 → 실패 → 수정 → 검증의 발전 과정을 직접 복원하기 위한 기록 골격입니다.
 
-문서에 미리 적힌 commit 순서, SHA, subject, importance, tags, 역할, significance는 source에서 확정된 내용입니다.
-실제 함수 동작, 변경 전후 코드, ownership/lifetime, failure path, test 결과, 최종 설명은 학습자가 채웁니다.
+문서에 미리 적힌 커밋 순서, SHA, 제목·중요도·태그, 역할, 중요성은 원문에서 확인한 내용입니다.
+실제 함수 동작, 변경 전후 코드, 소유권/수명, 실패 경로, 테스트 결과, 최종 설명은 학습자가 채웁니다.
 
 ## 권장 학습 순서
 
@@ -3129,65 +3129,65 @@ Source에서 확정된 invariant를 commit 시점별로 연결했습니다. `해
 7. [격리된 임시 신뢰 도메인으로서의 게스트 모드](07-guest-mode-as-isolated-transient-trust-domain.md)
 8. [런타임 타이밍·백프레셔·드레인·운영 증거](08-runtime-timing-backpressure-drain-and-operational-evidence.md)
 
-앞 문서의 결과가 뒤 문서의 필수 선행조건인 것은 아닙니다. 다만 위 순서는 source의 Development Thread 배열을
+앞 문서의 결과가 뒤 문서의 필수 선행조건인 것은 아닙니다. 다만 위 순서는 소스의 개발 스레드 배열을
 그대로 따르므로 전체 복습 시 이 순서를 권장합니다.
 
-## Thread 문서 사용법
+## 개발 스레드 문서 사용법
 
-- 먼저 Thread 목표, 핵심 질문, 완료 기준을 읽습니다.
-- Commit map의 순서를 바꾸지 않고 각 SHA를 차례대로 checkout합니다.
-- 각 commit의 “Source에서 확정된 역할과 범위”를 기준으로 확인 범위를 제한합니다.
-- “해당 SHA에서 확인할 실제 코드”의 항목마다 파일, symbol, caller/callee, 상태 전이, failure branch를 기록합니다.
-- Invariant ledger와 Failure → Fix → Test 표는 commit별 기록을 마친 뒤 채웁니다.
-- 마지막으로 Thread 최종 상태와 execution flow를 자기 언어로 작성합니다.
+- 먼저 개발 스레드 목표, 핵심 질문, 완료 기준을 읽습니다.
+- 커밋 목록의 순서를 바꾸지 않고 각 SHA를 차례대로 체크아웃합니다.
+- 각 커밋의 “원문에서 확인한 역할과 범위”를 기준으로 확인 범위를 제한합니다.
+- “해당 SHA에서 확인할 실제 코드”의 항목마다 파일, 심벌, 호출자/피호출자, 상태 전이, 실패 분기를 기록합니다.
+- 불변 조건 ledger와 실패 → 수정 → 테스트 표는 커밋별 기록을 마친 뒤 채웁니다.
+- 마지막으로 개발 스레드 최종 상태와 실행 순서를 자기 언어로 작성합니다.
 
 ## 해당 SHA 코드 확인 원칙
 
 - `git checkout <SHA>` 또는 `git show <SHA>:<path>`로 그 시점의 코드를 확인합니다.
-- 변경 자체는 `git show <SHA>`로 보고, Thread의 직전 관련 commit과는 `git diff <OLD>..<NEW> -- <path>`로 비교합니다.
-- 파일명이 source에 확정되어 있지 않으면 symbol을 검색해 실제 경로를 기록합니다.
-- 함수 하나만 보지 말고 caller, callee, 상태 필드, resource 생성/해제, error branch, 관련 test를 함께 추적합니다.
-- source가 명시하지 않은 결론은 확정 사실로 적지 않고 “코드에서 관찰한 해석”으로 표시합니다.
+- 변경 자체는 `git show <SHA>`로 보고, 개발 스레드의 직전 관련 커밋과는 `git diff <OLD>..<NEW> -- <path>`로 비교합니다.
+- 파일명이 소스에 확정되어 있지 않으면 심벌을 검색해 실제 경로를 기록합니다.
+- 함수 하나만 보지 말고 호출자, 피호출자, 상태 필드, 자원 생성/해제, 오류 브랜치, 관련 테스트를 함께 추적합니다.
+- 소스가 명시하지 않은 결론은 확정 사실로 적지 않고 “코드에서 관찰한 해석”으로 표시합니다.
 
-## final HEAD 소급 사용 금지
+## 최종 상태 소급 사용 금지
 
-- final HEAD의 코드로 과거 commit의 동작을 설명하지 않습니다.
-- 같은 symbol이 나중에 이동·분리·삭제되었더라도 해당 SHA의 실제 정의와 caller를 사용합니다.
-- 필요한 경우 Thread의 직전 관련 SHA와 비교하되, 그 사이의 다른 commit에서 바뀐 내용을 자동으로 귀속하지 않습니다.
-- 최종 architecture는 모든 commit 기록을 끝낸 뒤 Thread 마지막 SHA까지의 변화로만 정리합니다.
+- 최종 상태의 코드로 과거 커밋의 동작을 설명하지 않습니다.
+- 같은 심벌이 나중에 이동·분리·삭제되었더라도 해당 SHA의 실제 정의와 호출자를 사용합니다.
+- 필요한 경우 개발 스레드의 직전 관련 SHA와 비교하되, 그 사이의 다른 커밋에서 바뀐 내용을 자동으로 귀속하지 않습니다.
+- 최종 아키텍처는 모든 커밋 기록을 끝낸 뒤 개발 스레드 마지막 SHA까지의 변화로만 정리합니다.
 
 ## S/A/B/C별 학습 깊이
 
-- S: 프로젝트 핵심 architecture/invariant입니다. 문제, 직전 상태, 실패 가능성, 결정, 핵심 코드, ownership/lifecycle/state transition, 후속 fix/test까지 깊게 추적합니다.
-- A: 주요 subsystem, trust boundary, failure path, integration point입니다. 핵심 코드와 설계 판단, 주요 edge case를 확인합니다.
-- B: Thread 흐름에서 맡는 구현 역할과 필요한 상태 변화를 확인합니다. S/A와 같은 분량을 기계적으로 반복하지 않습니다.
-- C: Thread 이해에 필요한 맥락만 기록합니다. source의 Thread map에 포함되지 않은 C commit을 임의로 끼워 넣지 않습니다.
+- S: 프로젝트 핵심 아키텍처/불변 조건입니다. 문제, 직전 상태, 실패 가능성, 결정, 핵심 코드, 소유권/수명주기/상태 전이, 후속 수정/테스트까지 깊게 추적합니다.
+- A: 주요 하위 시스템, 신뢰 경계, 실패 경로, 통합 point입니다. 핵심 코드와 설계 판단, 주요 예외 조건을 확인합니다.
+- B: 개발 스레드 흐름에서 맡는 구현 역할과 필요한 상태 변화를 확인합니다. S/A와 같은 분량을 기계적으로 반복하지 않습니다.
+- C: 개발 스레드 이해에 필요한 맥락만 기록합니다. 소스의 개발 스레드 목록에 포함되지 않은 C 커밋을 임의로 끼워 넣지 않습니다.
 
 ## 실제 코드 삽입 기준
 
-- 해당 SHA의 판단을 증명하는 최소 코드만 삽입합니다.
-- 코드 앞에 SHA, 파일 경로, symbol, 확인 목적을 적습니다.
-- 상태 mutation 전후 순서, ownership 이전, error/cleanup branch처럼 문장만으로 모호한 부분을 우선합니다.
-- 대규모 파일이나 전체 diff를 복사하지 않습니다.
+- 해당 SHA의 판단을 검증하는 최소 코드만 삽입합니다.
+- 코드 앞에 SHA, 파일 경로, 심벌, 확인 목적을 적습니다.
+- 상태 변경 전후 순서, 소유권 이전, 오류/정리 브랜치처럼 문장만으로 모호한 부분을 우선합니다.
+- 대규모 파일이나 전체 변경 내용을 복사하지 않습니다.
 - 변경 전/후 비교가 필요하면 두 SHA의 대응 코드 조각을 나란히 두고 차이를 학습자가 설명합니다.
 
-## Test commit 학습 방법
+## 테스트 커밋 학습 방법
 
-- 대상 production invariant를 먼저 적습니다.
-- 재현하는 failure 또는 boundary를 실제 fixture와 주입 지점으로 확인합니다.
-- test technique이 unit, deterministic regression, PostgreSQL integration, browser/process, load/fault 중 무엇인지 구분합니다.
-- test가 통과하는 production 코드 경로를 caller 순서로 연결합니다.
-- 증명하는 것과 증명하지 않는 것을 모두 기록합니다.
+- 대상 운영 불변 조건을 먼저 적습니다.
+- 재현하는 실패 또는 경계를 실제 픽스처와 주입 지점으로 확인합니다.
+- 테스트 기법이 단위, 결정적 회귀, PostgreSQL 통합, 브라우저/프로세스, 부하/장애 중 무엇인지 구분합니다.
+- 테스트가 통과하는 운영 코드 경로를 호출자 순서로 연결합니다.
+- 검증하는 것과 검증하지 않는 것을 모두 기록합니다.
 - 후속 변경에서 어떤 회귀를 막는지 설명합니다.
 
 ## 문서 완료 기준
 
-- 모든 Thread 문서의 Commit map을 source 순서 그대로 확인했습니다.
-- 모든 중요 commit에서 해당 SHA의 구체적인 코드 근거를 기록했습니다.
+- 모든 개발 스레드 문서의 커밋 목록을 소스 순서 그대로 확인했습니다.
+- 모든 중요 커밋에서 해당 SHA의 구체적인 코드 근거를 기록했습니다.
 - S/A/B/C별 학습 깊이가 구분되어 있습니다.
-- Invariant ledger와 Failure → Fix → Test 연결이 실제 commit code와 test에 근거합니다.
-- ownership, state, responsibility, cleanup 변화를 Thread 단위로 설명할 수 있습니다.
-- final HEAD를 소급하지 않고 각 시점의 보장과 비보장을 구분했습니다.
+- 불변 조건 ledger와 실패 → 수정 → 테스트 연결이 실제 커밋 코드와 테스트에 근거합니다.
+- 소유권, 상태, 담당 범위, 정리 변화를 개발 스레드 단위로 설명할 수 있습니다.
+- 최종 상태를 소급하지 않고 각 시점의 보장과 보장하지 않는 범위를 구분했습니다.
 - 완성된 문서만으로 별도의 프로젝트 재학습 없이 설계 → 구현 → 실패 → 수정 → 검증의 발전 과정을 설명할 수 있습니다.
 ===== END FILE: README.md =====
 

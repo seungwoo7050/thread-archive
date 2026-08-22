@@ -1,11 +1,11 @@
-===== BEGIN FILE: 01-ownership-ledger-to-unsafe-destruction.md =====
-# Thread: Ownership ledger to unsafe-destruction verdict
+===== BEGIN FILE: 01-소유권-ledger-to-unsafe-destruction.md =====
+# Thread: 소유권 ledger to unsafe-destruction verdict
 
 이 문서는 source에 정의된 첫 번째 Development Thread를 그대로 따릅니다. commit 순서, SHA, importance, tags는 변경하지 않습니다. 모든 코드 기록은 해당 SHA에서 작성하며 final HEAD를 과거 구현의 근거로 사용하지 않습니다.
 
 ## 1. Thread 목표
 
-이 Thread의 목표는 table 중심 ownership graph가 어떻게 partial initialization ledger로 확장되고, 최종적으로 worker quiescence가 입증되지 않으면 destruction 자체를 금지하는 verdict로 발전하는지 복원하는 것입니다.
+이 Thread의 목표는 table 중심 소유권 graph가 어떻게 partial initialization ledger로 확장되고, 최종적으로 worker quiescence가 입증되지 않으면 destruction 자체를 금지하는 verdict로 발전하는지 복원하는 것입니다.
 
 Source-confirmed significance는 다음과 같습니다.
 
@@ -14,30 +14,30 @@ Source-confirmed significance는 다음과 같습니다.
 - common destructor가 유일한 ledger consumer가 되면서 exact-once initialization rollback이 복구됩니다.
 - 같은 원칙이 thread lifecycle로 확장되어 successful join만 borrower quiescence의 증거가 됩니다.
 - unsafe join 결과에서는 table cleanup뿐 아니라 normal process teardown도 금지됩니다.
-- regression test는 반환값만 보지 않고 ledger 보존과 forbidden cleanup의 부재를 검증합니다.
+- 회귀 테스트는 반환값만 보지 않고 ledger 보존과 forbidden cleanup의 부재를 검증합니다.
 
-### Source에 명시적으로 연결된 Critical Invariants
+### Source에 명시적으로 연결된 Critical 항상 유지해야 하는 조건
 
-- Initialized resource는 ownership ledger가 존재한다고 말할 때에만, 최대 한 번 파괴합니다.
+- Initialized resource는 소유권 ledger가 존재한다고 말할 때에만, 최대 한 번 파괴합니다.
 - destruction 실패 후에는 아직 해제되지 않은 resource를 나타내는 truthful, retryable state가 남아야 합니다.
 - started worker가 모두 successful join된 경우가 아니면 shared table memory와 synchronization object를 파괴하지 않습니다.
 - `t_table`은 allocation과 synchronization object의 owner이며, `t_philo`는 table과 fork array 내부 주소를 빌립니다.
 
 ### Source에 명시적으로 연결된 Major Engineering Difficulties
 
-- partial initialization, failed join, mid-destruction error 전 구간에서 exact ownership evidence를 보존하는 문제
+- partial initialization, failed join, mid-destruction error 전 구간에서 exact 소유권 evidence를 보존하는 문제
 - unjoined worker가 table을 계속 역참조할 수 있어 cleanup 자체가 unsafe한 경우를 처리하는 문제
 - ordinary error와 unsafe lifecycle verdict가 함께 존재할 때 safety verdict의 우선순위를 유지하는 문제
 
 ## 2. 이 Thread를 이해하기 위한 핵심 질문
 
-- allocation owner와 worker가 빌리는 주소는 어느 구조체와 field로 표현되는가?
+- allocation owner와 worker가 빌리는 주소는 어느 구조체와 field로 표현됩니까?
 - 요청한 최종 resource 수가 아니라 실제 성공한 초기화 수를 어떻게 기록하는가?
 - 초기 rollback에서 왜 helper와 destructor의 중복 책임이 double destroy 위험을 만드는가?
 - cleanup ledger는 resource destroy의 성공 전과 성공 후 중 언제 소비되어야 하는가?
 - `pthread_join` 호출을 시도했다는 사실과 worker quiescence가 입증되었다는 사실은 왜 다른가?
-- join failure가 ordinary error가 아니라 `PHILO_UNSAFE`여야 하는 이유는 무엇인가?
-- unsafe verdict에서 destructor만 생략하는 것으로 충분하지 않고 `_exit`가 필요한 이유는 무엇인가?
+- join failure가 ordinary error가 아니라 `PHILO_UNSAFE`여야 하는 이유는 무엇입니까?
+- unsafe verdict에서 destructor만 생략하는 것으로 충분하지 않고 `_exit`가 필요한 이유는 무엇입니까?
 - test가 failure를 주입한 뒤 어떤 count, pointer, flag, output의 존재 또는 부재를 관찰하는가?
 
 ## 3. 완료 기준
@@ -77,7 +77,7 @@ Source-confirmed significance는 다음과 같습니다.
 
 #### Source-confirmed 맥락
 
-이 commit은 `t_table`을 configuration, global state, fork 배열, philosopher 배열과 이후 synchronization 객체의 소유자로 두고, 각 `t_philo`가 자신의 identity와 progress field를 가지면서 table과 두 fork를 가리키도록 ownership graph를 만듭니다. fork 관계는 `forks[i]`와 `forks[(i + 1) % number]`의 ring으로 표현되며, 인접 철학자가 복사된 상태가 아니라 같은 fork 객체를 공유합니다.
+이 commit은 `t_table`을 configuration, global state, fork 배열, philosopher 배열과 이후 synchronization 객체의 소유자로 두고, 각 `t_philo`가 자신의 identity와 progress field를 가지면서 table과 두 fork를 가리키도록 소유권 graph를 만듭니다. fork 관계는 `forks[i]`와 `forks[(i + 1) % number]`의 ring으로 표현되며, 인접 철학자가 복사된 상태가 아니라 같은 fork 객체를 공유합니다.
 
 이 시점의 범위는 storage와 topology입니다. synchronization 초기화는 다음 commit에서 추가되므로, final 구조를 이 SHA에 소급해서 적지 않습니다.
 
@@ -87,9 +87,9 @@ Source-confirmed significance는 다음과 같습니다.
 | 단계 | Source-confirmed 기준 | 해당 SHA 코드 근거 |
 | --- | --- | --- |
 | 문제 | worker가 장기간 빌려 쓸 configuration, shared state, fork identity, philosopher-local state의 안정적인 저장소가 필요합니다. | §12 완료 기록의 대응 근거 참조 |
-| 직전 상태 | 이 ownership graph와 ring topology가 아직 중심 구조로 확정되지 않은 상태를 parent에서 확인합니다. | §12 완료 기록의 대응 근거 참조 |
+| 직전 상태 | 이 소유권 graph와 ring topology가 아직 중심 구조로 확정되지 않은 상태를 parent에서 확인합니다. | §12 완료 기록의 대응 근거 참조 |
 | 핵심 결정 | `t_table`이 두 contiguous array와 공유 상태를 소유하고, `t_philo`는 table 및 fork 객체의 주소를 빌립니다. | §12 완료 기록의 대응 근거 참조 |
-| lifetime 결과 | worker가 빌린 주소의 유효 기간은 table-owned storage와 이후 thread quiescence 규칙에 종속됩니다. | §12 완료 기록의 대응 근거 참조 |
+| 수명 결과 | worker가 빌린 주소의 유효 기간은 table-owned storage와 이후 thread quiescence 규칙에 종속됩니다. | §12 완료 기록의 대응 근거 참조 |
 
 #### 해당 SHA에서 직접 확인할 코드
 - [x] `git show --name-status 16343e76b54b`로 구조체 선언, 초기화, 정리와 관련된 실제 파일을 식별합니다.
@@ -97,7 +97,7 @@ Source-confirmed significance는 다음과 같습니다.
 - [x] fork 배열과 philosopher 배열의 allocation 순서, 크기 계산, 초기값 설정 순서를 추적합니다.
 - [x] philosopher `i`의 left/right fork 주소가 실제로 어떤 식으로 계산되는지 확인하고 `i == number - 1`의 연결을 별도로 검산합니다.
 - [x] 인접한 두 philosopher가 동일한 fork mutex 주소를 참조한다는 것을 주소 식으로 증명합니다.
-- [x] 첫 allocation 성공 후 두 번째 allocation이 실패하는 branch에서 어떤 destructor 또는 cleanup path가 호출되고, 어떤 pointer가 free·NULL 처리되는지 확인합니다.
+- [x] 첫 allocation 성공 후 두 번째 allocation이 실패하는 branch에서 어떤 destructor 또는 정리 과정이 호출되고, 어떤 pointer가 free·NULL 처리되는지 확인합니다.
 - [x] 이 SHA에서 synchronization object가 실제로 초기화되는지 여부를 확인하여 storage/topology 범위를 넘겨 쓰지 않습니다.
 
 #### 코드 근거 기록
@@ -107,11 +107,11 @@ Source-confirmed significance는 다음과 같습니다.
 | 파일과 symbol | §12 완료 기록의 대응 근거 참조 |
 | 최소 코드 구간 | §12 완료 기록의 대응 근거 참조 |
 | caller → callee | §12 완료 기록의 대응 근거 참조 |
-| state 또는 ownership 변화 | §12 완료 기록의 대응 근거 참조 |
+| state 또는 소유권 변화 | §12 완료 기록의 대응 근거 참조 |
 | failure/cleanup 경로 | §12 완료 기록의 대응 근거 참조 |
 | 직전 상태와의 차이 | §12 완료 기록의 대응 근거 참조 |
 
-#### Ownership / lifetime 추적
+#### 소유권 / 수명 추적
 
 | 대상 | Source-confirmed 관계 | 해당 SHA에서 확인한 선언·초기화 | 파괴 책임과 유효 기간 |
 | --- | --- | --- | --- |
@@ -130,7 +130,7 @@ Source-confirmed significance는 다음과 같습니다.
 #### 보장 범위
 
 이 commit이 source 기준으로 보장하는 것:
-- fork와 philosopher의 ownership graph 및 ring topology가 명시됩니다.
+- fork와 philosopher의 소유권 graph 및 ring topology가 명시됩니다.
 - 부분 allocation 실패가 table-level cleanup 경로로 모입니다.
 
 이 commit 시점에 아직 보장하지 않거나 검증 범위를 넘는 것:
@@ -161,7 +161,7 @@ Source-confirmed significance는 다음과 같습니다.
 | 단계 | Source-confirmed 기준 | 해당 SHA 코드 근거 |
 | --- | --- | --- |
 | 기존 가정 | 요청된 최종 자원 수가 아니라 성공적으로 준비된 자원만 cleanup해야 합니다. | §12 완료 기록의 대응 근거 참조 |
-| 도입한 결정 | readiness flag와 `fork_count`가 synchronization ownership ledger 역할을 합니다. | §12 완료 기록의 대응 근거 참조 |
+| 도입한 결정 | readiness flag와 `fork_count`가 synchronization 소유권 ledger 역할을 합니다. | §12 완료 기록의 대응 근거 참조 |
 | 실제 위험 | fork helper와 common destructor가 동일 mutex cleanup을 모두 담당합니다. | §12 완료 기록의 대응 근거 참조 |
 | 남은 root cause | 로컬 rollback 후 ledger가 소비되거나 수정되지 않아 destructor가 이미 파괴한 fork를 다시 owned로 볼 수 있습니다. | §12 완료 기록의 대응 근거 참조 |
 | 후속 수정 | `10665e0a5bf9`에서 fork helper의 로컬 destruction을 제거하고 destructor만 ledger를 소비합니다. | §12 완료 기록의 대응 근거 참조 |
@@ -182,7 +182,7 @@ Source-confirmed significance는 다음과 같습니다.
 | 파일과 symbol | §12 완료 기록의 대응 근거 참조 |
 | 최소 코드 구간 | §12 완료 기록의 대응 근거 참조 |
 | caller → callee | §12 완료 기록의 대응 근거 참조 |
-| state 또는 ownership 변화 | §12 완료 기록의 대응 근거 참조 |
+| state 또는 소유권 변화 | §12 완료 기록의 대응 근거 참조 |
 | failure/cleanup 경로 | §12 완료 기록의 대응 근거 참조 |
 | 직전 상태와의 차이 | §12 완료 기록의 대응 근거 참조 |
 
@@ -211,7 +211,7 @@ Source-confirmed significance는 다음과 같습니다.
 #### 보장 범위
 
 이 commit이 source 기준으로 보장하는 것:
-- 부분 초기화를 요청된 최종 상태가 아니라 recorded ownership으로 정리하려는 lifecycle 모델이 도입됩니다.
+- 부분 초기화를 요청된 최종 상태가 아니라 recorded 소유권으로 정리하려는 lifecycle 모델이 도입됩니다.
 - state, print, fork mutex의 준비 상태를 destructor가 구분할 수 있습니다.
 
 이 commit 시점에 아직 보장하지 않거나 검증 범위를 넘는 것:
@@ -245,7 +245,7 @@ Source-confirmed significance는 다음과 같습니다.
 | 실제 failure/위험 | helper가 먼저 파괴하고 destructor가 같은 ledger를 다시 소비하여 double destroy가 가능합니다. | §12 완료 기록의 대응 근거 참조 |
 | root cause | 동일 자원에 대한 cleanup 책임이 helper와 table destructor로 분산되어 있습니다. | §12 완료 기록의 대응 근거 참조 |
 | 수정된 decision | helper는 failure만 반환하고 common destructor만 `fork_count`를 소비합니다. | §12 완료 기록의 대응 근거 참조 |
-| 수정된 invariant | 각 initialized synchronization object는 한 cleanup owner에 의해 최대 한 번 파괴됩니다. | §12 완료 기록의 대응 근거 참조 |
+| 수정된 항상 유지해야 하는 조건 | 각 initialized synchronization object는 한 cleanup owner에 의해 최대 한 번 파괴됩니다. | §12 완료 기록의 대응 근거 참조 |
 | regression 연결 | `800408d6d84e`가 네 번째 init 실패를 주입하고 세 owned mutex만 한 번씩 파괴되는지 검증합니다. | §12 완료 기록의 대응 근거 참조 |
 
 #### 해당 SHA에서 직접 확인할 코드
@@ -263,7 +263,7 @@ Source-confirmed significance는 다음과 같습니다.
 | 파일과 symbol | §12 완료 기록의 대응 근거 참조 |
 | 최소 코드 구간 | §12 완료 기록의 대응 근거 참조 |
 | caller → callee | §12 완료 기록의 대응 근거 참조 |
-| state 또는 ownership 변화 | §12 완료 기록의 대응 근거 참조 |
+| state 또는 소유권 변화 | §12 완료 기록의 대응 근거 참조 |
 | failure/cleanup 경로 | §12 완료 기록의 대응 근거 참조 |
 | 직전 상태와의 차이 | §12 완료 기록의 대응 근거 참조 |
 
@@ -288,9 +288,9 @@ Source-confirmed significance는 다음과 같습니다.
 - 모든 pthread destructor failure에 대한 retryable lifecycle 모델은 후속 `a7783d04107f`에서 확장됩니다.
 
 #### 학습자 결론
-- [x] 코드 재사용이 아니라 exact-once ownership invariant 때문에 common rollback이 필요한 이유를 설명합니다.
+- [x] 코드 재사용이 아니라 exact-once 소유권 항상 유지해야 하는 조건 때문에 common rollback이 필요한 이유를 설명합니다.
 - [x] 삭제된 local cleanup과 유지된 ledger를 한 쌍으로 제시합니다.
-- [x] regression test가 관찰해야 할 주소·count·pointer 상태를 예측한 뒤 실제 test와 대조합니다.
+- [x] 회귀 테스트가 관찰해야 할 주소·count·pointer 상태를 예측한 뒤 실제 test와 대조합니다.
 
 ### 5.4 `800408d6d84e` — `test(init): 부분 뮤텍스 초기화 롤백 검증`
 
@@ -310,7 +310,7 @@ Source-confirmed significance는 다음과 같습니다.
 
 | 구분 | 학습자 기록 |
 | --- | --- |
-| 대상 production invariant | §12 완료 기록의 대응 근거 참조 |
+| 대상 production 항상 유지해야 하는 조건 | §12 완료 기록의 대응 근거 참조 |
 | 재현하는 failure 또는 boundary | §12 완료 기록의 대응 근거 참조 |
 | test technique | §12 완료 기록의 대응 근거 참조 |
 | failure injection call index | §12 완료 기록의 대응 근거 참조 |
@@ -338,7 +338,7 @@ Source-confirmed significance는 다음과 같습니다.
 | 파일과 symbol | §12 완료 기록의 대응 근거 참조 |
 | 최소 코드 구간 | §12 완료 기록의 대응 근거 참조 |
 | caller → callee | §12 완료 기록의 대응 근거 참조 |
-| state 또는 ownership 변화 | §12 완료 기록의 대응 근거 참조 |
+| state 또는 소유권 변화 | §12 완료 기록의 대응 근거 참조 |
 | failure/cleanup 경로 | §12 완료 기록의 대응 근거 참조 |
 | 직전 상태와의 차이 | §12 완료 기록의 대응 근거 참조 |
 
@@ -361,7 +361,7 @@ Source-confirmed significance는 다음과 같습니다.
 
 - Importance: **S**
 - Tags: `RESOURCE_LIFECYCLE, RISK, HARD`
-- Source-defined role: Extends ownership evidence to worker creation, successful join, destruction permission, retryable cleanup, and `_exit` on unsafe state.
+- Source-defined role: Extends 소유권 evidence to worker creation, successful join, destruction permission, retryable cleanup, and `_exit` on unsafe state.
 - 코드 기준: 반드시 `a7783d04107f` 시점
 - 직접 parent 비교: `git diff a7783d04107f^ a7783d04107f --`
 - Thread 직전 관련 SHA: `800408d6d84e`
@@ -378,7 +378,7 @@ destructor는 pthread resource destruction이 성공한 뒤에만 해당 ledger�
 | 단계 | Source-confirmed 기준 | 해당 SHA 코드 근거 |
 | --- | --- | --- |
 | 기존 상태 | control flow가 `philo_run` 끝에 도달하면 worker가 종료되었다고 전제하고 cleanup할 수 있었습니다. | §12 완료 기록의 대응 근거 참조 |
-| 실제 failure/위험 | 실패한 `pthread_join`은 worker가 멈췄다는 증거가 아니므로 table free 또는 live mutex destroy가 use-after-free를 만들 수 있습니다. | §12 완료 기록의 대응 근거 참조 |
+| 실제 failure/위험 | 실패한 `pthread_join`은 worker가 멈췄다는 증거가 아니므로 table free 또는 live mutex destroy가 해제 후 사용을 만들 수 있습니다. | §12 완료 기록의 대응 근거 참조 |
 | root cause | thread handle에 대한 시도와 borrower quiescence에 대한 증거를 구분하지 않았습니다. | §12 완료 기록의 대응 근거 참조 |
 | 핵심 결정 | `threads_started`, `threads_joined`, `destroy_safe`와 `PHILO_UNSAFE`로 destruction permission을 명시합니다. | §12 완료 기록의 대응 근거 참조 |
 | cleanup 결정 | 모든 started worker의 successful join이 증명될 때만 shared table resource를 파괴합니다. | §12 완료 기록의 대응 근거 참조 |
@@ -395,7 +395,7 @@ destructor는 pthread resource destruction이 성공한 뒤에만 해당 ledger�
 - [x] mutex/condition destroy 실패 시 count 또는 readiness flag가 성공 전에 지워지지 않는지 확인합니다.
 - [x] `main`의 safe run failure, cleanup failure, unsafe run failure 분기를 나란히 추적합니다.
 - [x] unsafe branch에서 unbuffered output 뒤 `_exit`가 호출되고 table destructor나 `exit`/return 경로로 이어지지 않는지 확인합니다.
-- [x] stack-resident table과 worker가 빌린 arrays/mutex 사이의 lifetime을 sequence diagram으로 기록합니다.
+- [x] stack-resident table과 worker가 빌린 arrays/mutex 사이의 수명을 sequence diagram으로 기록합니다.
 
 #### 코드 근거 기록
 
@@ -404,7 +404,7 @@ destructor는 pthread resource destruction이 성공한 뒤에만 해당 ledger�
 | 파일과 symbol | §12 완료 기록의 대응 근거 참조 |
 | 최소 코드 구간 | §12 완료 기록의 대응 근거 참조 |
 | caller → callee | §12 완료 기록의 대응 근거 참조 |
-| state 또는 ownership 변화 | §12 완료 기록의 대응 근거 참조 |
+| state 또는 소유권 변화 | §12 완료 기록의 대응 근거 참조 |
 | failure/cleanup 경로 | §12 완료 기록의 대응 근거 참조 |
 | 직전 상태와의 차이 | §12 완료 기록의 대응 근거 참조 |
 
@@ -414,10 +414,10 @@ destructor는 pthread resource destruction이 성공한 뒤에만 해당 ledger�
 | --- | --- | --- |
 | `threads_started == threads_joined`, destroy state 정상 | destruction을 시도할 수 있음 | §12 완료 기록의 대응 근거 참조 |
 | join 하나 이상 실패 | `PHILO_UNSAFE`; destruction 거부 | §12 완료 기록의 대응 근거 참조 |
-| 일부 pthread resource destroy 실패 | 남은 ownership ledger 보존; 재시도 가능 | §12 완료 기록의 대응 근거 참조 |
+| 일부 pthread resource destroy 실패 | 남은 소유권 ledger 보존; 재시도 가능 | §12 완료 기록의 대응 근거 참조 |
 | unsafe verdict가 ordinary run error와 함께 존재 | unsafe가 safety verdict로 우선 | §12 완료 기록의 대응 근거 참조 |
 
-#### 핵심 lifetime 설명 기록
+#### 핵심 수명 설명 기록
 
 ```text
 table-owned storage 생성
@@ -475,7 +475,7 @@ table-owned storage 생성
 
 | 구분 | 학습자 기록 |
 | --- | --- |
-| 대상 production invariant | §12 완료 기록의 대응 근거 참조 |
+| 대상 production 항상 유지해야 하는 조건 | §12 완료 기록의 대응 근거 참조 |
 | create failure index별 started/joined 예상값 | §12 완료 기록의 대응 근거 참조 |
 | join failure 후 unsafe verdict와 보존되어야 할 state | §12 완료 기록의 대응 근거 참조 |
 | destroy failure stage별 남아야 할 ledger | §12 완료 기록의 대응 근거 참조 |
@@ -506,7 +506,7 @@ table-owned storage 생성
 | 파일과 symbol | §12 완료 기록의 대응 근거 참조 |
 | 최소 코드 구간 | §12 완료 기록의 대응 근거 참조 |
 | caller → callee | §12 완료 기록의 대응 근거 참조 |
-| state 또는 ownership 변화 | §12 완료 기록의 대응 근거 참조 |
+| state 또는 소유권 변화 | §12 완료 기록의 대응 근거 참조 |
 | failure/cleanup 경로 | §12 완료 기록의 대응 근거 참조 |
 | 직전 상태와의 차이 | §12 완료 기록의 대응 근거 참조 |
 
@@ -543,7 +543,7 @@ table-owned storage 생성
 
 | 구분 | 학습자 기록 |
 | --- | --- |
-| 대상 production invariant | §12 완료 기록의 대응 근거 참조 |
+| 대상 production 항상 유지해야 하는 조건 | §12 완료 기록의 대응 근거 참조 |
 | 주입하는 unsafe 결과 | §12 완료 기록의 대응 근거 참조 |
 | buffered stdout의 역할 | §12 완료 기록의 대응 근거 참조 |
 | `atexit` hook의 역할 | §12 완료 기록의 대응 근거 참조 |
@@ -562,7 +562,7 @@ table-owned storage 생성
 - [x] parse/init/run/destroy stub의 반환값과 side effect를 기록합니다.
 - [x] stdout이 flush되지 않도록 어떤 방식으로 buffered output을 준비하는지 확인합니다.
 - [x] `atexit` hook과 destroy stub marker가 각각 normal teardown의 어느 부분을 감지하는지 확인합니다.
-- [x] child process의 stderr/stdout/exit status를 test runner가 어떻게 수집하는지 확인합니다.
+- [x] 자식 프로세스의 stderr/stdout/종료 상태를 test runner가 어떻게 수집하는지 확인합니다.
 - [x] unbuffered unsafe diagnostic이 존재하는 assertion을 확인합니다.
 - [x] destroy marker, buffered output, exit-hook output의 부재를 각각 확인하는 negative assertion을 찾습니다.
 - [x] 단순히 destructor를 건너뛰는 것과 `_exit`로 normal teardown 전체를 건너뛰는 것의 차이를 코드 경로로 설명합니다.
@@ -574,7 +574,7 @@ table-owned storage 생성
 | 파일과 symbol | §12 완료 기록의 대응 근거 참조 |
 | 최소 코드 구간 | §12 완료 기록의 대응 근거 참조 |
 | caller → callee | §12 완료 기록의 대응 근거 참조 |
-| state 또는 ownership 변화 | §12 완료 기록의 대응 근거 참조 |
+| state 또는 소유권 변화 | §12 완료 기록의 대응 근거 참조 |
 | failure/cleanup 경로 | §12 완료 기록의 대응 근거 참조 |
 | 직전 상태와의 차이 | §12 완료 기록의 대응 근거 참조 |
 
@@ -593,11 +593,11 @@ table-owned storage 생성
 - [x] 세 negative signal이 각각 어떤 잘못된 normal teardown 경로를 잡는지 설명합니다.
 - [x] Thread 전체가 allocation owner에서 process-level destruction verdict로 발전한 과정을 이 test까지 연결합니다.
 
-## 6. Invariant ledger
+## 6. 항상 유지해야 하는 조건 ledger
 
-Source가 확정한 invariant의 시간상 역할만 미리 배치했습니다. 실제 field, 함수, mutation 순서와 test evidence는 학습자가 해당 SHA에서 채웁니다.
+Source가 확정한 항상 유지해야 하는 조건의 시간상 역할만 미리 배치했습니다. 실제 field, 함수, mutation 순서와 test evidence는 학습자가 해당 SHA에서 채웁니다.
 
-| Invariant | 최초 도입 또는 문제 노출 | 강화·복구 | regression evidence | 해당 SHA 코드 근거 | 최종 설명 |
+| 항상 유지해야 하는 조건 | 최초 도입 또는 문제 노출 | 강화·복구 | regression evidence | 해당 SHA 코드 근거 | 최종 설명 |
 | --- | --- | --- | --- | --- | --- |
 | table이 allocation을 소유하고 philosopher는 주소를 빌림 | `16343e76b54b` | `a7783d04107f`에서 borrower quiescence가 destruction permission으로 확장 | `7586b605302b`, `37b29557cccc` | §12 완료 기록의 대응 근거 참조 | §12 완료 기록의 대응 근거 참조 |
 | partial initialization은 성공한 resource만 ledger에 기록 | `1d69df7db78c` | `10665e0a5bf9`에서 common destructor 단독 소비로 복구 | `800408d6d84e` | §12 완료 기록의 대응 근거 참조 | §12 완료 기록의 대응 근거 참조 |
@@ -650,9 +650,9 @@ normal process teardown 부재 검증
 - `_exit` 전후 관찰 가능한 output: §12 완료 기록의 대응 근거에 정리했습니다.
 - 두 test가 서로 다르게 증명하는 범위: §12 완료 기록의 대응 근거에 정리했습니다.
 
-## 8. Ownership / state / responsibility 변화
+## 8. 소유권 / state / responsibility 변화
 
-| 시점 | Allocation ownership | Synchronization ownership | Worker lifetime evidence | Destruction responsibility | 학습자 코드 근거 |
+| 시점 | Allocation 소유권 | Synchronization 소유권 | Worker 수명 evidence | Destruction responsibility | 학습자 코드 근거 |
 | --- | --- | --- | --- | --- | --- |
 | `16343e76b54b` | table이 arrays 소유 | 아직 후속 단계 | 아직 없음 | table-level cleanup | §12 완료 기록의 대응 근거 참조 |
 | `1d69df7db78c` | 기존 유지 | readiness flag와 `fork_count` 도입 | 아직 없음 | helper와 destructor가 충돌 | §12 완료 기록의 대응 근거 참조 |
@@ -664,15 +664,15 @@ normal process teardown 부재 검증
 
 ### Source-confirmed 최종 상태
 
-- table ownership graph는 allocation뿐 아니라 synchronization resource와 worker borrower lifetime의 근거가 됩니다.
-- partial initialization과 partial destruction은 recorded ownership을 통해 정리됩니다.
+- table 소유권 graph는 allocation뿐 아니라 synchronization resource와 worker borrower 수명의 근거가 됩니다.
+- partial initialization과 partial destruction은 recorded 소유권을 통해 정리됩니다.
 - successful join 수가 모든 started worker의 quiescence를 입증해야 table destruction이 허용됩니다.
 - join safety가 불명확하면 `PHILO_UNSAFE`가 반환되고 normal cleanup 대신 `_exit`가 사용됩니다.
 - destroy failure는 remaining ledger를 보존해 safe한 명시적 retry를 허용합니다.
 
 ### 학습자가 작성할 최종 설명
 
-- ownership graph: §12 완료 기록의 대응 근거에 정리했습니다.
+- 소유권 graph: §12 완료 기록의 대응 근거에 정리했습니다.
 - construction ledger: §12 완료 기록의 대응 근거에 정리했습니다.
 - exact-once rollback: §12 완료 기록의 대응 근거에 정리했습니다.
 - quiescence proof: §12 완료 기록의 대응 근거에 정리했습니다.
@@ -681,7 +681,7 @@ normal process teardown 부재 검증
 - unsafe process termination: §12 완료 기록의 대응 근거에 정리했습니다.
 - 의도적으로 보장하지 않는 graceful cleanup: §12 완료 기록의 대응 근거에 정리했습니다.
 
-## 10. 최종 architecture 또는 execution flow 정리
+## 10. 최종 architecture 또는 실행 순서 정리
 
 다음 골격에 실제 함수명, field, return status, lock/resource mutation을 채웁니다.
 
@@ -734,7 +734,7 @@ join every recorded worker
 - 검토 브랜치는 `c/philo` 하나로 제한했습니다.
 - 이 Thread의 7개 SHA는 모두 브랜치 HEAD `12b29d75ccc98311cd8da1217ababbe21de64026`의 조상이며, 각 비교에서 merge base가 해당 SHA와 일치했습니다.
 - 아래 구현 설명은 각 SHA의 commit diff와 그 SHA의 파일을 확인한 결과입니다. 이후 commit의 구현을 이전 상태에 소급하지 않았습니다.
-- 저장소 checkout이 로컬 네트워크 제한으로 불가능했으므로 production binary와 test target은 실행하지 않았습니다. 테스트 결과로 적은 내용은 test source의 injection·assertion을 분석한 결과이지 실제 실행 통과 기록이 아닙니다.
+- 저장소 checkout이 로컬 네트워크 제한으로 불가능했으므로 production binary와 test target은 실행하지 않았습니다. 테스트 결과로 적은 내용은 test source의 injection·assertion을 분석한 결과가지 실제 실행 통과 기록이 아닙니다.
 
 ### 12.2 `16343e76b54b` — ownership graph와 ring identity
 
@@ -778,7 +778,7 @@ right_fork = &table->forks[(i + 1) % table->config.number];
 - `state_ready`: state mutex의 성공적인 초기화를 나타냅니다.
 - `print_ready`: print mutex의 성공적인 초기화를 나타냅니다.
 - `fork_count`: 성공적으로 초기화된 fork mutex prefix의 개수입니다.
-- backing-array pointer: allocation ownership의 존재를 나타냅니다.
+- backing-array pointer: allocation 소유권의 존재를 나타냅니다.
 
 초기화 순서는 state mutex, print mutex, fork mutex `0..N-1`입니다. 각 `pthread_mutex_init`이 성공한 직후에만 대응 flag 또는 count가 갱신됩니다. 요청한 최종 자원 수가 아니라 실제 성공한 횟수가 cleanup authorization이 됩니다.
 
@@ -871,7 +871,7 @@ destroy_safe == 0
 threads_started != threads_joined
 ```
 
-started worker는 `t_philo.table`, fork-array 내부 주소, shared mutex를 계속 역참조할 수 있습니다. 실패한 join 뒤 table을 free하거나 mutex를 파괴하면 use-after-free 또는 live synchronization-object destruction이 될 수 있으므로 cleanup 자체를 거부합니다.
+started worker는 `t_philo.table`, fork-array 내부 주소, shared mutex를 계속 역참조할 수 있습니다. 실패한 join 뒤 table을 free하거나 mutex를 파괴하면 해제 후 사용 또는 live synchronization-object destruction이 될 수 있으므로 cleanup 자체를 거부합니다.
 
 #### retryable destroy
 
@@ -924,20 +924,20 @@ reverse cleanup의 여러 stage에 failure를 주입합니다. 첫 호출은 fai
 
 child output에서 반드시 존재해야 하는 것은 unsafe diagnostic입니다. 반드시 없어야 하는 것은 destroy marker, buffered stdout marker, `atexit` marker입니다. 세 negative assertion은 각각 destructor 호출, stdio flush, normal exit handler 실행을 탐지합니다.
 
-따라서 이 테스트가 겨냥하는 invariant는 단순한 “destructor를 호출하지 않는다”가 아니라 **normal process teardown 전체를 우회한다**입니다. 실제 `pthread_join`을 실패시키거나 failed worker의 상태를 증명하지는 않습니다.
+따라서 이 테스트가 겨냥하는 항상 유지해야 하는 조건은 단순한 “destructor를 호출하지 않습니다”가 아니라 **normal process teardown 전체를 우회합니다**입니다. 실제 `pthread_join`을 실패시키거나 failed worker의 상태를 증명하지는 않습니다.
 
-### 12.9 Invariant evolution 완성
+### 12.9 항상 유지해야 하는 조건 evolution 완성
 
-| Invariant | 도입 | 부족함 노출 | 복구·확장 | regression evidence |
+| 항상 유지해야 하는 조건 | 도입 | 부족함 노출 | 복구·확장 | regression evidence |
 | --- | --- | --- | --- | --- |
 | table이 allocation을 소유하고 philosopher가 내부 주소를 빌림 | `16343e76b54b` | worker가 생기면 storage lifetime이 join에 종속됨 | `a7783d04107f`의 quiescence predicate | `7586b605302b`, `37b29557cccc` |
 | 성공한 초기화만 cleanup authorization을 만듦 | `1d69df7db78c` | helper와 destructor의 split rollback | `10665e0a5bf9`의 단일 consumer | `800408d6d84e` |
 | initialized mutex는 최대 한 번 파괴 | ledger 의도는 `1d69df7db78c` | local rollback 뒤 stale `fork_count` | common destructor 역순 소비 | destruction-address duplicate 검사 |
 | destroy 실패 뒤 ledger는 truthful·retryable | `a7783d04107f` | 성공 전에 flag/count를 지우면 재시도 불가 | destroy 성공 후에만 mutation | `7586b605302b` destroy matrix |
-| shared storage 파괴 전 모든 borrower quiescence 필요 | ownership graph에서 암묵적 위험 | failed join이 종료 증거가 아님 | started/joined + `destroy_safe` + `PHILO_UNSAFE` | lifecycle 및 main unsafe tests |
+| shared storage 파괴 전 모든 borrower quiescence 필요 | 소유권 graph에서 암묵적 위험 | failed join이 종료 증거가 아님 | started/joined + `destroy_safe` + `PHILO_UNSAFE` | lifecycle 및 main unsafe tests |
 | unsafe process는 normal teardown을 실행하지 않음 | `a7783d04107f` | destructor 생략만으로 stdio/atexit는 남음 | `_exit` | `37b29557cccc`의 세 negative marker |
 
-### 12.10 최종 실행 흐름
+### 12.10 최종 실행 순서
 
 ```text
 main의 t_table
@@ -966,7 +966,7 @@ recorded handle 전체에 pthread_join 시도
 
 보장하는 범위:
 
-- table-owned allocation과 synchronization object는 recorded ownership에 따라 처리됩니다.
+- table-owned allocation과 synchronization object는 recorded 소유권에 따라 처리됩니다.
 - partial mutex initialization은 common destructor 하나가 exact-once로 rollback합니다.
 - successful join으로 모든 started borrower의 quiescence가 입증된 경우에만 destruction을 시도합니다.
 - resource destroy 실패는 아직 owned인 state를 보존해 재시도를 허용합니다.
@@ -977,8 +977,8 @@ recorded handle 전체에 pthread_join 시도
 - failed join worker가 실제로 종료됐는지 추정하지 않습니다.
 - unsafe branch에서 graceful cleanup이나 leak-free exit를 보장하지 않습니다.
 - wrapper 기반 test가 실제 pthread 구현의 모든 오류 조합을 재현한다고 보지 않습니다.
-- 이 Thread는 scheduler fairness, starvation freedom, 모든 interleaving의 안전성을 증명하지 않습니다.
-===== END FILE: 01-ownership-ledger-to-unsafe-destruction.md =====
+- 이 Thread는 scheduler fairness, 기아 상태 freedom, 모든 interleaving의 안전성을 증명하지 않습니다.
+===== END FILE: 01-소유권-ledger-to-unsafe-destruction.md =====
 
 ===== BEGIN FILE: 02-wall-clock-to-shared-monotonic-start.md =====
 # Thread: Wall-clock helper to one shared monotonic start epoch
@@ -994,33 +994,33 @@ Source-confirmed significance는 다음과 같습니다.
 - 초기 helper는 time logic을 한곳에 모으고 terminal-aware polling sleep을 제공하지만 wall clock과 unchecked failure를 사용합니다.
 - near-deadline polling refinement는 program-controlled overshoot를 줄이지만 time source나 scheduler guarantee를 바꾸지 않습니다.
 - `CLOCK_MONOTONIC`과 `int64_t`가 elapsed-time arithmetic을 calendar correction 및 platform `long` width와 분리합니다.
-- start barrier는 thread object creation과 worker readiness를 구분하고, 모든 worker가 ready인 뒤 하나의 timestamp와 initial starvation reference를 publish합니다.
-- partial creation과 condition-wait failure도 release predicate를 publish하여 barrier가 failure deadlock으로 변하지 않게 합니다.
+- start barrier는 thread object creation과 worker readiness를 구분하고, 모든 worker가 ready인 뒤 하나의 timestamp와 initial 기아 상태 reference를 publish합니다.
+- partial creation과 condition-wait failure도 release predicate를 publish하여 barrier가 failure 교착 상태로 변하지 않게 합니다.
 - tests는 clock-domain correctness, delayed-start regression, wait-failure propagation을 각각 다른 technique으로 고정합니다.
 
-### Source에 명시적으로 연결된 Critical Invariants
+### Source에 명시적으로 연결된 Critical 항상 유지해야 하는 조건
 
 - 모든 worker는 creation 또는 scheduling delay와 무관하게 같은 published monotonic start epoch와 initial `last_meal_ms`에서 시작합니다.
-- elapsed time과 starvation decision은 monotonic clock을 사용하며 clock acquisition failure를 fabricated time으로 대체하지 않습니다.
+- elapsed time과 기아 상태 decision은 monotonic clock을 사용하며 clock acquisition failure를 fabricated time으로 대체하지 않습니다.
 - barrier predicate, `ready_count`, `start_released`, `run_error`의 관찰과 변경은 정의된 `state_mutex` 경계에서 수행합니다.
 
 ### Source에 명시적으로 연결된 Major Engineering Difficulties
 
 - successful thread creation과 actual worker readiness를 구분하는 문제
 - partial start 및 condition-wait failure 상황에서도 common temporal origin 또는 abort release를 일관되게 publish하는 문제
-- timing correctness를 scheduler fairness, starvation freedom, strict latency guarantee로 과장하지 않는 문제
+- timing correctness를 scheduler fairness, 기아 상태 freedom, strict latency guarantee로 과장하지 않는 문제
 
 ## 2. 이 Thread를 이해하기 위한 핵심 질문
 
 - 처음 time abstraction은 어떤 중복을 제거하고 어떤 clock-domain 문제를 그대로 남기는가?
-- deadline polling sleep은 terminal responsiveness와 wakeup precision 사이에서 어떤 trade-off를 선택하는가?
-- wall clock adjustment가 starvation, deadline, log offset에 어떤 잘못된 state transition을 만들 수 있는가?
-- monotonic time과 fixed-width field가 runtime 전 영역에 어떻게 전파되는가?
-- clock acquisition failure가 왜 ordinary recoverable error가 아니라 process-fatal인가?
-- `pthread_create` 성공과 worker readiness가 왜 다른 lifecycle event인가?
-- common timestamp는 어떤 lock boundary와 predicate transition에서 publish되는가?
+- deadline polling sleep은 terminal responsiveness와 wakeup precision 사이에서 어떤 감수할 점을 선택하는가?
+- wall clock adjustment가 기아 상태, deadline, log offset에 어떤 잘못된 상태 전이를 만들 수 있는가?
+- monotonic time과 fixed-width field가 runtime 전 영역에 어떻게 전파됩니까?
+- clock acquisition failure가 왜 ordinary recoverable error가 아니라 process-fatal입니까?
+- `pthread_create` 성공과 worker readiness가 왜 다른 lifecycle event입니까?
+- common timestamp는 어떤 lock boundary와 predicate transition에서 publish됩니까?
 - condition variable의 spurious wakeup과 lost notification 문제를 predicate loop가 어떻게 다루는가?
-- barrier failure가 peer release, joining, final return status로 어떻게 전파되는가?
+- barrier failure가 peer release, joining, final return status로 어떻게 전파됩니까?
 - tests가 clock source, startup skew, wait failure를 각각 어떻게 결정적으로 구성하는가?
 
 ## 3. 완료 기준
@@ -1030,10 +1030,10 @@ Source-confirmed significance는 다음과 같습니다.
 - [x] wall-clock failure scenario와 monotonic correction을 call-site 전파까지 설명할 수 있습니다.
 - [x] `int64_t`로 바뀐 timing state를 실제 field와 signature로 제시할 수 있습니다.
 - [x] clock failure의 `write` + `_exit` 경로를 설명할 수 있습니다.
-- [x] barrier의 readiness, publication, release, abort state transition을 실제 field로 그릴 수 있습니다.
+- [x] barrier의 readiness, publication, release, abort 상태 전이를 실제 field로 그릴 수 있습니다.
 - [x] common timestamp가 table 및 모든 philosopher에 설정된 뒤 worker가 fork activity를 시작함을 증명할 수 있습니다.
 - [x] delayed-start test의 150 ms와 80 ms 관계가 regression을 민감하게 만드는 이유를 설명할 수 있습니다.
-- [x] wait-failure test가 peer deadlock을 bounded error로 바꾸는 경로를 설명할 수 있습니다.
+- [x] wait-failure test가 peer 교착 상태를 bounded error로 바꾸는 경로를 설명할 수 있습니다.
 - [x] monotonic/common epoch guarantee와 fairness/strict latency non-guarantee를 구분할 수 있습니다.
 
 ## 4. Commit map
@@ -1082,8 +1082,8 @@ Source-confirmed significance는 다음과 같습니다.
 - [x] `philo_sleep_ms`가 deadline을 계산하고 current time을 반복 비교하는 순서를 확인합니다.
 - [x] 각 iteration에서 terminal flag를 읽을 때 실제로 어떤 helper 또는 `state_mutex` 경계를 사용하는지 확인합니다.
 - [x] 500-microsecond `usleep` 호출과 loop 종료 조건을 확인합니다.
-- [x] clock call의 return value가 무시되는지, 실패 시 어떤 값이 사용될 수 있는지 확인합니다.
-- [x] 이 SHA에서 start time이 언제 설정되는지는 orchestration code가 아직 없을 수 있으므로 실제 call site 범위를 확인합니다.
+- [x] clock call의 반환값이 무시되는지, 실패 시 어떤 값이 사용될 수 있는지 확인합니다.
+- [x] 이 SHA에서 start time이 언제 설정되는지는 orchestration code가 아직 없을 수 있으므로 실제 호출 지점 범위를 확인합니다.
 
 #### 코드 근거 기록
 
@@ -1092,7 +1092,7 @@ Source-confirmed significance는 다음과 같습니다.
 | 파일과 symbol | §12 완료 기록의 대응 근거 참조 |
 | 최소 코드 구간 | §12 완료 기록의 대응 근거 참조 |
 | caller → callee | §12 완료 기록의 대응 근거 참조 |
-| state 또는 ownership 변화 | §12 완료 기록의 대응 근거 참조 |
+| state 또는 소유권 변화 | §12 완료 기록의 대응 근거 참조 |
 | failure/cleanup 경로 | §12 완료 기록의 대응 근거 참조 |
 | 직전 상태와의 차이 | §12 완료 기록의 대응 근거 참조 |
 
@@ -1161,7 +1161,7 @@ Source-confirmed significance는 다음과 같습니다.
 | 파일과 symbol | §12 완료 기록의 대응 근거 참조 |
 | 최소 코드 구간 | §12 완료 기록의 대응 근거 참조 |
 | caller → callee | §12 완료 기록의 대응 근거 참조 |
-| state 또는 ownership 변화 | §12 완료 기록의 대응 근거 참조 |
+| state 또는 소유권 변화 | §12 완료 기록의 대응 근거 참조 |
 | failure/cleanup 경로 | §12 완료 기록의 대응 근거 참조 |
 | 직전 상태와의 차이 | §12 완료 기록의 대응 근거 참조 |
 
@@ -1192,7 +1192,7 @@ Source-confirmed significance는 다음과 같습니다.
 
 #### Source-confirmed 맥락
 
-이 A-level fix는 elapsed-time source를 `gettimeofday`에서 `clock_gettime(CLOCK_MONOTONIC)`으로 교체하고 timing field와 parser intermediate를 `int64_t`로 통일합니다. simulation start, last meal, sleep deadline, monitor starvation decision, log offset이 calendar adjustment의 영향을 받지 않는 하나의 clock domain을 사용합니다.
+이 A-level fix는 elapsed-time source를 `gettimeofday`에서 `clock_gettime(CLOCK_MONOTONIC)`으로 교체하고 timing field와 parser intermediate를 `int64_t`로 통일합니다. simulation start, last meal, sleep deadline, monitor 기아 상태 decision, log offset이 calendar adjustment의 영향을 받지 않는 하나의 clock domain을 사용합니다.
 
 monotonic clock을 얻지 못하면 fixed diagnostic을 `write`로 출력하고 `_exit`합니다. 모든 worker와 monitor decision이 동일 time source에 의존하므로 fabricated 또는 stale timestamp로 계속 실행하지 않는 결정입니다.
 
@@ -1202,7 +1202,7 @@ monotonic clock을 얻지 못하면 fixed diagnostic을 `write`로 출력하고 
 | 단계 | Source-confirmed 기준 | 해당 SHA 코드 근거 |
 | --- | --- | --- |
 | 기존 가정 | wall clock이 elapsed-time ordering을 안정적으로 제공한다고 간주했습니다. | §12 완료 기록의 대응 근거 참조 |
-| 실제 failure/위험 | calendar correction이 backward/forward jump를 만들어 starvation, wait, log offset을 왜곡할 수 있습니다. | §12 완료 기록의 대응 근거 참조 |
+| 실제 failure/위험 | calendar correction이 backward/forward jump를 만들어 기아 상태, wait, log offset을 왜곡할 수 있습니다. | §12 완료 기록의 대응 근거 참조 |
 | root cause | civil time과 elapsed time을 같은 source로 취급했습니다. | §12 완료 기록의 대응 근거 참조 |
 | 수정 결정 | `CLOCK_MONOTONIC`과 fixed-width millisecond state를 사용합니다. | §12 완료 기록의 대응 근거 참조 |
 | failure decision | clock source 부재는 simulation correctness를 유지할 수 없으므로 process-fatal입니다. | §12 완료 기록의 대응 근거 참조 |
@@ -1225,7 +1225,7 @@ monotonic clock을 얻지 못하면 fixed diagnostic을 `write`로 출력하고 
 | 파일과 symbol | §12 완료 기록의 대응 근거 참조 |
 | 최소 코드 구간 | §12 완료 기록의 대응 근거 참조 |
 | caller → callee | §12 완료 기록의 대응 근거 참조 |
-| state 또는 ownership 변화 | §12 완료 기록의 대응 근거 참조 |
+| state 또는 소유권 변화 | §12 완료 기록의 대응 근거 참조 |
 | failure/cleanup 경로 | §12 완료 기록의 대응 근거 참조 |
 | 직전 상태와의 차이 | §12 완료 기록의 대응 근거 참조 |
 
@@ -1236,7 +1236,7 @@ monotonic clock을 얻지 못하면 fixed diagnostic을 `write`로 출력하고 
 | current time source | `gettimeofday` | `CLOCK_MONOTONIC` | §12 완료 기록의 대응 근거 참조 |
 | time field type | host `long` 기반 | `int64_t` | §12 완료 기록의 대응 근거 참조 |
 | sleep deadline | §12 완료 기록의 대응 근거 참조 | monotonic millisecond domain | §12 완료 기록의 대응 근거 참조 |
-| starvation comparison | §12 완료 기록의 대응 근거 참조 | monotonic millisecond domain | §12 완료 기록의 대응 근거 참조 |
+| 기아 상태 comparison | §12 완료 기록의 대응 근거 참조 | monotonic millisecond domain | §12 완료 기록의 대응 근거 참조 |
 | log offset | §12 완료 기록의 대응 근거 참조 | monotonic millisecond domain | §12 완료 기록의 대응 근거 참조 |
 | clock failure | unchecked | diagnostic + `_exit` | §12 완료 기록의 대응 근거 참조 |
 
@@ -1244,7 +1244,7 @@ monotonic clock을 얻지 못하면 fixed diagnostic을 `write`로 출력하고 
 #### 보장 범위
 
 이 commit이 source 기준으로 보장하는 것:
-- elapsed-time, starvation, deadline, log offset이 calendar adjustment와 분리된 monotonic domain을 사용합니다.
+- elapsed-time, 기아 상태, deadline, log offset이 calendar adjustment와 분리된 monotonic domain을 사용합니다.
 - timing state의 intended numeric width가 platform `long` width와 분리됩니다.
 - clock acquisition failure가 unchecked time으로 runtime을 계속 진행하지 않습니다.
 
@@ -1259,7 +1259,7 @@ monotonic clock을 얻지 못하면 fixed diagnostic을 `write`로 출력하고 
 
 
 #### 학습자 결론
-- [x] civil time과 elapsed time을 분리해야 하는 이유를 starvation 예시로 설명합니다.
+- [x] civil time과 elapsed time을 분리해야 하는 이유를 기아 상태 예시로 설명합니다.
 - [x] 모든 timing field가 같은 domain과 type을 사용한다는 것을 call-site 목록으로 증명합니다.
 - [x] clock failure를 ordinary error return이 아니라 process-fatal로 취급하는 source-confirmed 판단을 설명합니다.
 - [x] monotonic source만으로 sequential-start skew가 해결되지 않는 이유를 설명합니다.
@@ -1275,14 +1275,14 @@ monotonic clock을 얻지 못하면 fixed diagnostic을 `write`로 출력하고 
 
 #### Source-confirmed test 역할
 
-이 test는 compile-time replacement로 `clock_gettime`을 대체합니다. success stub은 requested clock identifier를 기록하고 known `timespec`을 반환하여 정확한 millisecond conversion을 검사합니다. failure mode는 child process에서 `philo_now_ms`를 호출하고 parent가 child의 `PHILO_ERR` termination을 요구합니다. intentional `_exit`가 test runner 자체를 종료하지 않도록 process boundary를 사용합니다.
+이 test는 compile-time replacement로 `clock_gettime`을 대체합니다. success stub은 requested clock identifier를 기록하고 known `timespec`을 반환하여 정확한 millisecond conversion을 검사합니다. failure mode는 자식 프로세스에서 `philo_now_ms`를 호출하고 parent가 child의 `PHILO_ERR` termination을 요구합니다. intentional `_exit`가 test runner 자체를 종료하지 않도록 process boundary를 사용합니다.
 
 
 #### Test commit 분석
 
 | 구분 | 학습자 기록 |
 | --- | --- |
-| 대상 production invariant | §12 완료 기록의 대응 근거 참조 |
+| 대상 production 항상 유지해야 하는 조건 | §12 완료 기록의 대응 근거 참조 |
 | success stub이 기록하는 값 | §12 완료 기록의 대응 근거 참조 |
 | known `timespec`과 expected milliseconds | §12 완료 기록의 대응 근거 참조 |
 | failure stub의 동작 | §12 완료 기록의 대응 근거 참조 |
@@ -1301,7 +1301,7 @@ monotonic clock을 얻지 못하면 fixed diagnostic을 `write`로 출력하고 
 - [x] success stub이 clock id와 호출 횟수를 저장하는 자료구조를 확인합니다.
 - [x] known seconds/nanoseconds를 expected milliseconds로 직접 계산합니다.
 - [x] parent/child 분기와 child의 intentional fatal call을 확인합니다.
-- [x] parent가 `wait` 계열 API 결과에서 exit status를 어떻게 해석하는지 확인합니다.
+- [x] parent가 `wait` 계열 API 결과에서 종료 상태를 어떻게 해석하는지 확인합니다.
 - [x] `PHILO_ERR` 값과 `_exit` argument가 실제로 일치하는지 확인합니다.
 - [x] test가 wall-clock API 호출 부재까지 직접 검사하는지 여부를 실제 assertion으로 구분합니다.
 
@@ -1312,7 +1312,7 @@ monotonic clock을 얻지 못하면 fixed diagnostic을 `write`로 출력하고 
 | 파일과 symbol | §12 완료 기록의 대응 근거 참조 |
 | 최소 코드 구간 | §12 완료 기록의 대응 근거 참조 |
 | caller → callee | §12 완료 기록의 대응 근거 참조 |
-| state 또는 ownership 변화 | §12 완료 기록의 대응 근거 참조 |
+| state 또는 소유권 변화 | §12 완료 기록의 대응 근거 참조 |
 | failure/cleanup 경로 | §12 완료 기록의 대응 근거 참조 |
 | 직전 상태와의 차이 | §12 완료 기록의 대응 근거 참조 |
 
@@ -1352,7 +1352,7 @@ partial creation 또는 condition wait failure에서는 `run_error`, `ended`, `s
 | 단계 | Source-confirmed 기준 | 해당 SHA 코드 근거 |
 | --- | --- | --- |
 | 기존 상태 | start timestamp가 creation loop 전에 잡히고 worker는 각 `pthread_create` 직후 실행을 시작할 수 있습니다. | §12 완료 기록의 대응 근거 참조 |
-| 실제 failure/위험 | 늦게 생성·scheduled된 worker가 준비되기 전 시간을 starvation budget으로 잃고 false death가 날 수 있습니다. | §12 완료 기록의 대응 근거 참조 |
+| 실제 failure/위험 | 늦게 생성·scheduled된 worker가 준비되기 전 시간을 기아 상태 budget으로 잃고 false death가 날 수 있습니다. | §12 완료 기록의 대응 근거 참조 |
 | root cause | successful thread creation을 worker readiness 및 common simulation epoch와 동일시했습니다. | §12 완료 기록의 대응 근거 참조 |
 | 핵심 결정 | `ready_count`, `start_released`, `start_cond`, `state_mutex`로 readiness barrier를 구성합니다. | §12 완료 기록의 대응 근거 참조 |
 | start linearization | 모든 intended worker가 ready인 상태에서 한 timestamp와 initial last-meal 값을 publish한 뒤 broadcast합니다. | §12 완료 기록의 대응 근거 참조 |
@@ -1379,11 +1379,11 @@ partial creation 또는 condition wait failure에서는 `run_error`, `ended`, `s
 | 파일과 symbol | §12 완료 기록의 대응 근거 참조 |
 | 최소 코드 구간 | §12 완료 기록의 대응 근거 참조 |
 | caller → callee | §12 완료 기록의 대응 근거 참조 |
-| state 또는 ownership 변화 | §12 완료 기록의 대응 근거 참조 |
+| state 또는 소유권 변화 | §12 완료 기록의 대응 근거 참조 |
 | failure/cleanup 경로 | §12 완료 기록의 대응 근거 참조 |
 | 직전 상태와의 차이 | §12 완료 기록의 대응 근거 참조 |
 
-#### Barrier state machine
+#### Barrier 상태 머신
 
 | 상태 | predicate / count | 허용되는 transition | mutation owner와 lock | 학습자 코드 근거 |
 | --- | --- | --- | --- | --- |
@@ -1407,12 +1407,12 @@ partial creation 또는 condition wait failure에서는 `run_error`, `ended`, `s
 
 이 commit이 source 기준으로 보장하는 것:
 - 모든 successfully created intended worker가 readiness barrier에 도달한 뒤 하나의 monotonic start epoch를 공유합니다.
-- thread creation과 scheduling delay before readiness가 starvation budget에 포함되지 않습니다.
+- thread creation과 scheduling delay before readiness가 기아 상태 budget에 포함되지 않습니다.
 - partial creation과 condition-wait failure가 peers를 영구 대기시키지 않고 run-level error로 전파됩니다.
 - predicate loop가 spurious wakeup에도 released state를 재검사합니다.
 
 이 commit 시점에 아직 보장하지 않거나 검증 범위를 넘는 것:
-- scheduler fairness, starvation freedom, strict start latency를 보장하지 않습니다.
+- scheduler fairness, 기아 상태 freedom, strict start latency를 보장하지 않습니다.
 - barrier release 이후 각 worker가 동일 시각에 CPU를 얻는다고 보장하지 않습니다.
 - 모든 pthread failure 종류를 완전히 처리한다는 뜻은 아닙니다.
 
@@ -1427,13 +1427,13 @@ partial creation 또는 condition wait failure에서는 `run_error`, `ended`, `s
 - [x] common epoch publication의 linearization point를 lock, field mutation, broadcast 순서로 제시합니다.
 - [x] 왜 condition variable notification 수가 아니라 predicate state를 기준으로 해야 하는지 설명합니다.
 - [x] normal release와 partial-start abort가 같은 barrier state를 어떻게 다르게 종료하는지 설명합니다.
-- [x] barrier가 time model, thread lifecycle, starvation semantics를 동시에 연결하는 이유를 설명합니다.
+- [x] barrier가 time model, thread lifecycle, 기아 상태 semantics를 동시에 연결하는 이유를 설명합니다.
 
 ### 5.6 `bfbfa0431732` — `test(thread): 지연된 작업자의 공통 시작 시각 검증`
 
 - Importance: **A**
 - Tags: `TEST, START_BARRIER, EDGE`
-- Source-defined role: Deliberately delays one worker and verifies that the shared release prevents pre-start starvation accounting.
+- Source-defined role: Deliberately delays one worker and verifies that the shared release prevents pre-start 기아 상태 accounting.
 - 코드 기준: 반드시 `bfbfa0431732` 시점
 - 직접 parent 비교: `git diff bfbfa0431732^ bfbfa0431732 --`
 - Thread 직전 관련 SHA: `e7e62cbe185f`
@@ -1447,7 +1447,7 @@ partial creation 또는 condition wait failure에서는 `run_error`, `ended`, `s
 
 | 구분 | 학습자 기록 |
 | --- | --- |
-| 대상 production invariant | §12 완료 기록의 대응 근거 참조 |
+| 대상 production 항상 유지해야 하는 조건 | §12 완료 기록의 대응 근거 참조 |
 | 주입하는 startup skew | §12 완료 기록의 대응 근거 참조 |
 | `time_to_die`와 delay의 수치 관계 | §12 완료 기록의 대응 근거 참조 |
 | test gate가 만드는 실행 순서 | §12 완료 기록의 대응 근거 참조 |
@@ -1477,7 +1477,7 @@ partial creation 또는 condition wait failure에서는 `run_error`, `ended`, `s
 | 파일과 symbol | §12 완료 기록의 대응 근거 참조 |
 | 최소 코드 구간 | §12 완료 기록의 대응 근거 참조 |
 | caller → callee | §12 완료 기록의 대응 근거 참조 |
-| state 또는 ownership 변화 | §12 완료 기록의 대응 근거 참조 |
+| state 또는 소유권 변화 | §12 완료 기록의 대응 근거 참조 |
 | failure/cleanup 경로 | §12 완료 기록의 대응 근거 참조 |
 | 직전 상태와의 차이 | §12 완료 기록의 대응 근거 참조 |
 
@@ -1489,7 +1489,7 @@ partial creation 또는 condition wait failure에서는 `run_error`, `ended`, `s
 
 이 commit 시점에 아직 보장하지 않거나 검증 범위를 넘는 것:
 - 모든 가능한 scheduler delay나 barrier interleaving을 포괄하지 않습니다.
-- barrier 이후 fairness, strict timing precision, starvation freedom을 증명하지 않습니다.
+- barrier 이후 fairness, strict timing precision, 기아 상태 freedom을 증명하지 않습니다.
 
 #### 학습자 결론
 - [x] 이 test가 chance-based repeated run이 아니라 barrier 목적을 직접 겨냥한 이유를 설명합니다.
@@ -1514,7 +1514,7 @@ partial creation 또는 condition wait failure에서는 `run_error`, `ended`, `s
 
 | 구분 | 학습자 기록 |
 | --- | --- |
-| 대상 production invariant | §12 완료 기록의 대응 근거 참조 |
+| 대상 production 항상 유지해야 하는 조건 | §12 완료 기록의 대응 근거 참조 |
 | 주입하는 API failure | §12 완료 기록의 대응 근거 참조 |
 | one-shot flag synchronization | §12 완료 기록의 대응 근거 참조 |
 | 실제로 실패하는 worker-side production path | §12 완료 기록의 대응 근거 참조 |
@@ -1544,7 +1544,7 @@ partial creation 또는 condition wait failure에서는 `run_error`, `ended`, `s
 | 파일과 symbol | §12 완료 기록의 대응 근거 참조 |
 | 최소 코드 구간 | §12 완료 기록의 대응 근거 참조 |
 | caller → callee | §12 완료 기록의 대응 근거 참조 |
-| state 또는 ownership 변화 | §12 완료 기록의 대응 근거 참조 |
+| state 또는 소유권 변화 | §12 완료 기록의 대응 근거 참조 |
 | failure/cleanup 경로 | §12 완료 기록의 대응 근거 참조 |
 | 직전 상태와의 차이 | §12 완료 기록의 대응 근거 참조 |
 
@@ -1564,9 +1564,9 @@ partial creation 또는 condition wait failure에서는 `run_error`, `ended`, `s
 - [x] `run_error`, `ended`, `start_released`, broadcast의 실제 mutation 순서를 제시합니다.
 - [x] test harness synchronization이 production race 검증을 오염시키지 않는 이유를 설명합니다.
 
-## 6. Invariant ledger
+## 6. 항상 유지해야 하는 조건 ledger
 
-| Invariant | 최초 도입 또는 부족함 | 강화·복구 | regression evidence | 해당 SHA 코드 근거 | 최종 설명 |
+| 항상 유지해야 하는 조건 | 최초 도입 또는 부족함 | 강화·복구 | regression evidence | 해당 SHA 코드 근거 | 최종 설명 |
 | --- | --- | --- | --- | --- | --- |
 | time access와 deadline wait가 공통 abstraction을 사용 | `509453b01515` | `a21e4cc75272`에서 near-deadline polling refinement | 별도 deterministic sleep test는 이 Thread source에 없음 | §12 완료 기록의 대응 근거 참조 | §12 완료 기록의 대응 근거 참조 |
 | elapsed-time state는 monotonic clock domain을 사용 | `509453b01515`에서 wall-clock 한계 존재 | `5b32d5bdb955` | `f01d62cde8ce` | §12 완료 기록의 대응 근거 참조 | §12 완료 기록의 대응 근거 참조 |
@@ -1591,7 +1591,7 @@ clock id, conversion, child-process failure exit 검증
 ```
 
 - wall-clock dependency가 있는 실제 code: §12 완료 기록의 대응 근거에 정리했습니다.
-- starvation/deadline/log에 전파되는 call sites: §12 완료 기록의 대응 근거에 정리했습니다.
+- 기아 상태/deadline/log에 전파되는 호출 지점: §12 완료 기록의 대응 근거에 정리했습니다.
 - fixed-width migration 범위: §12 완료 기록의 대응 근거에 정리했습니다.
 - fatal branch의 process contract: §12 완료 기록의 대응 근거에 정리했습니다.
 - test stub의 expected values: §12 완료 기록의 대응 근거에 정리했습니다.
@@ -1636,7 +1636,7 @@ run_error + ended + start_released + broadcast
 - timeout이 탐지하는 실패: §12 완료 기록의 대응 근거에 정리했습니다.
 - injection flag가 test race를 만들지 않는 근거: §12 완료 기록의 대응 근거에 정리했습니다.
 
-## 8. Ownership / state / responsibility 변화
+## 8. 소유권 / state / responsibility 변화
 
 | 시점 | Time source 책임 | Start state 책임 | Worker가 관찰하는 predicate | Failure 책임 | 학습자 코드 근거 |
 | --- | --- | --- | --- | --- | --- |
@@ -1654,7 +1654,7 @@ run_error + ended + start_released + broadcast
 - clock failure는 simulation을 계속할 수 없는 process-fatal 상태입니다.
 - workers는 readiness barrier에서 all-ready가 확인된 뒤 하나의 `start_ms`와 initial `last_meal_ms`를 공유합니다.
 - partial creation과 wait failure는 terminal/release predicate와 broadcast를 통해 peers를 해제하고 error를 전파합니다.
-- 이 설계는 scheduler fairness, starvation freedom, strict wakeup 또는 death-detection latency를 보장하지 않습니다.
+- 이 설계는 scheduler fairness, 기아 상태 freedom, strict wakeup 또는 death-detection latency를 보장하지 않습니다.
 
 ### 학습자가 작성할 최종 설명
 
@@ -1668,7 +1668,7 @@ run_error + ended + start_released + broadcast
 - guarantees: §12 완료 기록의 대응 근거에 정리했습니다.
 - non-guarantees: §12 완료 기록의 대응 근거에 정리했습니다.
 
-## 10. 최종 architecture 또는 execution flow 정리
+## 10. 최종 architecture 또는 실행 순서 정리
 
 ```text
 worker thread objects 생성
@@ -1742,7 +1742,7 @@ join 및 run-level error propagation
 milliseconds = tv_sec × 1000 + tv_usec ÷ 1000
 ```
 
-반환형과 timing state는 이 시점에 host `long`을 사용합니다. `gettimeofday`의 return value는 검사하지 않습니다. 따라서 system clock이 뒤로 조정되면 starvation elapsed가 작아질 수 있고, 앞으로 조정되면 deadline이나 death condition이 갑자기 충족될 수 있습니다. call failure 때 timestamp가 유효하다는 근거도 없습니다.
+반환형과 timing state는 이 시점에 host `long`을 사용합니다. `gettimeofday`의 반환값은 검사하지 않습니다. 따라서 system clock이 뒤로 조정되면 기아 상태 elapsed가 작아질 수 있고, 앞으로 조정되면 deadline이나 death condition이 갑자기 충족될 수 있습니다. call failure 때 timestamp가 유효하다는 근거도 없습니다.
 
 #### deadline wait
 
@@ -1776,7 +1776,7 @@ terminal check와 `state_mutex` 경계, deadline comparison, wall-clock source�
 ((int64_t)now.tv_sec * 1000) + (now.tv_nsec / 1000000)
 ```
 
-calendar correction과 elapsed-time decision을 분리합니다. simulation start, philosopher `last_meal_ms`, sleep deadline, monitor starvation comparison, log offset이 같은 monotonic millisecond domain을 사용합니다.
+calendar correction과 elapsed-time decision을 분리합니다. simulation start, philosopher `last_meal_ms`, sleep deadline, monitor 기아 상태 comparison, log offset이 같은 monotonic millisecond domain을 사용합니다.
 
 #### type migration
 
@@ -1800,7 +1800,7 @@ Error: monotonic clock unavailable
 
 #### 아직 남은 문제
 
-monotonic clock은 올바른 elapsed-time ordering을 제공하지만 start timestamp의 sampling 시점 자체를 고치지 않습니다. timestamp를 worker readiness 전에 잡으면 늦게 생성되거나 scheduled된 worker가 실행 전 시간을 starvation budget으로 잃는 문제는 그대로입니다.
+monotonic clock은 올바른 elapsed-time ordering을 제공하지만 start timestamp의 sampling 시점 자체를 고치지 않습니다. timestamp를 worker readiness 전에 잡으면 늦게 생성되거나 scheduled된 worker가 실행 전 시간을 기아 상태 budget으로 잃는 문제는 그대로입니다.
 
 ### 12.5 `f01d62cde8ce` — clock boundary regression
 
@@ -1815,7 +1815,7 @@ monotonic clock은 올바른 elapsed-time ordering을 제공하지만 start time
 
 #### failure mode
 
-wrapper가 failure를 반환하도록 설정한 뒤 child process에서 `philo_now_ms`를 호출합니다. production function이 `_exit`하므로 같은 process에서 호출하면 test runner까지 종료됩니다. parent는 wait status에서 child가 `PHILO_ERR`로 끝났는지 검사합니다.
+wrapper가 failure를 반환하도록 설정한 뒤 자식 프로세스에서 `philo_now_ms`를 호출합니다. production function이 `_exit`하므로 같은 process에서 호출하면 test runner까지 종료됩니다. parent는 wait status에서 child가 `PHILO_ERR`로 끝났는지 검사합니다.
 
 이 테스트는 requested clock id, conversion, fatal failure contract를 결정적으로 고정합니다. 실제 kernel clock의 정확도, sleep precision, multi-thread start semantics는 검사하지 않습니다.
 
@@ -1880,7 +1880,7 @@ coordinator-side `pthread_cond_wait` failure도 `run_error`와 abort release로 
 - configured `time_to_die`는 80 ms입니다.
 - 각 worker의 목표는 one-meal completion입니다.
 
-barrier 전 timestamp를 사용한다면 delayed worker는 fork activity를 시작하기 전에 80 ms budget을 넘겨 false death 후보가 됩니다. production barrier가 all-ready 후 start와 initial `last_meal_ms`를 publish하면 150 ms pre-ready delay는 starvation elapsed에 포함되지 않습니다.
+barrier 전 timestamp를 사용한다면 delayed worker는 fork activity를 시작하기 전에 80 ms budget을 넘겨 false death 후보가 됩니다. production barrier가 all-ready 후 start와 initial `last_meal_ms`를 publish하면 150 ms pre-ready delay는 기아 상태 elapsed에 포함되지 않습니다.
 
 핵심 assertion은 다음입니다.
 
@@ -1906,20 +1906,20 @@ production worker의 failed wait path는 `run_error`, `ended`, `start_released`�
 
 external timeout은 peer가 release되지 않아 barrier에서 영구 block하는 회귀를 bounded failure로 바꿉니다. 이 test는 첫 worker-side wait failure 한 위치를 겨냥하며 condition-variable API의 모든 failure 위치를 포괄하지 않습니다.
 
-### 12.9 Invariant evolution 완성
+### 12.9 항상 유지해야 하는 조건 evolution 완성
 
-| Invariant | 최초 상태 | 부족함 | 수정 | evidence |
+| 항상 유지해야 하는 조건 | 최초 상태 | 부족함 | 수정 | evidence |
 | --- | --- | --- | --- | --- |
 | time access와 deadline wait의 공통화 | `509453b01515` | wall clock, unchecked failure | `5b32d5bdb955`에서 source/contract 교정 | `f01d62cde8ce` |
 | near-deadline program overshoot 완화 | 500 µs fixed polling | 짧은 duration 대비 quantum이 큼 | `a21e4cc75272`의 500/100 µs branch | 별도 deterministic sleep test 없음 |
-| elapsed time은 monotonic domain | `gettimeofday` | calendar jump가 starvation/deadline 왜곡 | `CLOCK_MONOTONIC` | clock-id assertion |
+| elapsed time은 monotonic domain | `gettimeofday` | calendar jump가 기아 상태/deadline 왜곡 | `CLOCK_MONOTONIC` | clock-id assertion |
 | timing state는 fixed-width | host `long` | platform 폭 의존 | `int64_t` migration | known conversion과 call-site inspection |
 | clock failure를 time으로 위장하지 않음 | return 미검사 | invalid timestamp로 진행 가능 | diagnostic + `_exit` | child-process failure test |
 | 모든 worker가 같은 start/initial meal reference 사용 | creation 전 timestamp | late worker가 pre-ready budget 상실 | all-ready barrier + one publish | 150 ms/80 ms skew test |
 | barrier failure는 peer release와 run error로 전파 | barrier 도입 시 정의 | worker-local return이면 peers hang | error/ended/released + broadcast | wait failure + timeout |
 | condition wait는 predicate loop 사용 | `e7e62cbe185f` | signal count를 event로 취급하면 lost/spurious wakeup 취약 | `while (!start_released)` | source path inspection |
 
-### 12.10 최종 temporal execution flow
+### 12.10 최종 temporal 실행 순서
 
 ```text
 pthread_create로 worker objects 생성
@@ -1957,7 +1957,7 @@ PHILO_ERR propagation
 
 보장하는 범위:
 
-- starvation, deadline, log offset은 monotonic millisecond domain을 사용합니다.
+- 기아 상태, deadline, log offset은 monotonic millisecond domain을 사용합니다.
 - timing state는 `int64_t`로 표현됩니다.
 - clock acquisition failure는 unchecked time으로 계속 진행하지 않습니다.
 - successfully created workers는 readiness barrier 이후 같은 start와 initial `last_meal_ms`를 받습니다.
@@ -1966,8 +1966,8 @@ PHILO_ERR propagation
 보장하지 않는 범위:
 
 - barrier release 뒤 simultaneous CPU scheduling은 보장하지 않습니다.
-- polling sleep의 정확한 wakeup 시각, strict death-detection latency, real-time behavior는 보장하지 않습니다.
-- monotonic clock이나 barrier는 fairness와 starvation freedom을 제공하지 않습니다.
+- polling sleep의 정확한 wakeup 시각, strict death-detection latency, real-time 동작은 보장하지 않습니다.
+- monotonic clock이나 barrier는 fairness와 기아 상태 freedom을 제공하지 않습니다.
 - source inspection만 수행했으므로 이 환경에서 tests가 실제 통과했다는 실행 증거는 없습니다.
 ===== END FILE: 02-wall-clock-to-shared-monotonic-start.md =====
 
@@ -1982,14 +1982,14 @@ PHILO_ERR propagation
 
 Source-confirmed significance는 다음과 같습니다.
 
-- 최초 routine은 parity-dependent fork order와 worker-local state transition을 도입하여 domain core를 만듭니다.
+- 최초 routine은 parity-dependent fork order와 worker-local 상태 전이를 도입하여 domain core를 만듭니다.
 - `N == 1`에서는 ring mapping 때문에 두 fork pointer가 같은 mutex가 되어 general two-lock path가 실패합니다.
 - final required meal과 global `ended` publication을 같은 critical section으로 묶어 post-completion work를 막습니다.
-- eating log 또는 fork ownership이 meal completion의 증거가 아니며, full interval과 synchronized active-state check를 통과해야 counter가 commit됩니다.
+- eating log 또는 fork 소유권이 meal completion의 증거가 아니며, full interval과 synchronized active-state check를 통과해야 counter가 commit됩니다.
 - public `INT_MAX` target과 그 이후에도 증가할 수 있는 internal counter의 numeric range를 분리합니다.
-- deterministic tests는 interrupted meal과 former overflow boundary에서 local/global counter invariant를 직접 검증합니다.
+- deterministic tests는 interrupted meal과 former overflow boundary에서 local/global counter 항상 유지해야 하는 조건을 직접 검증합니다.
 
-### Source에 명시적으로 연결된 Critical Invariants
+### Source에 명시적으로 연결된 Critical 항상 유지해야 하는 조건
 
 - fork 하나는 두 neighbor가 공유하는 하나의 mutex identity입니다.
 - 두 명 이상에서는 acquisition order가 uniform all-left circular wait를 깨야 하며, 한 명에서는 같은 mutex를 재잠금하지 않아야 합니다.
@@ -2000,7 +2000,7 @@ Source-confirmed significance는 다음과 같습니다.
 
 ### Source에 명시적으로 연결된 Major Engineering Difficulties
 
-- circular wait를 끊으면서 fairness 또는 starvation freedom까지 보장한다고 과장하지 않는 문제
+- circular wait를 끊으면서 fairness 또는 기아 상태 freedom까지 보장한다고 과장하지 않는 문제
 - fork 획득, `is eating` log, eating wait, counter mutation 사이에서 operation commit 지점을 정의하는 문제
 - valid public bound와 장기간 증가하는 internal state의 numeric range를 분리하는 문제
 
@@ -2010,19 +2010,19 @@ Source-confirmed significance는 다음과 같습니다.
 - parity rule과 initial stagger가 각각 correctness와 contention에 어떤 다른 역할을 하는가?
 - `N == 1`에서 왜 left/right fork pointer가 aliasing되며 general routine은 어디서 self-deadlock하는가?
 - final required meal을 기록한 worker가 global completion을 언제 publish해야 하는가?
-- fork를 두 개 보유했다는 사실이 terminal 이후 새 meal을 허용하지 않는 이유는 무엇인가?
+- fork를 두 개 보유했다는 사실이 terminal 이후 새 meal을 허용하지 않는 이유는 무엇입니까?
 - `is eating` log와 completed meal counter는 왜 동일한 사건이 아닌가?
 - eating wait가 interruption과 deadline completion을 어떻게 구분해야 하는가?
 - sleep 완료 직후 counter lock을 잡기 전 terminal이 바뀌는 race는 어디서 다시 확인해야 하는가?
-- 모든 abort path에서 fork ownership은 어떻게 해제되는가?
-- `must_eat <= INT_MAX`인데 internal `meals`가 `INT_MAX + 1`이 될 수 있는 valid scenario는 무엇인가?
-- regression tests가 counter mutation을 scheduler luck 없이 어떻게 직접 자극하는가?
+- 모든 abort path에서 fork 소유권은 어떻게 해제됩니까?
+- `must_eat <= INT_MAX`인데 internal `meals`가 `INT_MAX + 1`이 될 수 있는 valid scenario는 무엇입니까?
+- 회귀 테스트가 counter mutation을 scheduler luck 없이 어떻게 직접 자극하는가?
 
 ## 3. 완료 기준
 
-- [x] 최초 routine의 fork lock graph와 worker state transition을 실제 code order로 설명할 수 있습니다.
+- [x] 최초 routine의 fork lock graph와 worker 상태 전이를 실제 code order로 설명할 수 있습니다.
 - [x] parity order가 circular wait를 깨는 범위와 fairness non-guarantee를 구분할 수 있습니다.
-- [x] `N == 1` pointer aliasing과 dedicated path를 before/after로 제시할 수 있습니다.
+- [x] `N == 1` pointer 같은 메모리를 가리키는 경우와 dedicated path를 before/after로 제시할 수 있습니다.
 - [x] final meal commit, `full_count`, global `ended` publication의 critical section을 설명할 수 있습니다.
 - [x] fork acquisition 후 terminal recheck와 post-meal terminal recheck의 역할을 구분할 수 있습니다.
 - [x] interrupted eating이 counter를 변경하지 않는 operation transaction을 그릴 수 있습니다.
@@ -2068,7 +2068,7 @@ fork acquisition order는 philosopher parity에 따라 달라집니다. even ide
 | 단계 | Source-confirmed 기준 | 해당 SHA 코드 근거 |
 | --- | --- | --- |
 | 문제 | 각 worker가 shared fork 두 개를 사용해 eat-sleep-think state를 진행하고 monitor가 신뢰할 meal state를 publish해야 합니다. | §12 완료 기록의 대응 근거 참조 |
-| deadlock 위험 | 모든 philosopher가 left fork를 먼저 잡으면 ring 전체가 one-fork hold 상태로 circular wait할 수 있습니다. | §12 완료 기록의 대응 근거 참조 |
+| 교착 상태 위험 | 모든 philosopher가 left fork를 먼저 잡으면 ring 전체가 one-fork hold 상태로 circular wait할 수 있습니다. | §12 완료 기록의 대응 근거 참조 |
 | 핵심 결정 | identifier parity에 따라 fork acquisition order를 반대로 배치합니다. | §12 완료 기록의 대응 근거 참조 |
 | meal state 결정 | `last_meal_ms`는 eating 시작 시 갱신하고, meal counter와 `full_count`는 shared state lock 아래 갱신합니다. | §12 완료 기록의 대응 근거 참조 |
 | 남은 edge | `N == 1`에서 두 fork pointer가 같은 mutex를 가리킵니다. | §12 완료 기록의 대응 근거 참조 |
@@ -2094,11 +2094,11 @@ fork acquisition order는 philosopher parity에 따라 달라집니다. even ide
 | 파일과 symbol | §12 완료 기록의 대응 근거 참조 |
 | 최소 코드 구간 | §12 완료 기록의 대응 근거 참조 |
 | caller → callee | §12 완료 기록의 대응 근거 참조 |
-| state 또는 ownership 변화 | §12 완료 기록의 대응 근거 참조 |
+| state 또는 소유권 변화 | §12 완료 기록의 대응 근거 참조 |
 | failure/cleanup 경로 | §12 완료 기록의 대응 근거 참조 |
 | 직전 상태와의 차이 | §12 완료 기록의 대응 근거 참조 |
 
-#### Worker state transition 기록
+#### Worker 상태 전이 기록
 
 | 단계 | 보유 fork | `state_mutex` mutation | log | wait | 실패/terminal 시 cleanup |
 | --- | --- | --- | --- | --- | --- |
@@ -2129,11 +2129,11 @@ fork acquisition order는 philosopher parity에 따라 달라집니다. even ide
 이 commit 시점에 아직 보장하지 않거나 검증 범위를 넘는 것:
 - `N == 1`에서 동일 non-recursive mutex를 두 번 lock하지 않는 것은 아직 보장하지 않습니다.
 - interrupted eating interval이 counter를 증가시키지 않는 것은 아직 보장하지 않습니다.
-- scheduler fairness 또는 starvation freedom을 보장하지 않습니다.
+- scheduler fairness 또는 기아 상태 freedom을 보장하지 않습니다.
 
 #### 학습자 결론
 - [x] parity order가 classic all-left circular wait를 끊는 lock graph를 실제 fork indices로 그립니다.
-- [x] 1-millisecond delay가 correctness invariant가 아닌 이유를 설명합니다.
+- [x] 1-millisecond delay가 correctness 항상 유지해야 하는 조건이 아닌 이유를 설명합니다.
 - [x] meal start와 meal completion이 다른 state transition인 이유를 후속 commits와 연결합니다.
 - [x] 이 commit의 worker responsibility와 monitor가 나중에 맡는 global policy를 구분합니다.
 
@@ -2141,7 +2141,7 @@ fork acquisition order는 philosopher parity에 따라 달라집니다. even ide
 
 - Importance: **A**
 - Tags: `FORK_ORDER, EDGE, RISK`
-- Source-defined role: Handles the ring aliasing edge where one philosopher's two fork pointers are the same mutex.
+- Source-defined role: Handles the ring 같은 메모리를 가리키는 경우 edge where one philosopher's two fork pointers are the same mutex.
 - 코드 기준: 반드시 `c8531c91f0fb` 시점
 - 직접 parent 비교: `git diff c8531c91f0fb^ c8531c91f0fb --`
 - Thread 직전 관련 SHA: `b68f40819af4`
@@ -2156,10 +2156,10 @@ ring mapping에서 `N == 1`이면 `left_fork`와 `right_fork`가 같은 mutex �
 | 단계 | Source-confirmed 기준 | 해당 SHA 코드 근거 |
 | --- | --- | --- |
 | 기존 가정 | 두 fork pointer는 서로 다른 mutex이므로 normal two-lock path를 사용할 수 있습니다. | §12 완료 기록의 대응 근거 참조 |
-| 실제 failure | `N == 1`에서 ring aliasing으로 두 pointer가 같아 self-deadlock이 결정적으로 발생합니다. | §12 완료 기록의 대응 근거 참조 |
+| 실제 failure | `N == 1`에서 ring 같은 메모리를 가리키는 경우로 두 pointer가 같아 self-교착 상태가 결정적으로 발생합니다. | §12 완료 기록의 대응 근거 참조 |
 | root cause | topology가 만드는 pointer identity edge를 routine이 구분하지 않았습니다. | §12 완료 기록의 대응 근거 참조 |
 | 수정 결정 | single worker는 fork 하나만 lock·log·wait·unlock하고 meal을 시작하지 않습니다. | §12 완료 기록의 대응 근거 참조 |
-| 유지되는 책임 | worker는 자원 제약을 모델링하고 monitor가 starvation death를 확정합니다. | §12 완료 기록의 대응 근거 참조 |
+| 유지되는 책임 | worker는 자원 제약을 모델링하고 monitor가 기아 상태 death를 확정합니다. | §12 완료 기록의 대응 근거 참조 |
 
 #### 해당 SHA에서 직접 확인할 코드
 - [x] `b68f40819af4` 대비 single-philosopher branch의 진입 조건과 호출 위치를 확인합니다.
@@ -2179,7 +2179,7 @@ ring mapping에서 `N == 1`이면 `left_fork`와 `right_fork`가 같은 mutex �
 | 파일과 symbol | §12 완료 기록의 대응 근거 참조 |
 | 최소 코드 구간 | §12 완료 기록의 대응 근거 참조 |
 | caller → callee | §12 완료 기록의 대응 근거 참조 |
-| state 또는 ownership 변화 | §12 완료 기록의 대응 근거 참조 |
+| state 또는 소유권 변화 | §12 완료 기록의 대응 근거 참조 |
 | failure/cleanup 경로 | §12 완료 기록의 대응 근거 참조 |
 | 직전 상태와의 차이 | §12 완료 기록의 대응 근거 참조 |
 
@@ -2214,11 +2214,11 @@ N == 1
 
 이 commit 시점에 아직 보장하지 않거나 검증 범위를 넘는 것:
 - single philosopher가 meal을 완료하거나 meal target을 만족한다고 보장하지 않습니다.
-- multi-worker fairness나 starvation freedom을 바꾸지 않습니다.
+- multi-worker fairness나 기아 상태 freedom을 바꾸지 않습니다.
 - 이 Thread 내 dedicated deterministic test commit은 source에 포함되어 있지 않습니다.
 
 #### 학습자 결론
-- [x] general ring topology가 valid edge input에서 aliasing을 만드는 과정을 주소로 설명합니다.
+- [x] general ring topology가 valid edge input에서 같은 메모리를 가리키는 경우를 만드는 과정을 주소로 설명합니다.
 - [x] 가짜 두 번째 fork를 만들지 않고 실제 resource constraint를 모델링한 이유를 설명합니다.
 - [x] single worker와 monitor 사이의 responsibility split을 execution trace로 제시합니다.
 
@@ -2245,7 +2245,7 @@ N == 1
 | 기존 상태 | monitor polling이 global completion을 나중에 발견하며, worker loop가 target 도달 뒤에도 다음 state로 진행할 수 있습니다. | §12 완료 기록의 대응 근거 참조 |
 | 실제 위험 | last required meal과 `ended` publication 사이의 delay 동안 다른 worker가 새 meal이나 post-completion log를 시작할 수 있습니다. | §12 완료 기록의 대응 근거 참조 |
 | 수정 decision | final meal commit을 기록하는 worker가 lock 안에서 global completion까지 publish합니다. | §12 완료 기록의 대응 근거 참조 |
-| fork-boundary decision | fork ownership만으로 terminal 이후 새 meal을 시작할 권한이 생기지 않으므로 acquisition 후 state를 재확인합니다. | §12 완료 기록의 대응 근거 참조 |
+| fork-boundary decision | fork 소유권만으로 terminal 이후 새 meal을 시작할 권한이 생기지 않으므로 acquisition 후 state를 재확인합니다. | §12 완료 기록의 대응 근거 참조 |
 | 남은 root cause | eating wait가 deadline completion과 terminal interruption을 구분하지 않습니다. | §12 완료 기록의 대응 근거 참조 |
 
 #### 해당 SHA에서 직접 확인할 코드
@@ -2256,7 +2256,7 @@ N == 1
 - [x] 두 fork 획득 직후 terminal recheck branch가 두 mutex를 모두 release하는지 확인합니다.
 - [x] completed meal 직후 routine이 terminal을 확인하고 sleeping/thinking으로 진행하지 않는지 확인합니다.
 - [x] monitor의 meal-completion 역할이 이 SHA에서 어떻게 줄거나 유지되는지 실제 코드로 확인합니다.
-- [x] `philo_sleep_ms` return type과 eating call site를 확인하여 interrupted wait 후에도 `record_meal_done`이 호출되는 경로를 찾습니다.
+- [x] `philo_sleep_ms` return type과 eating 호출 지점을 확인하여 interrupted wait 후에도 `record_meal_done`이 호출되는 경로를 찾습니다.
 
 #### 코드 근거 기록
 
@@ -2265,7 +2265,7 @@ N == 1
 | 파일과 symbol | §12 완료 기록의 대응 근거 참조 |
 | 최소 코드 구간 | §12 완료 기록의 대응 근거 참조 |
 | caller → callee | §12 완료 기록의 대응 근거 참조 |
-| state 또는 ownership 변화 | §12 완료 기록의 대응 근거 참조 |
+| state 또는 소유권 변화 | §12 완료 기록의 대응 근거 참조 |
 | failure/cleanup 경로 | §12 완료 기록의 대응 근거 참조 |
 | 직전 상태와의 차이 | §12 완료 기록의 대응 근거 참조 |
 
@@ -2323,7 +2323,7 @@ wait가 deadline에 도달한 직후 다른 thread가 terminal state를 commit�
 | root cause | wait API가 deadline completion과 terminal interruption을 구분하지 않고, counter mutation 직전 state revalidation도 부족합니다. | §12 완료 기록의 대응 근거 참조 |
 | 수정 decision | sleep status를 eating operation contract로 사용하고 interruption은 abort로 처리합니다. | §12 완료 기록의 대응 근거 참조 |
 | race 보완 | deadline 도달 후 mutation 전에 terminal이 commit되는 window를 locked `ended` recheck로 닫습니다. | §12 완료 기록의 대응 근거 참조 |
-| resource invariant | 논리 operation이 commit되지 않아도 acquired fork 둘은 모든 exit에서 release합니다. | §12 완료 기록의 대응 근거 참조 |
+| resource 항상 유지해야 하는 조건 | 논리 operation이 commit되지 않아도 acquired fork 둘은 모든 exit에서 release합니다. | §12 완료 기록의 대응 근거 참조 |
 | regression 연결 | `73b5551a76f4`가 interrupted sleep을 주입해 local/global counter가 0으로 유지되는지 검증합니다. | §12 완료 기록의 대응 근거 참조 |
 
 #### 해당 SHA에서 직접 확인할 코드
@@ -2334,8 +2334,8 @@ wait가 deadline에 도달한 직후 다른 thread가 terminal state를 commit�
 - [x] `record_meal_done`이 `state_mutex`를 잡은 뒤 mutation 직전 `ended`를 재확인하는 순서를 확인합니다.
 - [x] sleep success 후 lock 획득 전 terminal이 바뀌는 interleaving을 코드 순서로 작성합니다.
 - [x] 해당 interleaving에서 recheck가 false commit을 막는지 확인합니다.
-- [x] 모든 abort/return path에서 first/second fork ownership이 정확히 한 번 release되는지 표로 검증합니다.
-- [x] sleep API 변경이 sleeping phase나 single-philosopher path의 call site에 어떻게 반영되는지 확인합니다.
+- [x] 모든 abort/return path에서 first/second fork 소유권이 정확히 한 번 release되는지 표로 검증합니다.
+- [x] sleep API 변경이 sleeping phase나 single-philosopher path의 호출 지점에 어떻게 반영되는지 확인합니다.
 
 #### 코드 근거 기록
 
@@ -2344,7 +2344,7 @@ wait가 deadline에 도달한 직후 다른 thread가 terminal state를 commit�
 | 파일과 symbol | §12 완료 기록의 대응 근거 참조 |
 | 최소 코드 구간 | §12 완료 기록의 대응 근거 참조 |
 | caller → callee | §12 완료 기록의 대응 근거 참조 |
-| state 또는 ownership 변화 | §12 완료 기록의 대응 근거 참조 |
+| state 또는 소유권 변화 | §12 완료 기록의 대응 근거 참조 |
 | failure/cleanup 경로 | §12 완료 기록의 대응 근거 참조 |
 | 직전 상태와의 차이 | §12 완료 기록의 대응 근거 참조 |
 
@@ -2383,12 +2383,12 @@ fork ownership 획득
 
 이 commit 시점에 아직 보장하지 않거나 검증 범위를 넘는 것:
 - meal-start log가 곧 meal completion을 의미하지 않습니다.
-- 이 변경은 scheduler fairness나 starvation freedom을 보장하지 않습니다.
+- 이 변경은 scheduler fairness나 기아 상태 freedom을 보장하지 않습니다.
 
 #### 학습자 결론
 - [x] operation start, wait completion, state commit을 세 단계로 분리해 설명합니다.
 - [x] sleep success 직후 terminal publication race를 실제 lock timing으로 설명합니다.
-- [x] resource cleanup invariant와 logical meal accounting invariant가 함께 유지되는 이유를 설명합니다.
+- [x] resource cleanup 항상 유지해야 하는 조건과 logical meal accounting 항상 유지해야 하는 조건이 함께 유지되는 이유를 설명합니다.
 
 ### 5.5 `73b5551a76f4` — `test(routine): 중단된 식사의 카운터 불변식 검증`
 
@@ -2408,7 +2408,7 @@ fork ownership 획득
 
 | 구분 | 학습자 기록 |
 | --- | --- |
-| 대상 production invariant | §12 완료 기록의 대응 근거 참조 |
+| 대상 production 항상 유지해야 하는 조건 | §12 완료 기록의 대응 근거 참조 |
 | 주입하는 interrupted operation | §12 완료 기록의 대응 근거 참조 |
 | stub이 publish하는 state와 return status | §12 완료 기록의 대응 근거 참조 |
 | direct worker invocation 조건 | §12 완료 기록의 대응 근거 참조 |
@@ -2440,7 +2440,7 @@ fork ownership 획득
 | 파일과 symbol | §12 완료 기록의 대응 근거 참조 |
 | 최소 코드 구간 | §12 완료 기록의 대응 근거 참조 |
 | caller → callee | §12 완료 기록의 대응 근거 참조 |
-| state 또는 ownership 변화 | §12 완료 기록의 대응 근거 참조 |
+| state 또는 소유권 변화 | §12 완료 기록의 대응 근거 참조 |
 | failure/cleanup 경로 | §12 완료 기록의 대응 근거 참조 |
 | 직전 상태와의 차이 | §12 완료 기록의 대응 근거 참조 |
 
@@ -2452,12 +2452,12 @@ fork ownership 획득
 
 이 commit 시점에 아직 보장하지 않거나 검증 범위를 넘는 것:
 - full executable의 모든 interleaving이나 monitor interaction을 검증하지 않습니다.
-- 모든 sleep call site 또는 모든 terminal timing을 포괄하지 않습니다.
+- 모든 sleep 호출 지점 또는 모든 terminal timing을 포괄하지 않습니다.
 
 #### 학습자 결론
 - [x] direct invocation이 regression target을 좁히는 장점과 integration coverage를 줄이는 한계를 설명합니다.
 - [x] stubbed sleep 앞뒤의 production lock/state path를 구분합니다.
-- [x] 두 counter assertion이 meal transaction invariant를 어떻게 고정하는지 설명합니다.
+- [x] 두 counter assertion이 meal transaction 항상 유지해야 하는 조건을 어떻게 고정하는지 설명합니다.
 
 ### 5.6 `4c224ae86f2b` — `fix(state): 식사 완료 횟수의 정수 범위 확장`
 
@@ -2470,7 +2470,7 @@ fork ownership 획득
 
 #### Fix chain
 
-public `must_eat` target은 `INT_MAX`로 제한되지만, 한 philosopher가 target에 일찍 도달한 뒤 다른 philosopher의 completion을 기다리는 동안 추가 meal을 완료할 수 있습니다. per-philosopher accumulated counter도 `int`이면 valid execution에서 signed overflow가 발생할 수 있습니다. mutex protection은 data race를 막을 뿐 signed overflow undefined behavior를 안전하게 만들지 않습니다.
+public `must_eat` target은 `INT_MAX`로 제한되지만, 한 philosopher가 target에 일찍 도달한 뒤 다른 philosopher의 completion을 기다리는 동안 추가 meal을 완료할 수 있습니다. per-philosopher accumulated counter도 `int`이면 valid execution에서 signed overflow가 발생할 수 있습니다. mutex protection은 data race를 막을 뿐 signed overflow undefined 동작을 안전하게 만들지 않습니다.
 
 이 fix는 internal `meals`를 `int64_t`로 확장하면서 public target bound와 equality-based `full_count` contribution을 유지합니다.
 
@@ -2483,7 +2483,7 @@ public `must_eat` target은 `INT_MAX`로 제한되지만, 한 philosopher가 tar
 | 실제 failure/위험 | target 도달 후에도 다른 philosopher를 기다리며 추가 meal이 발생해 `INT_MAX + 1`이 valid path에서 필요할 수 있습니다. | §12 완료 기록의 대응 근거 참조 |
 | root cause | bounded public input과 계속 증가할 수 있는 internal state를 같은 numeric range로 취급했습니다. | §12 완료 기록의 대응 근거 참조 |
 | 수정 decision | internal `meals`만 `int64_t`로 넓히고 public `must_eat` contract는 유지합니다. | §12 완료 기록의 대응 근거 참조 |
-| completion invariant | `full_count` contribution은 equality 시점 한 번만 발생하며 target 초과 후 재기여하지 않습니다. | §12 완료 기록의 대응 근거 참조 |
+| completion 항상 유지해야 하는 조건 | `full_count` contribution은 equality 시점 한 번만 발생하며 target 초과 후 재기여하지 않습니다. | §12 완료 기록의 대응 근거 참조 |
 | regression 연결 | `054ef46f80c7`이 `INT_MAX`에서 한 meal을 더 완료해 `INT_MAX + 1`과 unchanged `full_count`를 검증합니다. | §12 완료 기록의 대응 근거 참조 |
 
 #### 해당 SHA에서 직접 확인할 코드
@@ -2502,7 +2502,7 @@ public `must_eat` target은 `INT_MAX`로 제한되지만, 한 philosopher가 tar
 | 파일과 symbol | §12 완료 기록의 대응 근거 참조 |
 | 최소 코드 구간 | §12 완료 기록의 대응 근거 참조 |
 | caller → callee | §12 완료 기록의 대응 근거 참조 |
-| state 또는 ownership 변화 | §12 완료 기록의 대응 근거 참조 |
+| state 또는 소유권 변화 | §12 완료 기록의 대응 근거 참조 |
 | failure/cleanup 경로 | §12 완료 기록의 대응 근거 참조 |
 | 직전 상태와의 차이 | §12 완료 기록의 대응 근거 참조 |
 
@@ -2542,14 +2542,14 @@ public `must_eat` target은 `INT_MAX`로 제한되지만, 한 philosopher가 tar
 
 #### Source-confirmed test 역할
 
-이 regression test는 두-philosopher table에서 public target을 `INT_MAX`로 두고 한 philosopher의 `meals`를 이미 `INT_MAX`, `full_count`를 이미 contribution이 반영된 상태로 seed합니다. substituted sleep은 eating interval 하나를 완료시키고 다음 sleep에서 routine을 종료합니다. 결과는 `meals == INT_MAX + 1`, `full_count` unchanged여야 합니다.
+이 회귀 테스트는 두-philosopher table에서 public target을 `INT_MAX`로 두고 한 philosopher의 `meals`를 이미 `INT_MAX`, `full_count`를 이미 contribution이 반영된 상태로 seed합니다. substituted sleep은 eating interval 하나를 완료시키고 다음 sleep에서 routine을 종료합니다. 결과는 `meals == INT_MAX + 1`, `full_count` unchanged여야 합니다.
 
 
 #### Test commit 분석
 
 | 구분 | 학습자 기록 |
 | --- | --- |
-| 대상 production invariant | §12 완료 기록의 대응 근거 참조 |
+| 대상 production 항상 유지해야 하는 조건 | §12 완료 기록의 대응 근거 참조 |
 | former numeric boundary | §12 완료 기록의 대응 근거 참조 |
 | seeded philosopher state | §12 완료 기록의 대응 근거 참조 |
 | seeded global completion state | §12 완료 기록의 대응 근거 참조 |
@@ -2579,7 +2579,7 @@ public `must_eat` target은 `INT_MAX`로 제한되지만, 한 philosopher가 tar
 | 파일과 symbol | §12 완료 기록의 대응 근거 참조 |
 | 최소 코드 구간 | §12 완료 기록의 대응 근거 참조 |
 | caller → callee | §12 완료 기록의 대응 근거 참조 |
-| state 또는 ownership 변화 | §12 완료 기록의 대응 근거 참조 |
+| state 또는 소유권 변화 | §12 완료 기록의 대응 근거 참조 |
 | failure/cleanup 경로 | §12 완료 기록의 대응 근거 참조 |
 | 직전 상태와의 차이 | §12 완료 기록의 대응 근거 참조 |
 
@@ -2598,9 +2598,9 @@ public `must_eat` target은 `INT_MAX`로 제한되지만, 한 philosopher가 tar
 - [x] numeric widening만 통과하고 threshold accounting이 깨진 구현도 이 test가 실패시키는 이유를 설명합니다.
 - [x] Thread 전체의 meal progress가 fork acquisition에서 committed, range-safe state로 발전한 과정을 요약합니다.
 
-## 6. Invariant ledger
+## 6. 항상 유지해야 하는 조건 ledger
 
-| Invariant | 최초 도입 또는 부족함 | 강화·복구 | regression evidence | 해당 SHA 코드 근거 | 최종 설명 |
+| 항상 유지해야 하는 조건 | 최초 도입 또는 부족함 | 강화·복구 | regression evidence | 해당 SHA 코드 근거 | 최종 설명 |
 | --- | --- | --- | --- | --- | --- |
 | multi-worker fork order는 uniform all-left circular wait를 깨뜨림 | `b68f40819af4` | 이후 Thread commits는 이 order를 유지 | 이 Thread source에는 전용 order test commit 없음 | §12 완료 기록의 대응 근거 참조 | §12 완료 기록의 대응 근거 참조 |
 | single philosopher는 같은 mutex를 재잠금하지 않음 | `b68f40819af4`에서 distinct-fork 가정 부족 | `c8531c91f0fb` | 이 Thread source에는 전용 deterministic test 없음 | §12 완료 기록의 대응 근거 참조 | §12 완료 기록의 대응 근거 참조 |
@@ -2613,7 +2613,7 @@ public `must_eat` target은 `INT_MAX`로 제한되지만, 한 philosopher가 tar
 
 ## 7. Failure → Fix → Test 연결
 
-### 7.1 Ring aliasing과 single-philosopher self-deadlock
+### 7.1 Ring 같은 메모리를 가리키는 경우와 single-philosopher self-교착 상태
 
 ```text
 `b68f40819af4`
@@ -2625,7 +2625,7 @@ single path: lock once, one fork event, no meal, monitor death
 ```
 
 - pointer alias를 만드는 initializer expression: §12 완료 기록의 대응 근거에 정리했습니다.
-- self-deadlock이 발생하는 두 lock call: §12 완료 기록의 대응 근거에 정리했습니다.
+- self-교착 상태가 발생하는 두 lock call: §12 완료 기록의 대응 근거에 정리했습니다.
 - dedicated branch의 lock/log/wait/unlock 순서: §12 완료 기록의 대응 근거에 정리했습니다.
 - meal state가 변경되지 않는 근거: §12 완료 기록의 대응 근거에 정리했습니다.
 - monitor가 death authority를 유지하는 근거: §12 완료 기록의 대응 근거에 정리했습니다.
@@ -2669,16 +2669,16 @@ INT_MAX → INT_MAX + 1
 
 - valid execution scenario: §12 완료 기록의 대응 근거에 정리했습니다.
 - former overflow expression: §12 완료 기록의 대응 근거에 정리했습니다.
-- widened field와 관련 call sites: §12 완료 기록의 대응 근거에 정리했습니다.
+- widened field와 관련 호출 지점: §12 완료 기록의 대응 근거에 정리했습니다.
 - equality check: §12 완료 기록의 대응 근거에 정리했습니다.
 - test seed state: §12 완료 기록의 대응 근거에 정리했습니다.
 - stubbed sleep sequence: §12 완료 기록의 대응 근거에 정리했습니다.
 - two final assertions: §12 완료 기록의 대응 근거에 정리했습니다.
 - 여전히 남는 numeric/non-progress 한계: §12 완료 기록의 대응 근거에 정리했습니다.
 
-## 8. Ownership / state / responsibility 변화
+## 8. 소유권 / state / responsibility 변화
 
-| 시점 | Fork ownership | Meal state producer | Global completion responsibility | Operation commit 기준 | 학습자 코드 근거 |
+| 시점 | Fork 소유권 | Meal state producer | Global completion responsibility | Operation commit 기준 | 학습자 코드 근거 |
 | --- | --- | --- | --- | --- | --- |
 | `b68f40819af4` | worker가 두 shared mutex를 일시 보유 | worker가 start/completion state 갱신 | monitor가 후속 전역 정책을 관찰 | eating wait 뒤 counter 증가 | §12 완료 기록의 대응 근거 참조 |
 | `c8531c91f0fb` | single worker는 동일 mutex를 한 번만 보유 | meal state 변경 없음 | monitor가 death 담당 | meal 시작 불가 | §12 완료 기록의 대응 근거 참조 |
@@ -2695,7 +2695,7 @@ INT_MAX → INT_MAX + 1
 - final meal completion은 locked worker path에서 global `ended`까지 publish됩니다.
 - meal은 full eating interval과 synchronized active-state check를 통과한 경우에만 local/global progress로 commit됩니다.
 - internal `meals`는 `int64_t`이며 public `INT_MAX` target 이후에도 defined progress를 유지하고 threshold contribution을 반복하지 않습니다.
-- 이 Thread는 scheduler fairness 또는 starvation freedom을 보장하지 않습니다.
+- 이 Thread는 scheduler fairness 또는 기아 상태 freedom을 보장하지 않습니다.
 
 ### 학습자가 작성할 최종 설명
 
@@ -2710,7 +2710,7 @@ INT_MAX → INT_MAX + 1
 - guarantees: §12 완료 기록의 대응 근거에 정리했습니다.
 - non-guarantees: §12 완료 기록의 대응 근거에 정리했습니다.
 
-## 10. 최종 architecture 또는 execution flow 정리
+## 10. 최종 architecture 또는 실행 순서 정리
 
 ```text
 worker routine
@@ -2764,7 +2764,7 @@ one fork lock → one fork log → no meal → wait/release → monitor death
 - [x] `4c224ae86f2b`의 public/internal range 분리를 valid scenario로 설명했습니다.
 - [x] `054ef46f80c7`의 `INT_MAX + 1`과 unchanged `full_count`를 설명했습니다.
 - [x] meal-start log를 completed quota progress로 취급하지 않았습니다.
-- [x] deadlock avoidance를 fairness 또는 starvation freedom으로 과장하지 않았습니다.
+- [x] 교착 상태 avoidance를 fairness 또는 기아 상태 freedom으로 과장하지 않았습니다.
 
 ## 12. 저장소 기반 완료 기록
 
@@ -2787,7 +2787,7 @@ one fork lock → one fork log → no meal → wait/release → monitor death
 | odd | `left_fork` | `right_fork` | 모든 worker가 left-first가 되는 uniform cycle을 끊습니다. |
 | even | `right_fork` | `left_fork` | 적어도 인접 edge에서 반대 방향으로 acquisition합니다. |
 
-각 successful lock 직후 `has taken a fork`를 기록합니다. even worker가 routine 시작 시 1 ms 대기하는 것은 initial contention을 낮추는 heuristic입니다. correctness는 parity order에 기대며 이 delay는 fairness, starvation freedom, 고정 schedule을 보장하지 않습니다.
+각 successful lock 직후 `has taken a fork`를 기록합니다. even worker가 routine 시작 시 1 ms 대기하는 것은 initial contention을 낮추는 heuristic입니다. correctness는 parity order에 기대며 이 delay는 fairness, 기아 상태 freedom, 고정 schedule을 보장하지 않습니다.
 
 #### meal state
 
@@ -2834,7 +2834,7 @@ left_fork 한 번 lock
 → worker return
 ```
 
-이 path는 `last_meal_ms`, `meals`, `full_count`, `is eating`을 변경하지 않습니다. 실제 fork가 하나뿐이라는 constraint를 유지하며 가짜 두 번째 fork를 만들지 않습니다. death 판정과 terminal log는 계속 main-thread monitor가 담당합니다. wait가 terminal로 일찍 끝나도 unlock 뒤 return하므로 fork ownership이 남지 않습니다.
+이 path는 `last_meal_ms`, `meals`, `full_count`, `is eating`을 변경하지 않습니다. 실제 fork가 하나뿐이라는 constraint를 유지하며 가짜 두 번째 fork를 만들지 않습니다. death 판정과 terminal log는 계속 main-thread monitor가 담당합니다. wait가 terminal로 일찍 끝나도 unlock 뒤 return하므로 fork 소유권이 남지 않습니다.
 
 ### 12.4 `fe0a2d15b29b` — final quota와 global completion의 같은 transaction
 
@@ -2890,7 +2890,7 @@ lock_forks
 
 `record_meal_done`은 `state_mutex`를 획득한 뒤 mutation 전에 `table->ended`를 다시 확인합니다. 이유는 sleep이 deadline에 도달해 `PHILO_OK`를 반환한 직후, counter lock을 얻기 전에 다른 thread가 terminal을 commit할 수 있기 때문입니다. sleep result만으로는 commit 권한이 충분하지 않습니다.
 
-모든 logical abort path에서 `unlock_forks`를 호출합니다. 즉 meal accounting 실패와 fork cleanup은 독립된 invariant로 함께 유지됩니다.
+모든 logical abort path에서 `unlock_forks`를 호출합니다. 즉 meal accounting 실패와 fork cleanup은 독립된 항상 유지해야 하는 조건으로 함께 유지됩니다.
 
 #### commit 조건
 
@@ -2919,7 +2919,7 @@ assertion은 worker return 뒤 `meals == 0`, `full_count == 0`입니다. test가
 
 `must_eat`은 public input으로 `INT_MAX`까지 허용됩니다. 한 philosopher가 `INT_MAX`에 먼저 도달해 `full_count`에 한 번 기여했더라도 다른 philosopher가 아직 target에 도달하지 않았다면 simulation은 끝나지 않습니다. 먼저 도달한 philosopher가 한 번 더 먹으면 internal state는 `INT_MAX + 1`이어야 합니다.
 
-기존 `int meals`에서 이 increment는 signed overflow undefined behavior가 될 수 있습니다. `state_mutex`는 concurrent access를 serialize하지만 numeric overflow를 정의된 연산으로 바꾸지 않습니다.
+기존 `int meals`에서 이 increment는 signed overflow undefined 동작이 될 수 있습니다. `state_mutex`는 concurrent access를 serialize하지만 numeric overflow를 정의된 연산으로 바꾸지 않습니다.
 
 #### 변경
 
@@ -2953,14 +2953,14 @@ substituted sleep은 첫 eating interval을 `PHILO_OK`로 완료시키고, 다�
 
 첫 assertion은 wider accumulation을, 두 번째 assertion은 target 초과 후 duplicate contribution 부재를 검사합니다. 단순히 field type만 바꾸고 equality logic을 손상한 구현도 실패합니다.
 
-### 12.9 Invariant evolution 완성
+### 12.9 항상 유지해야 하는 조건 evolution 완성
 
-| Invariant | 도입·문제 | 수정 | regression evidence | 최종 해석 |
+| 항상 유지해야 하는 조건 | 도입·문제 | 수정 | regression evidence | 최종 해석 |
 | --- | --- | --- | --- | --- |
 | multi-worker가 uniform all-left circular wait를 만들지 않음 | `b68f40819af4` parity order | 이후 유지 | 전용 deterministic order test 없음 | deadlock의 한 필요 조건을 깨지만 fairness 증명은 아님 |
 | `N == 1`은 같은 mutex를 재잠금하지 않음 | 최초 routine의 distinct-pointer 가정 | `c8531c91f0fb` one-lock path | Thread 내 전용 test 없음 | 실제 하나의 fork constraint를 보존 |
 | final quota와 global ended가 같은 state transaction | monitor polling gap | `fe0a2d15b29b` worker completion section | source path inspection | post-completion new work 억제 |
-| terminal 이후 fork 보유만으로 새 meal을 시작하지 않음 | fork wait 중 terminal 가능 | acquisition 후 recheck | routine path inspection | fork ownership과 operation authorization 분리 |
+| terminal 이후 fork 보유만으로 새 meal을 시작하지 않음 | fork wait 중 terminal 가능 | acquisition 후 recheck | routine path inspection | fork 소유권과 operation authorization 분리 |
 | meal은 completed interval + active commit point에서만 count | interrupted wait도 count 가능 | `53e591effb4a` status + locked recheck | `73b5551a76f4` | attempt와 committed progress 분리 |
 | aborted meal은 fork를 남기지 않음 | explicit abort path 부족 | 모든 error branch `unlock_forks` | interrupted test의 production path | logical rollback과 resource release 결합 |
 | internal counter는 public target 이후 defined range 유지 | valid `INT_MAX + 1`에서 int overflow | `int64_t meals` | `054ef46f80c7` | public contract와 runtime accumulation 분리 |
@@ -3012,10 +3012,10 @@ wait_for_start
 
 보장하지 않는 범위:
 
-- parity order와 initial stagger는 scheduler fairness나 starvation freedom을 보장하지 않습니다.
+- parity order와 initial stagger는 scheduler fairness나 기아 상태 freedom을 보장하지 않습니다.
 - `is eating` line은 completed meal 증거가 아닙니다.
 - `int64_t`는 무한 accumulation을 보장하지 않습니다.
-- deterministic unit tests는 full executable의 모든 interleaving을 포괄하지 않습니다.
+- deterministic 단위 테스트는 full executable의 모든 interleaving을 포괄하지 않습니다.
 ===== END FILE: 03-core-routine-to-committed-meal-progress.md =====
 
 ===== BEGIN FILE: 04-serialized-output-to-linearized-terminal-state.md =====
@@ -3033,10 +3033,10 @@ Source-confirmed significance는 다음과 같습니다.
 - main-thread monitor는 worker가 publish한 meal state를 읽고 global death/completion policy를 소유합니다.
 - 최초 monitor는 predicate를 관찰한 lock을 놓은 뒤 terminal state를 publish하여 completion gap과 stale-death gap을 남깁니다.
 - final fix는 completion을 locked state transaction으로 만들고, death를 `print_mutex → state_mutex`에서 fresh time과 latest meal state로 재확인합니다.
-- terminal publication과 output serialization이 같은 lock order에 들어가면서 one-death, no-post-terminal ordinary status invariant가 성립합니다.
+- terminal publication과 output serialization이 같은 lock order에 들어가면서 one-death, no-post-terminal ordinary status 항상 유지해야 하는 조건이 성립합니다.
 - deterministic boundary test는 timing luck이 아니라 old unlock window에 직접 state change를 주입합니다.
 
-### Source에 명시적으로 연결된 Critical Invariants
+### Source에 명시적으로 연결된 Critical 항상 유지해야 하는 조건
 
 - `ended`, `full_count`, `meals`, `last_meal_ms`는 정의된 `state_mutex` 경계에서 관찰·변경됩니다.
 - death candidate는 fresh time과 latest meal state로 terminal commit 직전에 다시 확인합니다.
@@ -3052,13 +3052,13 @@ Source-confirmed significance는 다음과 같습니다.
 ## 2. 이 Thread를 이해하기 위한 핵심 질문
 
 - `print_mutex`로 line interleaving을 막는 것과 terminal decision을 linearize하는 것은 왜 다른가?
-- normal logger와 initial death logger는 각각 어떤 lock 순서를 사용하며 race window는 어디인가?
-- worker가 publish하는 state와 monitor가 소유하는 policy decision은 어떻게 분리되는가?
+- normal logger와 initial death logger는 각각 어떤 lock 순서를 사용하며 race window는 어디입니까?
+- worker가 publish하는 state와 monitor가 소유하는 policy decision은 어떻게 분리됩니까?
 - completion predicate를 lock 안에서 보고 lock 밖에서 `ended`를 설정하면 어떤 gap이 생기는가?
 - death candidate가 scan 뒤 meal을 시작하면 initial observation은 왜 더 이상 authoritative하지 않은가?
 - final death path가 왜 `print_mutex`를 먼저 잡고 `state_mutex`를 다음에 잡는가?
-- fresh monotonic time과 latest `last_meal_ms`는 어느 critical section에서 비교되는가?
-- normal logger가 먼저 print lock을 얻는 경우와 death path가 먼저 얻는 경우 모두에서 line order는 어떻게 결정되는가?
+- fresh monotonic time과 latest `last_meal_ms`는 어느 critical section에서 비교됩니까?
+- normal logger가 먼저 print lock을 얻는 경우와 death path가 먼저 얻는 경우 모두에서 line order는 어떻게 결정됩니까?
 - at-most-one death commitment와 actual output delivery는 어떻게 구분해야 하는가?
 - boundary injection test는 completion atomicity와 stale candidate rejection을 각각 어떻게 강제하는가?
 
@@ -3129,7 +3129,7 @@ Source-confirmed significance는 다음과 같습니다.
 | 파일과 symbol | §12 완료 기록의 대응 근거 참조 |
 | 최소 코드 구간 | §12 완료 기록의 대응 근거 참조 |
 | caller → callee | §12 완료 기록의 대응 근거 참조 |
-| state 또는 ownership 변화 | §12 완료 기록의 대응 근거 참조 |
+| state 또는 소유권 변화 | §12 완료 기록의 대응 근거 참조 |
 | failure/cleanup 경로 | §12 완료 기록의 대응 근거 참조 |
 | 직전 상태와의 차이 | §12 완료 기록의 대응 근거 참조 |
 
@@ -3176,14 +3176,14 @@ death path:    died 출력
 
 - Importance: **S**
 - Tags: `CORE, CONCURRENCY, TERMINAL_STATE`
-- Source-defined role: Establishes the main-thread monitor as the authority for starvation and global completion.
+- Source-defined role: Establishes the main-thread monitor as the authority for 기아 상태 and global completion.
 - 코드 기준: 반드시 `40ea0f871300` 시점
 - 직접 parent 비교: `git diff 40ea0f871300^ 40ea0f871300 --`
 - Thread 직전 관련 SHA: `033ad537d166`
 
 #### Source-confirmed 맥락
 
-이 S-level commit은 calling thread를 authoritative monitor로 두고 global termination policy를 worker routine에서 분리합니다. workers는 자신의 `last_meal_ms`, `meals`, `full_count`에 필요한 state를 publish하고, monitor는 `state_mutex` 아래에서 optional completion과 starvation을 관찰합니다. completion이면 run을 끝내고, current sampled time과 last-meal state로 첫 death candidate를 선택합니다.
+이 S-level commit은 calling thread를 authoritative monitor로 두고 global termination policy를 worker routine에서 분리합니다. workers는 자신의 `last_meal_ms`, `meals`, `full_count`에 필요한 state를 publish하고, monitor는 `state_mutex` 아래에서 optional completion과 기아 상태를 관찰합니다. completion이면 run을 끝내고, current sampled time과 last-meal state로 첫 death candidate를 선택합니다.
 
 최초 구현은 observation과 commitment를 분리합니다. completion predicate를 lock 안에서 확인한 뒤 unlock 후 `philo_finish`를 호출하고, sampled time으로 candidate를 고른 뒤 state critical section 밖에서 death path를 호출합니다. 그 사이 state가 바뀌어 completion publication이 늦어지거나 candidate가 stale해질 수 있습니다.
 
@@ -3194,8 +3194,8 @@ death path:    died 출력
 | --- | --- | --- |
 | 문제 | local worker state만으로 simulation-wide death 또는 all-meals completion을 결정할 수 없습니다. | §12 완료 기록의 대응 근거 참조 |
 | responsibility decision | calling thread monitor가 global terminal policy의 유일한 authority가 됩니다. | §12 완료 기록의 대응 근거 참조 |
-| worker 역할 | 자신의 meal progress와 starvation reference를 synchronized state로 publish합니다. | §12 완료 기록의 대응 근거 참조 |
-| monitor 역할 | completion predicate와 각 philosopher의 elapsed starvation을 관찰해 candidate를 선택합니다. | §12 완료 기록의 대응 근거 참조 |
+| worker 역할 | 자신의 meal progress와 기아 상태 reference를 synchronized state로 publish합니다. | §12 완료 기록의 대응 근거 참조 |
+| monitor 역할 | completion predicate와 각 philosopher의 elapsed 기아 상태를 관찰해 candidate를 선택합니다. | §12 완료 기록의 대응 근거 참조 |
 | 남은 race 1 | completion 관찰 후 unlock과 `ended` publication 사이에 gap이 있습니다. | §12 완료 기록의 대응 근거 참조 |
 | 남은 race 2 | death candidate scan 후 actual death commit 사이에 meal start 등 state change가 생길 수 있습니다. | §12 완료 기록의 대응 근거 참조 |
 | 후속 수정 | `a2e90b84641b`이 completion을 lock 안에서 commit하고 death를 fresh recheck합니다. | §12 완료 기록의 대응 근거 참조 |
@@ -3219,7 +3219,7 @@ death path:    died 출력
 | 파일과 symbol | §12 완료 기록의 대응 근거 참조 |
 | 최소 코드 구간 | §12 완료 기록의 대응 근거 참조 |
 | caller → callee | §12 완료 기록의 대응 근거 참조 |
-| state 또는 ownership 변화 | §12 완료 기록의 대응 근거 참조 |
+| state 또는 소유권 변화 | §12 완료 기록의 대응 근거 참조 |
 | failure/cleanup 경로 | §12 완료 기록의 대응 근거 참조 |
 | 직전 상태와의 차이 | §12 완료 기록의 대응 근거 참조 |
 
@@ -3273,7 +3273,7 @@ death path:    died 출력
 
 이 S-level fix는 terminal-state publication에 명시적인 linearization point를 부여합니다. meal completion은 `state_mutex`를 유지한 채 predicate 확인과 `ended` publication을 수행합니다.
 
-death는 two-stage operation이 됩니다. monitor scan은 candidate를 advisory하게 고를 수 있지만, `philo_try_log_death`가 `print_mutex`를 먼저, `state_mutex`를 다음에 획득하고 fresh monotonic time과 latest `last_meal_ms`로 candidate를 다시 검사합니다. 아직 terminal이 아니고 starvation predicate가 여전히 참일 때만 `ended`를 설정하고 death timestamp를 계산해 `died` line을 출력합니다. normal logger와 동일한 nested lock order가 terminal transition과 output을 serialize합니다.
+death는 two-stage operation이 됩니다. monitor scan은 candidate를 advisory하게 고를 수 있지만, `philo_try_log_death`가 `print_mutex`를 먼저, `state_mutex`를 다음에 획득하고 fresh monotonic time과 latest `last_meal_ms`로 candidate를 다시 검사합니다. 아직 terminal이 아니고 기아 상태 predicate가 여전히 참일 때만 `ended`를 설정하고 death timestamp를 계산해 `died` line을 출력합니다. normal logger와 동일한 nested lock order가 terminal transition과 output을 serialize합니다.
 
 
 #### 변화 연결
@@ -3296,7 +3296,7 @@ death는 two-stage operation이 됩니다. monitor scan은 candidate를 advisory
 - [x] normal logger의 nested lock order와 death path의 order가 동일한지 call graph로 확인합니다.
 - [x] death revalidation에서 fresh monotonic time을 다시 sampling하는 지점을 확인합니다.
 - [x] `!ended`, candidate의 latest `last_meal_ms`, `time_to_die` 비교가 같은 critical section 안에 있는지 확인합니다.
-- [x] stale candidate일 때 어떤 return value로 monitor loop가 계속되는지 확인합니다.
+- [x] stale candidate일 때 어떤 반환값으로 monitor loop가 계속되는지 확인합니다.
 - [x] valid death일 때 `ended` mutation, timestamp calculation, `printf` 순서를 확인합니다.
 - [x] state/print mutex가 valid death와 stale death에서 각각 어떤 순서로 unlock되는지 확인합니다.
 - [x] normal logger가 print lock을 먼저 잡은 경우와 death path가 먼저 잡은 경우의 두 interleaving을 각각 작성합니다.
@@ -3310,7 +3310,7 @@ death는 two-stage operation이 됩니다. monitor scan은 candidate를 advisory
 | 파일과 symbol | §12 완료 기록의 대응 근거 참조 |
 | 최소 코드 구간 | §12 완료 기록의 대응 근거 참조 |
 | caller → callee | §12 완료 기록의 대응 근거 참조 |
-| state 또는 ownership 변화 | §12 완료 기록의 대응 근거 참조 |
+| state 또는 소유권 변화 | §12 완료 기록의 대응 근거 참조 |
 | failure/cleanup 경로 | §12 완료 기록의 대응 근거 참조 |
 | 직전 상태와의 차이 | §12 완료 기록의 대응 근거 참조 |
 
@@ -3321,7 +3321,7 @@ death는 two-stage operation이 됩니다. monitor scan은 candidate를 advisory
 | normal logger wins first | §12 완료 기록의 대응 근거 참조 | §12 완료 기록의 대응 근거 참조 | §12 완료 기록의 대응 근거 참조 | §12 완료 기록의 대응 근거 참조 | ordinary line precedes death attempt |
 | death path wins first | §12 완료 기록의 대응 근거 참조 | §12 완료 기록의 대응 근거 참조 | §12 완료 기록의 대응 근거 참조 | §12 완료 기록의 대응 근거 참조 | later ordinary logger suppressed |
 | stale candidate | §12 완료 기록의 대응 근거 참조 | §12 완료 기록의 대응 근거 참조 | recent meal or terminal | no death commit | monitor continues |
-| valid candidate | §12 완료 기록의 대응 근거 참조 | §12 완료 기록의 대응 근거 참조 | starvation still true | `ended` + `died` | unique terminal attempt |
+| valid candidate | §12 완료 기록의 대응 근거 참조 | §12 완료 기록의 대응 근거 참조 | 기아 상태 still true | `ended` + `died` | unique terminal attempt |
 
 #### Lock-order 근거
 
@@ -3349,7 +3349,7 @@ death commit: print_mutex → state_mutex → fresh recheck → ended → died
 - monitor의 initial scan 자체가 final truth인 것은 아닙니다.
 - strict death-detection latency를 보장하지 않습니다.
 - I/O failure나 모든 pthread failure를 해결했다는 뜻은 아닙니다.
-- scheduler fairness 또는 starvation freedom을 보장하지 않습니다.
+- scheduler fairness 또는 기아 상태 freedom을 보장하지 않습니다.
 
 #### 후속 regression evidence
 
@@ -3384,7 +3384,7 @@ stale-death mode에서는 처음에 philosopher가 dead로 보이도록 만들�
 
 | 구분 | 학습자 기록 |
 | --- | --- |
-| 대상 production invariant | §12 완료 기록의 대응 근거 참조 |
+| 대상 production 항상 유지해야 하는 조건 | §12 완료 기록의 대응 근거 참조 |
 | mutex unlock wrapper가 관찰하는 boundary | §12 완료 기록의 대응 근거 참조 |
 | completion mode의 초기 state | §12 완료 기록의 대응 근거 참조 |
 | completion mode의 핵심 assertion | §12 완료 기록의 대응 근거 참조 |
@@ -3416,7 +3416,7 @@ stale-death mode에서는 처음에 philosopher가 dead로 보이도록 만들�
 | 파일과 symbol | §12 완료 기록의 대응 근거 참조 |
 | 최소 코드 구간 | §12 완료 기록의 대응 근거 참조 |
 | caller → callee | §12 완료 기록의 대응 근거 참조 |
-| state 또는 ownership 변화 | §12 완료 기록의 대응 근거 참조 |
+| state 또는 소유권 변화 | §12 완료 기록의 대응 근거 참조 |
 | failure/cleanup 경로 | §12 완료 기록의 대응 근거 참조 |
 | 직전 상태와의 차이 | §12 완료 기록의 대응 근거 참조 |
 
@@ -3429,7 +3429,7 @@ stale-death mode에서는 처음에 philosopher가 dead로 보이도록 만들�
 
 이 commit 시점에 아직 보장하지 않거나 검증 범위를 넘는 것:
 - 모든 monitor schedule이나 output race를 포괄하지 않습니다.
-- lock-order 전체를 정적으로 증명하지 않으며, target boundary의 production behavior를 검증합니다.
+- lock-order 전체를 정적으로 증명하지 않으며, target boundary의 production 동작을 검증합니다.
 - strict detection latency나 fairness를 검증하지 않습니다.
 
 #### 학습자 결론
@@ -3437,9 +3437,9 @@ stale-death mode에서는 처음에 philosopher가 dead로 보이도록 만들�
 - [x] completion atomicity와 stale-death rejection 두 mode의 state setup을 분리해 기록합니다.
 - [x] 이 test가 initial observation이 아니라 synchronized commit point를 correctness 기준으로 삼는다는 것을 설명합니다.
 
-## 6. Invariant ledger
+## 6. 항상 유지해야 하는 조건 ledger
 
-| Invariant | 최초 도입 또는 부족함 | 강화·복구 | regression evidence | 해당 SHA 코드 근거 | 최종 설명 |
+| 항상 유지해야 하는 조건 | 최초 도입 또는 부족함 | 강화·복구 | regression evidence | 해당 SHA 코드 근거 | 최종 설명 |
 | --- | --- | --- | --- | --- | --- |
 | terminal state access는 `state_mutex` 경계를 사용 | `033ad537d166` | monitor와 final death path에서 유지 | `c424b7d91ed1` boundary observation | §12 완료 기록의 대응 근거 참조 | §12 완료 기록의 대응 근거 참조 |
 | ordinary output은 complete line 단위로 serialize | `033ad537d166` | final common lock order와 결합 | 후속 concurrency evidence는 다른 Thread에 존재 | §12 완료 기록의 대응 근거 참조 | §12 완료 기록의 대응 근거 참조 |
@@ -3494,7 +3494,7 @@ old unlock boundary에서 state mutation 주입
 - test stale-death mode: §12 완료 기록의 대응 근거에 정리했습니다.
 - no-death negative assertion: §12 완료 기록의 대응 근거에 정리했습니다.
 
-## 8. Ownership / state / responsibility 변화
+## 8. 소유권 / state / responsibility 변화
 
 | 시점 | Worker responsibility | Monitor responsibility | Logger responsibility | Terminal commit point | 학습자 코드 근거 |
 | --- | --- | --- | --- | --- | --- |
@@ -3512,7 +3512,7 @@ old unlock boundary에서 state mutation 주입
 - death scan은 advisory이며 final attempt가 `print_mutex → state_mutex`에서 fresh time과 latest meal state를 다시 확인합니다.
 - valid death만 `ended`와 terminal line을 같은 serialization boundary에서 commit합니다.
 - at most one death가 commit되고 terminal publication 뒤 ordinary status attempt는 suppress됩니다.
-- strict detection latency, fairness, output call success는 이 invariant가 보장하는 범위가 아닙니다.
+- strict detection latency, fairness, output call success는 이 항상 유지해야 하는 조건이 보장하는 범위가 아닙니다.
 
 ### 학습자가 작성할 최종 설명
 
@@ -3527,7 +3527,7 @@ old unlock boundary에서 state mutation 주입
 - guarantees: §12 완료 기록의 대응 근거에 정리했습니다.
 - non-guarantees: §12 완료 기록의 대응 근거에 정리했습니다.
 
-## 10. 최종 architecture 또는 execution flow 정리
+## 10. 최종 architecture 또는 실행 순서 정리
 
 ```text
 workers
@@ -3581,7 +3581,7 @@ ordinary logger
 - [x] `print_mutex → state_mutex` common order를 normal/death path 모두에서 확인했습니다.
 - [x] stale candidate, normal-first, death-first 세 case를 각각 설명했습니다.
 - [x] `c424b7d91ed1`의 completion mode와 stale-death mode를 분리해 기록했습니다.
-- [x] one-death/no-post-terminal invariant를 strict latency 또는 guaranteed I/O success로 확대하지 않았습니다.
+- [x] one-death/no-post-terminal 항상 유지해야 하는 조건을 strict latency 또는 guaranteed I/O success로 확대하지 않았습니다.
 - [x] final HEAD의 lock order를 이전 SHA에 소급하지 않았습니다.
 
 ## 12. 저장소 기반 완료 기록
@@ -3652,7 +3652,7 @@ death:  died line 출력
 | --- | --- | --- | --- |
 | `last_meal_ms` | worker의 meal-start path | monitor | `state_mutex` |
 | `meals`, `full_count` | worker completion path | monitor 및 global completion logic | `state_mutex` |
-| starvation candidate | monitor scan | monitor | scan 시 `state_mutex` |
+| 기아 상태 candidate | monitor scan | monitor | scan 시 `state_mutex` |
 | global completion/death | monitor가 결정 | workers/loggers가 `ended`를 소비 | state API |
 
 worker는 자신의 progress fact를 publish하고 peer death를 결정하지 않습니다. `philo_monitor`가 calling thread에서 simulation-wide policy를 소유합니다.
@@ -3771,16 +3771,16 @@ fresh time, latest meal timestamp, terminal state가 같은 state critical secti
 2. monitor가 scan 후 state mutex를 해제하는 old boundary에서 wrapper가 state를 바꿉니다.
 3. `last_meal_ms`를 현재 시각으로 갱신합니다.
 4. `full_count`를 completion 상태로 만듭니다.
-5. monitor가 `philo_try_log_death`를 호출하면 fresh revalidation이 starvation을 거부해야 합니다.
+5. monitor가 `philo_try_log_death`를 호출하면 fresh revalidation이 기아 상태를 거부해야 합니다.
 6. 다음 loop에서 valid completion을 commit해야 합니다.
 
 assertion은 run이 completion으로 끝나고 captured output에 `died`가 없다는 것입니다. 초기 candidate를 그대로 신뢰하면 stale death line이 생겨 실패합니다.
 
 이 test는 repeated timing luck이 아니라 exact synchronization boundary를 조작합니다. 모든 monitor schedule, 전체 lock-order proof, output I/O failure를 포괄하지 않습니다.
 
-### 12.6 Invariant evolution 완성
+### 12.6 항상 유지해야 하는 조건 evolution 완성
 
-| Invariant | 최초 상태 | 부족함 | 복구 | evidence |
+| 항상 유지해야 하는 조건 | 최초 상태 | 부족함 | 복구 | evidence |
 | --- | --- | --- | --- | --- |
 | terminal state access는 `state_mutex` 사용 | `033ad537d166` state API | death/output과 atomic하게 결합되지 않음 | final monitor/logger에서도 유지 | boundary wrapper와 source trace |
 | ordinary output은 complete line 단위로 serialize | `033ad537d166` print lock | terminal ordering은 별도 | common nested order에 통합 | 후속 concurrency harness와 source trace |
@@ -3868,7 +3868,7 @@ ordinary logger
 - initial scan은 authoritative final truth가 아닙니다.
 - monitor polling은 strict detection latency를 보장하지 않습니다.
 - `printf` failure나 physical output delivery를 보장하지 않습니다.
-- lock order와 tests는 scheduler fairness 또는 starvation freedom을 제공하지 않습니다.
+- lock order와 tests는 scheduler fairness 또는 기아 상태 freedom을 제공하지 않습니다.
 ===== END FILE: 04-serialized-output-to-linearized-terminal-state.md =====
 
 ===== BEGIN FILE: 05-layered-evidence-for-concurrent-behavior.md =====
@@ -3878,7 +3878,7 @@ ordinary logger
 
 ## 1. Thread 목표
 
-이 Thread의 목표는 black-box smoke에서 output grammar, repeated concurrent schedules, focused logger race, ThreadSanitizer까지 verification이 어떻게 단계적으로 확장되는지 확인하고, 각 layer가 증명하는 것과 증명하지 않는 것을 분리하는 것입니다.
+이 Thread의 목표는 black-box smoke에서 output grammar, repeated concurrent schedules, focused logger race, ThreadSanitizer까지 검증이 어떻게 단계적으로 확장되는지 확인하고, 각 layer가 증명하는 것과 증명하지 않는 것을 분리하는 것입니다.
 
 Source-confirmed significance는 다음과 같습니다.
 
@@ -3888,9 +3888,9 @@ Source-confirmed significance는 다음과 같습니다.
 - focused race harness는 많은 logger와 death commit을 gate 뒤에서 겹치게 하여 terminal lock boundary를 직접 stress합니다.
 - ThreadSanitizer layer는 지원되는 환경에서 exercised memory access를 관찰하고, capability probe와 skip status로 infrastructure limitation을 project race와 구분합니다.
 - sanitizer workload도 semantic assertions를 유지하여 required work를 하지 않은 조기 실패가 false success가 되지 않게 합니다.
-- 어떤 layer도 fairness, starvation freedom, all schedules, formal deadlock freedom을 단독으로 증명하지 않습니다.
+- 어떤 layer도 fairness, 기아 상태 freedom, all schedules, formal 교착 상태 freedom을 단독으로 증명하지 않습니다.
 
-### Source에 명시적으로 연결된 Critical Invariants
+### Source에 명시적으로 연결된 Critical 항상 유지해야 하는 조건
 
 - observable log는 required grammar를 따르고 terminal death는 최대 한 번이며 뒤에 ordinary line이 없어야 합니다.
 - finite meal workloads는 intended global progress를 달성하고 death 없이 종료해야 합니다.
@@ -3899,37 +3899,37 @@ Source-confirmed significance는 다음과 같습니다.
 
 ### Source에 명시적으로 연결된 Major Engineering Difficulties
 
-- schedule-dependent behavior를 test하면서 repeated success를 exhaustive proof로 과장하지 않는 문제
+- schedule-dependent 동작을 test하면서 repeated success를 exhaustive proof로 과장하지 않는 문제
 - timeout, deterministic overlap, repeated workload, sanitizer가 서로 다른 failure class를 관찰하도록 계층화하는 문제
 - unsupported ThreadSanitizer compiler/runtime를 actual race 또는 project build failure와 구분하는 문제
 
 ## 2. 이 Thread를 이해하기 위한 핵심 질문
 
-- smoke test가 internal implementation을 몰라도 잡을 수 있는 contract failure는 무엇인가?
+- smoke test가 internal implementation을 몰라도 잡을 수 있는 contract failure는 무엇입니까?
 - timeout은 hang과 missed terminal condition을 어떤 observable result로 바꾸는가?
-- exact event order 대신 minimum work count를 사용하는 이유는 무엇인가?
+- exact event order 대신 minimum work count를 사용하는 이유는 무엇입니까?
 - log grammar validator는 expected substring test보다 어떤 corrupted output을 더 잡는가?
-- syntax validation과 event-order validation을 왜 분리하는가?
+- syntax 검증과 event-order 검증을 왜 분리하는가?
 - repeated workload는 어떤 schedule-sensitive symptom을 노출하며 왜 proof가 아닌가?
-- one-death/no-line-after-death assertion은 어떤 production terminal invariant와 연결되는가?
+- one-death/no-line-after-death assertion은 어떤 production terminal 항상 유지해야 하는 조건과 연결됩니까?
 - gated 12-logger harness는 일반 repeated run보다 어떤 boundary overlap을 의도적으로 높이는가?
 - ThreadSanitizer capability probe는 compiler unsupported, runtime unsupported, production failure를 어떻게 구분하는가?
 - skip status 77은 무엇을 의미하며 무엇을 의미하지 않는가?
-- sanitizer diagnostic 부재와 semantic progress assertion을 함께 유지해야 하는 이유는 무엇인가?
-- deterministic failure injection, repeated behavior test, dynamic race detector의 역할은 어떻게 다르고 보완적인가?
+- sanitizer diagnostic 부재와 semantic progress assertion을 함께 유지해야 하는 이유는 무엇입니까?
+- deterministic failure injection, repeated behavior test, dynamic race detector의 역할은 어떻게 다르고 보완적입니까?
 
 ## 3. 완료 기준
 
 - [x] smoke suite의 CLI, one-philosopher, finite completion, timeout contract를 실제 command/assertion으로 설명할 수 있습니다.
 - [x] minimum count와 exact schedule assertion의 차이를 설명할 수 있습니다.
 - [x] `awk` grammar가 허용·거부하는 line을 실제 condition으로 설명할 수 있습니다.
-- [x] finite/repeated/death workload matrix와 각 observable invariant를 표로 정리했습니다.
+- [x] finite/repeated/death workload matrix와 각 observable 항상 유지해야 하는 조건을 표로 정리했습니다.
 - [x] nondecreasing timestamp와 terminal-line-position check를 구현 수준에서 설명할 수 있습니다.
 - [x] 12-logger gate와 death path가 실제 production logger/terminal path를 통과함을 확인했습니다.
 - [x] TSAN probe, optional skip, required failure, production instrumentation을 구분할 수 있습니다.
 - [x] sanitizer options와 semantic assertions를 함께 설명할 수 있습니다.
 - [x] 각 layer의 증명 범위와 비증명 범위를 작성했습니다.
-- [x] test 통과를 fairness, starvation freedom, all-schedule race freedom으로 확대하지 않았습니다.
+- [x] test 통과를 fairness, 기아 상태 freedom, all-schedule race freedom으로 확대하지 않았습니다.
 
 ## 4. Commit map
 
@@ -3953,7 +3953,7 @@ Source-confirmed significance는 다음과 같습니다.
 
 #### Source-confirmed test 역할
 
-이 B-level smoke suite는 `make test`에서 executable의 public CLI와 output을 black-box로 검사합니다. temporary output은 trap으로 정리하고, potentially blocking simulation마다 separate timeout process를 사용해 deadlock 또는 missed termination을 bounded failure로 바꿉니다.
+이 B-level smoke suite는 `make test`에서 executable의 public CLI와 output을 black-box로 검사합니다. temporary output은 trap으로 정리하고, potentially blocking simulation마다 separate timeout process를 사용해 교착 상태 또는 missed termination을 bounded failure로 바꿉니다.
 
 cases는 invalid philosopher count, numeric overflow, one-philosopher fork acquisition과 death, finite meal schedules의 no-death completion을 포함합니다. meal assertion은 scheduler-dependent exact event order가 아니라 required global work threshold에 도달했음을 보이는 minimum count를 사용합니다.
 
@@ -3980,7 +3980,7 @@ cases는 invalid philosopher count, numeric overflow, one-philosopher fork acqui
 - [x] `make test`가 어떤 script 또는 target을 실행하는지 Makefile과 test file에서 확인합니다.
 - [x] temporary file/directory 생성과 trap cleanup을 확인합니다.
 - [x] 각 potentially blocking run에 timeout이 별도 process로 적용되는지 확인합니다.
-- [x] invalid philosopher count와 overflow input의 exact command, exit status, stderr assertion을 기록합니다.
+- [x] invalid philosopher count와 overflow input의 exact command, 종료 상태, stderr assertion을 기록합니다.
 - [x] single-philosopher run에서 fork event와 `died`를 각각 어떻게 검사하는지 확인합니다.
 - [x] finite meal schedules의 philosopher count, timing, meal target을 기록합니다.
 - [x] no-death assertion과 per-run completion 판단을 확인합니다.
@@ -3995,19 +3995,19 @@ cases는 invalid philosopher count, numeric overflow, one-philosopher fork acqui
 | 파일과 symbol | §12 완료 기록의 대응 근거 참조 |
 | 최소 코드 구간 | §12 완료 기록의 대응 근거 참조 |
 | caller → callee | §12 완료 기록의 대응 근거 참조 |
-| state 또는 ownership 변화 | §12 완료 기록의 대응 근거 참조 |
+| state 또는 소유권 변화 | §12 완료 기록의 대응 근거 참조 |
 | failure/cleanup 경로 | §12 완료 기록의 대응 근거 참조 |
 | 직전 상태와의 차이 | §12 완료 기록의 대응 근거 참조 |
 
 #### 보장 범위
 
 이 commit이 source 기준으로 보장하는 것:
-- 주요 invalid CLI, overflow, one-philosopher death, finite no-death completion을 executable public interface에서 반복 가능한 baseline으로 검증합니다.
+- 주요 invalid CLI, overflow, one-philosopher death, finite no-death completion을 executable public interface에서 반복 가능한 기준 상태로 검증합니다.
 - hang 또는 missed terminal condition을 timeout으로 bounded test failure로 바꿉니다.
 - scheduler-dependent exact ordering을 요구하지 않으면서 intended global work threshold를 검사합니다.
 
 이 commit 시점에 아직 보장하지 않거나 검증 범위를 넘는 것:
-- race freedom, all possible schedules, fairness, deadlock freedom 전체를 증명하지 않습니다.
+- race freedom, all possible schedules, fairness, 교착 상태 freedom 전체를 증명하지 않습니다.
 - internal lock order나 exact state linearization을 직접 검증하지 않습니다.
 - log grammar 전체와 terminal-line ordering은 후속 layers에서 강화됩니다.
 
@@ -4036,7 +4036,7 @@ validator는 valid scheduler ordering을 하나로 고정하지 않고 syntax만
 
 | 구분 | 학습자 기록 |
 | --- | --- |
-| 대상 production invariant | §12 완료 기록의 대응 근거 참조 |
+| 대상 production 항상 유지해야 하는 조건 | §12 완료 기록의 대응 근거 참조 |
 | numeric timestamp grammar | §12 완료 기록의 대응 근거 참조 |
 | positive philosopher id grammar | §12 완료 기록의 대응 근거 참조 |
 | 허용하는 다섯 status phrase | §12 완료 기록의 대응 근거 참조 |
@@ -4053,7 +4053,7 @@ validator는 valid scheduler ordering을 하나로 고정하지 않고 syntax만
 - [x] `awk` validator의 field count, numeric pattern, id positivity, allowed phrase 조건을 실제 code로 분해합니다.
 - [x] 다섯 status phrase를 test source에서 정확히 기록합니다.
 - [x] 빈 line, extra token, unknown phrase, nonnumeric timestamp가 각각 어떤 condition으로 reject되는지 확인합니다.
-- [x] validator exit status가 shell suite의 failure로 전파되는 방식을 확인합니다.
+- [x] validator 종료 상태가 shell suite의 failure로 전파되는 방식을 확인합니다.
 - [x] single, finite-meal, larger no-death workload output 각각에 validator가 적용되는 위치를 확인합니다.
 - [x] expected substring 검사가 통과해도 malformed extra line이 있으면 validator가 실패하는 이유를 확인합니다.
 - [x] event order를 검사하지 않는다는 것을 assertion 부재로 확인합니다.
@@ -4066,7 +4066,7 @@ validator는 valid scheduler ordering을 하나로 고정하지 않고 syntax만
 | 파일과 symbol | §12 완료 기록의 대응 근거 참조 |
 | 최소 코드 구간 | §12 완료 기록의 대응 근거 참조 |
 | caller → callee | §12 완료 기록의 대응 근거 참조 |
-| state 또는 ownership 변화 | §12 완료 기록의 대응 근거 참조 |
+| state 또는 소유권 변화 | §12 완료 기록의 대응 근거 참조 |
 | failure/cleanup 경로 | §12 완료 기록의 대응 근거 참조 |
 | 직전 상태와의 차이 | §12 완료 기록의 대응 근거 참조 |
 
@@ -4107,7 +4107,7 @@ validator는 valid scheduler ordering을 하나로 고정하지 않고 syntax만
 
 | 구분 | 학습자 기록 |
 | --- | --- |
-| 대상 production invariants | §12 완료 기록의 대응 근거 참조 |
+| 대상 production 항상 유지해야 하는 조건 | §12 완료 기록의 대응 근거 참조 |
 | finite workload matrix | §12 완료 기록의 대응 근거 참조 |
 | repeated seven-philosopher workload | §12 완료 기록의 대응 근거 참조 |
 | death workload matrix와 반복 | §12 완료 기록의 대응 근거 참조 |
@@ -4143,13 +4143,13 @@ validator는 valid scheduler ordering을 하나로 고정하지 않고 syntax만
 | 파일과 symbol | §12 완료 기록의 대응 근거 참조 |
 | 최소 코드 구간 | §12 완료 기록의 대응 근거 참조 |
 | caller → callee | §12 완료 기록의 대응 근거 참조 |
-| state 또는 ownership 변화 | §12 완료 기록의 대응 근거 참조 |
+| state 또는 소유권 변화 | §12 완료 기록의 대응 근거 참조 |
 | failure/cleanup 경로 | §12 완료 기록의 대응 근거 참조 |
 | 직전 상태와의 차이 | §12 완료 기록의 대응 근거 참조 |
 
 #### Evidence matrix
 
-| Evidence path | Workload 또는 injection | 관찰 invariant | 강점 | 남는 한계 |
+| Evidence path | Workload 또는 injection | 관찰 항상 유지해야 하는 조건 | 강점 | 남는 한계 |
 | --- | --- | --- | --- | --- |
 | finite executable runs | 2, 5, 17 philosophers | all reach target, no death | broad integration | schedule exhaustive 아님 |
 | repeated progress run | 7 philosophers 반복 | schedule-sensitive progress symptom | 반복으로 exposure 증가 | fairness proof 아님 |
@@ -4166,8 +4166,8 @@ validator는 valid scheduler ordering을 하나로 고정하지 않고 syntax만
 - focused logger-versus-death overlap으로 terminal lock-order decision을 직접 stress합니다.
 
 이 commit 시점에 아직 보장하지 않거나 검증 범위를 넘는 것:
-- 모든 scheduler interleaving, starvation freedom, fairness를 증명하지 않습니다.
-- 반복 통과가 formal deadlock-freedom proof는 아닙니다.
+- 모든 scheduler interleaving, 기아 상태 freedom, fairness를 증명하지 않습니다.
+- 반복 통과가 formal 교착 상태-freedom proof는 아닙니다.
 - dynamic data race detection은 다음 TSAN layer가 보완하지만 그것도 exhaustive하지 않습니다.
 
 #### 학습자 결론
@@ -4196,7 +4196,7 @@ script는 먼저 작은 pthread probe를 instrumented build/run합니다. compil
 
 | 구분 | 학습자 기록 |
 | --- | --- |
-| 대상 production invariant | §12 완료 기록의 대응 근거 참조 |
+| 대상 production 항상 유지해야 하는 조건 | §12 완료 기록의 대응 근거 참조 |
 | compiler configuration | §12 완료 기록의 대응 근거 참조 |
 | `TSAN_REQUIRED` 의미 | §12 완료 기록의 대응 근거 참조 |
 | pthread capability probe | §12 완료 기록의 대응 근거 참조 |
@@ -4219,7 +4219,7 @@ script는 먼저 작은 pthread probe를 instrumented build/run합니다. compil
 - [x] `TSAN_REQUIRED`의 default와 required mode 분기를 확인합니다.
 - [x] 작은 pthread probe source, compile command, run command를 확인합니다.
 - [x] compiler unsupported와 runtime unsupported를 project build/test failure와 구분하는 조건을 확인합니다.
-- [x] optional mode에서 skip message와 exit status 77이 나오는 모든 path를 기록합니다.
+- [x] optional mode에서 skip message와 종료 상태 77이 나오는 모든 path를 기록합니다.
 - [x] required mode에서는 같은 capability failure가 어떤 non-skip failure로 전환되는지 확인합니다.
 - [x] complete executable rebuild에 `-fsanitize=thread`와 debug information이 compile/link 모두 적용되는지 확인합니다.
 - [x] `TSAN_OPTIONS`의 `halt_on_error`와 dedicated `exitcode` 값을 확인합니다.
@@ -4234,7 +4234,7 @@ script는 먼저 작은 pthread probe를 instrumented build/run합니다. compil
 | 파일과 symbol | §12 완료 기록의 대응 근거 참조 |
 | 최소 코드 구간 | §12 완료 기록의 대응 근거 참조 |
 | caller → callee | §12 완료 기록의 대응 근거 참조 |
-| state 또는 ownership 변화 | §12 완료 기록의 대응 근거 참조 |
+| state 또는 소유권 변화 | §12 완료 기록의 대응 근거 참조 |
 | failure/cleanup 경로 | §12 완료 기록의 대응 근거 참조 |
 | 직전 상태와의 차이 | §12 완료 기록의 대응 근거 참조 |
 
@@ -4255,11 +4255,11 @@ script는 먼저 작은 pthread probe를 instrumented build/run합니다. compil
 이 commit이 source 기준으로 보장하는 것:
 - 지원되는 환경에서 instrumented production workloads의 exercised memory access에 대해 ThreadSanitizer 검사를 수행합니다.
 - sanitizer support 부재를 project race 또는 build defect와 혼동하지 않도록 capability probe와 skip semantics를 둡니다.
-- instrumented run도 required observable work와 terminal invariants를 수행해야 통과합니다.
+- instrumented run도 required observable work와 terminal 항상 유지해야 하는 조건을 수행해야 통과합니다.
 
 이 commit 시점에 아직 보장하지 않거나 검증 범위를 넘는 것:
 - ThreadSanitizer 통과가 모든 schedule의 race freedom을 증명하지 않습니다.
-- deadlock freedom, fairness, starvation freedom, strict timing을 증명하지 않습니다.
+- 교착 상태 freedom, fairness, 기아 상태 freedom, strict timing을 증명하지 않습니다.
 - unsupported environment의 skip은 project correctness success를 의미하지 않습니다.
 
 #### 학습자 결론
@@ -4268,11 +4268,11 @@ script는 먼저 작은 pthread probe를 instrumented build/run합니다. compil
 - [x] sanitizer diagnostic 부재와 semantic work completion을 함께 검사해야 하는 이유를 설명합니다.
 - [x] deterministic boundary tests, repeated workload, TSAN이 서로 대체되지 않고 보완하는 이유를 설명합니다.
 
-## 6. Invariant ledger
+## 6. 항상 유지해야 하는 조건 ledger
 
-이 Thread에서는 production invariant 자체보다 그것을 관찰하는 evidence layer의 도입 순서를 기록합니다.
+이 Thread에서는 production 항상 유지해야 하는 조건 자체보다 그것을 관찰하는 evidence layer의 도입 순서를 기록합니다.
 
-| Production invariant 또는 risk | 최초 evidence | 강화된 evidence | 동적 evidence | 실제 test code 근거 | 최종 해석 |
+| Production 항상 유지해야 하는 조건 또는 risk | 최초 evidence | 강화된 evidence | 동적 evidence | 실제 test code 근거 | 최종 해석 |
 | --- | --- | --- | --- | --- | --- |
 | invalid input과 overflow가 public boundary에서 거부됨 | `bd6bb8eb18f4` | 기존 smoke 유지 | TSAN 범위의 핵심 대상은 아님 | §12 완료 기록의 대응 근거 참조 | §12 완료 기록의 대응 근거 참조 |
 | one-philosopher run이 hang하지 않고 fork/death behavior를 보임 | `bd6bb8eb18f4` timeout + content | format validator 적용 | instrumented death workload 일부와 구분 | §12 완료 기록의 대응 근거 참조 | §12 완료 기록의 대응 근거 참조 |
@@ -4359,10 +4359,10 @@ capability-probed ThreadSanitizer
 
 - public smoke, grammar validation, repeated schedule stress, focused terminal contention, ThreadSanitizer가 서로 다른 evidence layer를 이룹니다.
 - timeout은 hangs를 bounded failures로 만들고 grammar validator는 expected substring만으로 놓치는 malformed output을 잡습니다.
-- repeated workloads와 logger gate는 schedule-sensitive observable invariants를 더 강하게 자극합니다.
+- repeated workloads와 logger gate는 schedule-sensitive observable 항상 유지해야 하는 조건을 더 강하게 자극합니다.
 - supported environment의 TSAN은 exercised memory access를 관찰하며 semantic progress와 terminal assertions를 함께 요구합니다.
 - unsupported sanitizer infrastructure는 skip status로 project race와 분리됩니다.
-- 이 verification stack은 fairness, starvation freedom, deadlock freedom의 formal proof 또는 all-schedule race freedom을 제공하지 않습니다.
+- 이 verification stack은 fairness, 기아 상태 freedom, 교착 상태 freedom의 formal proof 또는 all-schedule race freedom을 제공하지 않습니다.
 
 ### 학습자가 작성할 최종 설명
 
@@ -4377,7 +4377,7 @@ capability-probed ThreadSanitizer
 - 각 layer가 놓치는 failure: §12 완료 기록의 대응 근거에 정리했습니다.
 - 전체 evidence를 해석하는 기준: §12 완료 기록의 대응 근거에 정리했습니다.
 
-## 10. 최종 architecture 또는 execution flow 정리
+## 10. 최종 architecture 또는 실행 순서 정리
 
 ```text
 make test
@@ -4431,7 +4431,7 @@ make test-tsan
 - [x] `20f8270c78bb`의 compiler/runtime probe와 skip 77을 설명했습니다.
 - [x] optional environment limitation과 project race/build failure를 구분했습니다.
 - [x] instrumented run의 semantic assertions가 required work를 재검사하는 이유를 설명했습니다.
-- [x] repeated success나 TSAN success를 fairness, deadlock freedom, all-schedule proof로 확대하지 않았습니다.
+- [x] repeated success나 TSAN success를 fairness, 교착 상태 freedom, all-schedule proof로 확대하지 않았습니다.
 
 ## 12. 저장소 기반 완료 기록
 
@@ -4447,7 +4447,7 @@ make test-tsan
 
 #### timeout mechanism
 
-`run_timeout`은 target command를 background로 실행하고 별도 guard process가 limit 뒤 `SIGTERM`을 보냅니다. command가 먼저 끝나면 guard를 종료합니다. deadlock, single-philosopher self-block, missed completion을 무한 test hang이 아니라 bounded failure로 바꿉니다.
+`run_timeout`은 target command를 background로 실행하고 별도 guard process가 limit 뒤 `SIGTERM`을 보냅니다. command가 먼저 끝나면 guard를 종료합니다. 교착 상태, single-philosopher self-block, missed completion을 무한 test hang이 아니라 bounded failure로 바꿉니다.
 
 이 timeout은 내부 root cause를 식별하지 않습니다. 단지 public command가 제한 안에 종료하지 못했다는 observable failure를 만듭니다.
 
@@ -4465,7 +4465,7 @@ meal log 수는 exact count가 아니라 lower bound입니다. final target 이�
 
 #### 증명 범위
 
-smoke는 public executable의 argument handling, bounded termination, basic single/final-meal behavior를 폭넓게 잡습니다. internal lock order, data race, 모든 schedule, fairness는 검사하지 않습니다.
+smoke는 public executable의 argument handling, bounded termination, basic single/final-meal 동작을 폭넓게 잡습니다. internal lock order, data race, 모든 schedule, fairness는 검사하지 않습니다.
 
 ### 12.3 `f145d33f2773` — output language를 executable contract로 고정
 
@@ -4549,7 +4549,7 @@ loggers를 release한 직후 production `philo_try_log_death`를 호출합니다
 
 ### 12.5 `20f8270c78bb` — capability-probed ThreadSanitizer
 
-#### entry point와 configuration
+#### 진입점과 configuration
 
 - Make target: `make test-tsan`
 - compiler: `TSAN_CC`, default `cc`
@@ -4604,11 +4604,11 @@ sanitizer diagnostic이 없다는 이유만으로 통과하지 않습니다. ins
 
 #### 증명 범위
 
-TSAN success는 실행된 workloads와 실제로 발생한 memory accesses에 대한 dynamic evidence입니다. 실행되지 않은 schedule, deadlock, fairness, starvation freedom, strict timing을 증명하지 않습니다.
+TSAN success는 실행된 workloads와 실제로 발생한 memory accesses에 대한 dynamic evidence입니다. 실행되지 않은 schedule, 교착 상태, fairness, 기아 상태 freedom, strict timing을 증명하지 않습니다.
 
 ### 12.6 Verification progression 완성
 
-| risk 또는 invariant | smoke | format | concurrency/focused | TSAN |
+| risk 또는 항상 유지해야 하는 조건 | smoke | format | concurrency/focused | TSAN |
 | --- | --- | --- | --- | --- |
 | invalid CLI/overflow | exit와 usage/content | 해당 없음 | 해당 없음 | 핵심 대상 아님 |
 | one-philosopher hang/death | timeout + fork/death substring | line grammar | 별도 workload가 주 대상은 아님 | instrumented death workload와 구분 |
@@ -4660,7 +4660,7 @@ TSAN success는 실행된 workloads와 실제로 발생한 memory accesses에 �
 
 - 반복 중 선택되지 않은 schedule
 - symptom이 없는 latent data race
-- formal fairness/deadlock proof
+- formal fairness/교착 상태 proof
 
 #### ThreadSanitizer
 
@@ -4672,7 +4672,7 @@ TSAN success는 실행된 workloads와 실제로 발생한 memory accesses에 �
 놓치는 것:
 
 - 실행되지 않은 code/schedule의 race
-- deadlock, starvation, fairness, real-time timing
+- 교착 상태, 기아 상태, fairness, real-time timing
 - unsupported environment에서의 project correctness 판단
 
 ### 12.8 최종 verification flow
@@ -4706,7 +4706,7 @@ make test-tsan
 
 ### 12.9 최종 해석
 
-이 Thread의 결과는 하나의 “test가 충분하다”는 결론이 아닙니다. 각 layer가 다른 관찰 실패를 줄입니다.
+이 Thread의 결과는 하나의 “test가 충분합니다”는 결론이 아닙니다. 각 layer가 다른 관찰 실패를 줄입니다.
 
 - deterministic failure injection은 특정 error branch와 ledger mutation을 직접 만듭니다.
 - boundary injection은 오래된 synchronization gap을 정확히 재현합니다.
@@ -4714,7 +4714,7 @@ make test-tsan
 - focused gated harness는 특정 contention boundary의 overlap을 높입니다.
 - TSAN은 supported environment에서 exercised memory access를 동적으로 검사합니다.
 
-이 evidence stack이 모두 통과해도 all-schedule race freedom, formal deadlock freedom, fairness, starvation freedom을 증명한 것으로 해석하면 안 됩니다. 반대로 TSAN이 unsupported여서 77로 skip된 경우에도 project가 통과했다고 볼 수 없습니다.
+이 evidence stack이 모두 통과해도 all-schedule race freedom, formal 교착 상태 freedom, fairness, 기아 상태 freedom을 증명한 것으로 해석하면 안 됩니다. 반대로 TSAN이 unsupported여서 77로 skip된 경우에도 project가 통과했다고 볼 수 없습니다.
 ===== END FILE: 05-layered-evidence-for-concurrent-behavior.md =====
 
 ===== BEGIN FILE: README.md =====
@@ -4726,7 +4726,7 @@ make test-tsan
 
 `설계 → 구현 → 실패 가능성 또는 실제 결함 → 수정 → 검증`
 
-문서에 미리 적힌 Thread 구성, commit 순서, SHA, subject, importance, tags, 역할과 source-confirmed invariant는 고정 정보입니다. 학습자는 이를 재평가하지 않고, 각 SHA에서 확인한 실제 코드 근거와 실행 결과만 빈 기록란에 추가합니다.
+문서에 미리 적힌 Thread 구성, commit 순서, SHA, subject, importance, tags, 역할과 source-confirmed 항상 유지해야 하는 조건은 고정 정보입니다. 학습자는 이를 재평가하지 않고, 각 SHA에서 확인한 실제 코드 근거와 실행 결과만 빈 기록란에 추가합니다.
 
 ## 2. 권장 학습 순서
 
@@ -4748,7 +4748,7 @@ Thread 순서는 source에 정의된 Development Threads의 순서를 따릅니�
 2. `Commit map`에서 source가 확정한 순서와 역할을 확인합니다.
 3. commit마다 반드시 해당 SHA로 이동하거나 해당 SHA의 파일을 직접 엽니다.
 4. source-confirmed 설명과 실제 코드를 구분하여 기록합니다.
-5. `Invariant ledger`에서 invariant가 도입·강화·실패·복구·검증되는 지점을 연결합니다.
+5. `Invariant ledger`에서 항상 유지해야 하는 조건이 도입·강화·실패·복구·검증되는 지점을 연결합니다.
 6. `Failure → Fix → Test`에서 수정 commit을 독립 feature가 아니라 기존 가정의 수정으로 복원합니다.
 7. 마지막에 Thread 최종 상태와 architecture 또는 execution flow를 자신의 코드 근거로 작성합니다.
 
@@ -4758,7 +4758,7 @@ Thread 순서는 source에 정의된 Development Threads의 순서를 따릅니�
 - 최소 코드 구간
 - caller와 callee
 - state mutation 전후 순서
-- ownership 또는 borrow 관계
+- 소유권 또는 borrow 관계
 - lock 획득·해제 순서
 - 실패 분기와 반환 상태
 - cleanup 경로와 ledger 변화
@@ -4788,10 +4788,10 @@ git switch --detach <sha>
 
 | Importance | 기록 깊이 |
 | --- | --- |
-| S | 프로젝트를 설명하는 핵심 architecture 또는 invariant로 다룹니다. 문제, 직전 상태, 실패 가능성, 핵심 결정, 실제 핵심 코드, ownership·lifecycle·state transition, 후속 fix와 test까지 연결합니다. |
-| A | 주요 subsystem, boundary, failure path, integration point를 설명할 수 있어야 합니다. 핵심 코드와 설계 판단, 수정 전 가정, regression evidence를 확인합니다. |
+| S | 프로젝트를 설명하는 핵심 architecture 또는 항상 유지해야 하는 조건으로 다룹니다. 문제, 직전 상태, 실패 가능성, 핵심 결정, 실제 핵심 코드, 소유권·lifecycle·상태 전이, 후속 fix와 test까지 연결합니다. |
+| A | 주요 subsystem, boundary, 실패 처리, integration point를 설명할 수 있어야 합니다. 핵심 코드와 설계 판단, 수정 전 가정, regression evidence를 확인합니다. |
 | B | Thread 흐름에서 맡는 구현 역할과 필요한 코드·상태 변화를 확인합니다. S/A와 같은 분량을 기계적으로 요구하지 않습니다. |
-| C | Thread 이해에 필요한 맥락만 기록합니다. 실행 mechanism 또는 invariant를 만들지 않는 commit에 과도한 분석란을 채우지 않습니다. |
+| C | Thread 이해에 필요한 맥락만 기록합니다. 실행 mechanism 또는 항상 유지해야 하는 조건을 만들지 않는 commit에 과도한 분석란을 채우지 않습니다. |
 
 ## 6. 실제 코드 삽입 기준
 
@@ -4822,7 +4822,7 @@ line 범위 또는 주변 문맥:
 
 Test commit에서는 production 설명과 test technique을 분리합니다. 각 기록에는 반드시 다음을 포함합니다.
 
-- 대상으로 삼는 production invariant
+- 대상으로 삼는 production 항상 유지해야 하는 조건
 - 재현하는 failure 또는 boundary
 - 사용하는 technique
 - 실제로 통과하는 production 코드 경로
@@ -4832,7 +4832,7 @@ Test commit에서는 production 설명과 test technique을 분리합니다. 각
 - broad integration test인지 deterministic regression인지
 - 후속 변경에서 막아야 하는 회귀
 
-테스트가 timeout, wrapper, macro substitution, child process, 반복 실행, sanitizer를 사용한다면 그 장치가 어떤 불확실성을 제거하거나 어떤 한계를 남기는지 기록합니다. 한 번 통과한 실행을 race freedom, fairness, deadlock freedom 또는 모든 schedule의 증명으로 확대하지 않습니다.
+테스트가 timeout, wrapper, macro substitution, child process, 반복 실행, sanitizer를 사용한다면 그 장치가 어떤 불확실성을 제거하거나 어떤 한계를 남기는지 기록합니다. 한 번 통과한 실행을 race freedom, fairness, 교착 상태 freedom 또는 모든 schedule의 증명으로 확대하지 않습니다.
 
 ## 8. 문서 완료 기준
 
@@ -4840,12 +4840,12 @@ Test commit에서는 production 설명과 test technique을 분리합니다. 각
 
 - 모든 Thread의 commit을 source 순서대로 검토했습니다.
 - 모든 기록이 해당 SHA의 코드 또는 해당 SHA에서 실행한 test 결과를 가리킵니다.
-- S commit마다 architecture, invariant, failure, 후속 fix/test의 연결을 설명할 수 있습니다.
-- A commit마다 주요 boundary 또는 failure path와 설계 판단을 설명할 수 있습니다.
+- S commit마다 architecture, 항상 유지해야 하는 조건, failure, 후속 fix/test의 연결을 설명할 수 있습니다.
+- A commit마다 주요 boundary 또는 실패 처리와 설계 판단을 설명할 수 있습니다.
 - B/C commit을 필요 이상으로 부풀리지 않았습니다.
-- fix마다 기존 가정, failure 또는 위험, root cause, 수정된 invariant, 실제 수정 코드, regression evidence가 연결됩니다.
+- fix마다 기존 가정, failure 또는 위험, root cause, 수정된 항상 유지해야 하는 조건, 실제 수정 코드, regression evidence가 연결됩니다.
 - test마다 증명 범위와 비증명 범위가 분리되어 있습니다.
-- 각 Invariant ledger가 도입·강화·부족함·복구·검증의 흐름을 보여 줍니다.
+- 각 항상 유지해야 하는 조건 ledger가 도입·강화·부족함·복구·검증의 흐름을 보여 줍니다.
 - Thread 최종 상태와 architecture 또는 execution flow를 commit history에 근거해 설명할 수 있습니다.
 - final HEAD를 과거 commit의 근거로 사용한 기록이 없습니다.
 
@@ -4878,7 +4878,7 @@ Test commit에서는 production 설명과 test technique을 분리합니다. 각
 | `04-serialized-output-to-linearized-terminal-state.md` | `b8b6de07d7567f4d389654d5ea2e5a290e0ebda8` |
 | `05-layered-evidence-for-concurrent-behavior.md` | `40cacef3a1d6c0b3fd7f4d5f7af800563984e28c` |
 
-고정된 Thread 구성, commit map, SHA, subject, importance, tags, source-defined role과 invariant 문구는 유지했습니다. learner-facing checkbox·빈 표·빈 결론란만 완료 상태로 바꾸고, 각 문서의 `§12 저장소 기반 완료 기록`에 실제 SHA별 근거를 추가했습니다.
+고정된 Thread 구성, commit map, SHA, subject, importance, tags, source-defined role과 항상 유지해야 하는 조건 문구는 유지했습니다. learner-facing checkbox·빈 표·빈 결론란만 완료 상태로 바꾸고, 각 문서의 `§12 저장소 기반 완료 기록`에 실제 SHA별 근거를 추가했습니다.
 
 ### branch ancestry 검증
 
@@ -4912,7 +4912,7 @@ bd6bb8eb18f4  f145d33f2773  3d24bea01441  20f8270c78bb
 
 | Thread | 최종 복원 결과 |
 | --- | --- |
-| 01 | table ownership과 partial-init ledger가 successful join 기반 destruction permission 및 `PHILO_UNSAFE`/`_exit`까지 확장됩니다. |
+| 01 | table 소유권과 partial-init ledger가 successful join 기반 destruction permission 및 `PHILO_UNSAFE`/`_exit`까지 확장됩니다. |
 | 02 | wall-clock helper가 monotonic `int64_t` time model로 교정되고 all-ready barrier가 one shared start epoch를 publish합니다. |
 | 03 | fork acquisition attempt가 full-duration·active-state recheck를 통과한 committed meal progress로 정교화되며 internal counter range가 확장됩니다. |
 | 04 | complete-line serialization이 fresh death revalidation과 common lock order를 통한 terminal-state linearization으로 강화됩니다. |
@@ -4945,4 +4945,3 @@ validator는 다음을 확인했습니다.
 - unchecked checkbox, 빈 table cell, 비어 있는 결론 placeholder가 남지 않았습니다.
 - fenced code block과 Markdown table 구조가 유효하고 모든 파일을 CommonMark parser가 읽었습니다.
 ===== END FILE: README.md =====
-

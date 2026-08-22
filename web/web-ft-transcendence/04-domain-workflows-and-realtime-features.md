@@ -1,3228 +1,3228 @@
 ===== BEGIN FILE: 01-tournament-contract-schema-and-bracket-construction.md =====
 # 토너먼트 계약·스키마와 대진 구성
 
-원문 Development Thread: `Tournament contract, schema, and bracket construction`
+원문 개발 스레드: `Tournament contract, schema, and bracket construction`
 
-## 1. Thread 목표
+## 1. 개발 스레드 목표
 
-- 단순 참가자 목록에서 독립적인 tournament-match read model과 영속 상태로 이동하는 과정을 추적합니다.
-- 4인 대회의 seed 배치, 준결승 생성, 결승 생성 조건과 PostgreSQL/memory 구현의 동작 일치를 복원합니다.
-- 화면에서 추정한 대진표가 persisted match를 소비하는 UI로 교체되는 지점을 확인합니다.
+- 단순 참가자 목록에서 독립적인 토너먼트 경기 조회 모델과 영속 상태로 이동하는 과정을 추적합니다.
+- 4인 대회의 시드 배치, 준결승 생성, 결승 생성 조건과 PostgreSQL/메모리 구현의 동작 일치를 복원합니다.
+- 화면에서 추정한 대진표가 저장된 경기를 소비하는 UI로 교체되는 지점을 확인합니다.
 
-### Source에서 확정된 significance
+### 원문에서 확인한 중요성
 
-> Entries alone cannot represent round, slot, room assignment, persisted game linkage, score, winner, or independent match lifecycle. The history introduces those facts as stored tournament-match state and then makes both realtime play and the web bracket consume that state.
+> 참가 기록만으로는 라운드, 슬롯, 경기방 배정, 저장된 일반 경기와의 연결, 점수, 승자, 개별 경기 수명주기를 표현할 수 없습니다. 이후 커밋은 이를 토너먼트 경기 상태로 저장하고 실시간 플레이와 웹 대진표가 같은 상태를 사용하도록 바꿉니다.
 
-### 직접 연결되는 Critical Invariants
+### 직접 연결되는 핵심 불변 조건
 
-> Tournament bracket state is persisted once and read by every consumer instead of being independently reconstructed from entry order.
+> 토너먼트 대진 상태는 한 번 저장하며, 각 소비자는 참가 순서에서 대진을 따로 재구성하지 않고 저장된 상태를 읽습니다.
 >
-> A four-player bracket is seeded as 1–4 and 2–3; the final exists only after both semifinals have finished with winners.
+> 4인 대진은 1번–4번, 2번–3번 시드로 구성하며, 두 준결승이 승자를 확정한 뒤에만 결승이 생성됩니다.
 
-### 직접 연결되는 Major Engineering Difficulties
+### 직접 연결되는 주요 구현 난점
 
-> Keeping shared contracts, SQL schema, row mapping, PostgreSQL behavior, memory behavior, and web rendering aligned while the model expands.
+> 모델을 확장하면서 공유 계약, SQL 스키마, 행 변환, PostgreSQL과 메모리 구현, 웹 렌더링의 의미를 일치시켜야 합니다.
 >
-> Distinguishing participant admission from bracket construction and distinguishing a tournament match from the generic persisted game result linked later.
+> 참가 승인과 대진 생성을 구분하고, 토너먼트 경기와 나중에 연결되는 일반 경기 결과도 구분해야 합니다.
 
-## 2. 이 Thread를 이해하기 위한 핵심 질문
+## 2. 이 개발 스레드를 이해하기 위한 핵심 질문
 
-- 초기 repository와 화면은 참가 순서에서 seed와 bracket을 어떻게 추정했으며 어떤 정보를 표현하지 못했습니까?
-- `TournamentMatchSummary`, `tournament_matches`, row mapper는 각각 어떤 형태의 데이터를 소유합니까?
+- 초기 저장소와 화면은 참가 순서에서 시드와 대진을 어떻게 추정했으며 어떤 정보를 표현하지 못했습니까?
+- `TournamentMatchSummary`, `tournament_matches`, 행 변환기는 각각 어떤 형태의 데이터를 소유합니까?
 - 4번째 참가자가 들어왔을 때 1–4, 2–3 준결승이 어떤 SQL/메서드에서 생성됩니까?
-- 준결승 두 경기가 끝나기 전후 결승 row 생성 조건은 PostgreSQL과 memory에서 어떻게 맞춰집니까?
+- 준결승 두 경기가 끝나기 전후 결승 행 생성 조건은 PostgreSQL과 메모리에서 어떻게 맞춰집니까?
 - UI는 언제부터 `entries.slice(...)` 대신 `TournamentSummary.matches`를 신뢰합니까?
 
 ## 3. 완료 기준
 
-- entry-only 모델과 persisted tournament-match 모델의 표현 차이를 실제 타입·컬럼·mapper로 설명할 수 있습니다.
-- 4인 bracket 생성과 결승 생성의 선행 조건을 PostgreSQL과 memory 구현에서 각각 추적할 수 있습니다.
-- tournament-match ID, room ID, generic match ID가 서로 다른 수명과 역할을 갖는 이유를 설명할 수 있습니다.
-- 초기 placeholder bracket이 persisted match 기반 화면으로 교체되는 호출 흐름을 그릴 수 있습니다.
-- Commit map의 모든 SHA를 지정 브랜치 ancestry와 source classification에서 확인합니다.
-- 각 SHA의 parent 또는 직전 관련 SHA와 비교해 변경 전후 상태를 구분합니다.
-- 실행한 명령과 코드 검사만으로 확인한 사실을 구분하고 실행하지 않은 test를 통과했다고 기록하지 않습니다.
+- 참가 기록만 있는 모델과 저장된 토너먼트 경기 모델의 표현 차이를 실제 타입·컬럼·변환기로 설명할 수 있습니다.
+- 4인 대진 생성과 결승 생성의 선행 조건을 PostgreSQL과 메모리 구현에서 각각 추적할 수 있습니다.
+- 토너먼트 경기 ID, 경기방 ID, 일반 경기 ID가 서로 다른 수명과 역할을 갖는 이유를 설명할 수 있습니다.
+- 초기 임시 대진표가 저장된 경기 기반 화면으로 교체되는 호출 흐름을 그릴 수 있습니다.
+- 커밋 목록의 모든 SHA를 지정 브랜치의 커밋 이력과 원문 분류에서 확인합니다.
+- 각 SHA를 부모 커밋 또는 직전 관련 SHA와 비교해 변경 전후 상태를 구분합니다.
+- 실행한 명령과 코드 검사만으로 확인한 사실을 구분하고 실행하지 않은 테스트를 통과했다고 기록하지 않습니다.
 
-## 4. Commit map
+## 4. 커밋 목록
 
-| 순서 | SHA | Subject | Importance | Tags | Source에서 확정된 역할 |
+| 순서 | SHA | 제목 | 중요도 | 태그 | 원문에서 확인한 역할 |
 | ---: | --- | --- | :---: | --- | --- |
-| 1 | `34c80874f13f` | `feat(db): 토너먼트 row contract 정의` | B | PERSISTENCE, TOURNAMENT | Defines typed persistence representations needed to map tournaments into the shared application contract. |
-| 2 | `9b1dabcc4bb4` | `feat(db): 토너먼트 참가 저장 구현` | B | PERSISTENCE, TOURNAMENT | Implements tournament creation, listing, and joining through the common repository interface. |
-| 3 | `4370ac3162b2` | `feat(web): 토너먼트 대진표 화면 추가` | B | TOURNAMENT, WEB | Adds the first tournament page and connects tournament listing and creation to the HTTP API. |
-| 4 | `11e4c3dda1aa` | `feat(tournament): 대진 경기 contract 정의` | B | REALTIME, TOURNAMENT, WEB | Adds a shared tournament-match summary with bracket position, lifecycle, participants, winner, score, room, and persisted-match identifiers. |
-| 5 | `138e5b8590b6` | `feat(tournament): 대진 경기 schema 추가` | B | REALTIME, PERSISTENCE, TOURNAMENT | Introduces a dedicated `tournament_matches` persistence model instead of deriving every round from entries or generic game records. |
-| 6 | `4021a437e7e0` | `feat(tournament): 대진 row mapper 정의` | B | REALTIME, PERSISTENCE, TOURNAMENT | Adds explicit mapping from database tournament-match rows to application records and public summaries. |
-| 7 | `53579ad0f0bf` | `feat(tournament): 대진 경기 lifecycle 저장 구현` | A | REALTIME, PERSISTENCE, TOURNAMENT | Adds tournament-match read/start/complete operations to `AppRepository` and both repository implementations. |
-| 8 | `0d6824683677` | `feat(tournament): 준결승 대진 생성과 조회 구현` | A | TOURNAMENT | Creates semifinal bracket rows at four-player capacity and includes persisted matches in tournament summaries. |
-| 9 | `b01adf728ca0` | `feat(tournament): memory 대진 진행 구현` | B | PERSISTENCE, TOURNAMENT | Aligns the in-memory tournament flow behaviorally with PostgreSQL. |
-| 10 | `b0a1505c6a0f` | `feat(tournament): 플레이 가능한 대진 UI 연결` | B | PROTOCOL, REALTIME, TOURNAMENT | Replaces the placeholder bracket with persisted matches and links eligible participants directly to realtime play. |
+| 1 | `34c80874f13f` | `feat(db): 토너먼트 row contract 정의` | B | PERSISTENCE, TOURNAMENT | 토너먼트 데이터를 공유 애플리케이션 계약으로 변환하는 데 필요한 영속 저장 타입을 정의합니다. |
+| 2 | `9b1dabcc4bb4` | `feat(db): 토너먼트 참가 저장 구현` | B | PERSISTENCE, TOURNAMENT | 공통 저장소 인터페이스를 통해 토너먼트 생성, 목록 조회, 참가를 구현합니다. |
+| 3 | `4370ac3162b2` | `feat(web): 토너먼트 대진표 화면 추가` | B | TOURNAMENT, WEB | 첫 토너먼트 화면을 추가하고 목록 조회와 생성을 HTTP API에 연결합니다. |
+| 4 | `11e4c3dda1aa` | `feat(tournament): 대진 경기 contract 정의` | B | REALTIME, TOURNAMENT, WEB | 대진 위치, 수명주기, 참가자, 승자, 점수, 경기방, 영속 경기 식별자를 포함하는 공유 토너먼트 경기 요약을 추가합니다. |
+| 5 | `138e5b8590b6` | `feat(tournament): 대진 경기 schema 추가` | B | REALTIME, PERSISTENCE, TOURNAMENT | 참가 기록이나 일반 경기 기록에서 매 라운드를 추정하는 대신 전용 `tournament_matches` 영속 저장 모델을 도입합니다. |
+| 6 | `4021a437e7e0` | `feat(tournament): 대진 row mapper 정의` | B | REALTIME, PERSISTENCE, TOURNAMENT | 데이터베이스의 토너먼트 경기 행을 애플리케이션 레코드와 공개 요약으로 명시적으로 변환합니다. |
+| 7 | `53579ad0f0bf` | `feat(tournament): 대진 경기 lifecycle 저장 구현` | A | REALTIME, PERSISTENCE, TOURNAMENT | `AppRepository`와 두 저장소 구현에 토너먼트 경기 조회·시작·완료 연산을 추가합니다. |
+| 8 | `0d6824683677` | `feat(tournament): 준결승 대진 생성과 조회 구현` | A | TOURNAMENT | 참가자 네 명이 모이면 준결승 대진 행을 만들고 토너먼트 요약에 영속 경기 목록을 포함합니다. |
+| 9 | `b01adf728ca0` | `feat(tournament): memory 대진 진행 구현` | B | PERSISTENCE, TOURNAMENT | 메모리 토너먼트 진행 동작을 PostgreSQL 구현과 맞춥니다. |
+| 10 | `b0a1505c6a0f` | `feat(tournament): 플레이 가능한 대진 UI 연결` | B | PROTOCOL, REALTIME, TOURNAMENT | 임시 대진표를 영속 경기 데이터로 교체하고 참가 가능한 사용자를 실시간 경기에 직접 연결합니다. |
 
-## 5. Commit별 학습 기록
+## 5. 커밋별 학습 기록
 
 ### 5.1. `feat(db): 토너먼트 row contract 정의`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `34c80874f13f` |
-| Importance | B |
-| Tags | PERSISTENCE, TOURNAMENT |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | PERSISTENCE, TOURNAMENT |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Defines typed persistence representations needed to map tournaments into the shared application contract.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 토너먼트 데이터를 공유 애플리케이션 계약으로 변환하는 데 필요한 영속 저장 타입을 정의합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `packages/db/src/schema.ts`의 tournament/entry row 타입과 projection
-- `packages/db/src/rowMappers.ts`의 tournament 변환 경계
-- `packages/shared/src/http.ts`의 `TournamentSummary`와 사용자 projection
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
+- `packages/db/src/schema.ts`의 토너먼트/참가 기록 행 타입과 변환 결과
+- `packages/db/src/rowMappers.ts`의 토너먼트 변환 경계
+- `packages/shared/src/http.ts`의 `TournamentSummary`와 사용자 변환 결과
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:34c80874f13f -->
-- **직전 상태:** repository에는 사용자·세션·경기 등은 있었지만 tournament row를 공유 HTTP 모델로 바꾸는 typed 표현이 없었습니다.
-- **구현 결정:** DB row의 snake_case 필드와 application의 camelCase summary를 분리하고, creator와 entries를 명시적으로 projection할 기반을 추가했습니다.
-- **상태/소유권 변화:** 이 commit은 lifecycle 동작을 만들지 않고 “DB 형태를 application contract로 변환하는 책임”을 database package에 둡니다.
-- **실패/edge:** 참가자 목록이 없거나 creator join projection이 불완전한 경우를 이 commit 자체가 해결하지는 않습니다.
-- **보장/비보장:** typed row와 mapping 경계는 보장하지만 생성·참가·capacity·bracket 생성은 아직 없습니다.
-- **다음 연결:** `9b1dabcc4bb4`가 이 표현 위에 실제 tournament 생성·목록·참가 저장을 추가합니다.
+- **직전 상태:** 저장소에는 사용자·세션·경기 등은 있었지만 토너먼트 행을 공유 HTTP 모델로 바꾸는 타입이 정의된 표현이 없었습니다.
+- **구현 결정:** DB 행의 snake_case 필드와 애플리케이션의 camelCase 요약을 분리하고, 생성자와 참가 기록을 명시적으로 변환할 기반을 추가했습니다.
+- **상태/소유권 변화:** 이 커밋은 수명주기 동작을 만들지 않고 “DB 형태를 애플리케이션 계약으로 변환하는 책임”을 데이터베이스 패키지에 둡니다.
+- **실패/예외 조건:** 참가자 목록이 없거나 생성자와 참가자 정보 변환이 불완전한 경우를 이 커밋 자체가 해결하지는 않습니다.
+- **보장 범위/보장하지 않는 범위:** 타입이 정의된 행과 매핑 경계는 보장하지만 생성·참가·정원·대진 생성은 아직 없습니다.
+- **다음 연결:** `9b1dabcc4bb4`가 이 표현 위에 실제 토너먼트 생성·목록·참가 저장을 추가합니다.
 <!-- LEARNER-ANSWER END commit:34c80874f13f -->
 
 비교 기준:
-- 이 commit의 parent와 비교합니다.
-- 다음 Thread 관련 SHA: `9b1dabcc4bb4` — `feat(db): 토너먼트 참가 저장 구현`
+- 이 커밋의 부모 커밋과 비교합니다.
+- 다음 개발 스레드 관련 SHA: `9b1dabcc4bb4` — `feat(db): 토너먼트 참가 저장 구현`
 
 ### 5.2. `feat(db): 토너먼트 참가 저장 구현`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `9b1dabcc4bb4` |
-| Importance | B |
-| Tags | PERSISTENCE, TOURNAMENT |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | PERSISTENCE, TOURNAMENT |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Implements tournament creation, listing, and joining through the common repository interface.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 공통 저장소 인터페이스를 통해 토너먼트 생성, 목록 조회, 참가를 구현합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `packages/db/src/index.ts`의 `AppRepository` tournament 메서드
+- `packages/db/src/index.ts`의 `AppRepository` 토너먼트 메서드
 - PostgreSQL `createTournament`, `listTournaments`, `joinTournament` SQL
-- memory repository의 tournament 배열과 seed 계산
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
+- 메모리 저장소의 토너먼트 배열과 시드 계산
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:9b1dabcc4bb4 -->
-- **직전 상태:** typed row는 있었지만 application이 대회를 만들거나 참가자를 저장할 repository operation은 없었습니다.
-- **구현 결정:** 생성 시 tournament row를 넣은 뒤 creator를 참가시키고, 참가 시 현재 entry 수를 읽어 `count + 1`을 seed로 저장합니다. memory 구현도 같은 순서로 summary를 갱신합니다.
-- **상태/소유권 변화:** 참가 순서와 seed는 repository가 소유하며, capacity 4에 도달하면 memory 상태를 `running`으로 바꿉니다.
-- **실패/edge:** count 조회와 insert가 하나의 원자적 capacity claim은 아니므로 concurrent admission 안전성은 이 commit의 보장이 아닙니다. 중복 사용자는 unique/conflict 경로로 제한됩니다.
-- **보장/비보장:** 단일 호출 흐름의 생성·목록·참가와 seed 순서는 제공하지만 round/slot별 match 상태는 아직 없습니다.
-- **다음 연결:** `4370ac3162b2`는 entries만으로 화면 대진을 만들며, 그 한계가 이후 persisted match 모델의 필요성을 드러냅니다.
+- **직전 상태:** 타입이 정의된 행은 있었지만 애플리케이션이 대회를 만들거나 참가자를 저장할 저장소 연산은 없었습니다.
+- **구현 결정:** 생성 시 토너먼트 행을 넣은 뒤 생성자를 참가시키고, 참가 시 현재 항목 수를 읽어 `count + 1`을 시드로 저장합니다. 메모리 구현도 같은 순서로 요약을 갱신합니다.
+- **상태/소유권 변화:** 참가 순서와 시드는 저장소가 소유하며, 용량 4에 도달하면 메모리 상태를 `running`으로 바꿉니다.
+- **실패/예외 조건:** 개수 조회와 삽입이 하나의 원자적 용량 선점은 아니므로 동시 참가 안전성은 이 커밋의 보장이 아닙니다. 중복 사용자는 고유 제약 위반 경로로 제한됩니다.
+- **보장 범위/보장하지 않는 범위:** 단일 호출 흐름의 생성·목록·참가와 시드 순서는 제공하지만 라운드/슬롯별 경기 상태는 아직 없습니다.
+- **다음 연결:** `4370ac3162b2`는 참가 기록만으로 화면 대진을 만들며, 그 한계가 이후 저장된 경기 모델의 필요성을 드러냅니다.
 <!-- LEARNER-ANSWER END commit:9b1dabcc4bb4 -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `34c80874f13f` — `feat(db): 토너먼트 row contract 정의`
-- 다음 Thread 관련 SHA: `4370ac3162b2` — `feat(web): 토너먼트 대진표 화면 추가`
+- 직전 개발 스레드 관련 SHA: `34c80874f13f` — `feat(db): 토너먼트 row contract 정의`
+- 다음 개발 스레드 관련 SHA: `4370ac3162b2` — `feat(web): 토너먼트 대진표 화면 추가`
 
 ### 5.3. `feat(web): 토너먼트 대진표 화면 추가`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `4370ac3162b2` |
-| Importance | B |
-| Tags | TOURNAMENT, WEB |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | TOURNAMENT, WEB |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Adds the first tournament page and connects tournament listing and creation to the HTTP API.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 첫 토너먼트 화면을 추가하고 목록 조회와 생성을 HTTP API에 연결합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `apps/web/src/app/tournaments/page.tsx`의 초기 state와 API load/create
+- `apps/web/src/app/tournaments/page.tsx`의 초기 상태와 API 부하/생성
 - 대진표 렌더링에서 `entries.slice(index, index + 2)` 사용 지점
-- sample tournament fallback과 선택 상태
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
+- 예시 토너먼트 대체 처리와 선택 상태
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:4370ac3162b2 -->
-- **직전 상태:** tournament 저장은 있었지만 사용자가 목록·생성·대진을 보는 route가 없었습니다.
-- **구현 결정:** 화면은 API 목록과 생성을 연결하되, 선택 대회의 `entries`를 두 명씩 잘라 round card처럼 렌더링했습니다.
-- **상태/소유권 변화:** UI가 실제 match 상태를 소유하지 않으면서도 entry order에서 bracket을 계산하는 임시 read model 역할을 맡았습니다.
-- **실패/edge:** round, slot, winner, score, room, generic match link가 없고 1–4/2–3 seed 규칙도 표현하지 못합니다. API 실패 시 sample state가 실제 데이터처럼 남을 수 있습니다.
-- **보장/비보장:** tournament 목록/생성 UI는 제공하지만 대진표는 영속 사실이 아니라 화면 추정입니다.
-- **다음 연결:** `11e4c3dda1aa`가 이 추정을 제거할 tournament-match contract를 정의합니다.
+- **직전 상태:** 토너먼트 저장은 있었지만 사용자가 목록·생성·대진을 보는 라우트가 없었습니다.
+- **구현 결정:** 화면은 API 목록과 생성을 연결하되, 선택 대회의 `entries`를 두 명씩 잘라 라운드 카드처럼 렌더링했습니다.
+- **상태/소유권 변화:** UI가 실제 경기 상태를 소유하지 않으면서도 항목 순서에서 대진을 계산하는 임시 조회 모델 역할을 맡았습니다.
+- **실패/예외 조건:** 라운드, 슬롯, 승자, 점수, 경기방, 일반 경기 링크가 없고 1–4/2–3 시드 규칙도 표현하지 못합니다. API 실패 시 예시 상태가 실제 데이터처럼 남을 수 있습니다.
+- **보장 범위/보장하지 않는 범위:** 토너먼트 목록/생성 UI는 제공하지만 대진표는 영속 사실이 아니라 화면 추정입니다.
+- **다음 연결:** `11e4c3dda1aa`가 이 추정을 제거할 토너먼트 경기 계약을 정의합니다.
 <!-- LEARNER-ANSWER END commit:4370ac3162b2 -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `9b1dabcc4bb4` — `feat(db): 토너먼트 참가 저장 구현`
-- 다음 Thread 관련 SHA: `11e4c3dda1aa` — `feat(tournament): 대진 경기 contract 정의`
+- 직전 개발 스레드 관련 SHA: `9b1dabcc4bb4` — `feat(db): 토너먼트 참가 저장 구현`
+- 다음 개발 스레드 관련 SHA: `11e4c3dda1aa` — `feat(tournament): 대진 경기 contract 정의`
 
 ### 5.4. `feat(tournament): 대진 경기 contract 정의`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `11e4c3dda1aa` |
-| Importance | B |
-| Tags | REALTIME, TOURNAMENT, WEB |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | REALTIME, TOURNAMENT, WEB |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Adds a shared tournament-match summary with bracket position, lifecycle, participants, winner, score, room, and persisted-match identifiers.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 대진 위치, 수명주기, 참가자, 승자, 점수, 경기방, 영속 경기 식별자를 포함하는 공유 토너먼트 경기 요약을 추가합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `packages/shared/src/http.ts`의 `TournamentMatchSummary`와 tournament summary 확장
-- `packages/shared/src/ws.ts`의 `tournament.join` client event
-- status, round, slot, participant, winner, score, `roomId`, `matchId` 필드
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
+- `packages/shared/src/http.ts`의 `TournamentMatchSummary`와 토너먼트 요약 확장
+- `packages/shared/src/ws.ts`의 `tournament.join` 클라이언트 이벤트
+- 상태, 라운드, 슬롯, 참가자, 승자, 점수, `roomId`, `matchId` 필드
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:11e4c3dda1aa -->
-- **직전 상태:** 화면과 repository는 entries만 공유하므로 독립 경기 lifecycle을 전달할 수 없었습니다.
-- **구현 결정:** round/slot과 `pending|ready|running|finished`, 양 참가자, 승자, 점수, 선택적 room/generic match ID를 공유 계약으로 올렸습니다.
-- **상태/소유권 변화:** tournament summary 안에 “계산된 pair”가 아니라 독립적인 match summary collection이 들어갈 자리가 생겼고, realtime 참가 명령은 tournament match ID를 사용합니다.
-- **실패/edge:** 타입은 허용 상태를 표현할 뿐 DB 제약이나 상태 전이 자체를 강제하지 않습니다.
-- **보장/비보장:** API·web·WebSocket이 같은 식별자와 필드를 말하게 하지만 persistence는 다음 commit 전까지 없습니다.
+- **직전 상태:** 화면과 저장소는 참가 기록만 공유하므로 독립 경기 수명주기를 전달할 수 없었습니다.
+- **구현 결정:** 라운드/슬롯과 `pending|ready|running|finished`, 양 참가자, 승자, 점수, 선택적 경기방/일반 경기 ID를 공유 계약으로 올렸습니다.
+- **상태/소유권 변화:** 토너먼트 요약 안에 “계산된 쌍”가 아니라 독립적인 경기 요약 목록이 들어갈 자리가 생겼고, 실시간 참가 명령은 토너먼트 경기 ID를 사용합니다.
+- **실패/예외 조건:** 타입은 허용 상태를 표현할 뿐 DB 제약이나 상태 전이 자체를 강제하지 않습니다.
+- **보장 범위/보장하지 않는 범위:** API·웹·WebSocket이 같은 식별자와 필드를 말하게 하지만 영속 저장은 다음 커밋 전까지 없습니다.
 - **다음 연결:** `138e5b8590b6`이 같은 모델을 `tournament_matches` 테이블로 저장합니다.
 <!-- LEARNER-ANSWER END commit:11e4c3dda1aa -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `4370ac3162b2` — `feat(web): 토너먼트 대진표 화면 추가`
-- 다음 Thread 관련 SHA: `138e5b8590b6` — `feat(tournament): 대진 경기 schema 추가`
+- 직전 개발 스레드 관련 SHA: `4370ac3162b2` — `feat(web): 토너먼트 대진표 화면 추가`
+- 다음 개발 스레드 관련 SHA: `138e5b8590b6` — `feat(tournament): 대진 경기 schema 추가`
 
 ### 5.5. `feat(tournament): 대진 경기 schema 추가`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `138e5b8590b6` |
-| Importance | B |
-| Tags | REALTIME, PERSISTENCE, TOURNAMENT |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | REALTIME, PERSISTENCE, TOURNAMENT |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Introduces a dedicated `tournament_matches` persistence model instead of deriving every round from entries or generic game records.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 참가 기록이나 일반 경기 기록에서 매 라운드를 추정하는 대신 전용 `tournament_matches` 영속 저장 모델을 도입합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `packages/db/src/migrations.ts`의 `tournament_matches` DDL
-- `packages/db/src/schema.ts`의 tournament-match table/row 타입
-- `unique(tournament_id, round, slot)`과 tournament cascade FK
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
+- `packages/db/src/schema.ts`의 토너먼트 경기 테이블/행 타입
+- `unique(tournament_id, round, slot)`과 토너먼트 연쇄 삭제 외래 키
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:138e5b8590b6 -->
-- **직전 상태:** shared contract는 있었지만 restart 후에도 round/slot/lifecycle을 보존할 테이블이 없었습니다.
-- **구현 결정:** tournament FK, round, slot, nullable left/right/winner/room/generic match IDs, scores, status를 가진 전용 row와 `(tournament_id, round, slot)` unique key를 추가했습니다.
-- **상태/소유권 변화:** bracket 위치와 lifecycle의 authority가 entry order나 UI에서 database row로 이동합니다.
-- **실패/edge:** nullable participant와 status 조합의 의미는 application logic이 책임지며, 이 DDL만으로 합법 상태 전이를 완전히 제약하지는 않습니다.
-- **보장/비보장:** 동일 대회의 같은 round/slot 중복 row를 막고 대회 삭제 시 종속 row를 정리하지만 bracket 생성 조건은 아직 없습니다.
-- **다음 연결:** `4021a437e7e0`이 row를 내부 record와 public summary로 변환합니다.
+- **직전 상태:** 공유 계약은 있었지만 재시작 후에도 라운드/슬롯/수명주기를 보존할 테이블이 없었습니다.
+- **구현 결정:** 토너먼트 외래 키, 라운드, 슬롯, null을 허용하는 왼쪽·오른쪽 참가자 ID, 승자 ID, 경기방 ID, 일반 경기 ID, 점수, 상태를 가진 전용 행과 `(tournament_id, round, slot)` 고유 키를 추가했습니다.
+- **상태/소유권 변화:** 대진 위치와 수명주기의 판정 권한이 항목 순서나 UI에서 데이터베이스 행으로 이동합니다.
+- **실패/예외 조건:** null 허용 참가자와 상태 조합의 의미는 애플리케이션 로직이 책임지며, 이 DDL만으로 합법 상태 전이를 완전히 제약하지는 않습니다.
+- **보장 범위/보장하지 않는 범위:** 동일 대회의 같은 라운드/슬롯 중복 행을 막고 대회 삭제 시 종속 행을 정리하지만 대진 생성 조건은 아직 없습니다.
+- **다음 연결:** `4021a437e7e0`이 행을 내부 레코드와 공개 요약으로 변환합니다.
 <!-- LEARNER-ANSWER END commit:138e5b8590b6 -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `11e4c3dda1aa` — `feat(tournament): 대진 경기 contract 정의`
-- 다음 Thread 관련 SHA: `4021a437e7e0` — `feat(tournament): 대진 row mapper 정의`
+- 직전 개발 스레드 관련 SHA: `11e4c3dda1aa` — `feat(tournament): 대진 경기 contract 정의`
+- 다음 개발 스레드 관련 SHA: `4021a437e7e0` — `feat(tournament): 대진 row mapper 정의`
 
 ### 5.6. `feat(tournament): 대진 row mapper 정의`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `4021a437e7e0` |
-| Importance | B |
-| Tags | REALTIME, PERSISTENCE, TOURNAMENT |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | REALTIME, PERSISTENCE, TOURNAMENT |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Adds explicit mapping from database tournament-match rows to application records and public summaries.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 데이터베이스의 토너먼트 경기 행을 애플리케이션 레코드와 공개 요약으로 명시적으로 변환합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `packages/db/src/rowMappers.ts`의 `toTournamentMatchRecord`
-- `toTournamentMatchSummary`의 사용자 projection과 nullable 필드 처리
-- slot 숫자 변환과 ISO timestamp 변환
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
+- `toTournamentMatchSummary`의 사용자 정보 변환과 null 허용 필드 처리
+- 슬롯 숫자 변환과 ISO 타임스탬프 변환
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:4021a437e7e0 -->
-- **직전 상태:** 테이블 row는 생겼지만 DB 이름·Date·nullable ID를 shared summary로 바꾸는 단일 경계가 없었습니다.
-- **구현 결정:** raw row를 내부 record로 먼저 정규화하고, participant/winner `PublicUser` projection을 주입해 외부 summary를 구성합니다.
-- **상태/소유권 변화:** SQL 조회와 HTTP 응답 사이의 이름 변환·날짜 직렬화·사용자 결합 책임이 mapper로 모입니다.
-- **실패/edge:** mapper는 존재하지 않는 사용자나 잘못된 상태를 복구하지 않으며 caller가 올바른 projection을 제공해야 합니다.
-- **보장/비보장:** 동일 row가 PostgreSQL 경로에서 일관된 application 형태가 되지만 lifecycle mutation은 다음 commit이 담당합니다.
-- **다음 연결:** `53579ad0f0bf`가 조회·시작·완료 operation을 양 repository에 추가합니다.
+- **직전 상태:** 테이블 행은 생겼지만 DB 이름·Date·null 허용 ID를 공유 요약으로 바꾸는 단일 경계가 없었습니다.
+- **구현 결정:** 가공 전 행을 내부 레코드로 먼저 정규화하고, 참가자/승자의 `PublicUser` 정보를 주입해 외부 요약을 구성합니다.
+- **상태/소유권 변화:** SQL 조회와 HTTP 응답 사이의 이름 변환·날짜 직렬화·사용자 결합 책임이 변환기로 모입니다.
+- **실패/예외 조건:** 변환기는 존재하지 않는 사용자나 잘못된 상태를 복구하지 않으며 호출자가 올바른 사용자 정보를 제공해야 합니다.
+- **보장 범위/보장하지 않는 범위:** 동일 행이 PostgreSQL 경로에서 일관된 애플리케이션 형태가 되지만 수명주기 변경은 다음 커밋이 담당합니다.
+- **다음 연결:** `53579ad0f0bf`가 조회·시작·완료 연산을 양 저장소에 추가합니다.
 <!-- LEARNER-ANSWER END commit:4021a437e7e0 -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `138e5b8590b6` — `feat(tournament): 대진 경기 schema 추가`
-- 다음 Thread 관련 SHA: `53579ad0f0bf` — `feat(tournament): 대진 경기 lifecycle 저장 구현`
+- 직전 개발 스레드 관련 SHA: `138e5b8590b6` — `feat(tournament): 대진 경기 schema 추가`
+- 다음 개발 스레드 관련 SHA: `53579ad0f0bf` — `feat(tournament): 대진 경기 lifecycle 저장 구현`
 
 ### 5.7. `feat(tournament): 대진 경기 lifecycle 저장 구현`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `53579ad0f0bf` |
-| Importance | A |
-| Tags | REALTIME, PERSISTENCE, TOURNAMENT |
-| 학습 깊이 | 주요 subsystem, 구현 경로, ownership/failure/non-guarantee를 구체적으로 복원합니다. |
+| 중요도 | A |
+| 태그 | REALTIME, PERSISTENCE, TOURNAMENT |
+| 학습 깊이 | 주요 하위 시스템, 구현 경로, 소유권, 실패 처리, 보장하지 않는 범위를 구체적으로 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Adds tournament-match read/start/complete operations to `AppRepository` and both repository implementations.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: `AppRepository`와 두 저장소 구현에 토너먼트 경기 조회·시작·완료 연산을 추가합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `packages/db/src/index.ts`의 `getTournamentMatch`, `startTournamentMatch`, `completeTournamentMatch`
-- PostgreSQL complete SQL과 `ensureFinalMatch` 호출
-- memory implementation의 같은 operation 및 당시 parity 차이
-- parent 상태와 비교해 이전 가정, 새 boundary, caller/callee, ownership 또는 failure path를 기록합니다.
-- 이 commit이 보장하지 않는 상태와 다음 fix/test가 보강하는 지점을 구분합니다.
+- PostgreSQL 완료 처리 SQL과 `ensureFinalMatch` 호출
+- 메모리 구현의 같은 연산 및 당시 동작 일치 차이
+- 부모 커밋의 상태와 비교해 이전 가정, 새 경계, 호출자와 피호출자, 소유권 또는 실패 경로를 기록합니다.
+- 이 커밋이 보장하지 않는 범위와 다음 수정·테스트가 보강하는 지점을 구분합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:53579ad0f0bf -->
-- **직전 상태:** 전용 row와 mapper는 있었지만 realtime hub가 match를 조회·running 전환·finished 전환할 repository API가 없었습니다.
-- **구현 결정:** `AppRepository`에 조회/시작/완료를 추가하고 PostgreSQL은 completion에서 winner·scores·room/generic match link를 저장한 뒤 semifinal이면 결승 생성 검사를, final이면 tournament 완료 갱신을 수행합니다.
-- **상태/소유권 변화:** tournament match lifecycle mutation은 repository가 소유하며 GameHub는 구체 SQL을 알지 않습니다. PostgreSQL과 memory가 같은 interface 뒤에 놓입니다.
-- **실패/edge:** 당시 memory completion은 PostgreSQL과 완전히 같은 final 생성 동작을 아직 갖지 않았고, 일반 match 저장과 tournament completion도 별도 호출이었습니다.
-- **보장/비보장:** 기본 조회·시작·완료 경로는 생기지만 transaction 단위의 generic match/rating/bracket 원자성은 Thread 02의 후속 `finalizeMatch`가 완성합니다.
-- **다음 연결:** `0d6824683677`이 4번째 entry 시 semifinal row를 생성하고 summary에 포함합니다.
+- **직전 상태:** 전용 행과 변환기는 있었지만 실시간 허브가 경기를 조회·실행 중 전환·종료된 전환할 저장소 API가 없었습니다.
+- **구현 결정:** `AppRepository`에 조회/시작/완료를 추가하고 PostgreSQL은 완료에서 승자·점수·경기방/일반 경기 링크를 저장한 뒤 준결승이면 결승 생성 검사를, 최종이면 토너먼트 완료 갱신을 수행합니다.
+- **상태/소유권 변화:** 토너먼트 경기 수명주기 변경은 저장소가 소유하며 GameHub는 구체 SQL을 알지 않습니다. PostgreSQL과 메모리가 같은 인터페이스 뒤에 놓입니다.
+- **실패/예외 조건:** 당시 메모리 완료는 PostgreSQL과 완전히 같은 최종 생성 동작을 아직 갖지 않았고, 일반 경기 저장과 토너먼트 완료도 별도 호출이었습니다.
+- **보장 범위/보장하지 않는 범위:** 기본 조회·시작·완료 경로는 생기지만 트랜잭션 단위의 일반 경기/레이팅/대진 원자성은 개발 스레드 02의 후속 `finalizeMatch`가 완성합니다.
+- **다음 연결:** `0d6824683677`이 4번째 항목 시 준결승 행을 생성하고 요약에 포함합니다.
 <!-- LEARNER-ANSWER END commit:53579ad0f0bf -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `4021a437e7e0` — `feat(tournament): 대진 row mapper 정의`
-- 다음 Thread 관련 SHA: `0d6824683677` — `feat(tournament): 준결승 대진 생성과 조회 구현`
+- 직전 개발 스레드 관련 SHA: `4021a437e7e0` — `feat(tournament): 대진 row mapper 정의`
+- 다음 개발 스레드 관련 SHA: `0d6824683677` — `feat(tournament): 준결승 대진 생성과 조회 구현`
 
 ### 5.8. `feat(tournament): 준결승 대진 생성과 조회 구현`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `0d6824683677` |
-| Importance | A |
-| Tags | TOURNAMENT |
-| 학습 깊이 | 주요 subsystem, 구현 경로, ownership/failure/non-guarantee를 구체적으로 복원합니다. |
+| 중요도 | A |
+| 태그 | TOURNAMENT |
+| 학습 깊이 | 주요 하위 시스템, 구현 경로, 소유권, 실패 처리, 보장하지 않는 범위를 구체적으로 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Creates semifinal bracket rows at four-player capacity and includes persisted matches in tournament summaries.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 참가자 네 명이 모이면 준결승 대진 행을 만들고 토너먼트 요약에 영속 경기 목록을 포함합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `packages/db/src/index.ts`의 PostgreSQL `joinTournament`
-- `ensureTournamentBracket`의 seed 1/4 및 2/3 insert
-- `tournamentFromRow`의 match load, 사용자 resolution, round/slot 정렬
-- parent 상태와 비교해 이전 가정, 새 boundary, caller/callee, ownership 또는 failure path를 기록합니다.
-- 이 commit이 보장하지 않는 상태와 다음 fix/test가 보강하는 지점을 구분합니다.
+- `ensureTournamentBracket`의 시드 1/4 및 2/3 삽입
+- `tournamentFromRow`의 경기 부하, 사용자 해석, 라운드/슬롯 정렬
+- 부모 커밋의 상태와 비교해 이전 가정, 새 경계, 호출자와 피호출자, 소유권 또는 실패 경로를 기록합니다.
+- 이 커밋이 보장하지 않는 범위와 다음 수정·테스트가 보강하는 지점을 구분합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:0d6824683677 -->
-- **직전 상태:** lifecycle operation은 있었지만 tournament join이 entries만 저장해 실제 첫 round row가 자동 생성되지 않았습니다.
-- **구현 결정:** 4명일 때 seed 1–4를 semifinal slot 1, seed 2–3을 slot 2로 insert하고 unique conflict 시 중복 생성을 피합니다. summary 조회는 matches와 participant/winner 사용자를 결합해 round/slot 순으로 반환합니다.
-- **상태/소유권 변화:** bracket topology가 web 계산이 아니라 repository가 생성한 row 집합으로 확정됩니다.
-- **실패/edge:** 참가 인원 count와 insert의 concurrent capacity 경쟁은 이 commit만으로 안전하지 않습니다. 결승은 두 semifinal 완료 전 생성되지 않습니다.
-- **보장/비보장:** 정상적인 4인 순차 참가에서 정확한 seed pair와 persisted summary를 보장하지만 concurrent admission invariant는 category 02에서 보강됩니다.
-- **다음 연결:** `b01adf728ca0`이 memory repository에도 동일한 topology와 progression을 구현합니다.
+- **직전 상태:** 수명주기 연산은 있었지만 토너먼트 참가가 참가 기록만 저장해 실제 첫 라운드 행이 자동 생성되지 않았습니다.
+- **구현 결정:** 4명일 때 시드 1–4를 준결승 슬롯 1, 시드 2–3을 슬롯 2로 삽입하고 고유 conflict 시 중복 생성을 피합니다. 요약 조회는 경기와 참가자/승자 사용자를 결합해 라운드/슬롯 순으로 반환합니다.
+- **상태/소유권 변화:** 대진 구성이 웹 계산이 아니라 저장소가 생성한 행 집합으로 확정됩니다.
+- **실패/예외 조건:** 참가 인원 개수와 삽입의 동시 용량 경쟁은 이 커밋만으로 안전하지 않습니다. 결승은 두 준결승 완료 전 생성되지 않습니다.
+- **보장 범위/보장하지 않는 범위:** 정상적인 4인 순차 참가에서 정확한 시드 쌍과 저장된 요약을 보장하지만 동시 참가 불변 조건은 카테고리 02에서 보강됩니다.
+- **다음 연결:** `b01adf728ca0`이 메모리 저장소에도 동일한 구성과 대진 진행을 구현합니다.
 <!-- LEARNER-ANSWER END commit:0d6824683677 -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `53579ad0f0bf` — `feat(tournament): 대진 경기 lifecycle 저장 구현`
-- 다음 Thread 관련 SHA: `b01adf728ca0` — `feat(tournament): memory 대진 진행 구현`
+- 직전 개발 스레드 관련 SHA: `53579ad0f0bf` — `feat(tournament): 대진 경기 lifecycle 저장 구현`
+- 다음 개발 스레드 관련 SHA: `b01adf728ca0` — `feat(tournament): memory 대진 진행 구현`
 
 ### 5.9. `feat(tournament): memory 대진 진행 구현`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `b01adf728ca0` |
-| Importance | B |
-| Tags | PERSISTENCE, TOURNAMENT |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | PERSISTENCE, TOURNAMENT |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Aligns the in-memory tournament flow behaviorally with PostgreSQL.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 메모리 토너먼트 진행 동작을 PostgreSQL 구현과 맞춥니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `packages/db/src/index.ts`의 memory `joinTournament` capacity guard
-- `ensureMemoryBracket`의 semifinal 생성
-- memory completion의 두 semifinal winner 확인과 final/tournament 완료
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
+- `packages/db/src/index.ts`의 메모리 `joinTournament` 용량 보호 조건
+- `ensureMemoryBracket`의 준결승 생성
+- 메모리 완료의 두 준결승 승자 확인과 최종/토너먼트 완료
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:b01adf728ca0 -->
-- **직전 상태:** PostgreSQL은 persisted semifinal/final progression을 가졌지만 memory backend는 entry와 부분 lifecycle만 구현해 테스트·개발 환경이 달랐습니다.
-- **구현 결정:** memory join도 capacity를 검사하고 4명 시 1–4/2–3 semifinal을 한 번만 만들며, 두 semifinal이 finished이고 winner가 있을 때 final을 만듭니다. final 완료는 tournament status/winner를 갱신합니다.
-- **상태/소유권 변화:** backend 선택과 무관하게 tournament summary와 progression이 같은 repository contract를 따릅니다.
-- **실패/edge:** memory는 process 수명 안의 단일 자료구조이므로 PostgreSQL transaction/동시성 특성을 검증하지 않습니다.
-- **보장/비보장:** 기능 parity는 높이지만 durable persistence나 row lock 보장은 없습니다.
-- **다음 연결:** `b0a1505c6a0f`이 web과 play flow를 이 공통 persisted model에 연결합니다.
+- **직전 상태:** PostgreSQL은 저장된 준결승/최종 대진 진행을 가졌지만 메모리 저장소는 항목과 부분 수명주기만 구현해 테스트·개발 환경이 달랐습니다.
+- **구현 결정:** 메모리 참가도 용량을 검사하고 4명 시 1–4/2–3 준결승을 한 번만 만들며, 두 준결승이 종료된이고 승자가 있을 때 최종을 만듭니다. 최종 완료는 토너먼트 상태/승자를 갱신합니다.
+- **상태/소유권 변화:** 백엔드 선택과 무관하게 토너먼트 요약과 대진 진행이 같은 저장소 계약을 따릅니다.
+- **실패/예외 조건:** 메모리는 프로세스 수명 안의 단일 자료구조이므로 PostgreSQL 트랜잭션/동시성 특성을 검증하지 않습니다.
+- **보장 범위/보장하지 않는 범위:** 기능 동작 일치는 높이지만 영속 저장이나 행 잠금 보장은 없습니다.
+- **다음 연결:** `b0a1505c6a0f`이 웹과 플레이 실행 순서를 이 공통 저장된 모델에 연결합니다.
 <!-- LEARNER-ANSWER END commit:b01adf728ca0 -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `0d6824683677` — `feat(tournament): 준결승 대진 생성과 조회 구현`
-- 다음 Thread 관련 SHA: `b0a1505c6a0f` — `feat(tournament): 플레이 가능한 대진 UI 연결`
+- 직전 개발 스레드 관련 SHA: `0d6824683677` — `feat(tournament): 준결승 대진 생성과 조회 구현`
+- 다음 개발 스레드 관련 SHA: `b0a1505c6a0f` — `feat(tournament): 플레이 가능한 대진 UI 연결`
 
 ### 5.10. `feat(tournament): 플레이 가능한 대진 UI 연결`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `b0a1505c6a0f` |
-| Importance | B |
-| Tags | PROTOCOL, REALTIME, TOURNAMENT |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | PROTOCOL, REALTIME, TOURNAMENT |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Replaces the placeholder bracket with persisted matches and links eligible participants directly to realtime play.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 임시 대진표를 영속 경기 데이터로 교체하고 참가 가능한 사용자를 실시간 경기에 직접 연결합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `apps/web/src/app/tournaments/page.tsx`의 `selected.matches` 렌더링
-- ready match와 현재 사용자 participant 여부에 따른 play link
-- `apps/web/src/app/play/page.tsx`의 `tournamentMatchId` parsing 및 `tournament.join` 전송
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
+- 준비 완료 경기와 현재 사용자 참가자 여부에 따른 플레이 링크
+- `apps/web/src/app/play/page.tsx`의 `tournamentMatchId` 파싱 및 `tournament.join` 전송
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:b0a1505c6a0f -->
-- **직전 상태:** UI는 entries를 잘라 대진을 추정했고 play route는 일반 queue/AI만 시작했습니다.
-- **구현 결정:** round/slot/status/score/winner를 persisted match summary에서 표시하고, 현재 사용자가 ready match의 참가자일 때만 match ID를 포함한 play link를 제공합니다. play page는 query의 ID로 `tournament.join`을 보냅니다.
-- **상태/소유권 변화:** 화면은 bracket을 만들지 않고 repository-backed summary를 표시하며, realtime server가 실제 좌석·room 생성 권한을 유지합니다.
-- **실패/edge:** 링크 가시성은 편의 제어일 뿐 보안 경계가 아니며 server가 participant/status를 다시 검증해야 합니다.
-- **보장/비보장:** 정상 UI journey는 persisted bracket과 연결되지만 room start rollback과 finalization 원자성은 Thread 02에서 다룹니다.
-- **다음 연결:** 다음 Thread의 `33b6dfc5df7a`가 tournament match admission을 GameHub room lifecycle에 실제 통합합니다.
+- **직전 상태:** UI는 참가 기록을 잘라 대진을 추정했고 플레이 라우트는 일반 대기열/AI만 시작했습니다.
+- **구현 결정:** 라운드/슬롯/상태/점수/승자를 저장된 경기 요약에서 표시하고, 현재 사용자가 준비 완료 경기의 참가자일 때만 경기 ID를 포함한 플레이 링크를 제공합니다. 플레이 페이지는 쿼리의 ID로 `tournament.join`을 보냅니다.
+- **상태/소유권 변화:** 화면은 대진을 만들지 않고 저장소 기반 요약을 표시하며, 실시간 서버가 실제 좌석·경기방 생성 권한을 유지합니다.
+- **실패/예외 조건:** 링크 가시성은 편의를 위한 제어일 뿐 보안 검사가 아니므로 서버가 참가자와 상태를 다시 검증해야 합니다.
+- **보장 범위/보장하지 않는 범위:** 정상 UI 사용자 동선은 저장된 대진과 연결되지만 경기방 시작 되돌리기와 결과 확정 원자성은 개발 스레드 02에서 다룹니다.
+- **다음 연결:** 다음 개발 스레드의 `33b6dfc5df7a`가 토너먼트 경기 참가를 GameHub 경기방 수명주기에 실제 통합합니다.
 <!-- LEARNER-ANSWER END commit:b0a1505c6a0f -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `b01adf728ca0` — `feat(tournament): memory 대진 진행 구현`
-- 이 commit을 Thread의 마지막 상태로 사용합니다.
+- 직전 개발 스레드 관련 SHA: `b01adf728ca0` — `feat(tournament): memory 대진 진행 구현`
+- 이 커밋을 개발 스레드의 마지막 상태로 사용합니다.
 
-## 6. Thread 종합
+## 6. 개발 스레드 종합
 
-다음 항목을 commit 순서에서 재구성합니다: invariant evolution, Failure → Fix → Test 관계, ownership/state 변화, 최종 실행 흐름, 비보장, 실제 실행 증거.
+다음 항목을 커밋 순서에서 재구성합니다: 불변 조건 변화, 실패 → 수정 → 테스트 관계, 소유권/상태 변화, 최종 실행 흐름, 보장하지 않는 범위, 실제 실행 증거.
 
 <!-- LEARNER-ANSWER START thread:01-tournament-contract-schema-and-bracket-construction.md:synthesis -->
-- **불변식 진화:** 초기 `TournamentSummary.entries`는 참가 순서만 보존했고, `4370ac3162b2`의 화면은 이를 두 명씩 잘라 대진을 추정했습니다. `11e4c3dda1aa`–`4021a437e7e0`이 round/slot/participant/winner/score/room/match 식별자를 가진 별도 계약·테이블·mapper를 만들었고, `0d6824683677`과 `b01adf728ca0`이 4명 충원 시 1–4, 2–3 준결승과 두 준결승 승자 기반 결승을 각각 PostgreSQL과 memory에 고정했습니다. `b0a1505c6a0f`에서 UI도 이 저장 상태만 렌더링합니다.
-- **소유권과 상태:** 참가자 집합은 tournament entry가, 각 경기의 round/slot/lifecycle은 `tournament_matches`가, 실제 종료 경기 기록은 별도 generic match가 소유합니다. `room_id`는 진행 중 realtime 방 연결이고 `match_id`는 종료 후 영속 결과 연결이므로 같은 식별자가 아닙니다.
-- **Failure → Fix → Verification:** 이 Thread의 핵심 실패는 데이터 손상보다 read-model fabrication입니다. `entries.slice(...)`와 backend별 불완전한 bracket progression을 persisted matches 및 memory parity가 교정했습니다. 원자적 결과 확정과 동시성 검증은 다음 Thread가 주 소유자입니다.
-- **최종 흐름:** 대회 생성/참가 → 4번째 참가 시 준결승 두 row 생성 → summary가 matches를 round/slot 순서로 반환 → 참가 가능한 ready match를 UI가 play route에 연결 → 준결승 완료 두 건이 확인되면 결승 생성 → 최종 match 완료 후 tournament winner 확정입니다.
-- **비보장:** 이 Thread만으로 concurrent admission의 capacity 안전성이나 match 결과 확정 transaction의 원자성이 보장되지는 않습니다. 전자는 category 02, 후자는 이 category의 Thread 02에서 다룹니다.
-- **실행 증거:** 로컬 checkout을 만들 수 없어 테스트 명령은 실행하지 않았습니다. 위 내용은 각 exact SHA의 diff, 파일, 테스트 구현을 검사한 결과이며 runtime 성공으로 표시하지 않았습니다.
+- **불변식 진화:** 초기 `TournamentSummary.entries`는 참가 순서만 보존했고, `4370ac3162b2`의 화면은 이를 두 명씩 잘라 대진을 추정했습니다. `11e4c3dda1aa`–`4021a437e7e0`이 라운드/슬롯/참가자/승자/점수/경기방/경기 식별자를 가진 별도 계약·테이블·변환기를 만들었고, `0d6824683677`과 `b01adf728ca0`이 4명 충원 시 1–4, 2–3 준결승과 두 준결승 승자 기반 결승을 각각 PostgreSQL과 메모리에 고정했습니다. `b0a1505c6a0f`에서 UI도 이 저장 상태만 렌더링합니다.
+- **소유권과 상태:** 참가자 집합은 토너먼트 참가 기록이, 각 경기의 라운드/슬롯/수명주기는 `tournament_matches`가, 실제 종료 경기 기록은 별도 일반 경기가 소유합니다. `room_id`는 진행 중 실시간 방 연결이고 `match_id`는 종료 후 영속 결과 연결이므로 같은 식별자가 아닙니다.
+- **실패 → 수정 → 검증:** 이 개발 스레드의 핵심 실패는 데이터 손상보다 조회 모델의 임의 생성입니다. `entries.slice(...)`와 백엔드별 불완전한 대진 진행을 저장된 경기 및 메모리 동작 일치가 교정했습니다. 원자적 결과 확정과 동시성 검증은 다음 개발 스레드가 주 소유자입니다.
+- **최종 흐름:** 대회 생성/참가 → 4번째 참가 시 준결승 두 행 생성 → 요약이 경기를 라운드/슬롯 순서로 반환 → 참가 가능한 준비 완료 경기를 UI가 플레이 라우트에 연결 → 준결승 완료 두 건이 확인되면 결승 생성 → 최종 경기 완료 후 토너먼트 승자 확정입니다.
+- **보장하지 않는 범위:** 이 개발 스레드만으로 동시 참가의 용량 안전성이나 경기 결과 확정 트랜잭션의 원자성이 보장되지는 않습니다. 전자는 카테고리 02, 후자는 이 카테고리의 개발 스레드 02에서 다룹니다.
+- **실행 증거:** 로컬 체크아웃을 만들 수 없어 테스트 명령은 실행하지 않았습니다. 위 내용은 각 정확한 SHA의 변경 내용, 파일, 테스트 구현을 검사한 결과이며 실행 시점 성공으로 표시하지 않았습니다.
 <!-- LEARNER-ANSWER END thread:01-tournament-contract-schema-and-bracket-construction.md:synthesis -->
 
 ## 7. 학습 완료 확인
 
 <!-- LEARNER-ANSWER START thread:01-tournament-contract-schema-and-bracket-construction.md:checklist -->
-- [x] 모든 SHA를 지정 브랜치의 exact commit으로 검사했습니다.
-- [x] fixed commit map과 source classification을 보존했습니다.
-- [x] earlier commit을 later HEAD 코드로 설명하지 않았습니다.
-- [x] fix와 test를 원래 failure/production path에 연결했습니다.
-- [x] 실제 실행하지 않은 test를 통과했다고 기록하지 않았습니다.
-- [x] Thread 최종 owner, invariant, flow, non-guarantee를 작성했습니다.
+- [x] 모든 SHA를 지정 브랜치의 정확한 커밋으로 검사했습니다.
+- [x] 고정된 커밋 목록과 원문 분류를 보존했습니다.
+- [x] earlier 커밋을 후속 최종 상태 코드로 설명하지 않았습니다.
+- [x] 수정과 테스트를 원래 실패/실제 코드 경로에 연결했습니다.
+- [x] 실제 실행하지 않은 테스트를 통과했다고 기록하지 않았습니다.
+- [x] 개발 스레드 최종 소유 주체, 불변 조건, 실행 순서, 보장하지 않는 범위를 작성했습니다.
 <!-- LEARNER-ANSWER END thread:01-tournament-contract-schema-and-bracket-construction.md:checklist -->
 ===== END FILE: 01-tournament-contract-schema-and-bracket-construction.md =====
 
 ===== BEGIN FILE: 02-tournament-room-start-rollback-and-finalization-handoff.md =====
 # 토너먼트 경기방 시작 롤백과 결과 확정 인계
 
-원문 Development Thread: `Tournament room start rollback and finalization handoff`
+원문 개발 스레드: `Tournament room start rollback and finalization handoff`
 
-## 1. Thread 목표
+## 1. 개발 스레드 목표
 
-- persisted tournament match를 두 참가자의 realtime room으로 전환하는 admission·pairing·publication 순서를 복원합니다.
-- room publication 후 DB start가 실패하는 부분 성공을 어떻게 감지하고 역순 롤백하는지 확인합니다.
-- generic match, rating, tournament progression을 하나의 `finalizeMatch` boundary로 합친 뒤 legacy escape hatch를 제거하는 과정을 추적합니다.
+- 저장된 토너먼트 경기를 두 참가자의 실시간 경기방으로 전환하는 참가·pairing·공개 순서를 복원합니다.
+- 경기방 공개 후 DB 시작이 실패하는 부분 성공을 어떻게 감지하고 역순 롤백하는지 확인합니다.
+- 일반 경기, 레이팅, 토너먼트 진행을 하나의 `finalizeMatch` 경계로 합친 뒤 기존 우회 경로를 제거하는 과정을 추적합니다.
 
-### Source에서 확정된 significance
+### 원문에서 확인한 중요성
 
-> Tournament play crosses an in-memory room boundary and a durable tournament boundary. Publishing one without the other creates ghost rooms or stuck matches; persisting a generic result separately from bracket progression creates duplicate or partially applied outcomes. The history first exposes these split transitions, then consolidates and verifies them.
+> 토너먼트 플레이는 메모리 경기방과 영속 토너먼트 상태를 함께 변경합니다. 둘 중 하나만 반영하면 유령 경기방이나 진행할 수 없는 경기가 생기고, 일반 경기 결과와 대진 진행을 따로 저장하면 중복 또는 부분 반영이 발생합니다. 이후 커밋은 이 분리된 변경을 하나로 묶어 검증합니다.
 
-### 직접 연결되는 Critical Invariants
+### 직접 연결되는 핵심 불변 조건
 
-> A tournament room is usable only when the exact persisted tournament match has been marked running; failure restores room, timer, client association, and retryability.
+> 토너먼트 경기방은 정확한 저장 경기의 상태가 실행 중으로 바뀐 뒤에만 사용할 수 있습니다. 실패하면 경기방, 타이머, 클라이언트 연결 정보와 재시도 가능 상태를 되돌립니다.
 >
-> A finished room hands one idempotent command to persistence, where generic match, rating, tournament match linkage, next-round creation, and tournament completion are atomic.
+> 경기방 종료 시 영속 저장소에 하나의 멱등 명령을 전달하며, 일반 경기 저장, 레이팅 변경, 토너먼트 경기 연결, 다음 라운드 생성, 토너먼트 완료를 원자적으로 처리합니다.
 
-### 직접 연결되는 Major Engineering Difficulties
+### 직접 연결되는 주요 구현 난점
 
-> Coordinating two connected participants, an in-memory room, scheduler/timer state, and a PostgreSQL row without distributed transaction support.
+> 분산 트랜잭션 없이 연결된 두 참가자, 메모리 경기방, 스케줄러·타이머 상태, PostgreSQL 행을 함께 조정해야 합니다.
 >
-> Making completion idempotent under repeated/concurrent calls while preserving rollback on tournament linkage failure.
+> 반복·동시 호출에서도 완료 처리를 멱등하게 유지하면서 토너먼트 연결 실패 시 전체 변경을 되돌려야 합니다.
 
-## 2. 이 Thread를 이해하기 위한 핵심 질문
+## 2. 이 개발 스레드를 이해하기 위한 핵심 질문
 
-- `joinTournamentMatch`는 어떤 persisted status와 participant 조건을 검사하고 두 waiter를 어떤 좌우 좌석으로 배치합니까?
-- 초기 구현은 room publication과 `startTournamentMatch`를 어떤 순서로 수행해 부분 성공을 만들었습니까?
-- `UPDATE ... RETURNING` zero-row 검사가 없으면 어떤 존재하지 않는 match가 성공처럼 보입니까?
-- `abandonRoom`은 room, timer/scheduler, clients, waiters 중 무엇을 정리해 재입장을 가능하게 합니까?
-- `finalizeMatch` transaction은 어떤 row를 잠그고 어떤 결과를 한 번만 적용합니까?
-- legacy `completeTournamentMatch` 제거가 왜 단순 API 정리가 아니라 invariant 강제입니까?
+- `joinTournamentMatch`는 어떤 저장된 상태와 참가자 조건을 검사하고 두 대기 참가자를 어떤 좌우 좌석으로 배치합니까?
+- 초기 구현은 경기방 공개와 `startTournamentMatch`를 어떤 순서로 수행해 부분 성공을 만들었습니까?
+- `UPDATE ... RETURNING` 0-행 검사가 없으면 어떤 존재하지 않는 경기가 성공처럼 보입니까?
+- `abandonRoom`은 경기방, 타이머/스케줄러, 클라이언트, 대기 참가자 중 무엇을 정리해 재입장을 가능하게 합니까?
+- `finalizeMatch` 트랜잭션은 어떤 행을 잠그고 어떤 결과를 한 번만 적용합니까?
+- 기존 `completeTournamentMatch` 제거가 왜 단순 API 정리가 아니라 불변 조건 강제입니까?
 
 ## 3. 완료 기준
 
-- tournament waiter → room publication → persistent start의 정상/실패 경로를 순서대로 그릴 수 있습니다.
-- rollback test의 실패 주입 위치와 관찰한 room/timer/client 상태를 설명할 수 있습니다.
-- 20개 concurrent finalize 호출과 동시 semifinal 완료 테스트가 각각 어떤 중복을 막는지 구분할 수 있습니다.
-- GameHub의 in-flight completion promise와 repository transaction이 담당하는 서로 다른 idempotency 범위를 설명할 수 있습니다.
-- Commit map의 모든 SHA를 지정 브랜치 ancestry와 source classification에서 확인합니다.
-- 각 SHA의 parent 또는 직전 관련 SHA와 비교해 변경 전후 상태를 구분합니다.
-- 실행한 명령과 코드 검사만으로 확인한 사실을 구분하고 실행하지 않은 test를 통과했다고 기록하지 않습니다.
+- 토너먼트 대기 참가자 → 경기방 공개 → 영속 시작의 정상/실패 경로를 순서대로 그릴 수 있습니다.
+- 되돌리기 테스트의 실패 주입 위치와 관찰한 경기방/타이머/클라이언트 상태를 설명할 수 있습니다.
+- 20개 동시 결과 확정 호출과 동시 준결승 완료 테스트가 각각 어떤 중복을 막는지 구분할 수 있습니다.
+- GameHub의 전송 중 완료 Promise와 저장소 트랜잭션이 담당하는 서로 다른 멱등성 범위를 설명할 수 있습니다.
+- 커밋 목록의 모든 SHA를 지정 브랜치의 커밋 이력과 원문 분류에서 확인합니다.
+- 각 SHA를 부모 커밋 또는 직전 관련 SHA와 비교해 변경 전후 상태를 구분합니다.
+- 실행한 명령과 코드 검사만으로 확인한 사실을 구분하고 실행하지 않은 테스트를 통과했다고 기록하지 않습니다.
 
-## 4. Commit map
+## 4. 커밋 목록
 
-| 순서 | SHA | Subject | Importance | Tags | Source에서 확정된 역할 |
+| 순서 | SHA | 제목 | 중요도 | 태그 | 원문에서 확인한 역할 |
 | ---: | --- | --- | :---: | --- | --- |
-| 1 | `33b6dfc5df7a` | `feat(tournament): 토너먼트 경기 방 진행` | A | REALTIME, TOURNAMENT, RISK | Integrates persisted tournament bracket matches with the realtime game hub. |
-| 2 | `e338ea32b2a6` | `feat(db): PostgreSQL tournament 경기 확정을 연결` | S | PERSISTENCE, TOURNAMENT, RISK | Persists match creation, rating changes, tournament linkage, finalist creation, and tournament completion in one locked transaction. |
-| 3 | `582a1615a2c6` | `test(db): 경기 결과 단일 확정 조건 검증` | A | PERSISTENCE, TOURNAMENT, RISK | Verifies idempotent result finalization, rollback, and single final creation under repetition and concurrency. |
-| 4 | `10bf15723591` | `refactor(game): 경기 결과 확정 boundary 사용` | A | REALTIME, PERSISTENCE, TOURNAMENT | Makes room completion use the canonical atomic repository command and shares one in-flight completion promise. |
-| 5 | `916683099ecd` | `fix(db): tournament start 상태 갱신 여부 확인` | A | REALTIME, PERSISTENCE, TOURNAMENT | Turns a zero-row tournament-start update into an explicit failure. |
-| 6 | `480e2dc48028` | `test(db): tournament match 미갱신 거부 검증` | B | REALTIME, PERSISTENCE, TOURNAMENT | Adds a PostgreSQL integration regression for a zero-row tournament-start update. |
-| 7 | `38312bcaf632` | `fix(game): tournament 시작 실패 시 room 상태 복원` | A | REALTIME, TOURNAMENT, RISK | Treats in-memory room creation and persistent tournament-start marking as one logical transition. |
-| 8 | `4e2cb4ae702d` | `test(game): tournament start rollback 검증` | B | REALTIME, PERSISTENCE, TOURNAMENT | Reproduces persistence failure after in-memory tournament-room publication and verifies cleanup/retry. |
-| 9 | `25a495d2cd43` | `refactor(db): 경기 결과 확정 boundary 일원화` | A | PERSISTENCE, TOURNAMENT, RISK | Removes the separate tournament-completion operation so every result passes through `finalizeMatch`. |
-| 10 | `1646034acd9f` | `test(db): 경기 결과 확정 boundary 적용 검증` | B | PERSISTENCE, TOURNAMENT, TEST | Pins the narrowed repository surface: `finalizeMatch` exists and `completeTournamentMatch` does not. |
+| 1 | `33b6dfc5df7a` | `feat(tournament): 토너먼트 경기 방 진행` | A | REALTIME, TOURNAMENT, RISK | 영속 토너먼트 대진 경기를 실시간 게임 허브와 통합합니다. |
+| 2 | `e338ea32b2a6` | `feat(db): PostgreSQL tournament 경기 확정을 연결` | S | PERSISTENCE, TOURNAMENT, RISK | 경기 생성, 레이팅 변경, 토너먼트 연결, 결승 진출자 생성, 토너먼트 완료를 하나의 잠금 트랜잭션에서 저장합니다. |
+| 3 | `582a1615a2c6` | `test(db): 경기 결과 단일 확정 조건 검증` | A | PERSISTENCE, TOURNAMENT, RISK | 반복·동시 호출에서도 결과 확정의 멱등성, 실패 시 되돌리기, 결승 한 건 생성을 검증합니다. |
+| 4 | `10bf15723591` | `refactor(game): 경기 결과 확정 boundary 사용` | A | REALTIME, PERSISTENCE, TOURNAMENT | 경기방 완료 처리가 표준 원자적 저장소 명령을 사용하고 처리 중인 완료 Promise 하나를 공유하게 합니다. |
+| 5 | `916683099ecd` | `fix(db): tournament start 상태 갱신 여부 확인` | A | REALTIME, PERSISTENCE, TOURNAMENT | 토너먼트 시작 갱신 결과가 0행이면 명시적으로 실패하게 합니다. |
+| 6 | `480e2dc48028` | `test(db): tournament match 미갱신 거부 검증` | B | REALTIME, PERSISTENCE, TOURNAMENT | 토너먼트 시작 갱신이 0행인 경우를 PostgreSQL 통합 회귀 테스트로 추가합니다. |
+| 7 | `38312bcaf632` | `fix(game): tournament 시작 실패 시 room 상태 복원` | A | REALTIME, TOURNAMENT, RISK | 메모리 경기방 생성과 영속 토너먼트 시작 표시를 하나의 논리적 전이로 처리합니다. |
+| 8 | `4e2cb4ae702d` | `test(game): tournament start rollback 검증` | B | REALTIME, PERSISTENCE, TOURNAMENT | 메모리 토너먼트 경기방을 공개한 뒤 영속 저장이 실패하는 상황을 재현하고 정리와 재시도를 검증합니다. |
+| 9 | `25a495d2cd43` | `refactor(db): 경기 결과 확정 boundary 일원화` | A | PERSISTENCE, TOURNAMENT, RISK | 별도 토너먼트 완료 연산을 제거해 모든 결과가 `finalizeMatch`를 거치게 합니다. |
+| 10 | `1646034acd9f` | `test(db): 경기 결과 확정 boundary 적용 검증` | B | PERSISTENCE, TOURNAMENT, TEST | `finalizeMatch`만 존재하고 `completeTournamentMatch`는 없다는 축소된 저장소 표면을 고정합니다. |
 
-## 5. Commit별 학습 기록
+## 5. 커밋별 학습 기록
 
 ### 5.1. `feat(tournament): 토너먼트 경기 방 진행`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `33b6dfc5df7a` |
-| Importance | A |
-| Tags | REALTIME, TOURNAMENT, RISK |
-| 학습 깊이 | 주요 subsystem, 구현 경로, ownership/failure/non-guarantee를 구체적으로 복원합니다. |
+| 중요도 | A |
+| 태그 | REALTIME, TOURNAMENT, RISK |
+| 학습 깊이 | 주요 하위 시스템, 구현 경로, 소유권, 실패 처리, 보장하지 않는 범위를 구체적으로 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Integrates persisted tournament bracket matches with the realtime game hub.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 영속 토너먼트 대진 경기를 실시간 게임 허브와 통합합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `apps/api/src/gameHub.ts`의 `tournamentWaiters`
-- `joinTournamentMatch`, `createRoom`, `finishRoom`, disconnect cleanup
-- participant 좌우 배치와 `repo.startTournamentMatch`/`completeTournamentMatch` 호출 순서
-- parent 상태와 비교해 이전 가정, 새 boundary, caller/callee, ownership 또는 failure path를 기록합니다.
-- 이 commit이 보장하지 않는 상태와 다음 fix/test가 보강하는 지점을 구분합니다.
+- `joinTournamentMatch`, `createRoom`, `finishRoom`, 연결 해제 정리
+- 참가자 좌우 배치와 `repo.startTournamentMatch`/`completeTournamentMatch` 호출 순서
+- 부모 커밋의 상태와 비교해 이전 가정, 새 경계, 호출자와 피호출자, 소유권 또는 실패 경로를 기록합니다.
+- 이 커밋이 보장하지 않는 범위와 다음 수정·테스트가 보강하는 지점을 구분합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:33b6dfc5df7a -->
-- **직전 상태:** persisted bracket과 play event는 있었지만 GameHub는 tournament match 두 참가자를 한 room으로 묶지 않았습니다.
-- **구현 결정:** match를 조회해 `ready`, participant, 현재 room 부재를 확인하고 match ID별 waiter에 모은 뒤 left/right participant 순서로 room을 만듭니다. 생성 후 `startTournamentMatch`를 호출하고 종료 시 generic match 저장 뒤 별도 tournament completion을 호출합니다.
-- **상태/소유권 변화:** GameHub가 tournament waiter와 room/client association을 소유하고 repository가 durable match status를 소유합니다. 두 소유자가 순차 호출로만 결합됩니다.
-- **실패/edge:** room을 먼저 publish한 뒤 DB start가 실패하면 room·timer·client `roomId`가 남을 수 있습니다. 종료도 generic match가 성공하고 bracket update가 실패하는 부분 적용 가능성이 있습니다.
-- **보장/비보장:** 정상 경로의 admission과 play는 연결하지만 start/finish의 cross-boundary atomicity는 보장하지 않습니다.
-- **다음 연결:** `e338ea32b2a6`이 종료 결과를 하나의 persistence transaction으로 통합하고, 뒤의 `916...`–`4e2...`가 start rollback을 닫습니다.
+- **직전 상태:** 저장된 대진과 플레이 이벤트는 있었지만 GameHub는 토너먼트 경기 두 참가자를 한 경기방으로 묶지 않았습니다.
+- **구현 결정:** 경기를 조회해 `ready`, 참가자, 현재 경기방 부재를 확인하고 경기 ID별 대기 참가자에 모은 뒤 왼쪽·오른쪽 참가자 순서로 경기방을 만듭니다. 생성 후 `startTournamentMatch`를 호출하고 종료 시 일반 경기 저장 뒤 별도 토너먼트 완료를 호출합니다.
+- **상태/소유권 변화:** GameHub가 토너먼트 대기 참가자와 경기방/클라이언트 연결 정보를 소유하고 저장소가 영속 경기 상태를 소유합니다. 두 소유자가 순차 호출로만 결합됩니다.
+- **실패/예외 조건:** 경기방을 먼저 공개한 뒤 DB 시작이 실패하면 경기방·타이머·클라이언트 `roomId`가 남을 수 있습니다. 종료도 일반 경기가 성공하고 대진 갱신이 실패하는 부분 적용 가능성이 있습니다.
+- **보장 범위/보장하지 않는 범위:** 정상 경로의 참가와 플레이는 연결하지만 메모리 경기방 상태와 DB 상태 사이의 원자성은 보장하지 않습니다.
+- **다음 연결:** `e338ea32b2a6`이 종료 결과를 하나의 영속 저장 트랜잭션으로 통합하고, 뒤의 `916...`–`4e2...`가 시작 되돌리기를 닫습니다.
 <!-- LEARNER-ANSWER END commit:33b6dfc5df7a -->
 
 비교 기준:
-- 이 commit의 parent와 비교합니다.
-- 다음 Thread 관련 SHA: `e338ea32b2a6` — `feat(db): PostgreSQL tournament 경기 확정을 연결`
+- 이 커밋의 부모 커밋과 비교합니다.
+- 다음 개발 스레드 관련 SHA: `e338ea32b2a6` — `feat(db): PostgreSQL tournament 경기 확정을 연결`
 
 ### 5.2. `feat(db): PostgreSQL tournament 경기 확정을 연결`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `e338ea32b2a6` |
-| Importance | S |
-| Tags | PERSISTENCE, TOURNAMENT, RISK |
-| 학습 깊이 | major architecture와 핵심 invariant를 previous state, transaction/ownership, failure, later verification까지 깊게 복원합니다. |
+| 중요도 | S |
+| 태그 | PERSISTENCE, TOURNAMENT, RISK |
+| 학습 깊이 | 주요 아키텍처와 핵심 불변 조건을 직전 상태, 트랜잭션과 소유권, 실패 처리, 후속 검증까지 깊게 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Persists match creation, rating changes, tournament linkage, finalist creation, and tournament completion in one locked transaction.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 경기 생성, 레이팅 변경, 토너먼트 연결, 결승 진출자 생성, 토너먼트 완료를 하나의 잠금 트랜잭션에서 저장합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `packages/db/src/index.ts`의 PostgreSQL `finalizeMatch`
-- result key/idempotency row와 generic match/history/rating 처리
-- `SELECT ... FOR UPDATE` tournament match/tournament lock
-- semifinal two-winner final insert와 final tournament completion
-- parent 상태와 비교해 transaction 시작 전 획득 상태, lock 순서, write 순서, rollback 범위를 단계별로 기록합니다.
-- process-local idempotency와 durable idempotency를 구분하고, 반복·동시 호출에서 어떤 key/row가 serialization 지점인지 확인합니다.
-- 정상 결과뿐 아니라 중간 failure가 이미 수행한 generic match, history, rating, tournament write를 어떻게 되돌리는지 확인합니다.
+- 결과 키/멱등성 행과 일반 경기/이력/레이팅 처리
+- `SELECT ... FOR UPDATE` 토너먼트 경기/토너먼트 잠금
+- 준결승 두 승자를 사용한 최종 삽입과 최종 토너먼트 완료
+- 부모 커밋의 상태와 비교해 트랜잭션 시작 전 획득 상태, 잠금 순서, 쓰기 순서, 되돌리기 범위를 단계별로 기록합니다.
+- 프로세스 내부 멱등성과 영속 멱등성을 구분하고, 반복·동시 호출에서 어떤 키/행이 직렬화 지점인지 확인합니다.
+- 정상 결과뿐 아니라 중간 실패가 이미 수행한 일반 경기, 이력, 레이팅, 토너먼트 쓰기를 어떻게 되돌리는지 확인합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:e338ea32b2a6 -->
-- **직전 상태:** GameHub는 generic `createMatch` 후 `completeTournamentMatch`를 따로 호출해 첫 단계만 commit될 수 있었습니다. 반복 finish도 동일 결과를 중복 적용할 위험이 있었습니다.
-- **구현 결정:** `finalizeMatch`가 하나의 transaction 안에서 result key를 기준으로 기존 결과를 확인하고, generic match와 history/rating을 만든 뒤 tournament match 및 aggregate row를 잠급니다. tournament 참가자·winner/loser 관계를 검증하고 `match_id is null`인 row만 finished로 연결합니다. 두 semifinal이 끝났을 때 final을 만들고 final이면 tournament winner/status를 갱신합니다.
-- **상태/소유권 변화:** durable completion의 유일한 owner가 repository transaction이 됩니다. GameHub는 tournament progression 단계를 조합하지 않고 command와 결과만 주고받습니다.
-- **실패/edge:** 존재하지 않는 tournament match, 이미 다른 match에 연결된 row, 참가자가 아닌 winner/loser, linkage SQL 실패는 transaction 전체를 rollback해야 합니다. lock 순서는 같은 tournament aggregate를 통한 동시 semifinal serialization에 사용됩니다.
-- **보장/비보장:** 동일 result key의 반복/동시 호출에서 한 generic match·한 rating 적용·한 tournament link를 목표로 하며, linkage 실패 시 앞선 match/history/rating도 남기지 않습니다. in-memory room cleanup은 이 transaction의 범위가 아닙니다.
-- **다음 연결:** `582a1615a2c6`이 20회 동시 호출, 강제 rollback, 동시 semifinal 완료로 이 불변식을 직접 검증하고 `10bf...`가 GameHub를 새 boundary에 연결합니다.
+- **직전 상태:** GameHub는 일반 `createMatch` 후 `completeTournamentMatch`를 따로 호출해 첫 단계만 커밋될 수 있었습니다. 반복 종료도 동일 결과를 중복 적용할 위험이 있었습니다.
+- **구현 결정:** `finalizeMatch`가 하나의 트랜잭션 안에서 결과 키를 기준으로 기존 결과를 확인하고, 일반 경기와 이력/레이팅을 만든 뒤 토너먼트 경기 및 집계 행을 잠급니다. 토너먼트 참가자·승자/패자 관계를 검증하고 `match_id is null`인 행만 종료된로 연결합니다. 두 준결승이 끝났을 때 최종을 만들고 최종이면 토너먼트 승자/상태를 갱신합니다.
+- **상태/소유권 변화:** 영속 완료의 유일한 소유 주체가 저장소 트랜잭션이 됩니다. GameHub는 토너먼트 진행 단계를 조합하지 않고 명령과 결과만 주고받습니다.
+- **실패/예외 조건:** 존재하지 않는 토너먼트 경기, 이미 다른 경기에 연결된 행, 참가자가 아닌 승자/패자, 토너먼트 연결 SQL 실패는 트랜잭션 전체를 되돌리기해야 합니다. 잠금 순서는 같은 토너먼트 집계를 통한 동시 준결승 직렬화에 사용됩니다.
+- **보장 범위/보장하지 않는 범위:** 동일 결과 키의 반복/동시 호출에서 한 일반 경기·한 레이팅 적용·한 토너먼트 링크를 목표로 하며, 연결 실패 시 앞선 경기/이력/레이팅도 남기지 않습니다. 메모리 경기방 정리는 이 트랜잭션의 범위가 아닙니다.
+- **다음 연결:** `582a1615a2c6`이 20회 동시 호출, 강제 되돌리기, 동시 준결승 완료로 이 불변식을 직접 검증하고 `10bf...`가 GameHub를 새 경계에 연결합니다.
 <!-- LEARNER-ANSWER END commit:e338ea32b2a6 -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `33b6dfc5df7a` — `feat(tournament): 토너먼트 경기 방 진행`
-- 다음 Thread 관련 SHA: `582a1615a2c6` — `test(db): 경기 결과 단일 확정 조건 검증`
+- 직전 개발 스레드 관련 SHA: `33b6dfc5df7a` — `feat(tournament): 토너먼트 경기 방 진행`
+- 다음 개발 스레드 관련 SHA: `582a1615a2c6` — `test(db): 경기 결과 단일 확정 조건 검증`
 
 ### 5.3. `test(db): 경기 결과 단일 확정 조건 검증`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `582a1615a2c6` |
-| Importance | A |
-| Tags | PERSISTENCE, TOURNAMENT, RISK |
-| 학습 깊이 | 주요 subsystem, 구현 경로, ownership/failure/non-guarantee를 구체적으로 복원합니다. |
+| 중요도 | A |
+| 태그 | PERSISTENCE, TOURNAMENT, RISK |
+| 학습 깊이 | 주요 하위 시스템, 구현 경로, 소유권, 실패 처리, 보장하지 않는 범위를 구체적으로 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Verifies idempotent result finalization, rollback, and single final creation under repetition and concurrency.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 반복·동시 호출에서도 결과 확정의 멱등성, 실패 시 되돌리기, 결승 한 건 생성을 검증합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `packages/db/src/index.test.ts`의 memory 20-call/concurrent semifinal test
-- `packages/db/src/postgres.integration.test.ts`의 isolated database cases
-- 강제 tournament linkage failure와 match/history/rating rollback assertion
-- parent 상태와 비교해 이전 가정, 새 boundary, caller/callee, ownership 또는 failure path를 기록합니다.
-- 이 commit이 보장하지 않는 상태와 다음 fix/test가 보강하는 지점을 구분합니다.
-- Test technique, failure/boundary fixture, production path, proves/does-not-prove를 실제 assertion으로 구분합니다.
+- `packages/db/src/index.test.ts`의 메모리 20-호출/동시 준결승 테스트
+- `packages/db/src/postgres.integration.test.ts`의 격리된 데이터베이스 사례
+- 강제 토너먼트 연결 실패와 경기/이력/레이팅 되돌리기 검증
+- 부모 커밋의 상태와 비교해 이전 가정, 새 경계, 호출자와 피호출자, 소유권 또는 실패 경로를 기록합니다.
+- 이 커밋이 보장하지 않는 범위와 다음 수정·테스트가 보강하는 지점을 구분합니다.
+- 테스트 기법, 실패·경계 조건을 만드는 픽스처, 실제 코드 경로, 검증 범위와 미검증 범위를 실제 검증으로 구분합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:582a1615a2c6 -->
-- **직전 상태:** transaction 구현은 있었지만 반복 호출·동시 호출·중간 SQL 실패 시 결과가 하나만 남는다는 실행 가능한 회귀 근거가 없었습니다.
-- **구현 결정/기법:** 같은 command를 20개 병렬 호출해 모든 응답이 같은 match ID를 가리키고 `created`가 한 번뿐인지 확인합니다. PostgreSQL에서는 match/history 개수와 rating 적용을 확인하고, tournament linkage 실패를 주입해 전체 rollback을 검사합니다. 두 semifinal을 동시에 확정해 final row가 정확히 하나인지도 확인합니다.
-- **생산 경로:** `AppRepository.finalizeMatch`의 result-key claim, row lock, generic match/history/rating, tournament link/final insert를 실제 repository 경계로 통과합니다.
-- **증명:** 반복·동시 호출의 단일 적용, transaction rollback, concurrent semifinal의 single final을 증명하도록 작성됐습니다.
-- **비증명:** 여러 process의 실제 부하·장애 복구 시간이나 GameHub room cleanup을 증명하지는 않습니다.
-- **다음 연결:** `10bf15723591`이 이 검증된 boundary를 realtime completion의 유일한 호출로 사용합니다.
+- **직전 상태:** 트랜잭션 구현은 있었지만 반복 호출·동시 호출·중간 SQL 실패 시 결과가 하나만 남는다는 실행 가능한 회귀 근거가 없었습니다.
+- **구현 결정/기법:** 같은 명령을 20개 병렬 호출해 모든 응답이 같은 경기 ID를 가리키고 `created`가 한 번뿐인지 확인합니다. PostgreSQL에서는 경기/이력 개수와 레이팅 적용을 확인하고, 토너먼트 연결 실패를 주입해 전체 되돌리기를 검사합니다. 두 준결승을 동시에 확정해 최종 행이 정확히 하나인지도 확인합니다.
+- **생산 경로:** `AppRepository.finalizeMatch`의 결과 키 선점, 행 잠금, 일반 경기/이력/레이팅, 토너먼트 링크/최종 삽입을 실제 저장소 경계로 통과합니다.
+- **검증:** 반복·동시 호출의 단일 적용, 트랜잭션 되돌리기, 동시 준결승의 단일 최종을 검증하도록 작성됐습니다.
+- **미검증:** 여러 프로세스의 실제 부하·장애 복구 시간이나 GameHub 경기방 정리를 검증하지는 않습니다.
+- **다음 연결:** `10bf15723591`이 이 검증된 경계를 실시간 완료의 유일한 호출로 사용합니다.
 <!-- LEARNER-ANSWER END commit:582a1615a2c6 -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `e338ea32b2a6` — `feat(db): PostgreSQL tournament 경기 확정을 연결`
-- 다음 Thread 관련 SHA: `10bf15723591` — `refactor(game): 경기 결과 확정 boundary 사용`
+- 직전 개발 스레드 관련 SHA: `e338ea32b2a6` — `feat(db): PostgreSQL tournament 경기 확정을 연결`
+- 다음 개발 스레드 관련 SHA: `10bf15723591` — `refactor(game): 경기 결과 확정 boundary 사용`
 
 ### 5.4. `refactor(game): 경기 결과 확정 boundary 사용`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `10bf15723591` |
-| Importance | A |
-| Tags | REALTIME, PERSISTENCE, TOURNAMENT |
-| 학습 깊이 | 주요 subsystem, 구현 경로, ownership/failure/non-guarantee를 구체적으로 복원합니다. |
+| 중요도 | A |
+| 태그 | REALTIME, PERSISTENCE, TOURNAMENT |
+| 학습 깊이 | 주요 하위 시스템, 구현 경로, 소유권, 실패 처리, 보장하지 않는 범위를 구체적으로 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Makes room completion use the canonical atomic repository command and shares one in-flight completion promise.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 경기방 완료 처리가 표준 원자적 저장소 명령을 사용하고 처리 중인 완료 Promise 하나를 공유하게 합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `apps/api/src/gameHub.ts`의 Room `finishing` 필드
-- `finishRoom`의 promise reuse/reset
-- `finalizeRoom`의 `repo.finalizeMatch` command와 `resultKey`
-- 성공 후 finished event/broadcast/cleanup 순서
-- parent 상태와 비교해 이전 가정, 새 boundary, caller/callee, ownership 또는 failure path를 기록합니다.
-- 이 commit이 보장하지 않는 상태와 다음 fix/test가 보강하는 지점을 구분합니다.
+- `apps/api/src/gameHub.ts`의 경기방 `finishing` 필드
+- `finishRoom`의 Promise reuse/초기화
+- `finalizeRoom`의 `repo.finalizeMatch` 명령과 `resultKey`
+- 성공 후 종료된 이벤트/전파/정리 순서
+- 부모 커밋의 상태와 비교해 이전 가정, 새 경계, 호출자와 피호출자, 소유권 또는 실패 경로를 기록합니다.
+- 이 커밋이 보장하지 않는 범위와 다음 수정·테스트가 보강하는 지점을 구분합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:10bf15723591 -->
-- **직전 상태:** GameHub가 `createMatch`와 `completeTournamentMatch`를 직접 조합해 transaction boundary를 우회했습니다.
-- **구현 결정:** room에 `finishing` promise를 저장해 동시에 들어온 finish가 같은 작업을 공유하게 하고, `finalizeRoom`은 `room:<id>:finished` result key와 선택적 tournament context를 한 번의 `repo.finalizeMatch`로 넘깁니다. rejection 시 promise를 비워 재시도를 허용합니다.
-- **상태/소유권 변화:** in-flight 중복 억제는 room이, durable idempotency와 결과 생성은 repository가 담당합니다. 성공한 persistence 결과를 받은 뒤에만 finished event를 방송합니다.
-- **실패/edge:** repository 실패는 finished로 발표되지 않고 promise가 reset됩니다. 이미 commit된 뒤 response만 실패하는 경우도 result key가 재시도를 안전하게 수용합니다.
-- **보장/비보장:** 한 process room의 중복 finish와 durable repeated command를 함께 방어하지만 process crash 후 in-memory room 복구 자체는 다루지 않습니다.
-- **다음 연결:** start 경로의 부분 성공은 여전히 남아 있어 `916...`–`4e2...`가 별도로 수정합니다.
+- **직전 상태:** GameHub가 `createMatch`와 `completeTournamentMatch`를 직접 조합해 트랜잭션 경계를 우회했습니다.
+- **구현 결정:** 경기방에 `finishing` Promise를 저장해 동시에 들어온 종료가 같은 작업을 공유하게 하고, `finalizeRoom`은 `room:<id>:finished` 결과 키와 선택적 토너먼트 컨텍스트를 한 번의 `repo.finalizeMatch`로 넘깁니다. 실패 시 Promise를 비워 재시도를 허용합니다.
+- **상태/소유권 변화:** 전송 중 중복 억제는 경기방이, 영속 멱등성과 결과 생성은 저장소가 담당합니다. 성공한 영속 저장 결과를 받은 뒤에만 종료된 이벤트를 방송합니다.
+- **실패/예외 조건:** 저장소 실패는 종료된로 발표되지 않고 Promise가 초기화됩니다. 이미 커밋된 뒤 응답만 실패하는 경우도 결과 키가 재시도를 안전하게 수용합니다.
+- **보장 범위/보장하지 않는 범위:** 한 프로세스 경기방의 중복 종료와 영속 repeated 명령을 함께 방어하지만 프로세스 비정상 종료 후 메모리 경기방 복구 자체는 다루지 않습니다.
+- **다음 연결:** 시작 경로의 부분 성공은 여전히 남아 있어 `916...`–`4e2...`가 별도로 수정합니다.
 <!-- LEARNER-ANSWER END commit:10bf15723591 -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `582a1615a2c6` — `test(db): 경기 결과 단일 확정 조건 검증`
-- 다음 Thread 관련 SHA: `916683099ecd` — `fix(db): tournament start 상태 갱신 여부 확인`
+- 직전 개발 스레드 관련 SHA: `582a1615a2c6` — `test(db): 경기 결과 단일 확정 조건 검증`
+- 다음 개발 스레드 관련 SHA: `916683099ecd` — `fix(db): tournament start 상태 갱신 여부 확인`
 
 ### 5.5. `fix(db): tournament start 상태 갱신 여부 확인`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `916683099ecd` |
-| Importance | A |
-| Tags | REALTIME, PERSISTENCE, TOURNAMENT |
-| 학습 깊이 | 주요 subsystem, 구현 경로, ownership/failure/non-guarantee를 구체적으로 복원합니다. |
+| 중요도 | A |
+| 태그 | REALTIME, PERSISTENCE, TOURNAMENT |
+| 학습 깊이 | 주요 하위 시스템, 구현 경로, 소유권, 실패 처리, 보장하지 않는 범위를 구체적으로 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Turns a zero-row tournament-start update into an explicit failure.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 토너먼트 시작 갱신 결과가 0행이면 명시적으로 실패하게 합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `packages/db/src/index.ts`의 PostgreSQL `startTournamentMatch`
-- `UPDATE ... RETURNING id`와 result row count 검사
-- ready/running condition과 not-found error
-- parent 상태와 비교해 이전 가정, 새 boundary, caller/callee, ownership 또는 failure path를 기록합니다.
-- 이 commit이 보장하지 않는 상태와 다음 fix/test가 보강하는 지점을 구분합니다.
-- Fix chain을 `이전 가정 → 실제 실패/위험 → root cause → 교정된 결정 → 남는 비보장` 순서로 복원합니다.
+- `UPDATE ... RETURNING id`와 결과 행 개수 검사
+- 준비 완료·실행 중 조건과 대상을 찾지 못한 오류
+- 부모 커밋의 상태와 비교해 이전 가정, 새 경계, 호출자와 피호출자, 소유권 또는 실패 경로를 기록합니다.
+- 이 커밋이 보장하지 않는 범위와 다음 수정·테스트가 보강하는 지점을 구분합니다.
+- 수정 과정을을 `이전 가정 → 실제 실패/위험 → root cause → 교정된 결정 → 남는 비보장` 순서로 복원합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:916683099ecd -->
-- **직전 가정:** SQL `UPDATE`가 예외를 내지 않으면 match가 running으로 바뀌었다고 간주했습니다. 존재하지 않거나 조건에 맞지 않는 ID도 zero-row success처럼 통과할 수 있었습니다.
-- **실제 위험:** GameHub는 durable match가 시작되지 않았는데 room을 유효하다고 유지해 두 상태가 갈라질 수 있습니다.
-- **교정:** update에 `RETURNING id`를 붙이고 반환 row가 정확히 하나가 아니면 `tournament match not found` 오류를 던집니다.
-- **상태/소유권 변화:** repository가 “상태 전이가 실제 row에 적용됐는지”를 확인하고 caller에 실패를 전달합니다.
-- **보장/비보장:** zero-row silent success를 제거하지만 caller가 이미 만든 room을 되돌리는 일은 다음 commit의 GameHub 책임입니다.
-- **다음 연결:** `480e2dc48028`이 임의 UUID regression을 추가하고 `38312bcaf632`가 이 오류를 rollback trigger로 사용합니다.
+- **직전 가정:** SQL `UPDATE`가 예외를 내지 않으면 경기가 실행 중으로 바뀌었다고 간주했습니다. 존재하지 않거나 조건에 맞지 않는 ID도 0-행 성공처럼 통과할 수 있었습니다.
+- **실제 위험:** GameHub는 영속 경기가 시작되지 않았는데 경기방을 유효하다고 유지해 두 상태가 갈라질 수 있습니다.
+- **교정:** 갱신에 `RETURNING id`를 붙이고 반환 행이 정확히 하나가 아니면 `tournament match not found` 오류를 던집니다.
+- **상태/소유권 변화:** 저장소가 “상태 전이가 실제 행에 적용됐는지”를 확인하고 호출자에 실패를 전달합니다.
+- **보장 범위/보장하지 않는 범위:** 0행 갱신을 성공으로 간주하는 문제는 제거하지만, 호출자가 이미 만든 경기방을 되돌리는 일은 다음 커밋에서 GameHub가 처리합니다.
+- **다음 연결:** `480e2dc48028`이 임의 UUID 회귀를 추가하고 `38312bcaf632`가 이 오류를 되돌리기 조건으로 사용합니다.
 <!-- LEARNER-ANSWER END commit:916683099ecd -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `10bf15723591` — `refactor(game): 경기 결과 확정 boundary 사용`
-- 다음 Thread 관련 SHA: `480e2dc48028` — `test(db): tournament match 미갱신 거부 검증`
+- 직전 개발 스레드 관련 SHA: `10bf15723591` — `refactor(game): 경기 결과 확정 boundary 사용`
+- 다음 개발 스레드 관련 SHA: `480e2dc48028` — `test(db): tournament match 미갱신 거부 검증`
 
 ### 5.6. `test(db): tournament match 미갱신 거부 검증`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `480e2dc48028` |
-| Importance | B |
-| Tags | REALTIME, PERSISTENCE, TOURNAMENT |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | REALTIME, PERSISTENCE, TOURNAMENT |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Adds a PostgreSQL integration regression for a zero-row tournament-start update.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 토너먼트 시작 갱신이 0행인 경우를 PostgreSQL 통합 회귀 테스트로 추가합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `packages/db/src/postgres.integration.test.ts`의 존재하지 않는 UUID start case
-- isolated PostgreSQL repository와 rejection assertion
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
-- Test technique, failure/boundary fixture, production path, proves/does-not-prove를 실제 assertion으로 구분합니다.
+- `packages/db/src/postgres.integration.test.ts`의 존재하지 않는 UUID 시작 사례
+- 격리된 PostgreSQL 저장소와 실패 검증
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
+- 테스트 기법, 실패·경계 조건을 만드는 픽스처, 실제 코드 경로, 검증 범위와 미검증 범위를 실제 검증으로 구분합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:480e2dc48028 -->
-- **직전 상태:** zero-row 검사는 구현됐지만 실제 PostgreSQL driver/result 형태에서 오류가 발생하는지 고정한 test가 없었습니다.
-- **기법:** isolated DB에서 존재하지 않는 random UUID로 `startTournamentMatch`를 호출하고 rejection을 요구합니다.
-- **생산 경로:** mock이 아니라 PostgreSQL `UPDATE ... RETURNING`과 repository row-count 검사를 통과합니다.
-- **증명/비증명:** 없는 match를 성공으로 처리하지 않음을 증명하도록 작성됐지만 room rollback은 호출하지 않습니다.
-- **보장:** DB boundary regression을 고정합니다.
-- **다음 연결:** `38312bcaf632`이 이 rejection을 받은 GameHub의 역순 cleanup을 구현합니다.
+- **직전 상태:** 0-행 검사는 구현됐지만 실제 PostgreSQL 드라이버 결과 형태에서 오류가 발생하는지 고정한 테스트가 없었습니다.
+- **기법:** 격리된 DB에서 존재하지 않는 random UUID로 `startTournamentMatch`를 호출하고 실패를 요구합니다.
+- **생산 경로:** 가짜 객체가 아니라 PostgreSQL `UPDATE ... RETURNING`과 저장소 행 개수 검사를 통과합니다.
+- **검증 범위와 미검증 범위:** 없는 경기를 성공으로 처리하지 않음을 검증하도록 작성됐지만 경기방 되돌리기는 호출하지 않습니다.
+- **보장:** DB 경계 회귀를 고정합니다.
+- **다음 연결:** `38312bcaf632`이 이 실패를 받은 GameHub의 역순 정리를 구현합니다.
 <!-- LEARNER-ANSWER END commit:480e2dc48028 -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `916683099ecd` — `fix(db): tournament start 상태 갱신 여부 확인`
-- 다음 Thread 관련 SHA: `38312bcaf632` — `fix(game): tournament 시작 실패 시 room 상태 복원`
+- 직전 개발 스레드 관련 SHA: `916683099ecd` — `fix(db): tournament start 상태 갱신 여부 확인`
+- 다음 개발 스레드 관련 SHA: `38312bcaf632` — `fix(game): tournament 시작 실패 시 room 상태 복원`
 
 ### 5.7. `fix(game): tournament 시작 실패 시 room 상태 복원`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `38312bcaf632` |
-| Importance | A |
-| Tags | REALTIME, TOURNAMENT, RISK |
-| 학습 깊이 | 주요 subsystem, 구현 경로, ownership/failure/non-guarantee를 구체적으로 복원합니다. |
+| 중요도 | A |
+| 태그 | REALTIME, TOURNAMENT, RISK |
+| 학습 깊이 | 주요 하위 시스템, 구현 경로, 소유권, 실패 처리, 보장하지 않는 범위를 구체적으로 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Treats in-memory room creation and persistent tournament-start marking as one logical transition.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 메모리 경기방 생성과 영속 토너먼트 시작 표시를 하나의 논리적 전이로 처리합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `apps/api/src/gameHub.ts`의 `joinTournamentMatch` try/catch
 - `abandonRoom(room)` 호출과 rethrow
-- room map, timer/scheduler, client room association cleanup
-- parent 상태와 비교해 이전 가정, 새 boundary, caller/callee, ownership 또는 failure path를 기록합니다.
-- 이 commit이 보장하지 않는 상태와 다음 fix/test가 보강하는 지점을 구분합니다.
-- Fix chain을 `이전 가정 → 실제 실패/위험 → root cause → 교정된 결정 → 남는 비보장` 순서로 복원합니다.
+- 경기방 목록, 타이머/스케줄러, 클라이언트 경기방 association 정리
+- 부모 커밋의 상태와 비교해 이전 가정, 새 경계, 호출자와 피호출자, 소유권 또는 실패 경로를 기록합니다.
+- 이 커밋이 보장하지 않는 범위와 다음 수정·테스트가 보강하는 지점을 구분합니다.
+- 수정 과정을을 `이전 가정 → 실제 실패/위험 → root cause → 교정된 결정 → 남는 비보장` 순서로 복원합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:38312bcaf632 -->
-- **직전 가정:** room 생성 후 `startTournamentMatch`가 실패하지 않거나 실패해도 caller 오류만 보내면 충분하다고 봤습니다.
-- **실제 실패:** room map과 양 client `roomId`, timer/scheduler가 남아 참가자가 다시 join할 수 없고 live stats에도 ghost room이 나타날 수 있습니다.
-- **교정:** start를 try/catch로 감싸고 실패한 room을 찾아 `abandonRoom`으로 publication을 역순 취소한 뒤 원래 오류를 다시 던집니다.
-- **상태/소유권 변화:** GameHub는 자신이 획득한 in-memory 자원을 직접 rollback하고 repository는 durable row 전이만 책임집니다.
-- **보장/비보장:** start failure 뒤 room/timer/client association을 제거해 retry 가능한 상태를 목표로 하지만, cleanup 누락 여부는 다음 deterministic test가 확인합니다.
-- **다음 연결:** `4e2cb4ae702d`이 한 번 실패 후 같은 참가자들이 다시 join해 정상 room을 얻는지 검증합니다.
+- **직전 가정:** 경기방 생성 후 `startTournamentMatch`가 실패하지 않거나 실패해도 호출자 오류만 보내면 충분하다고 봤습니다.
+- **실제 실패:** 경기방 목록과 양 클라이언트 `roomId`, 타이머/스케줄러가 남아 참가자가 다시 참가할 수 없고 실시간 통계에도 유령 경기방이 나타날 수 있습니다.
+- **교정:** 시작을 try/catch로 감싸고 실패한 경기방을 찾아 `abandonRoom`으로 공개를 역순 취소한 뒤 원래 오류를 다시 던집니다.
+- **상태/소유권 변화:** GameHub는 자신이 획득한 메모리 자원을 직접 되돌리기하고 저장소는 영속 행 전이만 책임집니다.
+- **보장 범위/보장하지 않는 범위:** 시작 실패 뒤 경기방/타이머/클라이언트 연결 정보를 제거해 재시도 가능한 상태를 목표로 하지만, 정리 누락 여부는 다음 결정적 테스트가 확인합니다.
+- **다음 연결:** `4e2cb4ae702d`이 한 번 실패 후 같은 참가자들이 다시 참가해 정상 경기방을 얻는지 검증합니다.
 <!-- LEARNER-ANSWER END commit:38312bcaf632 -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `480e2dc48028` — `test(db): tournament match 미갱신 거부 검증`
-- 다음 Thread 관련 SHA: `4e2cb4ae702d` — `test(game): tournament start rollback 검증`
+- 직전 개발 스레드 관련 SHA: `480e2dc48028` — `test(db): tournament match 미갱신 거부 검증`
+- 다음 개발 스레드 관련 SHA: `4e2cb4ae702d` — `test(game): tournament start rollback 검증`
 
 ### 5.8. `test(game): tournament start rollback 검증`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `4e2cb4ae702d` |
-| Importance | B |
-| Tags | REALTIME, PERSISTENCE, TOURNAMENT |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | REALTIME, PERSISTENCE, TOURNAMENT |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Reproduces persistence failure after in-memory tournament-room publication and verifies cleanup/retry.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 메모리 토너먼트 경기방을 공개한 뒤 영속 저장이 실패하는 상황을 재현하고 정리와 재시도를 검증합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `apps/api/src/gameHub.tournament.test.ts`의 fake sockets
+- `apps/api/src/gameHub.tournament.test.ts`의 가짜 소켓
 - `startTournamentMatch` `mockRejectedValueOnce` 후 성공 설정
-- `activeRooms`, `scheduledRoomCount`, matched events, second join assertions
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
-- Test technique, failure/boundary fixture, production path, proves/does-not-prove를 실제 assertion으로 구분합니다.
+- `activeRooms`, `scheduledRoomCount`, 매칭 완료 이벤트, second 참가 검증
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
+- 테스트 기법, 실패·경계 조건을 만드는 픽스처, 실제 코드 경로, 검증 범위와 미검증 범위를 실제 검증으로 구분합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:4e2cb4ae702d -->
-- **직전 상태:** rollback 코드는 있었지만 room과 timer가 모두 사라지고 참가자가 재시도할 수 있다는 근거가 없었습니다.
-- **실패 주입:** repository `startTournamentMatch`를 첫 호출에만 reject하도록 하고 두 fake socket을 같은 ready match에 pair합니다.
-- **관찰:** 첫 실패 뒤 start 호출 1회, active room 0, scheduled room 0을 확인합니다. 같은 두 참가자가 다시 join하면 두 번째 start가 성공하고 room 1개와 좌우 matched event가 생기는지 확인합니다.
-- **생산 경로:** 실제 `GameHub.connect`/event receive/pair/create/abandon 흐름을 사용하고 persistence만 spy/mock으로 제어합니다.
-- **증명/비증명:** partial publication cleanup과 retryability를 결정적으로 검증하도록 작성됐지만 PostgreSQL transaction 자체는 이 test 범위가 아닙니다.
-- **다음 연결:** start/finish 양쪽 교정 후 `25a495d2cd43`이 legacy completion escape hatch를 제거합니다.
+- **직전 상태:** 되돌리기 코드는 있었지만 경기방과 타이머가 모두 사라지고 참가자가 재시도할 수 있다는 근거가 없었습니다.
+- **실패 주입:** 저장소 `startTournamentMatch`를 첫 호출에만 거부하도록 하고 두 가짜 소켓을 같은 준비 완료 경기에 쌍합니다.
+- **관찰:** 첫 실패 뒤 시작 호출 1회, 진행 중인 경기방 0, scheduled 경기방 0을 확인합니다. 같은 두 참가자가 다시 참가하면 두 번째 시작이 성공하고 경기방 1개와 좌우 매칭 완료 이벤트가 생기는지 확인합니다.
+- **생산 경로:** 실제 `GameHub.connect`/이벤트 receive/쌍/생성/abandon 흐름을 사용하고 영속 저장만 호출 감시 객체/가짜 객체로 제어합니다.
+- **검증 범위와 미검증 범위:** 부분 반영 공개 정리와 retryability를 결정적으로 검증하도록 작성됐지만 PostgreSQL 트랜잭션 자체는 이 테스트 범위가 아닙니다.
+- **다음 연결:** 시작/종료 양쪽 교정 후 `25a495d2cd43`이 기존 완료 우회 경로를 제거합니다.
 <!-- LEARNER-ANSWER END commit:4e2cb4ae702d -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `38312bcaf632` — `fix(game): tournament 시작 실패 시 room 상태 복원`
-- 다음 Thread 관련 SHA: `25a495d2cd43` — `refactor(db): 경기 결과 확정 boundary 일원화`
+- 직전 개발 스레드 관련 SHA: `38312bcaf632` — `fix(game): tournament 시작 실패 시 room 상태 복원`
+- 다음 개발 스레드 관련 SHA: `25a495d2cd43` — `refactor(db): 경기 결과 확정 boundary 일원화`
 
 ### 5.9. `refactor(db): 경기 결과 확정 boundary 일원화`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `25a495d2cd43` |
-| Importance | A |
-| Tags | PERSISTENCE, TOURNAMENT, RISK |
-| 학습 깊이 | 주요 subsystem, 구현 경로, ownership/failure/non-guarantee를 구체적으로 복원합니다. |
+| 중요도 | A |
+| 태그 | PERSISTENCE, TOURNAMENT, RISK |
+| 학습 깊이 | 주요 하위 시스템, 구현 경로, 소유권, 실패 처리, 보장하지 않는 범위를 구체적으로 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Removes the separate tournament-completion operation so every result passes through `finalizeMatch`.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 별도 토너먼트 완료 연산을 제거해 모든 결과가 `finalizeMatch`를 거치게 합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `packages/db/src/index.ts`의 `AppRepository` surface
-- PostgreSQL/memory `completeTournamentMatch` 및 old final helper 제거
-- observability operation 목록과 caller compile surface
-- parent 상태와 비교해 이전 가정, 새 boundary, caller/callee, ownership 또는 failure path를 기록합니다.
-- 이 commit이 보장하지 않는 상태와 다음 fix/test가 보강하는 지점을 구분합니다.
+- `packages/db/src/index.ts`의 `AppRepository` 호출 방법
+- PostgreSQL/메모리 `completeTournamentMatch` 및 기존 최종 도우미 함수 제거
+- 관측 연산 목록과 호출자의 컴파일 시 호출 방식
+- 부모 커밋의 상태와 비교해 이전 가정, 새 경계, 호출자와 피호출자, 소유권 또는 실패 경로를 기록합니다.
+- 이 커밋이 보장하지 않는 범위와 다음 수정·테스트가 보강하는 지점을 구분합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:25a495d2cd43 -->
-- **직전 상태:** GameHub는 새 boundary를 사용했지만 repository interface에 `completeTournamentMatch`가 남아 다른 caller가 generic match/rating transaction을 우회할 수 있었습니다.
-- **구현 결정:** 양 repository 구현과 interface, 관련 helper/observability 이름에서 별도 operation을 제거하고 tournament progression을 `finalizeMatch` 내부로만 남깁니다.
-- **상태/소유권 변화:** “결과 확정” 책임이 명시적으로 단일 method에 귀속되며, 잘못된 호출 순서를 타입/API surface에서 만들기 어려워집니다.
-- **실패/edge:** 기존 외부 caller가 있었다면 compile/runtime migration이 필요하지만 같은 branch의 caller는 이미 `10bf...`에서 전환됐습니다.
-- **보장/비보장:** application-level escape hatch를 제거하지만 직접 SQL로 제약을 우회하는 권한까지 없애는 것은 아닙니다.
-- **다음 연결:** `1646034acd9f`이 method 존재/부재를 contract test로 고정합니다.
+- **직전 상태:** GameHub는 새 경계를 사용했지만 저장소 인터페이스에 `completeTournamentMatch`가 남아 다른 호출자가 일반 경기/레이팅 트랜잭션을 우회할 수 있었습니다.
+- **구현 결정:** 양 저장소 구현과 인터페이스, 관련 도우미 함수와 관측용 이름에서 별도 연산을 제거하고 토너먼트 진행을 `finalizeMatch` 내부로만 남깁니다.
+- **상태/소유권 변화:** “결과 확정” 책임이 명시적으로 단일 메서드에 귀속되며, 잘못된 호출 순서를 타입/API 호출 방법에서 만들기 어려워집니다.
+- **실패/예외 조건:** 기존 외부 호출자가 있었다면 compile/실행 시점 마이그레이션이 필요하지만 같은 브랜치의 호출자는 이미 `10bf...`에서 전환됐습니다.
+- **보장 범위/보장하지 않는 범위:** 애플리케이션 수준 우회 경로를 제거하지만 직접 SQL로 제약을 우회하는 권한까지 없애는 것은 아닙니다.
+- **다음 연결:** `1646034acd9f`이 메서드 존재/부재를 계약 테스트로 고정합니다.
 <!-- LEARNER-ANSWER END commit:25a495d2cd43 -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `4e2cb4ae702d` — `test(game): tournament start rollback 검증`
-- 다음 Thread 관련 SHA: `1646034acd9f` — `test(db): 경기 결과 확정 boundary 적용 검증`
+- 직전 개발 스레드 관련 SHA: `4e2cb4ae702d` — `test(game): tournament start rollback 검증`
+- 다음 개발 스레드 관련 SHA: `1646034acd9f` — `test(db): 경기 결과 확정 boundary 적용 검증`
 
 ### 5.10. `test(db): 경기 결과 확정 boundary 적용 검증`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `1646034acd9f` |
-| Importance | B |
-| Tags | PERSISTENCE, TOURNAMENT, TEST |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | PERSISTENCE, TOURNAMENT, TEST |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Pins the narrowed repository surface: `finalizeMatch` exists and `completeTournamentMatch` does not.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: `finalizeMatch`만 존재하고 `completeTournamentMatch`는 없다는 축소된 저장소 표면을 고정합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `packages/db/src/index.test.ts`의 repository contract assertion
-- memory repository object의 method presence/absence
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
-- Test technique, failure/boundary fixture, production path, proves/does-not-prove를 실제 assertion으로 구분합니다.
+- `packages/db/src/index.test.ts`의 저장소 계약 검증
+- 메모리 저장소 객체의 메서드 존재 여부
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
+- 테스트 기법, 실패·경계 조건을 만드는 픽스처, 실제 코드 경로, 검증 범위와 미검증 범위를 실제 검증으로 구분합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:1646034acd9f -->
-- **직전 상태:** 구현과 interface에서 legacy method를 지웠지만 후속 변경이 다시 escape hatch를 추가해도 behavioral tests가 눈치채지 못할 수 있었습니다.
-- **기법:** 생성된 repository에 `finalizeMatch`가 함수인지, `completeTournamentMatch` property가 없는지 직접 검사합니다.
-- **증명:** 결과 확정 API surface가 하나라는 구조적 회귀를 고정하도록 작성됐습니다.
-- **비증명:** transaction 내부 원자성이나 동시성은 `582a...` 테스트가 담당합니다.
-- **최종 보장:** caller가 공식 repository contract를 사용할 때 별도 tournament completion 경로를 선택할 수 없습니다.
-- **Thread 종료:** room start rollback과 durable finalization handoff의 양쪽 logical transition이 각각 실패를 소유하는 계층에서 닫힙니다.
+- **직전 상태:** 구현과 인터페이스에서 기존 메서드를 지웠지만 후속 변경이 우회 경로를 다시 추가해도 동작 테스트가 이를 알아채지 못할 수 있었습니다.
+- **기법:** 생성된 저장소에 `finalizeMatch`가 함수인지, `completeTournamentMatch` property가 없는지 직접 검사합니다.
+- **검증:** 결과 확정 API 호출 방법이 하나라는 구조적 회귀를 고정하도록 작성됐습니다.
+- **미검증:** 트랜잭션 내부 원자성이나 동시성은 `582a...` 테스트가 담당합니다.
+- **최종 보장:** 호출자가 공식 저장소 계약을 사용할 때 별도 토너먼트 완료 경로를 선택할 수 없습니다.
+- **개발 스레드 종료:** 경기방 시작 되돌리기와 영속 결과 확정 인계의 양쪽 논리적 상태 전이가 각각 실패를 소유하는 계층에서 닫힙니다.
 <!-- LEARNER-ANSWER END commit:1646034acd9f -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `25a495d2cd43` — `refactor(db): 경기 결과 확정 boundary 일원화`
-- 이 commit을 Thread의 마지막 상태로 사용합니다.
+- 직전 개발 스레드 관련 SHA: `25a495d2cd43` — `refactor(db): 경기 결과 확정 boundary 일원화`
+- 이 커밋을 개발 스레드의 마지막 상태로 사용합니다.
 
-## 6. Thread 종합
+## 6. 개발 스레드 종합
 
-다음 항목을 commit 순서에서 재구성합니다: invariant evolution, Failure → Fix → Test 관계, ownership/state 변화, 최종 실행 흐름, 비보장, 실제 실행 증거.
+다음 항목을 커밋 순서에서 재구성합니다: 불변 조건 변화, 실패 → 수정 → 테스트 관계, 소유권/상태 변화, 최종 실행 흐름, 보장하지 않는 범위, 실제 실행 증거.
 
 <!-- LEARNER-ANSWER START thread:02-tournament-room-start-rollback-and-finalization-handoff.md:synthesis -->
-- **불변식 진화:** `33b6dfc5df7a`는 tournament waiter를 pair하고 room을 만든 뒤 DB start를 호출했으므로 in-memory publication과 persistence가 갈라질 수 있었습니다. `916683099ecd`가 zero-row update를 오류로 바꾸고, `38312bcaf632`가 실패 시 `abandonRoom`을 호출하며, `4e2cb4ae702d`가 재입장까지 검증했습니다. 종료 쪽은 `e338ea32b2a6`–`10bf15723591`에서 generic match·rating·bracket progression을 하나의 transaction command로 통합했습니다.
-- **소유권과 인계:** GameHub는 waiter, room, client association, scheduler/timer와 현재 in-flight completion promise를 소유합니다. repository는 match result key, generic match/history/rating, tournament row/match row, final 생성/우승 확정을 소유합니다. GameHub는 결과를 계산한 뒤 한 번의 `finalizeMatch` command로 durable ownership을 넘깁니다.
-- **Failure → Fix → Test:** zero-row start → `RETURNING id` 검사 → PostgreSQL regression. room publish 후 start 실패 → `abandonRoom` rollback → fake-socket 재입장 test. 두 단계 completion → transactional finalize + in-flight promise → 20-call idempotency/rollback/concurrent-semifinal tests → legacy boundary 제거와 surface test로 닫힙니다.
-- **최종 흐름:** 참가자 두 명이 동일 ready match에 join → 좌석 결정과 room publish → DB running 전환; 실패하면 room 전체 폐기 → 경기 종료 시 동일 room completion은 같은 promise 공유 → repository transaction이 result key와 tournament rows를 잠그고 한 번만 결과 적용 → 성공 후 finished broadcast/cleanup입니다.
-- **비보장:** 이 Thread는 later Matchmaker reservation refactor 전체나 process drain을 소유하지 않습니다. 그 ownership 통합은 category 05 core realtime Thread가 주 소유자입니다.
-- **실행 증거:** 테스트 파일과 실패 주입 코드는 exact SHA에서 검사했으나 로컬 checkout 부재로 실행하지 않았습니다. 따라서 “테스트가 통과했다”가 아니라 “해당 regression을 검증하도록 구현되어 있다”고 기록합니다.
+- **불변식 진화:** `33b6dfc5df7a`는 토너먼트 대기 참가자를 쌍하고 경기방을 만든 뒤 DB 시작을 호출했으므로 메모리 공개와 영속 저장이 갈라질 수 있었습니다. `916683099ecd`가 0행 갱신을 오류로 바꾸고, `38312bcaf632`가 실패 시 `abandonRoom`을 호출하며, `4e2cb4ae702d`가 재입장까지 검증했습니다. 종료 쪽은 `e338ea32b2a6`–`10bf15723591`에서 일반 경기·레이팅·대진 진행을 하나의 트랜잭션 명령으로 통합했습니다.
+- **소유권과 인계:** GameHub는 대기 참가자, 경기방, 클라이언트 연결 정보, 스케줄러/타이머와 현재 전송 중 완료 Promise를 소유합니다. 저장소는 경기 결과 키, 일반 경기/이력/레이팅, 토너먼트 행/경기 행, 최종 생성/우승 확정을 소유합니다. GameHub는 결과를 계산한 뒤 한 번의 `finalizeMatch` 명령으로 영속 소유권을 넘깁니다.
+- **실패 → 수정 → 테스트:** 0-행 시작 → `RETURNING id` 검사 → PostgreSQL 회귀. 경기방 공개 후 시작 실패 → `abandonRoom` 되돌리기 → 가짜 소켓 재입장 테스트. 두 단계 완료 → transactional 결과 확정 + 전송 중 Promise → 20-호출 멱등성/되돌리기/동시 준결승 테스트 → 기존 경계 제거와 호출 방법 테스트로 닫힙니다.
+- **최종 흐름:** 참가자 두 명이 동일 준비 완료 경기에 참가 → 좌석 결정과 경기방 공개 → DB 실행 중 전환; 실패하면 경기방 전체 폐기 → 경기 종료 시 동일 경기방 완료는 같은 Promise 공유 → 저장소 트랜잭션이 결과 키와 토너먼트 행을 잠그고 한 번만 결과 적용 → 성공 후 종료된 전파/정리입니다.
+- **보장하지 않는 범위:** 이 개발 스레드는 이후 대전 상대 연결 관리자 예약 리팩터링 전체나 프로세스 작업 중단을 소유하지 않습니다. 그 소유권 통합은 카테고리 05 핵심 실시간 개발 스레드가 주 소유자입니다.
+- **실행 증거:** 테스트 파일과 실패 주입 코드는 정확한 SHA에서 검사했으나 로컬 체크아웃 부재로 실행하지 않았습니다. 따라서 “테스트가 통과했다”가 아니라 “해당 회귀를 검증하도록 구현되어 있다”고 기록합니다.
 <!-- LEARNER-ANSWER END thread:02-tournament-room-start-rollback-and-finalization-handoff.md:synthesis -->
 
 ## 7. 학습 완료 확인
 
 <!-- LEARNER-ANSWER START thread:02-tournament-room-start-rollback-and-finalization-handoff.md:checklist -->
-- [x] 모든 SHA를 지정 브랜치의 exact commit으로 검사했습니다.
-- [x] fixed commit map과 source classification을 보존했습니다.
-- [x] earlier commit을 later HEAD 코드로 설명하지 않았습니다.
-- [x] fix와 test를 원래 failure/production path에 연결했습니다.
-- [x] 실제 실행하지 않은 test를 통과했다고 기록하지 않았습니다.
-- [x] Thread 최종 owner, invariant, flow, non-guarantee를 작성했습니다.
+- [x] 모든 SHA를 지정 브랜치의 정확한 커밋으로 검사했습니다.
+- [x] 고정된 커밋 목록과 원문 분류를 보존했습니다.
+- [x] earlier 커밋을 후속 최종 상태 코드로 설명하지 않았습니다.
+- [x] 수정과 테스트를 원래 실패/실제 코드 경로에 연결했습니다.
+- [x] 실제 실행하지 않은 테스트를 통과했다고 기록하지 않았습니다.
+- [x] 개발 스레드 최종 소유 주체, 불변 조건, 실행 순서, 보장하지 않는 범위를 작성했습니다.
 <!-- LEARNER-ANSWER END thread:02-tournament-room-start-rollback-and-finalization-handoff.md:checklist -->
 ===== END FILE: 02-tournament-room-start-rollback-and-finalization-handoff.md =====
 
 ===== BEGIN FILE: 03-profile-friendship-dashboard-and-ranking-journeys.md =====
 # 프로필·친구·대시보드·순위표 여정
 
-원문 Development Thread: `Profile, friendship, dashboard, and ranking journeys`
+원문 개발 스레드: `Profile, friendship, dashboard, and ranking journeys`
 
-## 1. Thread 목표
+## 1. 개발 스레드 목표
 
-- profile·leaderboard·recent-match·dashboard read model이 repository와 HTTP route로 추가되는 과정을 추적합니다.
-- sample user, 고정 그래프, 추정 연승처럼 서버 사실이 아닌 표시가 실제 데이터·명시적 empty/error state로 교체되는 과정을 확인합니다.
-- React Query helper/key/invalidation이 identity-bound mutation 뒤 관련 read model을 어떻게 무효화하는지 복원합니다.
+- 프로필·순위표·최근 경기·대시보드 조회 모델이 저장소와 HTTP 라우트로 추가되는 과정을 추적합니다.
+- 예시 사용자, 고정 그래프, 추정 연승처럼 서버 사실이 아닌 표시가 실제 데이터·명시적 빈/오류 상태로 교체되는 과정을 확인합니다.
+- React 쿼리 도우미 함수/키/무효화가 사용자 신원에 종속된 변경 뒤 관련 조회 모델을 어떻게 무효화하는지 복원합니다.
 
-### Source에서 확정된 significance
+### 원문에서 확인한 중요성
 
-> These screens look read-oriented, but they define which data is treated as fact. The history shows several fabricated fallbacks and metrics that could misrepresent authenticated state. Later commits replace them with repository-derived projections, explicit failure states, and cache ownership rules.
+> 이 화면들은 읽기 중심으로 보이지만 무엇을 사실로 표시할지 결정합니다. 초기 구현의 예시 대체 데이터와 고정 지표는 인증 상태를 잘못 보여 줄 수 있었습니다. 이후 커밋은 이를 저장소에서 계산한 조회 결과, 명시적 실패 상태, 캐시 소유 규칙으로 교체합니다.
 
-### 직접 연결되는 Critical Invariants
+### 직접 연결되는 핵심 불변 조건
 
-> Authenticated and public screens do not substitute sample identities, matches, rankings, or metrics when server reads fail.
+> 인증 화면과 공개 화면은 서버 조회가 실패했을 때 예시 사용자, 경기, 순위, 지표를 대신 표시하지 않습니다.
 >
-> Dashboard metrics and charts are derived from the bounded recent-match read model and disclose that boundary instead of claiming broader history.
+> 대시보드 지표와 차트는 최근 경기로 제한된 조회 모델에서 계산하며, 전체 이력처럼 보이지 않도록 그 범위를 함께 표시합니다.
 
-### 직접 연결되는 Major Engineering Difficulties
+### 직접 연결되는 주요 구현 난점
 
-> Reconstructing chronological rating/streak state from a newest-first bounded match collection without inventing missing history.
+> 최신순으로 제한된 경기 목록에서 누락된 과거 이력을 만들어내지 않고 시간순 레이팅과 연승 상태를 복원해야 합니다.
 >
-> Keeping profile, session, lobby, dashboard, friends, leaderboard, tournament, and admin caches coherent after identity-affecting mutations.
+> 사용자 정보에 영향을 주는 변경 뒤에 프로필, 세션, 로비, 대시보드, 친구, 순위표, 토너먼트, 관리자 캐시를 일관되게 갱신해야 합니다.
 
-## 2. 이 Thread를 이해하기 위한 핵심 질문
+## 2. 이 개발 스레드를 이해하기 위한 핵심 질문
 
-- repository profile update는 현재 row와 optional input을 어떻게 결합하며 public/session projection을 어떻게 나눕니까?
-- leaderboard rank와 win rate는 어떤 정렬·반올림·zero-game 규칙으로 계산됩니까?
-- 초기 dashboard `bestStreak`와 rating chart는 실제 match history가 아니라 무엇에서 만들어졌습니까?
-- `bestWinningStreak`는 newest-first 결과를 왜 reverse하고 loss에서 어떤 상태를 reset합니까?
-- sample fallback 제거 후 loading, request failure, empty result는 화면에서 어떻게 구분됩니까?
-- profile mutation은 어떤 query key들을 invalidate하며 session expiry는 어떤 cache를 제거합니까?
+- 저장소 프로필 갱신은 현재 행과 선택적 입력을 어떻게 결합하며 공개/세션 사용자 정보를 어떻게 나눕니까?
+- 순위표 순위와 승리 빈도는 어떤 정렬·반올림·경기 수가 0인 경우 규칙으로 계산됩니까?
+- 초기 대시보드 `bestStreak`와 레이팅 차트는 실제 경기 이력이 아니라 무엇에서 만들어졌습니까?
+- `bestWinningStreak`는 최신순 결과를 왜 역순 처리하고 패배에서 어떤 상태를 초기화합니까?
+- 예시 데이터 대체 표시 제거 후 불러오는 중, 요청 실패, 빈 결과는 화면에서 어떻게 구분됩니까?
+- 프로필 변경은 어떤 쿼리 키들을 무효화하며 세션 만료는 어떤 캐시를 제거합니까?
 
 ## 3. 완료 기준
 
-- profile, leaderboard, recent matches, dashboard의 repository → route → browser adapter → 화면 흐름을 설명할 수 있습니다.
-- 고정/sample/fabricated 데이터가 실제 서버 결과처럼 보였던 각 지점을 파일과 함수로 지적할 수 있습니다.
-- 최고 연승과 rating chart가 recent-match 범위에서 계산되는 정확한 순서와 비보장을 설명할 수 있습니다.
-- 친구 관계의 canonical persistence invariant가 이 Thread가 아니라 category 02에 있다는 경계를 구분할 수 있습니다.
-- Commit map의 모든 SHA를 지정 브랜치 ancestry와 source classification에서 확인합니다.
-- 각 SHA의 parent 또는 직전 관련 SHA와 비교해 변경 전후 상태를 구분합니다.
-- 실행한 명령과 코드 검사만으로 확인한 사실을 구분하고 실행하지 않은 test를 통과했다고 기록하지 않습니다.
+- 프로필, 순위표, 최근 경기, 대시보드의 저장소 → 라우트 → 브라우저 어댑터 → 화면 흐름을 설명할 수 있습니다.
+- 고정/예시/임의로 만든 데이터가 실제 서버 결과처럼 보였던 각 지점을 파일과 함수로 지적할 수 있습니다.
+- 최고 연승과 레이팅 차트가 최근 경기 범위에서 계산되는 정확한 순서와 보장하지 않는 범위를 설명할 수 있습니다.
+- 친구 관계의 표준 영속 저장 불변 조건이 이 개발 스레드가 아니라 카테고리 02에 있다는 경계를 구분할 수 있습니다.
+- 커밋 목록의 모든 SHA를 지정 브랜치의 커밋 이력과 원문 분류에서 확인합니다.
+- 각 SHA를 부모 커밋 또는 직전 관련 SHA와 비교해 변경 전후 상태를 구분합니다.
+- 실행한 명령과 코드 검사만으로 확인한 사실을 구분하고 실행하지 않은 테스트를 통과했다고 기록하지 않습니다.
 
-## 4. Commit map
+## 4. 커밋 목록
 
-| 순서 | SHA | Subject | Importance | Tags | Source에서 확정된 역할 |
+| 순서 | SHA | 제목 | 중요도 | 태그 | 원문에서 확인한 역할 |
 | ---: | --- | --- | :---: | --- | --- |
-| 1 | `c5b96a06925c` | `feat(db): 프로필 조회와 변경 저장 구현` | B | PERSISTENCE | Extends identity access with public profile reads, authenticated profile updates, and active-user listing. |
-| 2 | `0364c42f776b` | `feat(db): 순위 조회 구현` | B | PERSISTENCE | Adds a leaderboard projection to the repository contract. |
-| 3 | `c7ea1ff241c8` | `feat(db): 최근 경기와 대시보드 조회 구현` | B | PERSISTENCE | Implements recent-match and dashboard reads behind the repository contract. |
-| 4 | `0bcc487d949f` | `feat(api): 프로필과 친구 리소스 라우트 추가` | B | PERSISTENCE | Extends HTTP resources to profile, dashboard, and friendship while separating public reads from identity-bound mutations. |
-| 5 | `cbe876359d31` | `feat(web): 플레이어 대시보드 구현` | B | WEB | Adds a dashboard route consuming the shared `DashboardSummary` read model. |
-| 6 | `cb295396771f` | `feat(web): 순위표 화면 추가` | B | WEB | Renders rank, player record, rating, and win rate from the shared leaderboard contract. |
-| 7 | `0afc0a0694bd` | `feat(web): 공개 프로필 화면 추가` | B | WEB | Adds a dynamic public-profile route keyed by handle. |
-| 8 | `051eac1b4aee` | `feat(profile): 친구 요청 동작 연결` | B | AUTH, WEB | Connects the dynamic profile route to public-profile lookup and authenticated friend-request mutation. |
-| 9 | `51e66cf1df80` | `fix(profile): 공개 프로필 상태 표현 개선` | B | PERSISTENCE, WEB | Stores and renders the recent-match collection returned with a public profile. |
-| 10 | `8d79139a32da` | `fix(dashboard): 경기 상태 표현 개선` | B | WEB | Replaces a fixed chart with points reconstructed from current rating and recent match deltas. |
-| 11 | `be31566ac0fd` | `fix(web): 로그인 화면의 sample fallback 제거` | A | AUTH, TOURNAMENT, WEB | Stops authenticated and server-backed screens from displaying sample data after request failure. |
-| 12 | `035b97ca7c58` | `fix(db): 최근 경기에서 최고 연승 계산` | B | PERSISTENCE | Calculates dashboard best winning streak from actual recent match results instead of formulas/constants. |
-| 13 | `6b661420e060` | `test(db): 최고 연승 계산 검증` | B | PERSISTENCE, TEST | Pins the winning-streak ordering and reset rules. |
-| 14 | `7fe29f991a9b` | `fix(dashboard): 연승 지표 설명 정정` | C | - | Changes the dashboard hint from “this season” to “recent matches” so the label matches the data boundary. |
-| 15 | `3c6c9134ee94` | `fix(dashboard): 빈 rating history를 정확히 표시` | B | PERSISTENCE, WEB | Treats empty match history as no rating evidence instead of fabricating a two-point chart. |
-| 16 | `c17e7ad0fd84` | `feat(web): profile과 friend 조회 query 추가` | B | WEB | Adds schema-validated profile/friend browser helpers and scoped React Query options. |
-| 17 | `8bc4d0cc32bd` | `test(web): profile과 friend 조회 규칙 검증` | B | AUTH, WEB, TEST | Verifies own-profile/friend request helpers and React Query ownership rules. |
+| 1 | `c5b96a06925c` | `feat(db): 프로필 조회와 변경 저장 구현` | B | PERSISTENCE | 공개 프로필 조회, 인증된 프로필 수정, 활성 사용자 목록 조회를 신원 접근 기능에 추가합니다. |
+| 2 | `0364c42f776b` | `feat(db): 순위 조회 구현` | B | PERSISTENCE | 저장소 계약에 순위표 조회 결과를 추가합니다. |
+| 3 | `c7ea1ff241c8` | `feat(db): 최근 경기와 대시보드 조회 구현` | B | PERSISTENCE | 최근 경기와 대시보드 조회를 저장소 계약 뒤에 구현합니다. |
+| 4 | `0bcc487d949f` | `feat(api): 프로필과 친구 리소스 라우트 추가` | B | PERSISTENCE | HTTP 리소스를 프로필·대시보드·친구 관계로 확장하고 공개 조회와 현재 사용자에 묶인 변경을 분리합니다. |
+| 5 | `cbe876359d31` | `feat(web): 플레이어 대시보드 구현` | B | WEB | 공유 `DashboardSummary` 조회 모델을 사용하는 대시보드 라우트를 추가합니다. |
+| 6 | `cb295396771f` | `feat(web): 순위표 화면 추가` | B | WEB | 공유 순위표 계약에서 순위, 전적, 레이팅, 승률을 읽어 표시합니다. |
+| 7 | `0afc0a0694bd` | `feat(web): 공개 프로필 화면 추가` | B | WEB | 핸들을 키로 사용하는 동적 공개 프로필 라우트를 추가합니다. |
+| 8 | `051eac1b4aee` | `feat(profile): 친구 요청 동작 연결` | B | AUTH, WEB | 동적 프로필 라우트를 공개 프로필 조회와 인증된 친구 요청 변경에 연결합니다. |
+| 9 | `51e66cf1df80` | `fix(profile): 공개 프로필 상태 표현 개선` | B | PERSISTENCE, WEB | 공개 프로필과 함께 반환된 최근 경기 목록을 저장하고 렌더링합니다. |
+| 10 | `8d79139a32da` | `fix(dashboard): 경기 상태 표현 개선` | B | WEB | 고정 차트를 현재 레이팅과 최근 경기 변동값에서 복원한 점들로 교체합니다. |
+| 11 | `be31566ac0fd` | `fix(web): 로그인 화면의 sample fallback 제거` | A | AUTH, TOURNAMENT, WEB | 인증 화면과 서버 응답 기반 화면이 요청 실패 뒤 예시 데이터를 표시하지 않게 합니다. |
+| 12 | `035b97ca7c58` | `fix(db): 최근 경기에서 최고 연승 계산` | B | PERSISTENCE | 공식이나 상수 대신 실제 최근 경기 결과에서 대시보드 최고 연승을 계산합니다. |
+| 13 | `6b661420e060` | `test(db): 최고 연승 계산 검증` | B | PERSISTENCE, TEST | 연승 계산의 경기 순서와 패배 시 초기화 규칙을 고정합니다. |
+| 14 | `7fe29f991a9b` | `fix(dashboard): 연승 지표 설명 정정` | C | - | 데이터 범위에 맞게 대시보드 안내 문구를 “이번 시즌”에서 “최근 경기”로 바꿉니다. |
+| 15 | `3c6c9134ee94` | `fix(dashboard): 빈 rating history를 정확히 표시` | B | PERSISTENCE, WEB | 빈 경기 이력에서는 두 점짜리 차트를 만들어내지 않고 레이팅 근거가 없는 상태로 처리합니다. |
+| 16 | `c17e7ad0fd84` | `feat(web): profile과 friend 조회 query 추가` | B | WEB | 스키마로 검증하는 프로필·친구 브라우저 도우미와 범위가 지정된 React 쿼리 옵션을 추가합니다. |
+| 17 | `8bc4d0cc32bd` | `test(web): profile과 friend 조회 규칙 검증` | B | AUTH, WEB, TEST | 내 프로필·친구 요청 도우미와 React 쿼리의 상태 소유 규칙을 검증합니다. |
 
-## 5. Commit별 학습 기록
+## 5. 커밋별 학습 기록
 
 ### 5.1. `feat(db): 프로필 조회와 변경 저장 구현`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `c5b96a06925c` |
-| Importance | B |
-| Tags | PERSISTENCE |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | PERSISTENCE |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Extends identity access with public profile reads, authenticated profile updates, and active-user listing.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 공개 프로필 조회, 인증된 프로필 수정, 활성 사용자 목록 조회를 신원 접근 기능에 추가합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `packages/db/src/index.ts`의 `getUserById`, `getUserByHandle`, `updateProfile`, `listOnlineUsers`
-- PostgreSQL normalized-handle lookup과 optional display/avatar update
-- memory repository의 같은 contract
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
+- PostgreSQL 정규화된 핸들 조회와 선택적 표시 이름·아바타 갱신
+- 메모리 저장소의 같은 계약
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:c5b96a06925c -->
-- **직전 상태:** repository identity access는 development login/session 중심이어서 public handle 조회와 인증된 profile mutation이 없었습니다.
-- **구현 결정:** ID/normalized handle 조회, 기존 값을 유지하는 optional displayName/avatar update, active user의 rating 내림차순 목록을 공통 interface에 추가했습니다.
-- **상태/소유권 변화:** profile row mutation과 public/session projection은 repository가 소유하고 route는 이후 caller가 됩니다.
-- **실패/edge:** 존재하지 않는 사용자와 비활성 상태 처리는 caller-visible null/error로 남고, `online` projection은 실제 WebSocket presence가 아닙니다.
-- **보장/비보장:** PostgreSQL/memory의 기본 profile 동작은 맞추지만 friendship과 realtime presence는 별도 책임입니다.
-- **다음 연결:** `0364c42f776b`이 같은 사용자 projection 위에 leaderboard read model을 추가합니다.
+- **직전 상태:** 저장소의 신원 조회는 개발 로그인과 세션 중심이어서 공개 핸들 조회와 인증된 프로필 변경 기능이 없었습니다.
+- **구현 결정:** ID/정규화된 핸들 조회, 기존 값을 유지하는 선택적 displayName/avatar 갱신, 활성 사용자의 레이팅 내림차순 목록을 공통 인터페이스에 추가했습니다.
+- **상태/소유권 변화:** 프로필 행 변경과 공개/세션 사용자 정보는 저장소가 소유하고 라우트는 이후 호출자가 됩니다.
+- **실패/예외 조건:** 존재하지 않는 사용자와 비활성 상태 처리는 호출자 표시되는 null/오류로 남고, `online` 변환 결과는 실제 WebSocket 접속 상태가 아닙니다.
+- **보장 범위/보장하지 않는 범위:** PostgreSQL/메모리의 기본 프로필 동작은 맞추지만 친구 관계와 실시간 접속 상태는 별도 책임입니다.
+- **다음 연결:** `0364c42f776b`이 같은 사용자 변환 결과 위에 순위표 조회 모델을 추가합니다.
 <!-- LEARNER-ANSWER END commit:c5b96a06925c -->
 
 비교 기준:
-- 이 commit의 parent와 비교합니다.
-- 다음 Thread 관련 SHA: `0364c42f776b` — `feat(db): 순위 조회 구현`
+- 이 커밋의 부모 커밋과 비교합니다.
+- 다음 개발 스레드 관련 SHA: `0364c42f776b` — `feat(db): 순위 조회 구현`
 
 ### 5.2. `feat(db): 순위 조회 구현`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `0364c42f776b` |
-| Importance | B |
-| Tags | PERSISTENCE |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | PERSISTENCE |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Adds a leaderboard projection to the repository contract.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 저장소 계약에 순위표 조회 결과를 추가합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `packages/db/src/index.ts`의 `listLeaderboard`
 - PostgreSQL `ORDER BY rating DESC, wins DESC LIMIT 20`
-- rank index와 win-rate 반올림/zero-game 처리
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
+- 순위 인덱스와 승리 빈도 반올림/경기 수가 0인 경우 처리
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:0364c42f776b -->
-- **직전 상태:** active user 목록은 있었지만 순위 번호·승률을 포함한 전용 read model이 없었습니다.
-- **구현 결정:** rating 내림차순, 동률 시 wins 내림차순으로 정렬하고 index+1을 rank로, `round(wins / total * 1000) / 10`을 승률로 계산합니다. 경기가 없으면 0입니다.
-- **상태/소유권 변화:** 순위 계산은 web이 아니라 repository projection이 담당합니다.
-- **실패/edge:** PostgreSQL은 20명 제한이고 memory 구현은 당시 전체 배열을 map해 backend별 limit 차이가 남을 수 있습니다.
-- **보장/비보장:** 반환된 collection 안의 deterministic ordering/rank는 보장하지만 시즌·pagination 개념은 없습니다.
-- **다음 연결:** `c7ea1ff241c8`이 match history와 dashboard projection을 추가합니다.
+- **직전 상태:** 활성 사용자 목록은 있었지만 순위 번호·승률을 포함한 전용 조회 모델이 없었습니다.
+- **구현 결정:** 레이팅 내림차순, 동률 시 승수 내림차순으로 정렬하고 인덱스+1을 순위로, `round(wins / total * 1000) / 10`을 승률로 계산합니다. 경기가 없으면 0입니다.
+- **상태/소유권 변화:** 순위 계산은 웹이 아니라 저장소 변환 결과가 담당합니다.
+- **실패/예외 조건:** PostgreSQL은 20명 제한이고 메모리 구현은 당시 전체 배열을 목록해 백엔드별 상한 차이가 남을 수 있습니다.
+- **보장 범위/보장하지 않는 범위:** 반환된 컬렉션 안의 결정적 순서/순위는 보장하지만 시즌·pagination 개념은 없습니다.
+- **다음 연결:** `c7ea1ff241c8`이 경기 이력과 대시보드 변환 결과를 추가합니다.
 <!-- LEARNER-ANSWER END commit:0364c42f776b -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `c5b96a06925c` — `feat(db): 프로필 조회와 변경 저장 구현`
-- 다음 Thread 관련 SHA: `c7ea1ff241c8` — `feat(db): 최근 경기와 대시보드 조회 구현`
+- 직전 개발 스레드 관련 SHA: `c5b96a06925c` — `feat(db): 프로필 조회와 변경 저장 구현`
+- 다음 개발 스레드 관련 SHA: `c7ea1ff241c8` — `feat(db): 최근 경기와 대시보드 조회 구현`
 
 ### 5.3. `feat(db): 최근 경기와 대시보드 조회 구현`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `c7ea1ff241c8` |
-| Importance | B |
-| Tags | PERSISTENCE |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | PERSISTENCE |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Implements recent-match and dashboard reads behind the repository contract.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 최근 경기와 대시보드 조회를 저장소 계약 뒤에 구현합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `packages/db/src/index.ts`의 `listRecentMatches`와 `getDashboard`
-- winner/loser join, optional user filter, `ended_at desc limit 8`
-- 초기 PostgreSQL/memory `bestStreak` 계산 차이
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
+- 승자/패자 참가, 선택적 사용자 필터, `ended_at desc limit 8`
+- 초기 PostgreSQL/메모리 `bestStreak` 계산 차이
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:c7ea1ff241c8 -->
-- **직전 상태:** match 저장은 있어도 사용자 관점의 상대·결과·점수·rating delta를 묶은 최근 경기와 dashboard summary가 없었습니다.
-- **구현 결정:** newest-first 최대 8경기를 사용자 관점으로 projection하고 dashboard에 me, wins/losses, winRate, bestStreak, recentMatches를 넣었습니다.
-- **상태/소유권 변화:** match row를 사용자별 read model로 바꾸는 책임이 repository로 이동했습니다.
-- **실패/edge:** 최고 연승은 실제 history가 아니라 PostgreSQL `max(1,min(12,wins-losses+3))`, memory 고정 `3`이어서 fabricated metric입니다.
-- **보장/비보장:** 최근 경기 ordering과 기본 dashboard 구조는 제공하지만 bestStreak 정확성은 후속 fix 전까지 보장하지 않습니다.
-- **다음 연결:** `0bcc487d949f`가 이 read model을 HTTP resource로 노출합니다.
+- **직전 상태:** 경기 저장은 있어도 사용자 관점의 상대·결과·점수·레이팅 시간 간격을 묶은 최근 경기와 대시보드 요약이 없었습니다.
+- **구현 결정:** 최신순 최대 8경기를 사용자 관점의 경기 요약으로 변환하고 대시보드에 현재 사용자, 승패, 승률, 최고 연승, 최근 경기를 넣었습니다.
+- **상태/소유권 변화:** 경기 행을 사용자별 조회 모델로 바꾸는 책임이 저장소로 이동했습니다.
+- **실패/예외 조건:** 최고 연승은 실제 이력이 아니라 PostgreSQL `max(1,min(12,wins-losses+3))`, 메모리 고정 `3`이어서 임의로 만든 지표입니다.
+- **보장 범위/보장하지 않는 범위:** 최근 경기 순서와 기본 대시보드 구조는 제공하지만 bestStreak 정확성은 후속 수정 전까지 보장하지 않습니다.
+- **다음 연결:** `0bcc487d949f`가 이 조회 모델을 HTTP 자원으로 노출합니다.
 <!-- LEARNER-ANSWER END commit:c7ea1ff241c8 -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `0364c42f776b` — `feat(db): 순위 조회 구현`
-- 다음 Thread 관련 SHA: `0bcc487d949f` — `feat(api): 프로필과 친구 리소스 라우트 추가`
+- 직전 개발 스레드 관련 SHA: `0364c42f776b` — `feat(db): 순위 조회 구현`
+- 다음 개발 스레드 관련 SHA: `0bcc487d949f` — `feat(api): 프로필과 친구 리소스 라우트 추가`
 
 ### 5.4. `feat(api): 프로필과 친구 리소스 라우트 추가`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `0bcc487d949f` |
-| Importance | B |
-| Tags | PERSISTENCE |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | PERSISTENCE |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Extends HTTP resources to profile, dashboard, and friendship while separating public reads from identity-bound mutations.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: HTTP 리소스를 프로필·대시보드·친구 관계로 확장하고 공개 조회와 현재 사용자에 묶인 변경을 분리합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `apps/api/src/app.ts`의 `/users/:id`, `/dashboard`, `/profile/:handle`, `/profile/me`
-- `/friends`와 request/accept route
-- `currentUser` 사용 여부와 public/authenticated response
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
+- `/friends`와 요청/수락 라우트
+- `currentUser` 사용 여부와 공개/인증된 응답
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:0bcc487d949f -->
-- **직전 상태:** repository operation은 있었지만 browser가 사용할 profile/dashboard/friend HTTP route가 없었습니다.
-- **구현 결정:** public profile read와 인증된 own-profile read/update, dashboard, friends/list/request/accept를 별도 route로 연결했습니다.
-- **상태/소유권 변화:** route는 인증 identity를 mutation target에 결합하고 repository는 저장/조회 로직을 유지합니다.
-- **실패/edge:** 화면이 실패를 sample로 대체하면 route 권한·오류가 숨겨질 수 있으며, friendship canonicalization은 이후 category 02에서 강화됩니다.
-- **보장/비보장:** 접근 형태는 구분하지만 web의 cache coherence와 honest failure display는 아직 없습니다.
-- **다음 연결:** `cbe876359d31`–`051eac1b4aee`가 이 API를 화면 journey에 연결합니다.
+- **직전 상태:** 저장소 연산은 있었지만 브라우저가 사용할 프로필/대시보드/친구 HTTP 라우트가 없었습니다.
+- **구현 결정:** 공개 프로필 읽기와 인증된 내 프로필 읽기/갱신, 대시보드, 친구 목록·요청·수락을 별도 라우트로 연결했습니다.
+- **상태/소유권 변화:** 라우트는 인증 신원을 변경 대상에 결합하고 저장소는 저장/조회 로직을 유지합니다.
+- **실패/예외 조건:** 화면이 실패를 예시로 대체하면 라우트 권한·오류가 숨겨질 수 있으며, 친구 관계 canonicalization은 이후 카테고리 02에서 강화됩니다.
+- **보장 범위/보장하지 않는 범위:** 접근 형태는 구분하지만 웹의 캐시 coherence와 honest 실패 표시는 아직 없습니다.
+- **다음 연결:** `cbe876359d31`–`051eac1b4aee`가 이 API를 화면 사용자 동선에 연결합니다.
 <!-- LEARNER-ANSWER END commit:0bcc487d949f -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `c7ea1ff241c8` — `feat(db): 최근 경기와 대시보드 조회 구현`
-- 다음 Thread 관련 SHA: `cbe876359d31` — `feat(web): 플레이어 대시보드 구현`
+- 직전 개발 스레드 관련 SHA: `c7ea1ff241c8` — `feat(db): 최근 경기와 대시보드 조회 구현`
+- 다음 개발 스레드 관련 SHA: `cbe876359d31` — `feat(web): 플레이어 대시보드 구현`
 
 ### 5.5. `feat(web): 플레이어 대시보드 구현`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `cbe876359d31` |
-| Importance | B |
-| Tags | WEB |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | WEB |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Adds a dashboard route consuming the shared `DashboardSummary` read model.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 공유 `DashboardSummary` 조회 모델을 사용하는 대시보드 라우트를 추가합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `apps/web/src/app/dashboard/page.tsx`의 sample 초기 state와 `getDashboard`
+- `apps/web/src/app/dashboard/page.tsx`의 예시 초기 상태와 `getDashboard`
 - 고정 SVG `polyline`
-- stats와 recent match rendering
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
+- 통계와 최근 경기 렌더링
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:cbe876359d31 -->
-- **직전 상태:** dashboard API는 있었지만 사용자 화면이 없었습니다.
-- **구현 결정:** sample dashboard를 초기값으로 두고 실제 API 결과로 교체하며 승/패/승률/연승과 최근 경기를 표시했습니다.
-- **상태/소유권 변화:** 화면이 서버 read model을 소비하지만 고정 SVG와 sample 초기값으로 일부 사실을 자체 생성합니다.
-- **실패/edge:** request 실패 시 sample이 남고 chart는 실제 rating history와 무관한 고정 상승선입니다.
-- **보장/비보장:** 기본 dashboard journey는 제공하지만 표시가 전부 서버 사실이라는 보장은 없습니다.
-- **다음 연결:** `8d79139a32da`가 chart를 match delta에서 계산하고 `be31566ac0fd`가 sample fallback을 제거합니다.
+- **직전 상태:** 대시보드 API는 있었지만 사용자 화면이 없었습니다.
+- **구현 결정:** 예시 대시보드를 초기값으로 두고 실제 API 결과로 교체하며 승/패/승률/연승과 최근 경기를 표시했습니다.
+- **상태/소유권 변화:** 화면이 서버 조회 모델을 소비하지만 고정 SVG와 예시 초기값으로 일부 사실을 자체 생성합니다.
+- **실패/예외 조건:** 요청 실패 시 예시가 남고 차트는 실제 레이팅 이력과 무관한 고정 상승선입니다.
+- **보장 범위/보장하지 않는 범위:** 기본 대시보드 사용자 동선은 제공하지만 표시가 전부 서버 사실이라는 보장은 없습니다.
+- **다음 연결:** `8d79139a32da`가 차트를 경기 시간 간격에서 계산하고 `be31566ac0fd`가 예시 데이터 대체 표시를 제거합니다.
 <!-- LEARNER-ANSWER END commit:cbe876359d31 -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `0bcc487d949f` — `feat(api): 프로필과 친구 리소스 라우트 추가`
-- 다음 Thread 관련 SHA: `cb295396771f` — `feat(web): 순위표 화면 추가`
+- 직전 개발 스레드 관련 SHA: `0bcc487d949f` — `feat(api): 프로필과 친구 리소스 라우트 추가`
+- 다음 개발 스레드 관련 SHA: `cb295396771f` — `feat(web): 순위표 화면 추가`
 
 ### 5.6. `feat(web): 순위표 화면 추가`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `cb295396771f` |
-| Importance | B |
-| Tags | WEB |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | WEB |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Renders rank, player record, rating, and win rate from the shared leaderboard contract.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 공유 순위표 계약에서 순위, 전적, 레이팅, 승률을 읽어 표시합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `apps/web/src/app/leaderboard/page.tsx`의 sample 초기 state
-- `getLeaderboard` 호출과 entry rendering
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
+- `apps/web/src/app/leaderboard/page.tsx`의 예시 초기 상태
+- `getLeaderboard` 호출과 항목 렌더링
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:cb295396771f -->
-- **직전 상태:** repository/API가 순위를 계산해도 전용 web route가 없었습니다.
-- **구현 결정:** `LeaderboardEntry`를 받아 rank, identity, wins, rating, winRate를 표로 표시했습니다.
-- **상태/소유권 변화:** ranking 계산은 repository에 남고 web은 projection을 렌더링합니다.
-- **실패/edge:** API 실패 시 sample leaderboard가 실제 현재 순위처럼 보일 수 있습니다.
-- **보장/비보장:** 정상 응답 rendering은 제공하지만 실패의 진실성은 `be31566ac0fd` 전까지 부족합니다.
-- **다음 연결:** sample fallback 제거 commit이 empty/error 상태로 바꿉니다.
+- **직전 상태:** 저장소/API가 순위를 계산해도 전용 웹 라우트가 없었습니다.
+- **구현 결정:** `LeaderboardEntry`를 받아 순위, 신원, 승수, 레이팅, winRate를 표로 표시했습니다.
+- **상태/소유권 변화:** 순위 계산은 저장소에 남고 웹은 계산된 순위 항목을 렌더링합니다.
+- **실패/예외 조건:** API 실패 시 예시 순위표가 실제 현재 순위처럼 보일 수 있습니다.
+- **보장 범위/보장하지 않는 범위:** 정상 응답 렌더링은 제공하지만 실패의 진실성은 `be31566ac0fd` 전까지 부족합니다.
+- **다음 연결:** 예시 데이터 대체 표시 제거 커밋이 빈/오류 상태로 바꿉니다.
 <!-- LEARNER-ANSWER END commit:cb295396771f -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `cbe876359d31` — `feat(web): 플레이어 대시보드 구현`
-- 다음 Thread 관련 SHA: `0afc0a0694bd` — `feat(web): 공개 프로필 화면 추가`
+- 직전 개발 스레드 관련 SHA: `cbe876359d31` — `feat(web): 플레이어 대시보드 구현`
+- 다음 개발 스레드 관련 SHA: `0afc0a0694bd` — `feat(web): 공개 프로필 화면 추가`
 
 ### 5.7. `feat(web): 공개 프로필 화면 추가`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `0afc0a0694bd` |
-| Importance | B |
-| Tags | WEB |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | WEB |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Adds a dynamic public-profile route keyed by handle.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 핸들을 키로 사용하는 동적 공개 프로필 라우트를 추가합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `apps/web/src/app/profile/[handle]/page.tsx`의 sample user selection
-- handle 길이 기반 선수 번호, 정적 play style, 초기 friend/share controls
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
+- `apps/web/src/app/profile/[handle]/page.tsx`의 예시 사용자 선택
+- 핸들 길이 기반 선수 번호, 정적 플레이 방식, 초기 친구/공유 버튼
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:0afc0a0694bd -->
-- **직전 상태:** public profile API는 있었지만 handle route가 없었습니다.
-- **구현 결정:** route handle에 따라 sample user를 선택하고 전적·rating·정적 style과 action UI를 표시했습니다.
-- **상태/소유권 변화:** 초기 화면은 profile 사실을 서버가 아니라 sample module과 handle 길이에서 만들어 냅니다.
-- **실패/edge:** 존재하지 않는 handle도 가짜 사용자로 표현되고 선수 번호·style에 repository 근거가 없습니다.
-- **보장/비보장:** route shell만 제공하며 실제 identity/read-model 정확성은 보장하지 않습니다.
-- **다음 연결:** `051eac1b4aee`가 API와 친구 요청을 연결하지만 실패 시 sample은 아직 남습니다.
+- **직전 상태:** 공개 프로필 API는 있었지만 핸들 라우트가 없었습니다.
+- **구현 결정:** 라우트 핸들에 따라 예시 사용자를 선택하고 전적·레이팅·정적 방식과 동작 UI를 표시했습니다.
+- **상태/소유권 변화:** 초기 화면은 프로필 사실을 서버가 아니라 예시 모듈과 핸들 길이에서 만들어 냅니다.
+- **실패/예외 조건:** 존재하지 않는 핸들도 가짜 사용자로 표현되고 선수 번호·방식에 저장소 근거가 없습니다.
+- **보장 범위/보장하지 않는 범위:** 라우트 셸만 제공하며 실제 신원/조회 모델 정확성은 보장하지 않습니다.
+- **다음 연결:** `051eac1b4aee`가 API와 친구 요청을 연결하지만 실패 시 예시는 아직 남습니다.
 <!-- LEARNER-ANSWER END commit:0afc0a0694bd -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `cb295396771f` — `feat(web): 순위표 화면 추가`
-- 다음 Thread 관련 SHA: `051eac1b4aee` — `feat(profile): 친구 요청 동작 연결`
+- 직전 개발 스레드 관련 SHA: `cb295396771f` — `feat(web): 순위표 화면 추가`
+- 다음 개발 스레드 관련 SHA: `051eac1b4aee` — `feat(profile): 친구 요청 동작 연결`
 
 ### 5.8. `feat(profile): 친구 요청 동작 연결`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `051eac1b4aee` |
-| Importance | B |
-| Tags | AUTH, WEB |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | AUTH, WEB |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Connects the dynamic profile route to public-profile lookup and authenticated friend-request mutation.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 동적 프로필 라우트를 공개 프로필 조회와 인증된 친구 요청 변경에 연결합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `apps/web/src/app/profile/[handle]/page.tsx`의 `getProfile`, `requestFriend`
-- route handle을 target으로 사용하는 friend action
-- fetch/mutation catch와 sample fallback
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
+- 라우트 핸들을 대상으로 사용하는 친구 동작
+- 조회·변경 요청의 오류 처리와 예시 데이터 대체 표시
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:051eac1b4aee -->
-- **직전 상태:** profile page와 버튼은 정적 sample 동작이었습니다.
-- **구현 결정:** resolved route handle로 public profile을 요청하고 같은 handle을 friend-request target으로 사용합니다.
-- **상태/소유권 변화:** identity target은 URL과 server response로 이동하지만 initial/failure state는 sample user를 유지합니다.
-- **실패/edge:** profile fetch failure가 sample 표시로 숨겨지고 friend mutation 실패도 일반 메시지로만 처리됩니다.
-- **보장/비보장:** 정상 요청의 target 연결은 보장하지만 실패 화면이 실제 identity를 반영한다는 보장은 없습니다.
-- **다음 연결:** `51e66cf1df80`이 최근 경기 표시를 실제 response에 연결하고 `be31566ac0fd`가 sample을 제거합니다.
+- **직전 상태:** 프로필 페이지와 버튼은 정적 예시 동작이었습니다.
+- **구현 결정:** 확정된 라우트 핸들로 공개 프로필을 요청하고 같은 핸들을 친구 요청 대상으로 사용합니다.
+- **상태/소유권 변화:** 신원 대상은 URL과 서버 응답으로 이동하지만 초기/실패 상태는 예시 사용자를 유지합니다.
+- **실패/예외 조건:** 프로필 조회 실패가 예시 표시로 숨겨지고 친구 변경 실패도 일반 메시지로만 처리됩니다.
+- **보장 범위/보장하지 않는 범위:** 정상 요청의 대상 연결은 보장하지만 실패 화면이 실제 신원을 반영한다는 보장은 없습니다.
+- **다음 연결:** `51e66cf1df80`이 최근 경기 표시를 실제 응답에 연결하고 `be31566ac0fd`가 예시를 제거합니다.
 <!-- LEARNER-ANSWER END commit:051eac1b4aee -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `0afc0a0694bd` — `feat(web): 공개 프로필 화면 추가`
-- 다음 Thread 관련 SHA: `51e66cf1df80` — `fix(profile): 공개 프로필 상태 표현 개선`
+- 직전 개발 스레드 관련 SHA: `0afc0a0694bd` — `feat(web): 공개 프로필 화면 추가`
+- 다음 개발 스레드 관련 SHA: `51e66cf1df80` — `fix(profile): 공개 프로필 상태 표현 개선`
 
 ### 5.9. `fix(profile): 공개 프로필 상태 표현 개선`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `51e66cf1df80` |
-| Importance | B |
-| Tags | PERSISTENCE, WEB |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | PERSISTENCE, WEB |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Stores and renders the recent-match collection returned with a public profile.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 공개 프로필과 함께 반환된 최근 경기 목록을 저장하고 렌더링합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `apps/web/src/app/profile/[handle]/page.tsx`의 `recentMatches` state
-- result/opponent/score list와 empty state
-- 당시 fetch failure message와 남아 있는 sample user
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
-- Fix chain을 `이전 가정 → 실제 실패/위험 → root cause → 교정된 결정 → 남는 비보장` 순서로 복원합니다.
+- `apps/web/src/app/profile/[handle]/page.tsx`의 `recentMatches` 상태
+- 결과/상대/점수 목록과 빈 상태
+- 당시 조회 실패 메시지와 남아 있는 예시 사용자
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
+- 수정 과정을을 `이전 가정 → 실제 실패/위험 → root cause → 교정된 결정 → 남는 비보장` 순서로 복원합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:51e66cf1df80 -->
-- **직전 상태:** 공개 프로필은 정적 play style을 보여 실제 match history를 사용하지 않았습니다.
-- **구현 결정:** profile response의 `recentMatches`를 보관해 승패·상대·점수를 렌더링하고 없으면 명시적 empty state를 표시합니다.
-- **상태/소유권 변화:** 플레이 상태 설명이 정적 문구에서 repository-backed match read model로 이동합니다.
-- **실패/edge:** fetch 실패 시 메시지는 sample 표시를 인정하지만 sample user 자체는 여전히 남습니다.
-- **보장/비보장:** 정상 response의 recent-match rendering은 정확하지만 실패 identity는 후속 fix 전까지 부정확합니다.
-- **다음 연결:** `8d79139a32da`가 dashboard chart도 실제 match delta로 전환합니다.
+- **직전 상태:** 공개 프로필은 정적 플레이 방식을 보여 실제 경기 이력을 사용하지 않았습니다.
+- **구현 결정:** 프로필 응답의 `recentMatches`를 보관해 승패·상대·점수를 렌더링하고 없으면 명시적 빈 상태를 표시합니다.
+- **상태/소유권 변화:** 플레이 상태 설명이 정적 문구에서 저장소 기반 경기 조회 모델로 이동합니다.
+- **실패/예외 조건:** 조회 실패 시 메시지는 예시 표시를 인정하지만 예시 사용자 자체는 여전히 남습니다.
+- **보장 범위/보장하지 않는 범위:** 정상 응답의 최근 경기 렌더링은 정확하지만 실패 신원은 후속 수정 전까지 부정확합니다.
+- **다음 연결:** `8d79139a32da`가 대시보드 차트도 실제 경기 시간 간격으로 전환합니다.
 <!-- LEARNER-ANSWER END commit:51e66cf1df80 -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `051eac1b4aee` — `feat(profile): 친구 요청 동작 연결`
-- 다음 Thread 관련 SHA: `8d79139a32da` — `fix(dashboard): 경기 상태 표현 개선`
+- 직전 개발 스레드 관련 SHA: `051eac1b4aee` — `feat(profile): 친구 요청 동작 연결`
+- 다음 개발 스레드 관련 SHA: `8d79139a32da` — `fix(dashboard): 경기 상태 표현 개선`
 
 ### 5.10. `fix(dashboard): 경기 상태 표현 개선`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `8d79139a32da` |
-| Importance | B |
-| Tags | WEB |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | WEB |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Replaces a fixed chart with points reconstructed from current rating and recent match deltas.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 고정 차트를 현재 레이팅과 최근 경기 변동값에서 복원한 점들로 교체합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `apps/web/src/app/dashboard/page.tsx`의 `buildRatingPoints`
-- `toChartPoints`의 min/max/range 및 640×150 scaling
-- empty history 당시 `[currentRating - 1, currentRating]` fallback
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
-- Fix chain을 `이전 가정 → 실제 실패/위험 → root cause → 교정된 결정 → 남는 비보장` 순서로 복원합니다.
+- `toChartPoints`의 최솟값·최댓값·범위 및 640×150 배율 조정
+- 빈 이력 당시 `[currentRating - 1, currentRating]` 대체 처리
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
+- 수정 과정을을 `이전 가정 → 실제 실패/위험 → root cause → 교정된 결정 → 남는 비보장` 순서로 복원합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:8d79139a32da -->
-- **직전 상태:** chart는 고정 좌표라 사용자 rating history와 무관했습니다.
-- **구현 결정:** newest-first matches를 reverse하고 delta 합을 현재 rating에서 빼 시작 rating을 구한 뒤 시간순으로 누적합니다. 화면 좌표는 min/max range를 640×150 영역으로 정규화합니다.
-- **상태/소유권 변화:** chart shape는 실제 recent-match delta에서 유도됩니다.
-- **실패/edge:** match가 없으면 `[current-1,current]` 두 점을 만들어 여전히 근거 없는 상승선을 표시합니다.
-- **보장/비보장:** bounded recent history의 변화는 반영하지만 전체 rating history와 empty truthfulness는 보장하지 않습니다.
-- **다음 연결:** `3c6c9134ee94`가 empty history fabrication을 제거합니다.
+- **직전 상태:** 차트는 고정 좌표라 사용자 레이팅 이력과 무관했습니다.
+- **구현 결정:** 최신순 경기를 역순 처리하고 시간 간격 합을 현재 레이팅에서 빼 시작 레이팅을 구한 뒤 시간순으로 누적합니다. 화면 좌표는 최솟값/최댓값 범위를 640×150 영역으로 정규화합니다.
+- **상태/소유권 변화:** 차트 형식은 실제 최근 경기 시간 간격에서 유도됩니다.
+- **실패/예외 조건:** 경기가 없으면 `[current-1,current]` 두 점을 만들어 여전히 근거 없는 상승선을 표시합니다.
+- **보장 범위/보장하지 않는 범위:** 최근 이력 범위 안의 변화는 반영하지만 전체 레이팅 이력과 빈 상태 표현의 사실성은 보장하지 않습니다.
+- **다음 연결:** `3c6c9134ee94`가 빈 이력 fabrication을 제거합니다.
 <!-- LEARNER-ANSWER END commit:8d79139a32da -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `51e66cf1df80` — `fix(profile): 공개 프로필 상태 표현 개선`
-- 다음 Thread 관련 SHA: `be31566ac0fd` — `fix(web): 로그인 화면의 sample fallback 제거`
+- 직전 개발 스레드 관련 SHA: `51e66cf1df80` — `fix(profile): 공개 프로필 상태 표현 개선`
+- 다음 개발 스레드 관련 SHA: `be31566ac0fd` — `fix(web): 로그인 화면의 sample fallback 제거`
 
 ### 5.11. `fix(web): 로그인 화면의 sample fallback 제거`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `be31566ac0fd` |
-| Importance | A |
-| Tags | AUTH, TOURNAMENT, WEB |
-| 학습 깊이 | 주요 subsystem, 구현 경로, ownership/failure/non-guarantee를 구체적으로 복원합니다. |
+| 중요도 | A |
+| 태그 | AUTH, TOURNAMENT, WEB |
+| 학습 깊이 | 주요 하위 시스템, 구현 경로, 소유권, 실패 처리, 보장하지 않는 범위를 구체적으로 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Stops authenticated and server-backed screens from displaying sample data after request failure.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 인증 화면과 서버 응답 기반 화면이 요청 실패 뒤 예시 데이터를 표시하지 않게 합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- admin/dashboard/leaderboard/lobby/profile/tournaments page의 sample import 제거
-- nullable dashboard/profile와 empty arrays
-- loading/error/empty message 및 mutation error handling
-- parent 상태와 비교해 이전 가정, 새 boundary, caller/callee, ownership 또는 failure path를 기록합니다.
-- 이 commit이 보장하지 않는 상태와 다음 fix/test가 보강하는 지점을 구분합니다.
-- Fix chain을 `이전 가정 → 실제 실패/위험 → root cause → 교정된 결정 → 남는 비보장` 순서로 복원합니다.
+- 관리자/대시보드/순위표/로비/프로필/tournaments 페이지의 예시 가져오기 제거
+- null 허용 대시보드/프로필과 빈 arrays
+- 불러오는 중/오류/빈 메시지 및 변경 오류 처리
+- 부모 커밋의 상태와 비교해 이전 가정, 새 경계, 호출자와 피호출자, 소유권 또는 실패 경로를 기록합니다.
+- 이 커밋이 보장하지 않는 범위와 다음 수정·테스트가 보강하는 지점을 구분합니다.
+- 수정 과정을을 `이전 가정 → 실제 실패/위험 → root cause → 교정된 결정 → 남는 비보장` 순서로 복원합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:be31566ac0fd -->
-- **직전 가정:** 개발 편의를 위해 request가 실패해도 sample user·match·chat·ranking·tournament를 보여 주는 것이 허용됐습니다.
-- **실제 위험:** 인증 실패, 권한 거부, 서버 장애, 빈 데이터가 모두 성공한 제품 상태처럼 보이고 사용자가 가짜 identity/action target을 볼 수 있었습니다.
-- **교정:** server-backed state를 null/empty로 시작하고 성공 시에만 채웁니다. 실패는 명시적 메시지, empty는 별도 문구로 표시하며 profile은 user가 없으면 본문을 렌더링하지 않습니다.
-- **상태/소유권 변화:** sample module이 read-model authority에서 제거되고 server response만 제품 데이터가 됩니다. web은 loading/error/empty 표현만 소유합니다.
-- **보장/비보장:** 실패 은폐는 제거하지만 server 데이터 자체의 정확성은 repository invariant와 tests에 의존합니다.
-- **다음 연결:** `035b97ca7c58`이 여전히 fabricated였던 backend 최고 연승을 실제 recent matches에서 계산합니다.
+- **직전 가정:** 개발 편의를 위해 요청이 실패해도 예시 사용자·경기·채팅·순위 계산·토너먼트를 보여 주는 것이 허용됐습니다.
+- **실제 위험:** 인증 실패, 권한 거부, 서버 장애, 빈 데이터가 모두 성공한 제품 상태처럼 보이고 사용자가 가짜 신원/동작 대상을 볼 수 있었습니다.
+- **교정:** 서버에서 받은 상태를 null 또는 빈 상태로 시작하고 성공 시에만 채웁니다. 실패는 명시적 메시지, 빈 결과는 별도 문구로 표시하며 프로필은 사용자가 없으면 본문을 렌더링하지 않습니다.
+- **상태/소유권 변화:** 예시 모듈이 조회 모델 판정 권한에서 제거되고 서버 응답만 제품 데이터가 됩니다. 웹은 불러오는 중/오류/빈 표현만 소유합니다.
+- **보장 범위/보장하지 않는 범위:** 실패 은폐는 제거하지만 서버 데이터 자체의 정확성은 저장소 불변 조건과 테스트에 의존합니다.
+- **다음 연결:** `035b97ca7c58`이 여전히 임의로 만든였던 백엔드 최고 연승을 실제 최근 경기에서 계산합니다.
 <!-- LEARNER-ANSWER END commit:be31566ac0fd -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `8d79139a32da` — `fix(dashboard): 경기 상태 표현 개선`
-- 다음 Thread 관련 SHA: `035b97ca7c58` — `fix(db): 최근 경기에서 최고 연승 계산`
+- 직전 개발 스레드 관련 SHA: `8d79139a32da` — `fix(dashboard): 경기 상태 표현 개선`
+- 다음 개발 스레드 관련 SHA: `035b97ca7c58` — `fix(db): 최근 경기에서 최고 연승 계산`
 
 ### 5.12. `fix(db): 최근 경기에서 최고 연승 계산`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `035b97ca7c58` |
-| Importance | B |
-| Tags | PERSISTENCE |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | PERSISTENCE |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Calculates dashboard best winning streak from actual recent match results instead of formulas/constants.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 공식이나 상수 대신 실제 최근 경기 결과에서 대시보드 최고 연승을 계산합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `packages/db/src/index.ts`의 양 repository `getDashboard`
-- `bestWinningStreak` helper
-- newest-first collection reverse, win increment, loss reset
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
-- Fix chain을 `이전 가정 → 실제 실패/위험 → root cause → 교정된 결정 → 남는 비보장` 순서로 복원합니다.
+- `packages/db/src/index.ts`의 양 저장소 `getDashboard`
+- `bestWinningStreak` 도우미 함수
+- 최신순 컬렉션 역순 처리, 승리 increment, 패배 초기화
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
+- 수정 과정을을 `이전 가정 → 실제 실패/위험 → root cause → 교정된 결정 → 남는 비보장` 순서로 복원합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:035b97ca7c58 -->
-- **직전 가정:** 누적 wins/losses formula나 고정 3이 최고 연승을 근사할 수 있다고 봤습니다.
-- **실제 오류:** 동일 누적 전적이라도 경기 순서에 따라 연승이 달라지며 PostgreSQL/memory가 서로 다른 값을 반환했습니다.
-- **교정:** `listRecentMatches` 결과를 reverse해 시간순으로 순회하고 win이면 current/max를 증가, loss이면 current를 0으로 reset합니다.
-- **상태/소유권 변화:** metric은 repository별 임의 값이 아니라 공유 result sequence에서 계산됩니다.
-- **보장/비보장:** 반환된 최근 경기 범위 안의 최고 연승만 정확하며 전체 시즌 기록은 아닙니다.
-- **다음 연결:** `6b661420e060`이 ordering과 loss reset을 W/L/W/W sequence로 고정합니다.
+- **직전 가정:** 누적 승패 수 formula나 고정 3이 최고 연승을 근사할 수 있다고 봤습니다.
+- **실제 오류:** 동일 누적 전적이라도 경기 순서에 따라 연승이 달라지며 PostgreSQL/메모리가 서로 다른 값을 반환했습니다.
+- **교정:** `listRecentMatches` 결과를 역순 처리해 시간순으로 순회하고 승리이면 현재/최댓값을 증가, 패배이면 현재를 0으로 초기화합니다.
+- **상태/소유권 변화:** 지표는 저장소별 임의 값이 아니라 공유 결과 순번에서 계산됩니다.
+- **보장 범위/보장하지 않는 범위:** 반환된 최근 경기 범위 안의 최고 연승만 정확하며 전체 시즌 기록은 아닙니다.
+- **다음 연결:** `6b661420e060`이 순서와 패배 초기화를 W/L/W/W 순번으로 고정합니다.
 <!-- LEARNER-ANSWER END commit:035b97ca7c58 -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `be31566ac0fd` — `fix(web): 로그인 화면의 sample fallback 제거`
-- 다음 Thread 관련 SHA: `6b661420e060` — `test(db): 최고 연승 계산 검증`
+- 직전 개발 스레드 관련 SHA: `be31566ac0fd` — `fix(web): 로그인 화면의 sample fallback 제거`
+- 다음 개발 스레드 관련 SHA: `6b661420e060` — `test(db): 최고 연승 계산 검증`
 
 ### 5.13. `test(db): 최고 연승 계산 검증`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `6b661420e060` |
-| Importance | B |
-| Tags | PERSISTENCE, TEST |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | PERSISTENCE, TEST |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Pins the winning-streak ordering and reset rules.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 연승 계산의 경기 순서와 패배 시 초기화 규칙을 고정합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `packages/db/src/index.test.ts`의 memory repository case
-- chronological W,L,W,W 생성과 newest-first 반환 assertion
-- `bestStreak === 2` assertion
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
-- Test technique, failure/boundary fixture, production path, proves/does-not-prove를 실제 assertion으로 구분합니다.
+- `packages/db/src/index.test.ts`의 메모리 저장소 사례
+- 시간순 W,L,W,W 생성과 최신순 반환 검증
+- `bestStreak === 2` 검증
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
+- 테스트 기법, 실패·경계 조건을 만드는 픽스처, 실제 코드 경로, 검증 범위와 미검증 범위를 실제 검증으로 구분합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:6b661420e060 -->
-- **직전 상태:** helper는 구현됐지만 newest-first read model을 잘못 순회하거나 loss reset을 빠뜨리는 regression을 막을 test가 없었습니다.
-- **기법:** 시간순 W,L,W,W를 저장하고 read model이 newest-first W,W,L,W인지 확인한 뒤 dashboard 최고 연승이 2인지 검사합니다.
-- **생산 경로:** memory repository의 match 저장·recent projection·dashboard calculation을 함께 통과합니다.
-- **증명/비증명:** ordering과 reset rule을 검증하도록 작성됐지만 PostgreSQL query ordering은 별도 integration 근거가 필요합니다.
-- **보장:** formula/constant로 돌아가는 regression을 감지합니다.
-- **다음 연결:** `7fe29f991a9b`이 화면 설명을 실제 bounded metric에 맞춥니다.
+- **직전 상태:** 도우미 함수는 구현됐지만 최신순 조회 모델을 잘못 순회하거나 패배 초기화를 빠뜨리는 회귀를 막을 테스트가 없었습니다.
+- **기법:** 시간순 W,L,W,W를 저장하고 조회 모델이 최신순 W,W,L,W인지 확인한 뒤 대시보드 최고 연승이 2인지 검사합니다.
+- **생산 경로:** 메모리 저장소의 경기 저장·최근 경기 요약·대시보드 계산을 함께 통과합니다.
+- **검증 범위와 미검증 범위:** 순서와 초기화 기준을 검증하도록 작성됐지만 PostgreSQL 쿼리 순서는 별도 통합 근거가 필요합니다.
+- **보장:** formula/constant로 돌아가는 회귀를 감지합니다.
+- **다음 연결:** `7fe29f991a9b`이 화면 설명을 실제 라벨 값 범위를 제한한 지표에 맞춥니다.
 <!-- LEARNER-ANSWER END commit:6b661420e060 -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `035b97ca7c58` — `fix(db): 최근 경기에서 최고 연승 계산`
-- 다음 Thread 관련 SHA: `7fe29f991a9b` — `fix(dashboard): 연승 지표 설명 정정`
+- 직전 개발 스레드 관련 SHA: `035b97ca7c58` — `fix(db): 최근 경기에서 최고 연승 계산`
+- 다음 개발 스레드 관련 SHA: `7fe29f991a9b` — `fix(dashboard): 연승 지표 설명 정정`
 
 ### 5.14. `fix(dashboard): 연승 지표 설명 정정`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `7fe29f991a9b` |
-| Importance | C |
-| Tags | - |
-| 학습 깊이 | Thread 이해에 필요한 제한된 문맥만 기록합니다. |
+| 중요도 | C |
+| 태그 | - |
+| 학습 깊이 | 개발 스레드 이해에 필요한 제한된 문맥만 기록합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Changes the dashboard hint from “this season” to “recent matches” so the label matches the data boundary.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 데이터 범위에 맞게 대시보드 안내 문구를 “이번 시즌”에서 “최근 경기”로 바꿉니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `apps/web/src/app/dashboard/page.tsx`의 최고 연승 `StatCard` hint 한 줄
-- 이 한정된 변경이 Thread의 실제 의미 또는 설명 정확성에 기여하는 부분만 기록합니다.
-- Fix chain을 `이전 가정 → 실제 실패/위험 → root cause → 교정된 결정 → 남는 비보장` 순서로 복원합니다.
+- 이 한정된 변경이 개발 스레드의 실제 의미 또는 설명 정확성에 기여하는 부분만 기록합니다.
+- 수정 과정을을 `이전 가정 → 실제 실패/위험 → root cause → 교정된 결정 → 남는 비보장` 순서로 복원합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:7fe29f991a9b -->
 - **변경:** 최고 연승 설명을 `이번 시즌`에서 `최근 경기`로 바꿨습니다.
-- **이유:** repository는 최대 최근 8경기만 계산하므로 시즌 전체라는 주장은 근거가 없습니다.
+- **이유:** 저장소는 최대 최근 8경기만 계산하므로 시즌 전체라는 주장은 근거가 없습니다.
 - **범위:** 계산·저장·API 동작은 바꾸지 않는 표시 정확성 보정입니다.
 <!-- LEARNER-ANSWER END commit:7fe29f991a9b -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `6b661420e060` — `test(db): 최고 연승 계산 검증`
-- 다음 Thread 관련 SHA: `3c6c9134ee94` — `fix(dashboard): 빈 rating history를 정확히 표시`
+- 직전 개발 스레드 관련 SHA: `6b661420e060` — `test(db): 최고 연승 계산 검증`
+- 다음 개발 스레드 관련 SHA: `3c6c9134ee94` — `fix(dashboard): 빈 rating history를 정확히 표시`
 
 ### 5.15. `fix(dashboard): 빈 rating history를 정확히 표시`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `3c6c9134ee94` |
-| Importance | B |
-| Tags | PERSISTENCE, WEB |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | PERSISTENCE, WEB |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Treats empty match history as no rating evidence instead of fabricating a two-point chart.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 빈 경기 이력에서는 두 점짜리 차트를 만들어내지 않고 레이팅 근거가 없는 상태로 처리합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `apps/web/src/app/dashboard/page.tsx`의 `hasRatingHistory`
-- empty chart message와 polyline 조건
+- 빈 차트 메시지와 polyline 조건
 - `buildRatingPoints`의 가짜 `[current-1,current]` 제거
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
-- Fix chain을 `이전 가정 → 실제 실패/위험 → root cause → 교정된 결정 → 남는 비보장` 순서로 복원합니다.
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
+- 수정 과정을을 `이전 가정 → 실제 실패/위험 → root cause → 교정된 결정 → 남는 비보장` 순서로 복원합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:3c6c9134ee94 -->
-- **직전 가정:** chart component를 항상 그리기 위해 empty history에도 1점 상승한 두 좌표를 만들었습니다.
-- **실제 위험:** 경기가 없는 사용자에게 rating 상승 이력이 존재하는 것처럼 보였습니다.
-- **교정:** history 존재 여부를 별도로 계산하고 없으면 polyline 대신 “표시할 경기 이력 없음” 상태를 렌더링하며 helper는 실제 point만 반환합니다.
-- **상태/소유권 변화:** presentation이 데이터 부재를 숨기지 않습니다.
-- **보장/비보장:** empty truthfulness는 보장하지만 bounded recent history 이전의 변화는 여전히 표시하지 않습니다.
-- **다음 연결:** `c17e7ad0fd84`이 profile/friend reads와 mutation invalidation을 React Query로 구조화합니다.
+- **직전 가정:** 차트 구성 요소를 항상 그리기 위해 빈 이력에도 1점 상승한 두 좌표를 만들었습니다.
+- **실제 위험:** 경기가 없는 사용자에게 레이팅 상승 이력이 존재하는 것처럼 보였습니다.
+- **교정:** 이력 존재 여부를 별도로 계산하고 없으면 polyline 대신 “표시할 경기 이력 없음” 상태를 렌더링하며 도우미 함수는 실제 point만 반환합니다.
+- **상태/소유권 변화:** 표시가 데이터 부재를 숨기지 않습니다.
+- **보장 범위/보장하지 않는 범위:** 빈 상태를 사실대로 표시하지만 최근 이력 범위 이전의 변화는 여전히 보여 주지 않습니다.
+- **다음 연결:** `c17e7ad0fd84`이 프로필/친구 조회와 변경 무효화를 React 쿼리로 구조화합니다.
 <!-- LEARNER-ANSWER END commit:3c6c9134ee94 -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `7fe29f991a9b` — `fix(dashboard): 연승 지표 설명 정정`
-- 다음 Thread 관련 SHA: `c17e7ad0fd84` — `feat(web): profile과 friend 조회 query 추가`
+- 직전 개발 스레드 관련 SHA: `7fe29f991a9b` — `fix(dashboard): 연승 지표 설명 정정`
+- 다음 개발 스레드 관련 SHA: `c17e7ad0fd84` — `feat(web): profile과 friend 조회 query 추가`
 
 ### 5.16. `feat(web): profile과 friend 조회 query 추가`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `c17e7ad0fd84` |
-| Importance | B |
-| Tags | WEB |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | WEB |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Adds schema-validated profile/friend browser helpers and scoped React Query options.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 스키마로 검증하는 프로필·친구 브라우저 도우미와 범위가 지정된 React 쿼리 옵션을 추가합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `apps/web/src/lib/api.ts`의 `getFriends`, `getOwnProfile`, `updateOwnProfile`
-- `apps/web/src/lib/query.ts`의 keys/options
-- profile update 성공 시 me/own/public/lobby/dashboard/friends/leaderboard/tournaments/admin invalidation
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
+- `apps/web/src/lib/query.ts`의 키/옵션
+- 프로필 갱신 성공 시 현재 사용자·내 프로필·공개 프로필/로비/대시보드/friends/순위표/tournaments/관리자 무효화
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:c17e7ad0fd84 -->
-- **직전 상태:** profile/friend 요청은 page effect와 ad-hoc state에 흩어져 cache ownership과 mutation 후 refresh 범위가 명시적이지 않았습니다.
-- **구현 결정:** typed API helper와 query key factory/options를 추가하고 own-profile mutation 뒤 identity가 반영될 수 있는 모든 read model을 invalidate합니다. session expiry는 own-profile cache도 제거합니다.
-- **상태/소유권 변화:** server state freshness는 React Query cache/key가, 화면 local state는 presentation만 담당합니다.
-- **실패/edge:** 넓은 invalidation은 추가 요청 비용이 있지만 stale display를 방지합니다. 서버 mutation 자체의 원자성은 이 layer 범위가 아닙니다.
-- **보장/비보장:** 공식 helper를 쓰는 화면의 cache coherence를 높이지만 임의 direct fetch caller까지 강제하지는 않습니다.
-- **다음 연결:** `8bc4d0cc32bd`가 URL/credentials/body/key/invalidation/session-expiry 규칙을 테스트합니다.
+- **직전 상태:** 프로필/친구 요청은 페이지 효과와 그때그때 만든 상태에 흩어져 캐시 소유권과 변경 후 다시 조회할 범위가 명시적이지 않았습니다.
+- **구현 결정:** 타입이 지정된 API 도우미 함수와 쿼리 키 생성 함수와 옵션을 추가하고 내 프로필 변경 뒤 신원이 반영될 수 있는 모든 조회 모델을 무효화합니다. 세션 만료는 내 프로필 캐시도 제거합니다.
+- **상태/소유권 변화:** 서버 상태의 최신성은 React Query 캐시와 키가 관리하고, 화면의 로컬 상태는 표시만 담당합니다.
+- **실패/예외 조건:** 넓은 무효화는 추가 요청 비용이 있지만 오래된 표시를 방지합니다. 서버 변경 자체의 원자성은 이 계층 범위가 아닙니다.
+- **보장 범위/보장하지 않는 범위:** 공식 도우미 함수를 쓰는 화면의 캐시 coherence를 높이지만 임의 직접 조회 요청 호출자까지 강제하지는 않습니다.
+- **다음 연결:** `8bc4d0cc32bd`가 URL/인증 정보/본문/키/무효화/세션 만료 규칙을 테스트합니다.
 <!-- LEARNER-ANSWER END commit:c17e7ad0fd84 -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `3c6c9134ee94` — `fix(dashboard): 빈 rating history를 정확히 표시`
-- 다음 Thread 관련 SHA: `8bc4d0cc32bd` — `test(web): profile과 friend 조회 규칙 검증`
+- 직전 개발 스레드 관련 SHA: `3c6c9134ee94` — `fix(dashboard): 빈 rating history를 정확히 표시`
+- 다음 개발 스레드 관련 SHA: `8bc4d0cc32bd` — `test(web): profile과 friend 조회 규칙 검증`
 
 ### 5.17. `test(web): profile과 friend 조회 규칙 검증`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `8bc4d0cc32bd` |
-| Importance | B |
-| Tags | AUTH, WEB, TEST |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | AUTH, WEB, TEST |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Verifies own-profile/friend request helpers and React Query ownership rules.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 내 프로필·친구 요청 도우미와 React 쿼리의 상태 소유 규칙을 검증합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- web API helper test의 URL, credentials, AbortSignal, PATCH body assertion
-- query key/options test
-- profile update invalidation과 session expiry cache removal
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
-- Test technique, failure/boundary fixture, production path, proves/does-not-prove를 실제 assertion으로 구분합니다.
+- 웹 API 도우미 함수 테스트의 URL, 인증 정보, AbortSignal, PATCH 본문 검증
+- 쿼리 키/옵션 테스트
+- 프로필 갱신 무효화와 세션 만료 캐시 제거
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
+- 테스트 기법, 실패·경계 조건을 만드는 픽스처, 실제 코드 경로, 검증 범위와 미검증 범위를 실제 검증으로 구분합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:8bc4d0cc32bd -->
-- **직전 상태:** helper와 invalidation 목록은 구현됐지만 URL·credential·body·cache 범위가 후속 refactor에서 바뀌어도 잡을 test가 없었습니다.
-- **기법:** fetch를 대체해 own profile/friends 요청의 URL, credential, signal과 PATCH JSON body를 확인하고 query client spy로 invalidate/remove 호출을 검사합니다.
-- **생산 경로:** browser adapter와 React Query option/mutation lifecycle을 직접 실행합니다.
-- **증명/비증명:** client request/cache ownership을 검증하도록 작성됐지만 실제 HTTP 서버와 DB friendship invariant는 검증하지 않습니다.
-- **보장:** profile mutation/session expiry 뒤 stale identity 관련 cache가 남는 regression을 감지합니다.
-- **Thread 종료:** read model의 사실성, bounded metric 설명, client cache ownership이 연결됩니다.
+- **직전 상태:** 도우미 함수와 무효화 목록은 구현됐지만 URL·인증 정보·본문·캐시 범위가 후속 리팩터링에서 바뀌어도 잡을 테스트가 없었습니다.
+- **기법:** 조회 요청을 대체해 내 프로필·친구 요청의 URL, 인증 정보, 신호와 PATCH JSON 본문을 확인하고 쿼리 클라이언트 호출 감시 객체로 무효화/제거 호출을 검사합니다.
+- **생산 경로:** 브라우저 어댑터와 React 쿼리 옵션/변경 수명주기를 직접 실행합니다.
+- **검증 범위와 미검증 범위:** 클라이언트 요청/캐시 소유권을 검증하도록 작성됐지만 실제 HTTP 서버와 DB 친구 관계 불변 조건은 검증하지 않습니다.
+- **보장:** 프로필 변경/세션 만료 뒤 오래된 신원 관련 캐시가 남는 회귀를 감지합니다.
+- **개발 스레드 종료:** 조회 모델의 사실성, 라벨 값 범위를 제한한 지표 설명, 클라이언트 캐시 소유권이 연결됩니다.
 <!-- LEARNER-ANSWER END commit:8bc4d0cc32bd -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `c17e7ad0fd84` — `feat(web): profile과 friend 조회 query 추가`
-- 이 commit을 Thread의 마지막 상태로 사용합니다.
+- 직전 개발 스레드 관련 SHA: `c17e7ad0fd84` — `feat(web): profile과 friend 조회 query 추가`
+- 이 커밋을 개발 스레드의 마지막 상태로 사용합니다.
 
-## 6. Thread 종합
+## 6. 개발 스레드 종합
 
-다음 항목을 commit 순서에서 재구성합니다: invariant evolution, Failure → Fix → Test 관계, ownership/state 변화, 최종 실행 흐름, 비보장, 실제 실행 증거.
+다음 항목을 커밋 순서에서 재구성합니다: 불변 조건 변화, 실패 → 수정 → 테스트 관계, 소유권/상태 변화, 최종 실행 흐름, 보장하지 않는 범위, 실제 실행 증거.
 
 <!-- LEARNER-ANSWER START thread:03-profile-friendship-dashboard-and-ranking-journeys.md:synthesis -->
-- **불변식 진화:** 초기 repository는 profile/leaderboard/recent-match/dashboard를 제공했지만 `getDashboard`의 최고 연승은 PostgreSQL에서 `wins - losses + 3`을 제한한 값, memory에서 고정 3이었습니다. web은 sample user와 고정 SVG 그래프를 사용하고 API 실패를 sample로 숨겼습니다. `be31566ac0fd`가 이 실패 은폐를 제거하고, `035b97ca7c58`–`7fe29f991a9b`가 실제 recent-match 순서에서 연승을 계산하고 범위를 “최근 경기”로 설명하며, `3c6c9134ee94`가 빈 이력에 가짜 그래프를 만들지 않게 했습니다.
-- **소유권:** repository는 read model의 계산·정렬·projection을, HTTP route는 public/authenticated 접근 구분을, browser adapter와 React Query는 parsing·cache key·invalidation을, 화면은 loading/error/empty/rendering을 소유합니다. sample data는 더 이상 실패 대체 authority가 아닙니다.
-- **Failure → Fix → Test:** 추정 최고 연승 → 실제 chronological scan → W/L/W/W test. 고정 chart → rating delta 역산 → empty history를 별도 상태로 수정. sample fallback → nullable/empty/error 화면. query ownership → helper/key/invalidation test로 연결됩니다.
-- **최종 흐름:** repository가 public profile, leaderboard, newest-first recent matches, dashboard를 생성 → API가 공개/인증 route로 노출 → typed browser helper와 query option이 읽음 → mutation은 관련 identity/read-model cache를 무효화 → 화면은 실제 결과 또는 명시적 실패/empty state만 표시합니다.
-- **비보장:** 최고 연승과 chart는 repository가 반환한 최근 최대 8경기 범위입니다. 전체 시즌/전체 계정 이력을 의미하지 않습니다. friendship canonical pair/동시성은 category 02 Thread 04가 주 소유자입니다.
-- **실행 증거:** exact SHA의 repository·route·web helper·test 구현을 검사했으며 로컬 test runner는 실행하지 않았습니다.
+- **불변식 진화:** 초기 저장소는 프로필/순위표/최근 경기/대시보드를 제공했지만 `getDashboard`의 최고 연승은 PostgreSQL에서 `wins - losses + 3`을 제한한 값, 메모리에서 고정 3이었습니다. 웹은 예시 사용자와 고정 SVG 그래프를 사용하고 API 실패를 예시로 숨겼습니다. `be31566ac0fd`가 이 실패 은폐를 제거하고, `035b97ca7c58`–`7fe29f991a9b`가 실제 최근 경기 순서에서 연승을 계산하고 범위를 “최근 경기”로 설명하며, `3c6c9134ee94`가 빈 이력에 가짜 그래프를 만들지 않게 했습니다.
+- **소유권:** 저장소는 조회 모델의 계산·정렬·외부 표현 생성을, HTTP 라우트는 공개/인증된 접근 구분을, 브라우저 어댑터와 React 쿼리는 파싱·캐시 키·무효화를, 화면은 불러오는 중/오류/빈/렌더링을 소유합니다. 예시 데이터는 더 이상 실패 대체 판정 권한이 아닙니다.
+- **실패 → 수정 → 테스트:** 추정 최고 연승 → 실제 시간순 순회 → W/L/W/W 테스트. 고정 차트 → 레이팅 시간 간격 역산 → 빈 이력을 별도 상태로 수정. 예시 데이터 대체 표시 → null 허용/빈/오류 화면. 쿼리 소유권 → 도우미 함수/키/무효화 테스트로 연결됩니다.
+- **최종 흐름:** 저장소가 공개 프로필, 순위표, 최신순 최근 경기, 대시보드를 생성 → API가 공개/인증 라우트로 노출 → 타입이 지정된 브라우저 도우미 함수와 쿼리 옵션이 읽음 → 변경은 관련 신원/조회 모델 캐시를 무효화 → 화면은 실제 결과 또는 명시적 실패/빈 상태만 표시합니다.
+- **보장하지 않는 범위:** 최고 연승과 차트는 저장소가 반환한 최근 최대 8경기 범위입니다. 전체 시즌이나 전체 계정 이력을 의미하지 않습니다. 친구 관계의 정규화된 사용자 쌍과 동시성은 카테고리 02 개발 스레드 04가 주로 다룹니다.
+- **실행 증거:** 정확한 SHA의 저장소·라우트·웹 도우미 함수·테스트 구현을 검사했으며 로컬 테스트 실행기는 실행하지 않았습니다.
 <!-- LEARNER-ANSWER END thread:03-profile-friendship-dashboard-and-ranking-journeys.md:synthesis -->
 
 ## 7. 학습 완료 확인
 
 <!-- LEARNER-ANSWER START thread:03-profile-friendship-dashboard-and-ranking-journeys.md:checklist -->
-- [x] 모든 SHA를 지정 브랜치의 exact commit으로 검사했습니다.
-- [x] fixed commit map과 source classification을 보존했습니다.
-- [x] earlier commit을 later HEAD 코드로 설명하지 않았습니다.
-- [x] fix와 test를 원래 failure/production path에 연결했습니다.
-- [x] 실제 실행하지 않은 test를 통과했다고 기록하지 않았습니다.
-- [x] Thread 최종 owner, invariant, flow, non-guarantee를 작성했습니다.
+- [x] 모든 SHA를 지정 브랜치의 정확한 커밋으로 검사했습니다.
+- [x] 고정된 커밋 목록과 원문 분류를 보존했습니다.
+- [x] earlier 커밋을 후속 최종 상태 코드로 설명하지 않았습니다.
+- [x] 수정과 테스트를 원래 실패/실제 코드 경로에 연결했습니다.
+- [x] 실제 실행하지 않은 테스트를 통과했다고 기록하지 않았습니다.
+- [x] 개발 스레드 최종 소유 주체, 불변 조건, 실행 순서, 보장하지 않는 범위를 작성했습니다.
 <!-- LEARNER-ANSWER END thread:03-profile-friendship-dashboard-and-ranking-journeys.md:checklist -->
 ===== END FILE: 03-profile-friendship-dashboard-and-ranking-journeys.md =====
 
 ===== BEGIN FILE: 04-lobby-presence-chat-and-live-statistics.md =====
 # 로비 접속 상태·채팅과 실시간 지표
 
-원문 Development Thread: `Lobby presence, chat, and live statistics`
+원문 개발 스레드: `Lobby presence, chat, and live statistics`
 
-## 1. Thread 목표
+## 1. 개발 스레드 목표
 
-- 저장되는 로비 채팅과 GameHub가 계산하는 접속·대기열·room 지표의 서로 다른 authority를 추적합니다.
-- HTTP 채팅 쓰기, WebSocket 실시간 반영, presence refresh가 web 화면에 결합되는 순서를 복원합니다.
-- sample fallback, body 누락, 저장 계정 기반 online 표시, WebSocket open 직후 즉시 가시성 가정을 각각 어떻게 교정했는지 확인합니다.
+- 저장되는 로비 채팅과 GameHub가 계산하는 접속·대기열·경기방 지표의 서로 다른 판정 권한을 추적합니다.
+- HTTP 채팅 쓰기, WebSocket 실시간 반영, 접속 상태 다시 조회가 웹 화면에 결합되는 순서를 복원합니다.
+- 예시 데이터 대체 표시, 본문 누락, 저장 계정 기반 온라인 표시, WebSocket 열기 직후 즉시 가시성 가정을 각각 어떻게 교정했는지 확인합니다.
 
-### Source에서 확정된 significance
+### 원문에서 확인한 중요성
 
-> The lobby combines durable chat history with ephemeral process state. Treating the database as presence authority, treating sample data as fallback truth, or assuming immediate propagation after WebSocket open all produce misleading state. The history separates these owners and adapts the tests to eventual visibility.
+> 로비는 영속 채팅 기록과 프로세스 수명에 묶인 일시 상태를 함께 사용합니다. 데이터베이스를 접속 상태의 기준으로 삼거나 예시 데이터를 사실처럼 대체 표시하거나 WebSocket 연결 직후 상태 전파가 끝났다고 가정하면 잘못된 화면 상태가 생깁니다. 이후 커밋은 소유 주체를 분리하고 테스트도 지연 전파를 허용하도록 바꿉니다.
 
-### 직접 연결되는 Critical Invariants
+### 직접 연결되는 핵심 불변 조건
 
-> Lobby chat history is repository-backed, while online users, queued users, active rooms, and wait samples are derived from the live GameHub process.
+> 로비 채팅 이력은 저장소에 보관하고, 온라인 사용자·대기 사용자·진행 중 경기방·대기 시간 표본은 실행 중인 GameHub에서 계산합니다.
 >
-> UI and tests tolerate asynchronous presence propagation without replacing failed server reads with fabricated data.
+> UI와 테스트는 접속 상태가 비동기로 전파되는 시간을 허용하되, 서버 조회 실패를 임의 데이터로 대체하지 않습니다.
 
-### 직접 연결되는 Major Engineering Difficulties
+### 직접 연결되는 주요 구현 난점
 
-> Merging an initial HTTP snapshot with later WebSocket events without duplicating chat or leaking socket lifecycle.
+> 초기 HTTP 스냅샷과 이후 WebSocket 이벤트를 합칠 때 채팅을 중복 추가하지 않고 소켓 수명도 누수하지 않아야 합니다.
 >
-> Testing presence that becomes visible asynchronously while still using deterministic time bounds and explicit failure.
+> 접속 상태가 비동기로 나타나는 동작을 정해진 시간 상한과 명시적 실패 조건으로 검증해야 합니다.
 
-## 2. 이 Thread를 이해하기 위한 핵심 질문
+## 2. 이 개발 스레드를 이해하기 위한 핵심 질문
 
-- `listLobbyChat`는 최신 20개를 SQL에서 어떤 순서로 읽고 caller에는 어떤 순서로 반환합니까?
-- GameHub는 connected/playing/queued/room/wait sample을 어떤 in-memory 자료구조에서 계산합니까?
-- HTTP `/chat/lobby`는 body 누락, trim 후 empty, 240자 초과를 각각 어떻게 처리합니까?
-- web lobby는 HTTP initial load와 WebSocket `chat.message`/`presence.changed`를 어떻게 합칩니까?
-- `onlinePlayers` authority가 repository에서 GameHub로 이동하면서 비접속 저장 계정이 왜 사라집니까?
-- smoke test는 WebSocket open과 HTTP presence visibility 사이의 eventual delay를 어떻게 기다립니까?
+- `listLobbyChat`는 최신 20개를 SQL에서 어떤 순서로 읽고 호출자에는 어떤 순서로 반환합니까?
+- GameHub는 연결 수·경기 중 사용자 수·대기 사용자 수·경기방 수·대기 시간 표본을 어떤 메모리 자료구조에서 계산합니까?
+- HTTP `/chat/lobby`는 본문 누락, 공백 제거 후 빈, 240자 초과를 각각 어떻게 처리합니까?
+- 웹 로비는 HTTP 초기 부하와 WebSocket `chat.message`/`presence.changed`를 어떻게 합칩니까?
+- `onlinePlayers` 판정 권한이 저장소에서 GameHub로 이동하면서 비접속 저장 계정이 왜 사라집니까?
+- 실행 확인 테스트는 WebSocket 열기와 HTTP 접속 상태 반영 사이의 지연 후 최종 반영 시간을 어떻게 기다립니까?
 
 ## 3. 완료 기준
 
-- durable chat와 ephemeral presence/statistics의 owner를 구분해 호출 흐름을 그릴 수 있습니다.
-- HTTP chat write와 WebSocket chat delivery가 같은 repository record를 어떻게 공유하는지 설명할 수 있습니다.
-- body 없는 요청의 실제 failure 원인과 nullish normalization fix를 지적할 수 있습니다.
-- presence test가 즉시 assertion에서 bounded polling으로 바뀐 이유와 비보장을 설명할 수 있습니다.
-- Commit map의 모든 SHA를 지정 브랜치 ancestry와 source classification에서 확인합니다.
-- 각 SHA의 parent 또는 직전 관련 SHA와 비교해 변경 전후 상태를 구분합니다.
-- 실행한 명령과 코드 검사만으로 확인한 사실을 구분하고 실행하지 않은 test를 통과했다고 기록하지 않습니다.
+- 영속 채팅과 일시적인 접속 상태·통계의 소유 주체를 구분해 호출 흐름을 그릴 수 있습니다.
+- HTTP 채팅 쓰기와 WebSocket 채팅 전달이 같은 저장소 레코드를 어떻게 공유하는지 설명할 수 있습니다.
+- 본문 없는 요청의 실제 실패 원인과 null·undefined 정규화 수정을 지적할 수 있습니다.
+- 접속 상태 테스트가 즉시 검증에서 제한된 횟수의 주기적 조회로 바뀐 이유와 보장하지 않는 범위를 설명할 수 있습니다.
+- 커밋 목록의 모든 SHA를 지정 브랜치의 커밋 이력과 원문 분류에서 확인합니다.
+- 각 SHA를 부모 커밋 또는 직전 관련 SHA와 비교해 변경 전후 상태를 구분합니다.
+- 실행한 명령과 코드 검사만으로 확인한 사실을 구분하고 실행하지 않은 테스트를 통과했다고 기록하지 않습니다.
 
-## 4. Commit map
+## 4. 커밋 목록
 
-| 순서 | SHA | Subject | Importance | Tags | Source에서 확정된 역할 |
+| 순서 | SHA | 제목 | 중요도 | 태그 | 원문에서 확인한 역할 |
 | ---: | --- | --- | :---: | --- | --- |
-| 1 | `a6fa5a187eec` | `feat(db): 채팅 메시지 저장 구현` | B | REALTIME, PERSISTENCE | Extends the repository with persistent lobby and match chat messages. |
-| 2 | `dabd8d5c2a49` | `feat(game): 실시간 경기 채팅 전달` | B | PROTOCOL, REALTIME, PERSISTENCE | Persists WebSocket chat commands and broadcasts the resulting message. |
-| 3 | `1d9aa3902614` | `feat(lobby): 실시간 로비 지표 API 추가` | B | REALTIME | Makes the GameHub expose live connected, playing, queued, room, and recent wait metrics. |
-| 4 | `de9a173e6eb1` | `feat(chat): 쓰기 가능한 로비 채팅 API 추가` | B | REALTIME, PERSISTENCE | Adds an authenticated HTTP endpoint for validated lobby chat writes. |
-| 5 | `e0ef3fec89a6` | `feat(chat): 로비 채팅 입력 화면 추가` | B | WEB | Adds a controlled lobby-chat form and appends accepted messages to bounded history. |
-| 6 | `4f9b3b312d0e` | `fix(lobby): 로비 상태 표현 개선` | B | REALTIME | Displays server-provided lobby statistics instead of fixed activity and wait-time claims. |
-| 7 | `8ce1199ffd12` | `fix(api): body 없는 로비 채팅 요청 처리` | B | - | Normalizes a missing lobby-chat request body to an empty object before reading the optional message. |
-| 8 | `8078ac6f92ba` | `test(app): 실시간 지표·채팅·경기 기록 검증` | B | REALTIME, PERSISTENCE, WEB | Expands application coverage for lobby metrics, authenticated chat persistence, chat attribution, and recent-match ordering. |
-| 9 | `cd3787eefd6a` | `feat(chat): 로비 채팅과 접속 상태 실시간 반영` | B | AUTH, REALTIME, WEB | Opens an authenticated lobby WebSocket and merges chat/presence events with the HTTP snapshot. |
-| 10 | `8debb1ea3ad3` | `feat(lobby): 연결 중인 WebSocket 사용자 목록 추가` | B | REALTIME | Makes the realtime hub, not persistent account storage, the authority for lobby presence. |
-| 11 | `c3ff9ed2402f` | `test(lobby): WebSocket 사용자 목록 검증` | B | REALTIME, PERSISTENCE, TEST | Verifies that the lobby reports no online players when the realtime hub has no WebSocket clients. |
-| 12 | `23a978879b81` | `test(smoke): WebSocket 접속 상태 반영 대기` | B | REALTIME, OPERATIONS, TEST | Changes the smoke test from an immediate presence assertion to bounded asynchronous polling. |
+| 1 | `a6fa5a187eec` | `feat(db): 채팅 메시지 저장 구현` | B | REALTIME, PERSISTENCE | 저장소에 로비·경기 채팅 메시지 영속 저장 기능을 추가합니다. |
+| 2 | `dabd8d5c2a49` | `feat(game): 실시간 경기 채팅 전달` | B | PROTOCOL, REALTIME, PERSISTENCE | WebSocket 채팅 명령을 저장하고 저장된 메시지를 전파합니다. |
+| 3 | `1d9aa3902614` | `feat(lobby): 실시간 로비 지표 API 추가` | B | REALTIME | GameHub가 현재 연결 수, 경기 중 사용자 수, 대기 사용자 수, 경기방 수, 최근 대기 시간 지표를 제공하게 합니다. |
+| 4 | `de9a173e6eb1` | `feat(chat): 쓰기 가능한 로비 채팅 API 추가` | B | REALTIME, PERSISTENCE | 검증된 로비 채팅 쓰기를 위한 인증 HTTP 엔드포인트를 추가합니다. |
+| 5 | `e0ef3fec89a6` | `feat(chat): 로비 채팅 입력 화면 추가` | B | WEB | 제어 입력 방식의 로비 채팅 폼을 추가하고 수락된 메시지를 상한을 둔 이력에 덧붙입니다. |
+| 6 | `4f9b3b312d0e` | `fix(lobby): 로비 상태 표현 개선` | B | REALTIME | 고정 활동·대기 시간 문구 대신 서버가 제공한 로비 통계를 표시합니다. |
+| 7 | `8ce1199ffd12` | `fix(api): body 없는 로비 채팅 요청 처리` | B | - | 로비 채팅 요청 본문이 없으면 선택적 메시지를 읽기 전에 빈 객체로 정규화합니다. |
+| 8 | `8078ac6f92ba` | `test(app): 실시간 지표·채팅·경기 기록 검증` | B | REALTIME, PERSISTENCE, WEB | 로비 지표, 인증 채팅 저장, 채팅 작성자 표시, 최근 경기 순서를 애플리케이션 테스트 범위에 추가합니다. |
+| 9 | `cd3787eefd6a` | `feat(chat): 로비 채팅과 접속 상태 실시간 반영` | B | AUTH, REALTIME, WEB | 인증된 로비 WebSocket을 열고 채팅·접속 상태 이벤트를 HTTP 스냅샷과 합칩니다. |
+| 10 | `8debb1ea3ad3` | `feat(lobby): 연결 중인 WebSocket 사용자 목록 추가` | B | REALTIME | 영속 계정 저장소가 아니라 실시간 허브를 로비 접속 상태의 최종 판정 주체로 둡니다. |
+| 11 | `c3ff9ed2402f` | `test(lobby): WebSocket 사용자 목록 검증` | B | REALTIME, PERSISTENCE, TEST | 실시간 허브에 WebSocket 클라이언트가 없으면 로비가 온라인 사용자를 0명으로 보고하는지 검증합니다. |
+| 12 | `23a978879b81` | `test(smoke): WebSocket 접속 상태 반영 대기` | B | REALTIME, OPERATIONS, TEST | 스모크 테스트의 즉시 접속 상태 검증을 시간 상한을 둔 비동기 폴링으로 바꿉니다. |
 
-## 5. Commit별 학습 기록
+## 5. 커밋별 학습 기록
 
 ### 5.1. `feat(db): 채팅 메시지 저장 구현`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `a6fa5a187eec` |
-| Importance | B |
-| Tags | REALTIME, PERSISTENCE |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | REALTIME, PERSISTENCE |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Extends the repository with persistent lobby and match chat messages.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 저장소에 로비·경기 채팅 메시지 영속 저장 기능을 추가합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `packages/db/src/index.ts`의 `createChatMessage`, `listLobbyChat`
-- PostgreSQL sender join과 latest-20-desc 후 reverse
-- memory chat collection/filter/slice
+- PostgreSQL 발신자 참가와 최신-20-desc 후 역순 처리
+- 메모리 채팅 컬렉션/필터/slice
 - `packages/db/src/rowMappers.ts`의 `toChatMessage`
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:a6fa5a187eec -->
-- **직전 상태:** chat은 realtime 화면/event 개념만 있고 sender와 scope를 가진 durable history가 없었습니다.
-- **구현 결정:** lobby/match scope, optional room, sender ID, body, timestamp를 repository에 저장하고 lobby read는 최신 20개를 고른 뒤 오래된 것부터 보이도록 reverse합니다.
-- **상태/소유권 변화:** chat identity/body/history는 repository가 소유하고 realtime hub는 전달자가 됩니다.
-- **실패/edge:** 이 시점에는 scope와 room 조합을 강제하지 않아 lobby row에 room이 있거나 match row에 room이 없는 입력을 막지 못합니다.
-- **보장/비보장:** sender projection과 bounded lobby history는 제공하지만 authorization과 DB invariant는 Thread 05 전까지 없습니다.
+- **직전 상태:** 채팅은 실시간 화면/이벤트 개념만 있고 발신자와 범위를 가진 영속 기록이 없었습니다.
+- **구현 결정:** 로비/경기 범위, 선택적 경기방, 발신자 ID, 본문, 타임스탬프를 저장소에 저장하고 로비 읽기는 최신 20개를 고른 뒤 오래된 것부터 보이도록 역순 처리합니다.
+- **상태/소유권 변화:** 채팅 신원/본문/이력은 저장소가 소유하고 실시간 허브는 전달자가 됩니다.
+- **실패/예외 조건:** 이 시점에는 범위와 경기방 조합을 강제하지 않아 로비 행에 경기방이 있거나 경기 행에 경기방이 없는 입력을 막지 못합니다.
+- **보장 범위/보장하지 않는 범위:** 발신자 정보가 포함된, 개수 제한이 있는 로비 이력은 제공하지만 권한 검사와 DB 불변 조건은 개발 스레드 05 전까지 없습니다.
 - **다음 연결:** `dabd8d5c2a49`가 WebSocket `chat.send`를 이 저장 경계에 연결합니다.
 <!-- LEARNER-ANSWER END commit:a6fa5a187eec -->
 
 비교 기준:
-- 이 commit의 parent와 비교합니다.
-- 다음 Thread 관련 SHA: `dabd8d5c2a49` — `feat(game): 실시간 경기 채팅 전달`
+- 이 커밋의 부모 커밋과 비교합니다.
+- 다음 개발 스레드 관련 SHA: `dabd8d5c2a49` — `feat(game): 실시간 경기 채팅 전달`
 
 ### 5.2. `feat(game): 실시간 경기 채팅 전달`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `dabd8d5c2a49` |
-| Importance | B |
-| Tags | PROTOCOL, REALTIME, PERSISTENCE |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | PROTOCOL, REALTIME, PERSISTENCE |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Persists WebSocket chat commands and broadcasts the resulting message.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: WebSocket 채팅 명령을 저장하고 저장된 메시지를 전파합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `apps/api/src/gameHub.ts`의 async `receive`
+- `apps/api/src/gameHub.ts`의 비동기 처리 `receive`
 - `chat.send` 분기와 `repo.createChatMessage`
 - `broadcastRoom`/`broadcastAll` 선택
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:dabd8d5c2a49 -->
-- **직전 상태:** repository chat API는 있었지만 WebSocket client event가 이를 호출하지 않았습니다.
-- **구현 결정:** `chat.send`를 받으면 인증된 client user ID로 먼저 message를 저장하고, match면 room, lobby면 모든 연결에 persisted message를 broadcast합니다.
-- **상태/소유권 변화:** message ID/timestamp/sender는 repository 결과가 authority이고 hub는 그 결과를 전달합니다.
-- **실패/edge:** match branch는 event가 말한 room을 그대로 사용해 current seat/room authorization이 없고 scope-room 조합도 느슨합니다.
-- **보장/비보장:** 저장 후 broadcast 순서는 갖지만 cross-room injection 방지는 Thread 05에서 추가됩니다.
-- **다음 연결:** `1d9aa3902614`가 같은 GameHub의 live lobby stats를 노출합니다.
+- **직전 상태:** 저장소 채팅 API는 있었지만 WebSocket 클라이언트 이벤트가 이를 호출하지 않았습니다.
+- **구현 결정:** `chat.send`를 받으면 인증된 클라이언트 사용자 ID로 먼저 메시지를 저장하고, 경기면 경기방, 로비면 모든 연결에 저장된 메시지를 전파합니다.
+- **상태/소유권 변화:** 메시지 ID/타임스탬프/발신자는 저장소 결과가 판정 권한이고 허브는 그 결과를 전달합니다.
+- **실패/예외 조건:** 경기 브랜치는 이벤트가 말한 경기방을 그대로 사용해 현재 좌석/경기방 권한 검사가 없고 범위와 경기방 ID의 조합도 느슨합니다.
+- **보장 범위/보장하지 않는 범위:** 저장 후 전파 순서는 갖지만 여러 영역에 걸친 경기방 주입 방지는 개발 스레드 05에서 추가됩니다.
+- **다음 연결:** `1d9aa3902614`가 같은 GameHub의 실시간 로비 통계를 노출합니다.
 <!-- LEARNER-ANSWER END commit:dabd8d5c2a49 -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `a6fa5a187eec` — `feat(db): 채팅 메시지 저장 구현`
-- 다음 Thread 관련 SHA: `1d9aa3902614` — `feat(lobby): 실시간 로비 지표 API 추가`
+- 직전 개발 스레드 관련 SHA: `a6fa5a187eec` — `feat(db): 채팅 메시지 저장 구현`
+- 다음 개발 스레드 관련 SHA: `1d9aa3902614` — `feat(lobby): 실시간 로비 지표 API 추가`
 
 ### 5.3. `feat(lobby): 실시간 로비 지표 API 추가`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `1d9aa3902614` |
-| Importance | B |
-| Tags | REALTIME |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | REALTIME |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Makes the GameHub expose live connected, playing, queued, room, and recent wait metrics.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: GameHub가 현재 연결 수, 경기 중 사용자 수, 대기 사용자 수, 경기방 수, 최근 대기 시간 지표를 제공하게 합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `apps/api/src/gameHub.ts`의 `QueueEntry.queuedAt`, wait sample collection
-- `lobbyStats`/live stats getter
-- 최근 최대 20개 wait sample과 rounded average seconds
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
+- `apps/api/src/gameHub.ts`의 `QueueEntry.queuedAt`, 대기 시간 표본 컬렉션
+- `lobbyStats`/실시간 통계 getter
+- 최근 최대 20개 대기 시간 표본과 반올림한 평균 초
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:1d9aa3902614 -->
-- **직전 상태:** lobby는 저장 데이터 중심이라 현재 process의 queue와 room 상태를 수치로 제공하지 못했습니다.
-- **구현 결정:** queue entry timestamp를 기록하고 match 시 wait sample을 남겨 connected clients, playing participants, queued clients, active rooms, 평균 대기 시간을 계산합니다.
-- **상태/소유권 변화:** 실시간 지표 authority는 database가 아니라 GameHub in-memory maps/queue/wait samples입니다.
-- **실패/edge:** sample이 없으면 average wait는 null이며 process restart 시 history는 사라집니다. 장기 통계가 아닙니다.
-- **보장/비보장:** 현재 process snapshot과 bounded recent wait 평균만 보장합니다.
+- **직전 상태:** 로비는 저장 데이터 중심이라 현재 프로세스의 대기열과 경기방 상태를 수치로 제공하지 못했습니다.
+- **구현 결정:** 대기열 항목의 등록 시각을 기록하고 경기 생성 시 대기 시간 표본을 남겨 연결된 클라이언트 수, 경기 중인 참가자 수, 대기 중인 클라이언트 수, 진행 중인 경기방 수, 평균 대기 시간을 계산합니다.
+- **상태/소유권 변화:** 실시간 지표 판정 권한은 데이터베이스가 아니라 GameHub 메모리 Map/대기열/대기 표본입니다.
+- **실패/예외 조건:** 예시가 없으면 average 대기는 null이며 프로세스 재시작 시 이력은 사라집니다. 장기 통계가 아닙니다.
+- **보장 범위/보장하지 않는 범위:** 현재 프로세스 스냅샷과 상한을 둔 최근 대기 평균만 보장합니다.
 - **다음 연결:** `de9a173e6eb1`이 로비 채팅의 HTTP 쓰기 경로를 추가합니다.
 <!-- LEARNER-ANSWER END commit:1d9aa3902614 -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `dabd8d5c2a49` — `feat(game): 실시간 경기 채팅 전달`
-- 다음 Thread 관련 SHA: `de9a173e6eb1` — `feat(chat): 쓰기 가능한 로비 채팅 API 추가`
+- 직전 개발 스레드 관련 SHA: `dabd8d5c2a49` — `feat(game): 실시간 경기 채팅 전달`
+- 다음 개발 스레드 관련 SHA: `de9a173e6eb1` — `feat(chat): 쓰기 가능한 로비 채팅 API 추가`
 
 ### 5.4. `feat(chat): 쓰기 가능한 로비 채팅 API 추가`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `de9a173e6eb1` |
-| Importance | B |
-| Tags | REALTIME, PERSISTENCE |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | REALTIME, PERSISTENCE |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Adds an authenticated HTTP endpoint for validated lobby chat writes.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 검증된 로비 채팅 쓰기를 위한 인증 HTTP 엔드포인트를 추가합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- API route의 `/chat/lobby` handler
-- request body cast, trim, empty/240-char 검사
+- API 라우트의 `/chat/lobby` 처리 함수
+- 요청 본문 형 변환, 공백 제거, 빈/240-문자 길이 검사
 - `repo.createChatMessage({ scope: "lobby", ... })`
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:de9a173e6eb1 -->
-- **직전 상태:** lobby chat write는 WebSocket 경로에만 있고 socket이 없는 client의 HTTP fallback이 없었습니다.
-- **구현 결정:** 인증 사용자의 body를 trim하고 empty 또는 240자 초과를 400으로 거부한 뒤 room 없는 lobby message를 저장해 반환합니다.
-- **상태/소유권 변화:** HTTP와 WS가 같은 repository message record를 만들 수 있게 됩니다.
-- **실패/edge:** `request.body` 자체가 undefined이면 `body.message` 접근 전에 TypeError가 나 intended 400이 아니라 내부 오류가 될 수 있습니다.
-- **보장/비보장:** body가 객체인 정상 입력의 validation은 제공하지만 missing-body normalization은 `8ce1199ffd12`에서 수정됩니다.
-- **다음 연결:** `e0ef3fec89a6`이 web form과 HTTP fallback을 연결합니다.
+- **직전 상태:** 로비 채팅 쓰기는 WebSocket 경로에만 있고 소켓이 없는 클라이언트의 HTTP 대체 처리가 없었습니다.
+- **구현 결정:** 인증 사용자의 본문을 공백 제거하고 빈 또는 240자 초과를 400으로 거부한 뒤 경기방 없는 로비 메시지를 저장해 반환합니다.
+- **상태/소유권 변화:** HTTP와 WS가 같은 저장소 메시지 레코드를 만들 수 있게 됩니다.
+- **실패/예외 조건:** `request.body` 자체가 undefined이면 `body.message` 접근 전에 TypeError가 나 intended 400이 아니라 내부 오류가 될 수 있습니다.
+- **보장 범위/보장하지 않는 범위:** 본문이 객체인 정상 입력의 검증은 제공하지만 누락된 본문 정규화는 `8ce1199ffd12`에서 수정됩니다.
+- **다음 연결:** `e0ef3fec89a6`이 웹 입력 폼과 HTTP 대체 처리를 연결합니다.
 <!-- LEARNER-ANSWER END commit:de9a173e6eb1 -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `1d9aa3902614` — `feat(lobby): 실시간 로비 지표 API 추가`
-- 다음 Thread 관련 SHA: `e0ef3fec89a6` — `feat(chat): 로비 채팅 입력 화면 추가`
+- 직전 개발 스레드 관련 SHA: `1d9aa3902614` — `feat(lobby): 실시간 로비 지표 API 추가`
+- 다음 개발 스레드 관련 SHA: `e0ef3fec89a6` — `feat(chat): 로비 채팅 입력 화면 추가`
 
 ### 5.5. `feat(chat): 로비 채팅 입력 화면 추가`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `e0ef3fec89a6` |
-| Importance | B |
-| Tags | WEB |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | WEB |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Adds a controlled lobby-chat form and appends accepted messages to bounded history.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 제어 입력 방식의 로비 채팅 폼을 추가하고 수락된 메시지를 상한을 둔 이력에 덧붙입니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `apps/web/src/app/page.tsx`의 `chatInput`/submit handler
+- `apps/web/src/app/page.tsx`의 `chatInput`/제출 처리 함수
 - `sendLobbyChat` 호출
-- 최대 20개 history 유지와 당시 sample initial/failure state
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
+- 최대 20개 이력 유지와 당시 예시 초기/실패 상태
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:e0ef3fec89a6 -->
-- **직전 상태:** lobby는 chat history를 표시만 하고 사용자가 입력할 form이 없었습니다.
-- **구현 결정:** controlled input을 trim해 empty submit을 무시하고 HTTP API 반환 message를 history 뒤에 붙인 뒤 20개로 제한합니다.
-- **상태/소유권 변화:** UI는 pending input과 local render list를 소유하지만 message 사실은 server response에서 옵니다.
-- **실패/edge:** 당시 initial players/chat는 sample이며 load failure에도 sample 표시 메시지를 사용했습니다.
-- **보장/비보장:** HTTP chat journey는 연결하지만 실시간 broadcast와 honest failure state는 후속 commit이 담당합니다.
-- **다음 연결:** `4f9b3b312d0e`이 server stats를 화면에 반영하고 `cd3787eefd6a`가 WebSocket을 연결합니다.
+- **직전 상태:** 로비는 채팅 이력을 표시만 하고 사용자가 입력할 입력 폼이 없었습니다.
+- **구현 결정:** 제어되는 입력을 공백 제거해 빈 제출을 무시하고 HTTP API 반환 메시지를 이력 뒤에 붙인 뒤 20개로 제한합니다.
+- **상태/소유권 변화:** UI는 대기 중 입력과 로컬 렌더링 목록을 소유하지만 메시지 사실은 서버 응답에서 옵니다.
+- **실패/예외 조건:** 당시 초기 플레이어/채팅은 예시이며 부하 실패에도 예시 표시 메시지를 사용했습니다.
+- **보장 범위/보장하지 않는 범위:** HTTP 채팅 사용자 동선은 연결하지만 실시간 전파와 honest 실패 상태는 후속 커밋이 담당합니다.
+- **다음 연결:** `4f9b3b312d0e`이 서버 통계를 화면에 반영하고 `cd3787eefd6a`가 WebSocket을 연결합니다.
 <!-- LEARNER-ANSWER END commit:e0ef3fec89a6 -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `de9a173e6eb1` — `feat(chat): 쓰기 가능한 로비 채팅 API 추가`
-- 다음 Thread 관련 SHA: `4f9b3b312d0e` — `fix(lobby): 로비 상태 표현 개선`
+- 직전 개발 스레드 관련 SHA: `de9a173e6eb1` — `feat(chat): 쓰기 가능한 로비 채팅 API 추가`
+- 다음 개발 스레드 관련 SHA: `4f9b3b312d0e` — `fix(lobby): 로비 상태 표현 개선`
 
 ### 5.6. `fix(lobby): 로비 상태 표현 개선`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `4f9b3b312d0e` |
-| Importance | B |
-| Tags | REALTIME |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | REALTIME |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Displays server-provided lobby statistics instead of fixed activity and wait-time claims.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 고정 활동·대기 시간 문구 대신 서버가 제공한 로비 통계를 표시합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `apps/web/src/app/page.tsx`의 lobby stats cards
-- online/playing/queued/active room count
-- averageWaitSeconds null 처리와 고정 30초/주간 문구 제거
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
-- Fix chain을 `이전 가정 → 실제 실패/위험 → root cause → 교정된 결정 → 남는 비보장` 순서로 복원합니다.
+- `apps/web/src/app/page.tsx`의 로비 통계 cards
+- 온라인/경기 중/대기 중인/진행 중인 경기방 개수
+- `averageWaitSeconds`의 `null` 처리와 고정 30초/주간 문구 제거
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
+- 수정 과정을을 `이전 가정 → 실제 실패/위험 → root cause → 교정된 결정 → 남는 비보장` 순서로 복원합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:4f9b3b312d0e -->
-- **직전 상태:** lobby는 server stats가 있어도 일부 고정 수치·“30초 미만” 같은 근거 없는 문구를 표시했습니다.
-- **구현 결정:** API가 준 connected/playing/queued/room/average wait를 직접 표시하고 값이 없으면 측정 전 상태를 보여 줍니다.
-- **상태/소유권 변화:** live metric 값은 GameHub가, 화면은 format만 소유합니다.
-- **실패/edge:** 이 시점에도 sample initial state가 남아 request failure truthfulness는 완전하지 않습니다.
-- **보장/비보장:** 성공 응답 시 고정 통계 fabrication을 제거합니다.
-- **다음 연결:** `8ce1199ffd12`가 HTTP missing-body bug를 고치고 `8078ac6f92ba`가 지표/채팅 저장을 테스트합니다.
+- **직전 상태:** 로비는 서버 통계가 있어도 일부 고정 수치·“30초 미만” 같은 근거 없는 문구를 표시했습니다.
+- **구현 결정:** API가 준 connected/경기 중/대기 중인/경기방/average 대기를 직접 표시하고 값이 없으면 측정 전 상태를 보여 줍니다.
+- **상태/소유권 변화:** 실시간 지표 값은 GameHub가, 화면은 형식만 소유합니다.
+- **실패/예외 조건:** 이 시점에도 예시 초기 상태가 남아 있어 요청 실패를 사실대로 표시하지 못합니다.
+- **보장 범위/보장하지 않는 범위:** 성공 응답 시 고정 통계 fabrication을 제거합니다.
+- **다음 연결:** `8ce1199ffd12`가 HTTP 누락된 본문 bug를 고치고 `8078ac6f92ba`가 지표/채팅 저장을 테스트합니다.
 <!-- LEARNER-ANSWER END commit:4f9b3b312d0e -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `e0ef3fec89a6` — `feat(chat): 로비 채팅 입력 화면 추가`
-- 다음 Thread 관련 SHA: `8ce1199ffd12` — `fix(api): body 없는 로비 채팅 요청 처리`
+- 직전 개발 스레드 관련 SHA: `e0ef3fec89a6` — `feat(chat): 로비 채팅 입력 화면 추가`
+- 다음 개발 스레드 관련 SHA: `8ce1199ffd12` — `fix(api): body 없는 로비 채팅 요청 처리`
 
 ### 5.7. `fix(api): body 없는 로비 채팅 요청 처리`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `8ce1199ffd12` |
-| Importance | B |
-| Tags | - |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | - |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Normalizes a missing lobby-chat request body to an empty object before reading the optional message.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 로비 채팅 요청 본문이 없으면 선택적 메시지를 읽기 전에 빈 객체로 정규화합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- 로비 chat route의 `(request.body ?? {})` destructuring
-- trim/empty 400 validation path
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
-- Fix chain을 `이전 가정 → 실제 실패/위험 → root cause → 교정된 결정 → 남는 비보장` 순서로 복원합니다.
+- 로비 채팅 라우트의 `(request.body ?? {})` destructuring
+- 공백 제거/빈 400 검증 경로
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
+- 수정 과정을을 `이전 가정 → 실제 실패/위험 → root cause → 교정된 결정 → 남는 비보장` 순서로 복원합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:8ce1199ffd12 -->
-- **직전 가정:** JSON request에는 항상 object body가 있다고 봤습니다.
-- **실제 실패:** body가 없으면 validation 전에 property access TypeError가 나 400 계약을 우회했습니다.
-- **교정:** nullish body를 빈 객체로 정규화해 `message`가 undefined가 되고 기존 trim/empty 검사로 400을 반환하게 합니다.
-- **보장/비보장:** missing body가 의도한 client error로 수렴하지만 content-type parser 전체 동작을 바꾸지는 않습니다.
-- **다음 연결:** `8078ac6f92ba`의 application tests가 chat write/read와 lobby contract를 함께 검증합니다.
+- **직전 가정:** JSON 요청에는 항상 객체 본문이 있다고 봤습니다.
+- **실제 실패:** 본문이 없으면 입력 검증보다 먼저 속성에 접근하면서 `TypeError`가 발생해 의도한 400 응답 경로를 우회했습니다.
+- **교정:** 본문이 `null` 또는 `undefined`이면 빈 객체로 정규화합니다. 그러면 `message`가 `undefined`가 되고 기존 공백 제거와 빈 값 검사에서 400을 반환합니다.
+- **보장 범위/보장하지 않는 범위:** 누락된 본문이 의도한 클라이언트 오류로 수렴하지만 콘텐츠 타입 파서 전체 동작을 바꾸지는 않습니다.
+- **다음 연결:** `8078ac6f92ba`의 애플리케이션 테스트가 채팅 쓰기/읽기와 로비 계약을 함께 검증합니다.
 <!-- LEARNER-ANSWER END commit:8ce1199ffd12 -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `4f9b3b312d0e` — `fix(lobby): 로비 상태 표현 개선`
-- 다음 Thread 관련 SHA: `8078ac6f92ba` — `test(app): 실시간 지표·채팅·경기 기록 검증`
+- 직전 개발 스레드 관련 SHA: `4f9b3b312d0e` — `fix(lobby): 로비 상태 표현 개선`
+- 다음 개발 스레드 관련 SHA: `8078ac6f92ba` — `test(app): 실시간 지표·채팅·경기 기록 검증`
 
 ### 5.8. `test(app): 실시간 지표·채팅·경기 기록 검증`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `8078ac6f92ba` |
-| Importance | B |
-| Tags | REALTIME, PERSISTENCE, WEB |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | REALTIME, PERSISTENCE, WEB |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Expands application coverage for lobby metrics, authenticated chat persistence, chat attribution, and recent-match ordering.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 로비 지표, 인증 채팅 저장, 채팅 작성자 표시, 최근 경기 순서를 애플리케이션 테스트 범위에 추가합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- API injection/e2e test의 초기 lobby stats
-- authenticated `/chat/lobby` write-to-read
-- memory repository chat sender/room 및 recent match 시간순 assertions
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
-- Test technique, failure/boundary fixture, production path, proves/does-not-prove를 실제 assertion으로 구분합니다.
+- API 주입/e2e 테스트의 초기 로비 통계
+- 인증된 `/chat/lobby` 쓰기 후 읽기
+- 메모리 저장소 채팅 발신자/경기방 및 최근 경기 시간순 검증
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
+- 테스트 기법, 실패·경계 조건을 만드는 픽스처, 실제 코드 경로, 검증 범위와 미검증 범위를 실제 검증으로 구분합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:8078ac6f92ba -->
-- **직전 상태:** stats/chat 기능은 여러 layer에 걸쳤지만 초기 contract와 저장 결과를 연결한 regression coverage가 부족했습니다.
-- **기법:** 초기 hub의 zero/empty stats를 확인하고 dev login 후 HTTP lobby chat을 쓰고 다시 읽습니다. memory repository에서는 lobby/match message의 sender·room attribution과 recent-match ordering을 검사합니다.
-- **생산 경로:** API routing/auth/repository와 memory domain projection을 통과합니다.
-- **증명/비증명:** 기능 조합을 검증하도록 작성됐지만 WebSocket presence의 eventual visibility와 cross-room auth는 별도 tests가 담당합니다.
-- **보장:** 로비 read/write contract와 ordering regression을 넓게 감지합니다.
-- **다음 연결:** `cd3787eefd6a`가 browser lobby를 WebSocket event에 연결합니다.
+- **직전 상태:** 통계/채팅 기능은 여러 계층에 걸쳤지만 초기 계약과 저장 결과를 연결한 회귀 검증 범위가 부족했습니다.
+- **기법:** 초기 허브의 0/빈 통계를 확인하고 개발 로그인 후 HTTP 로비 채팅을 쓰고 다시 읽습니다. 메모리 저장소에서는 로비/경기 메시지의 발신자·경기방 attribution과 최근 경기 순서를 검사합니다.
+- **생산 경로:** API 라우팅/인증/저장소와 메모리 도메인 변환 결과를 통과합니다.
+- **검증 범위와 미검증 범위:** 기능 조합을 검증하도록 작성됐지만 WebSocket 접속 상태의 일정 시간 안의 최종 반영과 여러 영역에 걸친 경기방 인증은 별도 테스트가 담당합니다.
+- **보장:** 로비 읽기/쓰기 계약과 순서 회귀를 넓게 감지합니다.
+- **다음 연결:** `cd3787eefd6a`가 브라우저 로비를 WebSocket 이벤트에 연결합니다.
 <!-- LEARNER-ANSWER END commit:8078ac6f92ba -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `8ce1199ffd12` — `fix(api): body 없는 로비 채팅 요청 처리`
-- 다음 Thread 관련 SHA: `cd3787eefd6a` — `feat(chat): 로비 채팅과 접속 상태 실시간 반영`
+- 직전 개발 스레드 관련 SHA: `8ce1199ffd12` — `fix(api): body 없는 로비 채팅 요청 처리`
+- 다음 개발 스레드 관련 SHA: `cd3787eefd6a` — `feat(chat): 로비 채팅과 접속 상태 실시간 반영`
 
 ### 5.9. `feat(chat): 로비 채팅과 접속 상태 실시간 반영`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `cd3787eefd6a` |
-| Importance | B |
-| Tags | AUTH, REALTIME, WEB |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | AUTH, REALTIME, WEB |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Opens an authenticated lobby WebSocket and merges chat/presence events with the HTTP snapshot.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 인증된 로비 WebSocket을 열고 채팅·접속 상태 이벤트를 HTTP 스냅샷과 합칩니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `apps/web/src/app/page.tsx`의 user/token 준비 후 WebSocket open
-- `chat.message` ID dedupe와 append
+- `apps/web/src/app/page.tsx`의 사용자/토큰 준비 후 WebSocket 열기
+- `chat.message` ID 중복 제거와 목록 추가
 - `presence.changed` 시 `loadLobby`
-- unmount/identity change socket cleanup 및 HTTP fallback
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
+- 컴포넌트 해제/사용자 변경 소켓 정리 및 HTTP 대체 처리
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:cd3787eefd6a -->
-- **직전 상태:** lobby는 HTTP load/write만 사용해 다른 사용자의 chat과 presence 변화를 새로고침 없이 보지 못했습니다.
-- **구현 결정:** 현재 user와 token이 준비되면 socket을 열고 chat event는 ID 중복을 제거해 병합하며 presence event는 authoritative HTTP lobby를 다시 읽습니다. socket이 열리지 않으면 chat submit은 HTTP로 fallback합니다.
-- **상태/소유권 변화:** socket lifecycle은 page effect가, durable message는 repository가, presence snapshot은 GameHub/API가 소유합니다.
-- **실패/edge:** 당시 token query 연결 방식 자체의 보안 개선은 다른 category에 속합니다. reconnect/backoff도 이 commit의 핵심은 아닙니다.
-- **보장/비보장:** 단일 page lifetime의 실시간 반영과 cleanup은 제공하지만 presence source는 아직 repository 기반일 수 있습니다.
-- **다음 연결:** `8debb1ea3ad3`이 `/lobby.onlinePlayers`를 hub-connected clients로 바꿉니다.
+- **직전 상태:** 로비는 HTTP 부하/쓰기만 사용해 다른 사용자의 채팅과 접속 상태 변화를 새로고침 없이 보지 못했습니다.
+- **구현 결정:** 현재 사용자와 토큰이 준비되면 소켓을 열고 채팅 이벤트는 ID 중복을 제거해 병합하며 접속 상태 이벤트는 서버가 확정하는 HTTP 로비를 다시 읽습니다. 소켓이 열리지 않으면 채팅 제출은 HTTP로 대체 처리합니다.
+- **상태/소유권 변화:** 소켓 수명주기는 페이지 효과가, 영속 메시지는 저장소가, 접속 상태 스냅샷은 GameHub/API가 소유합니다.
+- **실패/예외 조건:** 당시 토큰 쿼리 연결 방식 자체의 보안 개선은 다른 카테고리에 속합니다. 재연결/재시도 대기도 이 커밋의 핵심은 아닙니다.
+- **보장 범위/보장하지 않는 범위:** 단일 페이지 수명의 실시간 반영과 정리는 제공하지만 접속 상태 소스는 아직 저장소 기반일 수 있습니다.
+- **다음 연결:** `8debb1ea3ad3`이 `/lobby.onlinePlayers`를 허브에 연결된 클라이언트로 바꿉니다.
 <!-- LEARNER-ANSWER END commit:cd3787eefd6a -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `8078ac6f92ba` — `test(app): 실시간 지표·채팅·경기 기록 검증`
-- 다음 Thread 관련 SHA: `8debb1ea3ad3` — `feat(lobby): 연결 중인 WebSocket 사용자 목록 추가`
+- 직전 개발 스레드 관련 SHA: `8078ac6f92ba` — `test(app): 실시간 지표·채팅·경기 기록 검증`
+- 다음 개발 스레드 관련 SHA: `8debb1ea3ad3` — `feat(lobby): 연결 중인 WebSocket 사용자 목록 추가`
 
 ### 5.10. `feat(lobby): 연결 중인 WebSocket 사용자 목록 추가`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `8debb1ea3ad3` |
-| Importance | B |
-| Tags | REALTIME |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | REALTIME |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Makes the realtime hub, not persistent account storage, the authority for lobby presence.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 영속 계정 저장소가 아니라 실시간 허브를 로비 접속 상태의 최종 판정 주체로 둡니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `apps/api/src/gameHub.ts`의 `onlinePlayers`/client map projection
-- user ID dedupe, `online: true`, rating/name sort
-- `/lobby` route의 repository `listOnlineUsers` 대체
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
+- `apps/api/src/gameHub.ts`의 `onlinePlayers`와 클라이언트 목록 생성
+- 사용자 ID 중복 제거, `online: true`, 레이팅/이름 sort
+- `/lobby` 라우트의 저장소 `listOnlineUsers` 대체
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:8debb1ea3ad3 -->
-- **직전 상태:** `/lobby`는 repository의 active user 목록을 online처럼 반환해 실제 socket 연결이 없는 저장 계정도 접속자로 보였습니다.
-- **구현 결정:** GameHub client map에서 user ID를 dedupe하고 online true projection을 만든 뒤 rating/name으로 정렬해 route가 사용합니다.
-- **상태/소유권 변화:** account 활성 상태는 DB가, 현재 접속 presence는 GameHub가 소유하도록 분리됩니다.
-- **실패/edge:** 한 process의 client map만 보므로 다중 instance 전체 presence aggregation은 보장하지 않습니다.
-- **보장/비보장:** 현재 hub에 연결된 사용자만 반환합니다.
-- **다음 연결:** `c3ff9ed2402f`가 socket이 없을 때 empty list를 요구합니다.
+- **직전 상태:** `/lobby`는 저장소의 활성 사용자 목록을 온라인처럼 반환해 실제 소켓 연결이 없는 저장 계정도 접속자로 보였습니다.
+- **구현 결정:** GameHub 클라이언트 목록에서 사용자 ID를 중복 제거하고 `online: true`인 조회 결과를 만든 뒤 레이팅/이름으로 정렬해 라우트가 사용합니다.
+- **상태/소유권 변화:** 계정 활성 상태는 DB가, 현재 접속 상태는 GameHub가 소유하도록 분리됩니다.
+- **실패/예외 조건:** 한 프로세스의 클라이언트 목록만 보므로 다중 인스턴스 전체 접속 상태 aggregation은 보장하지 않습니다.
+- **보장 범위/보장하지 않는 범위:** 현재 허브에 연결된 사용자만 반환합니다.
+- **다음 연결:** `c3ff9ed2402f`가 소켓이 없을 때 빈 목록을 요구합니다.
 <!-- LEARNER-ANSWER END commit:8debb1ea3ad3 -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `cd3787eefd6a` — `feat(chat): 로비 채팅과 접속 상태 실시간 반영`
-- 다음 Thread 관련 SHA: `c3ff9ed2402f` — `test(lobby): WebSocket 사용자 목록 검증`
+- 직전 개발 스레드 관련 SHA: `cd3787eefd6a` — `feat(chat): 로비 채팅과 접속 상태 실시간 반영`
+- 다음 개발 스레드 관련 SHA: `c3ff9ed2402f` — `test(lobby): WebSocket 사용자 목록 검증`
 
 ### 5.11. `test(lobby): WebSocket 사용자 목록 검증`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `c3ff9ed2402f` |
-| Importance | B |
-| Tags | REALTIME, PERSISTENCE, TEST |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | REALTIME, PERSISTENCE, TEST |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Verifies that the lobby reports no online players when the realtime hub has no WebSocket clients.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 실시간 허브에 WebSocket 클라이언트가 없으면 로비가 온라인 사용자를 0명으로 보고하는지 검증합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- API route/injection test의 empty hub setup
-- `/lobby` response `onlinePlayers: []` assertion
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
-- Test technique, failure/boundary fixture, production path, proves/does-not-prove를 실제 assertion으로 구분합니다.
+- API 라우트·주입 테스트의 빈 허브 설정
+- `/lobby` 응답 `onlinePlayers: []` 검증
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
+- 테스트 기법, 실패·경계 조건을 만드는 픽스처, 실제 코드 경로, 검증 범위와 미검증 범위를 실제 검증으로 구분합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:c3ff9ed2402f -->
-- **직전 상태:** authority 전환은 구현됐지만 seed/active users가 다시 online list에 섞이는 regression을 막을 test가 없었습니다.
-- **기법:** repository seed는 존재하되 WebSocket client를 연결하지 않은 app에서 `/lobby`를 조회해 empty online list를 요구합니다.
-- **생산 경로:** route가 repository가 아니라 hub projection을 호출하는지를 간접 검증합니다.
-- **증명/비증명:** no-connection case를 고정하지만 connect/disconnect propagation timing은 smoke test가 담당합니다.
-- **보장:** 저장 계정 존재만으로 online이 되는 regression을 감지합니다.
-- **다음 연결:** `23a978879b81`이 실제 socket open 후 presence가 eventual하게 반영되는 시간을 기다립니다.
+- **직전 상태:** 판정 권한 전환은 구현됐지만 시드/활성 사용자가 다시 온라인 목록에 섞이는 회귀를 막을 테스트가 없었습니다.
+- **기법:** 저장소 시드는 존재하되 WebSocket 클라이언트를 연결하지 않은 애플리케이션에서 `/lobby`를 조회해 빈 온라인 목록을 요구합니다.
+- **생산 경로:** 라우트가 저장소가 아니라 허브 변환 결과를 호출하는지를 간접 검증합니다.
+- **검증 범위와 미검증 범위:** 연결 없음 사례를 고정하지만 연결/연결 해제 propagation 시간 제어는 실행 확인 테스트가 담당합니다.
+- **보장:** 저장 계정 존재만으로 온라인이 되는 회귀를 감지합니다.
+- **다음 연결:** `23a978879b81`이 실제 소켓 열기 후 접속 상태가 eventual하게 반영되는 시간을 기다립니다.
 <!-- LEARNER-ANSWER END commit:c3ff9ed2402f -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `8debb1ea3ad3` — `feat(lobby): 연결 중인 WebSocket 사용자 목록 추가`
-- 다음 Thread 관련 SHA: `23a978879b81` — `test(smoke): WebSocket 접속 상태 반영 대기`
+- 직전 개발 스레드 관련 SHA: `8debb1ea3ad3` — `feat(lobby): 연결 중인 WebSocket 사용자 목록 추가`
+- 다음 개발 스레드 관련 SHA: `23a978879b81` — `test(smoke): WebSocket 접속 상태 반영 대기`
 
 ### 5.12. `test(smoke): WebSocket 접속 상태 반영 대기`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `23a978879b81` |
-| Importance | B |
-| Tags | REALTIME, OPERATIONS, TEST |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | REALTIME, OPERATIONS, TEST |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Changes the smoke test from an immediate presence assertion to bounded asynchronous polling.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 스모크 테스트의 즉시 접속 상태 검증을 시간 상한을 둔 비동기 폴링으로 바꿉니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `tests/smoke-ws.mjs`의 async `waitFor`
-- 두 socket open 뒤 `/lobby` polling
-- 10초 timeout, 50ms `delay`, predicate가 두 handle을 포함할 때 종료
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
-- Test technique, failure/boundary fixture, production path, proves/does-not-prove를 실제 assertion으로 구분합니다.
+- `tests/smoke-ws.mjs`의 비동기 처리 `waitFor`
+- 두 소켓 열기 뒤 `/lobby` 주기적 조회
+- 10초 시간 초과, 50ms `delay`, 조건 함수가 두 핸들을 포함할 때 종료
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
+- 테스트 기법, 실패·경계 조건을 만드는 픽스처, 실제 코드 경로, 검증 범위와 미검증 범위를 실제 검증으로 구분합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:23a978879b81 -->
-- **직전 가정:** WebSocket `open` promise가 resolve되면 HTTP `/lobby`도 같은 순간 두 사용자를 반드시 포함한다고 봤습니다.
-- **실제 실패:** socket open event와 server-side connect/presence publication, 별도 HTTP read 사이에는 scheduling delay가 있어 정상 시스템도 flaky할 수 있습니다.
-- **교정/기법:** async predicate를 최대 10초 동안 50ms 간격으로 호출하고 두 handle이 모두 보일 때만 다음 smoke 단계로 진행합니다. timeout이면 명시적으로 실패합니다.
-- **생산 경로:** 실제 WebSocket 연결과 HTTP lobby read를 함께 사용하도록 작성됐습니다.
-- **증명/비증명:** bounded eventual visibility를 검증하지만 즉시 consistency나 10초 이내라는 제품 SLA를 공식 보장하지는 않습니다.
-- **Thread 종료:** durable chat와 live presence의 서로 다른 authority 및 asynchronous observation 모델이 테스트에도 반영됩니다.
+- **직전 가정:** WebSocket `open` Promise가 판별되면 HTTP `/lobby`도 같은 순간 두 사용자를 반드시 포함한다고 봤습니다.
+- **실제 실패:** 소켓 열기 이벤트와 서버 측 연결/접속 상태 공개, 별도 HTTP 읽기 사이에는 스케줄링 지연이 있어 정상 시스템도 flaky할 수 있습니다.
+- **교정/기법:** 비동기 처리 조건 함수를 최대 10초 동안 50ms 간격으로 호출하고 두 핸들이 모두 보일 때만 다음 실행 확인 단계로 진행합니다. 시간 초과이면 명시적으로 실패합니다.
+- **생산 경로:** 실제 WebSocket 연결과 HTTP 로비 읽기를 함께 사용하도록 작성됐습니다.
+- **검증 범위와 미검증 범위:** 상한을 둔 일정 시간 안의 최종 반영을 검증하지만 즉시 일관성이나 10초 이내라는 제품 서비스 수준 목표를 공식 보장하지는 않습니다.
+- **개발 스레드 종료:** 영속 채팅과 실시간 접속 상태의 서로 다른 판정 권한 및 비동기 관찰 모델이 테스트에도 반영됩니다.
 <!-- LEARNER-ANSWER END commit:23a978879b81 -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `c3ff9ed2402f` — `test(lobby): WebSocket 사용자 목록 검증`
-- 이 commit을 Thread의 마지막 상태로 사용합니다.
+- 직전 개발 스레드 관련 SHA: `c3ff9ed2402f` — `test(lobby): WebSocket 사용자 목록 검증`
+- 이 커밋을 개발 스레드의 마지막 상태로 사용합니다.
 
-## 6. Thread 종합
+## 6. 개발 스레드 종합
 
-다음 항목을 commit 순서에서 재구성합니다: invariant evolution, Failure → Fix → Test 관계, ownership/state 변화, 최종 실행 흐름, 비보장, 실제 실행 증거.
+다음 항목을 커밋 순서에서 재구성합니다: 불변 조건 변화, 실패 → 수정 → 테스트 관계, 소유권/상태 변화, 최종 실행 흐름, 보장하지 않는 범위, 실제 실행 증거.
 
 <!-- LEARNER-ANSWER START thread:04-lobby-presence-chat-and-live-statistics.md:synthesis -->
-- **불변식 진화:** `a6fa5a187eec`은 채팅을 repository에 저장했고 `dabd8d5c2a49`는 WebSocket send를 저장 후 broadcast했습니다. `1d9aa3902614`는 connected/playing/queued/room/wait를 GameHub에서 계산했습니다. 초기 UI는 sample 상태와 repository online projection을 섞었지만 `be31566ac0fd`의 sample 제거, `8debb1ea3ad3`의 GameHub presence authority 전환, `c3ff9ed2402f`의 empty presence test로 정리됐습니다.
-- **소유권:** repository는 chat rows와 sender projection을 소유합니다. GameHub는 live client/queue/room/wait samples를 소유합니다. API `/lobby`는 두 source를 조합하고 web은 HTTP snapshot에 WebSocket event를 병합합니다.
-- **Failure → Fix → Test:** missing body에서 property access 예외 → `(request.body ?? {})` → intended 400 경로. 저장 사용자 목록을 online으로 표시 → `hub.onlinePlayers()` → no-socket empty test. WebSocket open 직후 presence 즉시 조회 → 최대 10초/50ms async polling smoke test.
-- **최종 흐름:** HTTP `/lobby`가 최근 chat와 hub stats/presence를 반환 → 로그인 사용자는 ticket/token 기반 WebSocket 연결 → lobby chat은 socket이 열리면 WS, 아니면 HTTP write → repository가 message를 만들고 hub가 broadcast → `presence.changed`는 HTTP lobby refresh를 유도 → message ID로 중복을 제거합니다.
-- **비보장:** 이 Thread는 match chat의 scope/room 조합과 cross-room authorization을 완성하지 않습니다. 그 보안 invariant는 Thread 05가 소유합니다. Presence는 process-local이며 WebSocket open 순간과 HTTP read 순간 사이에 eventual delay가 있을 수 있습니다.
-- **실행 증거:** repository/API/web/smoke test 구현은 검사했지만 서비스를 실행하지 않았습니다.
+- **불변식 진화:** `a6fa5a187eec`은 채팅을 저장소에 저장했고 `dabd8d5c2a49`는 WebSocket 전송을 저장 후 전파했습니다. `1d9aa3902614`는 연결됨/경기 중/대기 중/경기방/대기 시간을 GameHub에서 계산했습니다. 초기 UI는 예시 상태와 저장소가 만든 온라인 표시값을 섞었지만 `be31566ac0fd`의 예시 제거, `8debb1ea3ad3`의 GameHub 접속 상태 판정 권한 전환, `c3ff9ed2402f`의 빈 접속 상태 테스트로 정리됐습니다.
+- **소유권:** 저장소는 채팅 행과 발신자 정보를 소유합니다. GameHub는 실시간 클라이언트, 대기열, 경기방, 대기 시간 표본을 소유합니다. API의 `/lobby`는 두 소스를 조합하고 웹은 HTTP 스냅샷에 WebSocket 이벤트를 병합합니다.
+- **실패 → 수정 → 테스트:** 누락된 본문에서 속성 접근 예외 → `(request.body ?? {})` → 의도한 400 응답 경로. 저장 사용자 목록을 온라인으로 표시 → `hub.onlinePlayers()` → 소켓 없음 빈 테스트. WebSocket 열기 직후 접속 상태 즉시 조회 → 최대 10초/50ms 비동기 처리 주기적 조회 실행 확인 테스트.
+- **최종 흐름:** HTTP `/lobby`가 최근 채팅과 허브 통계/접속 상태를 반환 → 로그인 사용자는 티켓/토큰 기반 WebSocket 연결 → 로비 채팅은 소켓이 열리면 WS, 아니면 HTTP 쓰기 → 저장소가 메시지를 만들고 허브가 전파 → `presence.changed`는 HTTP 로비 다시 조회를 유도 → 메시지 ID로 중복을 제거합니다.
+- **보장하지 않는 범위:** 이 개발 스레드는 경기 채팅의 범위/경기방 조합과 여러 영역에 걸친 경기방 권한 검사를 완성하지 않습니다. 그 보안 불변 조건은 개발 스레드 05가 소유합니다. 접속 상태는 프로세스 내부이며 WebSocket 열기 순간과 HTTP 읽기 순간 사이에 지연 후 최종 반영 시간이 있을 수 있습니다.
+- **실행 증거:** 저장소/API/웹/실행 확인 테스트 구현은 검사했지만 서비스를 실행하지 않았습니다.
 <!-- LEARNER-ANSWER END thread:04-lobby-presence-chat-and-live-statistics.md:synthesis -->
 
 ## 7. 학습 완료 확인
 
 <!-- LEARNER-ANSWER START thread:04-lobby-presence-chat-and-live-statistics.md:checklist -->
-- [x] 모든 SHA를 지정 브랜치의 exact commit으로 검사했습니다.
-- [x] fixed commit map과 source classification을 보존했습니다.
-- [x] earlier commit을 later HEAD 코드로 설명하지 않았습니다.
-- [x] fix와 test를 원래 failure/production path에 연결했습니다.
-- [x] 실제 실행하지 않은 test를 통과했다고 기록하지 않았습니다.
-- [x] Thread 최종 owner, invariant, flow, non-guarantee를 작성했습니다.
+- [x] 모든 SHA를 지정 브랜치의 정확한 커밋으로 검사했습니다.
+- [x] 고정된 커밋 목록과 원문 분류를 보존했습니다.
+- [x] earlier 커밋을 후속 최종 상태 코드로 설명하지 않았습니다.
+- [x] 수정과 테스트를 원래 실패/실제 코드 경로에 연결했습니다.
+- [x] 실제 실행하지 않은 테스트를 통과했다고 기록하지 않았습니다.
+- [x] 개발 스레드 최종 소유 주체, 불변 조건, 실행 순서, 보장하지 않는 범위를 작성했습니다.
 <!-- LEARNER-ANSWER END thread:04-lobby-presence-chat-and-live-statistics.md:checklist -->
 ===== END FILE: 04-lobby-presence-chat-and-live-statistics.md =====
 
 ===== BEGIN FILE: 05-chat-scope-storage-and-room-authorization.md =====
-# 채팅 scope 저장 불변식과 경기방 권한
+# 채팅 범위 저장 불변식과 경기방 권한
 
-원문 Development Thread: `Chat scope storage and room authorization`
+원문 개발 스레드: `Chat scope storage and room authorization`
 
-## 1. Thread 목표
+## 1. 개발 스레드 목표
 
-- lobby와 match chat의 scope/room 조합을 wire schema, repository validation, migration/DB CHECK에서 같은 규칙으로 강제하는 과정을 추적합니다.
-- match chat을 보내는 client가 실제 현재 room 좌석인지 저장 전 검사하고 audience를 해당 room으로 제한하는 경로를 복원합니다.
-- 브라우저가 현재 active room과 정확히 일치하는 match message만 받아들이는 마지막 방어선을 확인합니다.
+- 로비와 경기 채팅의 범위/경기방 조합을 전송 형식 스키마, 저장소 검증, 마이그레이션/DB CHECK에서 같은 규칙으로 강제하는 과정을 추적합니다.
+- 경기 채팅을 보내는 클라이언트가 실제 현재 경기방 좌석인지 저장 전 검사하고 수신 대상을 해당 경기방으로 제한하는 경로를 복원합니다.
+- 브라우저가 현재 진행 중인 경기방과 정확히 일치하는 경기 메시지만 받아들이는 마지막 방어선을 확인합니다.
 
-### Source에서 확정된 significance
+### 원문에서 확인한 중요성
 
-> Chat scope is a security and data-integrity boundary, not a display label. A syntactically valid room ID does not prove membership, and server broadcast discipline does not eliminate the need for storage constraints or client filtering. The history layers the invariant across wire, repository, database, hub authorization, and browser state.
+> 채팅 범위는 표시용 라벨이 아니라 보안과 데이터 무결성을 지키는 조건입니다. 문법상 올바른 경기방 ID만으로 참가 여부를 검증할 수 없고, 서버가 수신 대상을 제한하더라도 저장소 제약과 클라이언트 필터링이 필요합니다. 이후 커밋은 전송 형식, 저장소, 데이터베이스, 허브 권한 검사, 브라우저 상태에 같은 불변 조건을 적용합니다.
 
-### 직접 연결되는 Critical Invariants
+### 직접 연결되는 핵심 불변 조건
 
-> Lobby chat has no room; match chat has a non-null UUID room. Invalid combinations are rejected before or at persistence and legacy rows are cleaned before the constraint is installed.
+> 로비 채팅에는 경기방이 없고, 경기 채팅에는 null이 아닌 UUID 경기방이 필요합니다. 잘못된 조합은 저장 전 또는 저장 시점에 거부하며, 제약을 추가하기 전에 기존 잘못된 행을 정리합니다.
 >
-> A match message is persisted and broadcast only when the sender currently occupies a seat in that exact room; a client reducer accepts only messages for its active room.
+> 경기 메시지는 발신자가 정확히 그 경기방의 좌석을 현재 점유할 때만 저장·전송하며, 클라이언트 리듀서는 현재 경기방의 메시지만 받습니다.
 
-### 직접 연결되는 Major Engineering Difficulties
+### 직접 연결되는 주요 구현 난점
 
-> Expressing a discriminated payload rule in JSON schema/TypeScript, application validation, and SQL CHECK without allowing different edge cases.
+> JSON 스키마·TypeScript, 애플리케이션 검증, SQL CHECK에서 같은 판별형 메시지 규칙을 표현하면서 예외 조건이 달라지지 않게 해야 합니다.
 >
-> Proving rejection occurs before persistence and proving normal delivery is limited to one room while lobby delivery remains global.
+> 거부가 저장 전에 발생하는지와 정상 메시지가 한 경기방에만 전달되는지를 검증해야 합니다. 로비 메시지는 전체 사용자에게 전달되는지도 별도로 확인합니다.
 
-## 2. 이 Thread를 이해하기 위한 핵심 질문
+## 2. 이 개발 스레드를 이해하기 위한 핵심 질문
 
-- wire schema는 lobby payload의 `roomId` 부재와 match payload의 UUID를 어떤 discriminated union으로 표현합니까?
-- migration 006은 기존 lobby/match/unknown row를 어떤 순서로 정규화·삭제한 뒤 CHECK를 설치합니까?
-- `assertChatRoom`이 PostgreSQL과 memory 양쪽에 필요한 이유는 무엇입니까?
-- GameHub는 room 존재, `client.roomId`, `sideFor`를 저장 호출 전에 어떤 순서로 검사합니까?
-- cross-room test는 persistence spy, error event, audience event를 어떻게 함께 관찰합니까?
-- `isChatForActiveRoom`은 다른 room, lobby scope, active room 없음 각각을 어떻게 처리합니까?
+- 전송 형식 스키마는 로비 메시지 본문의 `roomId` 부재와 경기 메시지 본문의 UUID를 어떤 구분 필드가 있는 유니언 타입으로 표현합니까?
+- 마이그레이션 006은 기존 로비/경기/알 수 없는 행을 어떤 순서로 정규화·삭제한 뒤 CHECK를 설치합니까?
+- `assertChatRoom`이 PostgreSQL과 메모리 양쪽에 필요한 이유는 무엇입니까?
+- GameHub는 경기방 존재, `client.roomId`, `sideFor`를 저장 호출 전에 어떤 순서로 검사합니까?
+- 여러 영역에 걸친 경기방 테스트는 영속 저장 호출 감시 객체, 오류 이벤트, 수신 대상 이벤트를 어떻게 함께 관찰합니까?
+- `isChatForActiveRoom`은 다른 경기방, 로비 범위, 진행 중인 경기방 없음 각각을 어떻게 처리합니까?
 
 ## 3. 완료 기준
 
-- wire→repository→database의 scope-room invariant를 허용/거부 표로 정리할 수 있습니다.
-- storage validity와 sender authorization이 다른 문제인 이유를 설명할 수 있습니다.
-- cross-room 주입이 persistence 전에 멈추고 정상 match/lobby delivery가 다른 audience를 갖는 근거를 제시할 수 있습니다.
-- client filter가 server authorization을 대체하지 않지만 stale/misrouted event의 UI 오염을 막는 이유를 설명할 수 있습니다.
-- Commit map의 모든 SHA를 지정 브랜치 ancestry와 source classification에서 확인합니다.
-- 각 SHA의 parent 또는 직전 관련 SHA와 비교해 변경 전후 상태를 구분합니다.
-- 실행한 명령과 코드 검사만으로 확인한 사실을 구분하고 실행하지 않은 test를 통과했다고 기록하지 않습니다.
+- 전송 형식→저장소→데이터베이스의 범위와 경기방 ID 불변 조건을 허용/거부 표로 정리할 수 있습니다.
+- 저장소 유효성과 발신자 권한 검사가 다른 문제인 이유를 설명할 수 있습니다.
+- 여러 영역에 걸친 경기방 주입이 영속 저장 전에 멈추고 정상 경기/로비 전달이 다른 수신 대상을 갖는 근거를 제시할 수 있습니다.
+- 클라이언트 필터가 서버 권한 검사를 대체하지 않지만 오래됐거나 다른 경기방으로 잘못 전달된 이벤트로 인한 UI 오염을 막는 이유를 설명할 수 있습니다.
+- 커밋 목록의 모든 SHA를 지정 브랜치의 커밋 이력과 원문 분류에서 확인합니다.
+- 각 SHA를 부모 커밋 또는 직전 관련 SHA와 비교해 변경 전후 상태를 구분합니다.
+- 실행한 명령과 코드 검사만으로 확인한 사실을 구분하고 실행하지 않은 테스트를 통과했다고 기록하지 않습니다.
 
-## 4. Commit map
+## 4. 커밋 목록
 
-| 순서 | SHA | Subject | Importance | Tags | Source에서 확정된 역할 |
+| 순서 | SHA | 제목 | 중요도 | 태그 | 원문에서 확인한 역할 |
 | ---: | --- | --- | :---: | --- | --- |
-| 1 | `00d0d7941382` | `fix(protocol): 채팅 scope와 room 식별자 조합 제한` | A | PROTOCOL, REALTIME, WEB | Defines scope-specific chat payloads so lobby messages cannot identify a room and match messages require a UUID room. |
-| 2 | `5a3819aec8d0` | `test(protocol): 채팅 scope와 room 조합 검증` | B | AUTH, PROTOCOL, REALTIME | Pins valid scope-room combinations at the WebSocket parse boundary. |
-| 3 | `2ff750fa4ff8` | `fix(db): 채팅 행의 scope와 room 불변식 강제` | A | REALTIME, PERSISTENCE, RISK | Cleans legacy rows and enforces the chat scope-room invariant in both repository implementations and PostgreSQL. |
-| 4 | `1cead7cc9f35` | `test(db): 채팅 저장 불변식 검증` | B | REALTIME, PERSISTENCE, TEST | Verifies repository rejection, migration cleanup, SQL constraint enforcement, and migration idempotency. |
-| 5 | `7759eef59b67` | `fix(game): 매치 채팅의 좌석과 audience 검증` | A | REALTIME, PERSISTENCE, RISK | Rejects match chat unless the sender currently occupies a seat in that exact room, before persistence. |
-| 6 | `4a98bd1e4f22` | `test(game): 타 경기방 채팅 주입 차단 검증` | B | REALTIME, TEST | Verifies cross-room rejection before persistence and room-scoped versus global delivery. |
-| 7 | `85edd6d1e26a` | `fix(web): 현재 경기방의 채팅만 표시` | B | REALTIME, WEB | Filters incoming chat so the game reducer accepts only match messages for the current active room. |
-| 8 | `02775797ab63` | `test(web): 매치 채팅 room filtering 검증` | B | REALTIME, WEB, TEST | Pins the pure active-room chat filter. |
+| 1 | `00d0d7941382` | `fix(protocol): 채팅 scope와 room 식별자 조합 제한` | A | PROTOCOL, REALTIME, WEB | 로비 메시지는 경기방을 지정할 수 없고 경기 메시지는 UUID 경기방을 요구하도록 범위별 채팅 메시지 본문을 정의합니다. |
+| 2 | `5a3819aec8d0` | `test(protocol): 채팅 scope와 room 조합 검증` | B | AUTH, PROTOCOL, REALTIME | WebSocket 파싱 경계에서 유효한 채팅 범위와 경기방 조합을 고정합니다. |
+| 3 | `2ff750fa4ff8` | `fix(db): 채팅 행의 scope와 room 불변식 강제` | A | REALTIME, PERSISTENCE, RISK | 기존 행을 정리하고 두 저장소 구현과 PostgreSQL에서 채팅 범위·경기방 불변 조건을 강제합니다. |
+| 4 | `1cead7cc9f35` | `test(db): 채팅 저장 불변식 검증` | B | REALTIME, PERSISTENCE, TEST | 저장소 거부, 마이그레이션 정리, SQL 제약 강제, 마이그레이션 멱등성을 검증합니다. |
+| 5 | `7759eef59b67` | `fix(game): 매치 채팅의 좌석과 audience 검증` | A | REALTIME, PERSISTENCE, RISK | 보낸 사용자가 해당 경기방 좌석을 현재 점유하지 않으면 저장 전에 경기 채팅을 거부합니다. |
+| 6 | `4a98bd1e4f22` | `test(game): 타 경기방 채팅 주입 차단 검증` | B | REALTIME, TEST | 다른 경기방의 메시지를 저장 전에 거부하고 경기방 한정 전달과 전체 전달을 구분하는지 검증합니다. |
+| 7 | `85edd6d1e26a` | `fix(web): 현재 경기방의 채팅만 표시` | B | REALTIME, WEB | 게임 리듀서가 현재 활성 경기방의 경기 메시지만 받도록 수신 채팅을 걸러냅니다. |
+| 8 | `02775797ab63` | `test(web): 매치 채팅 room filtering 검증` | B | REALTIME, WEB, TEST | 순수 활성 경기방 채팅 필터의 동작을 고정합니다. |
 
-## 5. Commit별 학습 기록
+## 5. 커밋별 학습 기록
 
 ### 5.1. `fix(protocol): 채팅 scope와 room 식별자 조합 제한`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `00d0d7941382` |
-| Importance | A |
-| Tags | PROTOCOL, REALTIME, WEB |
-| 학습 깊이 | 주요 subsystem, 구현 경로, ownership/failure/non-guarantee를 구체적으로 복원합니다. |
+| 중요도 | A |
+| 태그 | PROTOCOL, REALTIME, WEB |
+| 학습 깊이 | 주요 하위 시스템, 구현 경로, 소유권, 실패 처리, 보장하지 않는 범위를 구체적으로 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Defines scope-specific chat payloads so lobby messages cannot identify a room and match messages require a UUID room.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 로비 메시지는 경기방을 지정할 수 없고 경기 메시지는 UUID 경기방을 요구하도록 범위별 채팅 메시지 본문을 정의합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `packages/shared/src/ws.ts`의 `chat.send` discriminated variants
-- lobby strict object와 match `roomId: z.string().uuid()`
-- body trim/min/max 규칙
-- GameHub/web caller payload 수정
-- parent 상태와 비교해 이전 가정, 새 boundary, caller/callee, ownership 또는 failure path를 기록합니다.
-- 이 commit이 보장하지 않는 상태와 다음 fix/test가 보강하는 지점을 구분합니다.
-- Fix chain을 `이전 가정 → 실제 실패/위험 → root cause → 교정된 결정 → 남는 비보장` 순서로 복원합니다.
+- `packages/shared/src/ws.ts`의 `chat.send`의 판별 가능한 유형
+- 로비 엄격한 객체와 경기 `roomId: z.string().uuid()`
+- 본문 공백 제거/최솟값/최댓값 규칙
+- GameHub/웹 호출자 메시지 본문 수정
+- 부모 커밋의 상태와 비교해 이전 가정, 새 경계, 호출자와 피호출자, 소유권 또는 실패 경로를 기록합니다.
+- 이 커밋이 보장하지 않는 범위와 다음 수정·테스트가 보강하는 지점을 구분합니다.
+- 수정 과정을을 `이전 가정 → 실제 실패/위험 → root cause → 교정된 결정 → 남는 비보장` 순서로 복원합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:00d0d7941382 -->
-- **직전 상태:** 하나의 chat event가 `scope`와 optional `roomId`를 독립 필드로 가져 lobby+room, match+missing room 같은 조합이 타입/parse를 통과할 수 있었습니다.
-- **구현 결정:** `scope: "lobby"` variant는 room 필드를 갖지 않는 strict object로, `scope: "match"` variant는 UUID room을 필수로 하는 discriminated union으로 분리합니다. body는 trim 후 1–240자입니다.
-- **상태/소유권 변화:** wire contract가 허용 상태 공간을 줄이고 caller는 lobby에 room을 보내지 않으며 GameHub는 저장 시 null로 정규화합니다.
-- **실패/edge:** UUID 형식은 room 존재나 sender membership을 증명하지 않습니다. 저장 layer를 직접 호출하는 코드도 protocol parser를 거치지 않을 수 있습니다.
-- **보장/비보장:** parse된 payload의 scope-room 형태는 보장하지만 storage/auth는 후속 commits가 담당합니다.
-- **다음 연결:** `5a3819aec8d0`이 모든 invalid 조합을 table-driven test로 고정합니다.
+- **직전 상태:** 하나의 채팅 이벤트가 `scope`와 선택적 `roomId`를 독립 필드로 가져 로비+경기방, 경기+누락된 경기방 같은 조합이 타입/파싱을 통과할 수 있었습니다.
+- **구현 결정:** `scope: "lobby"` 유형는 경기방 필드를 갖지 않는 엄격한 객체로, `scope: "match"` 유형는 UUID 경기방을 필수로 하는 구분 필드가 있는 유니언 타입으로 분리합니다. 본문은 공백 제거 후 1–240자입니다.
+- **상태/소유권 변화:** 전송 형식 계약이 허용 상태 공간을 줄이고 호출자는 로비에 경기방을 보내지 않으며 GameHub는 저장 시 null로 정규화합니다.
+- **실패/예외 조건:** UUID 형식은 경기방 존재나 발신자 소속 정보를 검증하지 않습니다. 저장 계층을 직접 호출하는 코드도 프로토콜 파서를 거치지 않을 수 있습니다.
+- **보장 범위/보장하지 않는 범위:** 파싱된 메시지 본문의 범위와 경기방 조합은 보장하지만 저장소와 인증은 후속 커밋이 담당합니다.
+- **다음 연결:** `5a3819aec8d0`이 모든 잘못된 조합을 표 기반 테스트로 고정합니다.
 <!-- LEARNER-ANSWER END commit:00d0d7941382 -->
 
 비교 기준:
-- 이 commit의 parent와 비교합니다.
-- 다음 Thread 관련 SHA: `5a3819aec8d0` — `test(protocol): 채팅 scope와 room 조합 검증`
+- 이 커밋의 부모 커밋과 비교합니다.
+- 다음 개발 스레드 관련 SHA: `5a3819aec8d0` — `test(protocol): 채팅 scope와 room 조합 검증`
 
 ### 5.2. `test(protocol): 채팅 scope와 room 조합 검증`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `5a3819aec8d0` |
-| Importance | B |
-| Tags | AUTH, PROTOCOL, REALTIME |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | AUTH, PROTOCOL, REALTIME |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Pins valid scope-room combinations at the WebSocket parse boundary.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: WebSocket 파싱 경계에서 유효한 채팅 범위와 경기방 조합을 고정합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `packages/shared/src/ws.test.ts`의 `it.each` invalid payload table
-- lobby null/present room, match missing/null/non-UUID cases
-- `parseClientEvent(JSON.stringify(payload))` rejection
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
-- Test technique, failure/boundary fixture, production path, proves/does-not-prove를 실제 assertion으로 구분합니다.
+- `packages/shared/src/ws.test.ts`의 `it.each` 잘못된 메시지 본문 테이블
+- 로비 응답의 경기방 ID가 `null`이거나 존재하는 사례, 경기 응답의 경기방 ID가 누락·`null`·UUID가 아닌 사례
+- `parseClientEvent(JSON.stringify(payload))` 실패
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
+- 테스트 기법, 실패·경계 조건을 만드는 픽스처, 실제 코드 경로, 검증 범위와 미검증 범위를 실제 검증으로 구분합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:5a3819aec8d0 -->
-- **직전 상태:** schema는 분리됐지만 optional/unknown-key behavior가 바뀌어 invalid 조합이 다시 허용돼도 감지할 test가 없었습니다.
-- **기법:** lobby에 null room, lobby에 UUID room, match에 room 없음/null/non-UUID를 각각 serialize해 parser가 throw하는지 확인합니다.
-- **생산 경로:** 실제 client-event parser와 Zod schema를 사용합니다.
-- **증명/비증명:** wire rejection을 검증하지만 repository direct call, DB row, current room membership은 검증하지 않습니다.
-- **보장:** protocol layer의 허용 상태 공간을 고정합니다.
-- **다음 연결:** `2ff750fa4ff8`이 같은 invariant를 저장 경계와 기존 데이터에 적용합니다.
+- **직전 상태:** 스키마는 분리됐지만 선택적/알 수 없는 키 동작이 바뀌어 잘못된 조합이 다시 허용돼도 감지할 테스트가 없었습니다.
+- **기법:** 로비에 null 경기방, 로비에 UUID 경기방, 경기에 경기방 없음/null/non-UUID를 각각 serialize해 파서가 예외를 던지는지 확인합니다.
+- **생산 경로:** 실제 클라이언트 이벤트 파서와 Zod 스키마를 사용합니다.
+- **검증 범위와 미검증 범위:** 전송 형식 실패를 검증하지만 저장소 직접 호출, DB 행, 현재 경기방 참가 상태는 검증하지 않습니다.
+- **보장:** 프로토콜 계층의 허용 상태 공간을 고정합니다.
+- **다음 연결:** `2ff750fa4ff8`이 같은 불변 조건을 저장 경계와 기존 데이터에 적용합니다.
 <!-- LEARNER-ANSWER END commit:5a3819aec8d0 -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `00d0d7941382` — `fix(protocol): 채팅 scope와 room 식별자 조합 제한`
-- 다음 Thread 관련 SHA: `2ff750fa4ff8` — `fix(db): 채팅 행의 scope와 room 불변식 강제`
+- 직전 개발 스레드 관련 SHA: `00d0d7941382` — `fix(protocol): 채팅 scope와 room 식별자 조합 제한`
+- 다음 개발 스레드 관련 SHA: `2ff750fa4ff8` — `fix(db): 채팅 행의 scope와 room 불변식 강제`
 
 ### 5.3. `fix(db): 채팅 행의 scope와 room 불변식 강제`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `2ff750fa4ff8` |
-| Importance | A |
-| Tags | REALTIME, PERSISTENCE, RISK |
-| 학습 깊이 | 주요 subsystem, 구현 경로, ownership/failure/non-guarantee를 구체적으로 복원합니다. |
+| 중요도 | A |
+| 태그 | REALTIME, PERSISTENCE, RISK |
+| 학습 깊이 | 주요 하위 시스템, 구현 경로, 소유권, 실패 처리, 보장하지 않는 범위를 구체적으로 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Cleans legacy rows and enforces the chat scope-room invariant in both repository implementations and PostgreSQL.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 기존 행을 정리하고 두 저장소 구현과 PostgreSQL에서 채팅 범위·경기방 불변 조건을 강제합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `packages/db/migrations/006_chat_invariants.sql`의 update/delete/check 순서
+- `packages/db/migrations/006_chat_invariants.sql`의 갱신/삭제/확인 순서
 - `packages/db/src/index.ts`의 `assertChatRoom`
-- PostgreSQL/memory `createChatMessage` 호출 위치
-- `chat_messages_scope_room_check` UUID regex
-- parent 상태와 비교해 이전 가정, 새 boundary, caller/callee, ownership 또는 failure path를 기록합니다.
-- 이 commit이 보장하지 않는 상태와 다음 fix/test가 보강하는 지점을 구분합니다.
-- Fix chain을 `이전 가정 → 실제 실패/위험 → root cause → 교정된 결정 → 남는 비보장` 순서로 복원합니다.
+- PostgreSQL/메모리 `createChatMessage` 호출 위치
+- `chat_messages_scope_room_check` UUID 정규식
+- 부모 커밋의 상태와 비교해 이전 가정, 새 경계, 호출자와 피호출자, 소유권 또는 실패 경로를 기록합니다.
+- 이 커밋이 보장하지 않는 범위와 다음 수정·테스트가 보강하는 지점을 구분합니다.
+- 수정 과정을을 `이전 가정 → 실제 실패/위험 → root cause → 교정된 결정 → 남는 비보장` 순서로 복원합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:2ff750fa4ff8 -->
-- **직전 가정:** 모든 chat write가 protocol parser를 통과하므로 DB에는 올바른 조합만 들어간다고 봤습니다.
-- **실제 위험:** HTTP/내부 repository caller나 기존 데이터는 lobby+room, match+null/non-UUID, unknown scope를 저장할 수 있었습니다.
-- **교정:** migration은 lobby row의 room을 null로 정규화하고 unknown scope 및 invalid match rows를 삭제한 뒤 `(lobby and room is null) or (match and UUID room)` CHECK를 설치합니다. 양 repository는 SQL 전 `assertChatRoom`을 호출합니다.
-- **상태/소유권 변화:** application과 DB가 같은 invariant를 독립적으로 강제합니다. migration은 constraint 설치가 실패하지 않도록 기존 데이터의 운명도 명시합니다.
-- **보장/비보장:** 공식 repository와 direct SQL 모두 invalid row를 거부하지만 sender가 그 room에 속하는지는 저장 형태와 별도 authorization 문제입니다.
-- **다음 연결:** `1cead7cc9f35`가 memory rejection, legacy cleanup, migration idempotency, DB CHECK를 실제 test로 묶습니다.
+- **직전 가정:** 모든 채팅 쓰기가 프로토콜 파서를 통과하므로 DB에는 올바른 조합만 들어간다고 봤습니다.
+- **실제 위험:** HTTP/내부 저장소 호출자나 기존 데이터는 로비+경기방, 경기+null/non-UUID, 알 수 없는 범위를 저장할 수 있었습니다.
+- **교정:** 마이그레이션은 로비 행의 경기방을 null로 정규화하고 알 수 없는 범위 및 잘못된 경기 행을 삭제한 뒤 `(lobby and room is null) or (match and UUID room)` CHECK를 설치합니다. 양 저장소는 SQL 전 `assertChatRoom`을 호출합니다.
+- **상태/소유권 변화:** 애플리케이션과 DB가 같은 불변 조건을 독립적으로 강제합니다. 마이그레이션은 제약 설치가 실패하지 않도록 기존 데이터의 운명도 명시합니다.
+- **보장 범위/보장하지 않는 범위:** 공식 저장소와 직접 SQL 모두 잘못된 행을 거부하지만 발신자가 그 경기방에 속하는지는 저장 형태와 별도 권한 검사 문제입니다.
+- **다음 연결:** `1cead7cc9f35`가 메모리 실패, 기존 정리, 마이그레이션 멱등성, DB CHECK를 실제 테스트로 묶습니다.
 <!-- LEARNER-ANSWER END commit:2ff750fa4ff8 -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `5a3819aec8d0` — `test(protocol): 채팅 scope와 room 조합 검증`
-- 다음 Thread 관련 SHA: `1cead7cc9f35` — `test(db): 채팅 저장 불변식 검증`
+- 직전 개발 스레드 관련 SHA: `5a3819aec8d0` — `test(protocol): 채팅 scope와 room 조합 검증`
+- 다음 개발 스레드 관련 SHA: `1cead7cc9f35` — `test(db): 채팅 저장 불변식 검증`
 
 ### 5.4. `test(db): 채팅 저장 불변식 검증`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `1cead7cc9f35` |
-| Importance | B |
-| Tags | REALTIME, PERSISTENCE, TEST |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | REALTIME, PERSISTENCE, TEST |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Verifies repository rejection, migration cleanup, SQL constraint enforcement, and migration idempotency.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 저장소 거부, 마이그레이션 정리, SQL 제약 강제, 마이그레이션 멱등성을 검증합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `packages/db/src/index.test.ts`의 invalid lobby/match cases
-- `packages/db/src/postgres.integration.test.ts`의 005→006 legacy fixture
-- migrate twice, expected surviving rows, SQLSTATE `23514`, migration count 1
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
-- Test technique, failure/boundary fixture, production path, proves/does-not-prove를 실제 assertion으로 구분합니다.
+- `packages/db/src/index.test.ts`의 잘못된 로비/경기 사례
+- `packages/db/src/postgres.integration.test.ts`의 005→006 기존 픽스처
+- 마이그레이션을 두 번 실행, 예상 surviving 행, SQLSTATE `23514`, 마이그레이션 개수 1
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
+- 테스트 기법, 실패·경계 조건을 만드는 픽스처, 실제 코드 경로, 검증 범위와 미검증 범위를 실제 검증으로 구분합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:1cead7cc9f35 -->
-- **직전 상태:** 저장 invariant는 구현됐지만 legacy row 정리와 CHECK가 실제 PostgreSQL에서 의도대로 함께 작동한다는 근거가 없었습니다.
-- **기법:** memory repository에 세 invalid 조합을 직접 전달해 reject를 확인합니다. PostgreSQL은 migration 005 상태에 good/bad rows를 넣고 006을 두 번 실행한 뒤 정규화된 lobby 2개와 valid match 1개만 남는지 확인합니다. 이후 invalid direct INSERT가 `23514`인지, migration record가 한 번인지 검사합니다.
-- **생산 경로:** repository validation과 실제 migration/constraint를 모두 통과합니다.
-- **증명/비증명:** stored-row invariant와 migration 재실행 안전성을 검증하지만 room membership authorization은 검증하지 않습니다.
-- **보장:** protocol을 우회한 write와 legacy 오염에 대한 방어를 회귀로 고정합니다.
-- **다음 연결:** `7759eef59b67`이 유효한 UUID room을 악용한 cross-room sender를 차단합니다.
+- **직전 상태:** 저장 불변 조건은 구현됐지만 기존 행 정리와 CHECK가 실제 PostgreSQL에서 의도대로 함께 작동한다는 근거가 없었습니다.
+- **기법:** 메모리 저장소에 세 잘못된 조합을 직접 전달해 거부를 확인합니다. PostgreSQL은 마이그레이션 005 상태에 정상·비정상 행을 넣고 006을 두 번 실행한 뒤 정규화된 로비 2개와 유효한 경기 1개만 남는지 확인합니다. 이후 잘못된 직접 INSERT가 `23514`인지, 마이그레이션 레코드가 한 번인지 검사합니다.
+- **생산 경로:** 저장소 검증과 실제 마이그레이션/제약을 모두 통과합니다.
+- **검증 범위와 미검증 범위:** 저장된 행 불변 조건과 마이그레이션 재실행 안전성을 검증하지만 경기방 참가 상태 권한 검사는 검증하지 않습니다.
+- **보장:** 프로토콜을 우회한 쓰기와 기존 오염에 대한 방어를 회귀로 고정합니다.
+- **다음 연결:** `7759eef59b67`이 유효한 UUID 경기방을 악용한 여러 영역에 걸친 경기방 발신자를 차단합니다.
 <!-- LEARNER-ANSWER END commit:1cead7cc9f35 -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `2ff750fa4ff8` — `fix(db): 채팅 행의 scope와 room 불변식 강제`
-- 다음 Thread 관련 SHA: `7759eef59b67` — `fix(game): 매치 채팅의 좌석과 audience 검증`
+- 직전 개발 스레드 관련 SHA: `2ff750fa4ff8` — `fix(db): 채팅 행의 scope와 room 불변식 강제`
+- 다음 개발 스레드 관련 SHA: `7759eef59b67` — `fix(game): 매치 채팅의 좌석과 audience 검증`
 
 ### 5.5. `fix(game): 매치 채팅의 좌석과 audience 검증`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `7759eef59b67` |
-| Importance | A |
-| Tags | REALTIME, PERSISTENCE, RISK |
-| 학습 깊이 | 주요 subsystem, 구현 경로, ownership/failure/non-guarantee를 구체적으로 복원합니다. |
+| 중요도 | A |
+| 태그 | REALTIME, PERSISTENCE, RISK |
+| 학습 깊이 | 주요 하위 시스템, 구현 경로, 소유권, 실패 처리, 보장하지 않는 범위를 구체적으로 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Rejects match chat unless the sender currently occupies a seat in that exact room, before persistence.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 보낸 사용자가 해당 경기방 좌석을 현재 점유하지 않으면 저장 전에 경기 채팅을 거부합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `apps/api/src/gameHub.ts`의 `chat.send` match branch
-- `rooms.get`, `client.roomId`, `sideFor` authorization
-- `forbidden` error와 early return
-- lobby null-room write와 global broadcast
-- parent 상태와 비교해 이전 가정, 새 boundary, caller/callee, ownership 또는 failure path를 기록합니다.
-- 이 commit이 보장하지 않는 상태와 다음 fix/test가 보강하는 지점을 구분합니다.
-- Fix chain을 `이전 가정 → 실제 실패/위험 → root cause → 교정된 결정 → 남는 비보장` 순서로 복원합니다.
+- `apps/api/src/gameHub.ts`의 `chat.send` 경기 브랜치
+- `rooms.get`, `client.roomId`, `sideFor` 권한 검사
+- `forbidden` 오류와 조기 반환
+- 로비 경기방 없음 쓰기와 전역 전파
+- 부모 커밋의 상태와 비교해 이전 가정, 새 경계, 호출자와 피호출자, 소유권 또는 실패 경로를 기록합니다.
+- 이 커밋이 보장하지 않는 범위와 다음 수정·테스트가 보강하는 지점을 구분합니다.
+- 수정 과정을을 `이전 가정 → 실제 실패/위험 → root cause → 교정된 결정 → 남는 비보장` 순서로 복원합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:7759eef59b67 -->
-- **직전 가정:** parser가 UUID를 요구하고 repository가 valid row를 저장하면 match chat은 안전하다고 봤습니다.
-- **실제 공격/오류:** 다른 active room의 UUID를 아는 사용자가 자신의 room이 아닌 곳에 message를 저장·broadcast할 수 있었습니다.
-- **교정:** event room을 조회하고 room 존재, `client.roomId === room.id`, `sideFor(room, client)`를 모두 만족할 때만 `createChatMessage`를 호출합니다. 실패는 `forbidden`을 sender에게 보내고 return합니다.
-- **상태/소유권 변화:** current seat membership은 GameHub의 room/client state가 authority이며 repository는 형태만 검증합니다. match audience는 `broadcastRoom`, lobby audience는 `broadcastAll`입니다.
-- **보장/비보장:** cross-room write와 delivery를 server에서 막지만 browser가 stale room event를 local state에 넣는 문제는 별도입니다.
-- **다음 연결:** `4a98bd1e4f22`가 rejection-before-persistence와 audience 범위를 두 room으로 검증합니다.
+- **직전 가정:** 파서가 UUID를 요구하고 저장소가 유효한 행을 저장하면 경기 채팅은 안전하다고 봤습니다.
+- **실제 공격/오류:** 다른 진행 중인 경기방의 UUID를 아는 사용자가 자신의 경기방이 아닌 곳에 메시지를 저장·전파할 수 있었습니다.
+- **교정:** 이벤트 경기방을 조회하고 경기방 존재, `client.roomId === room.id`, `sideFor(room, client)`를 모두 만족할 때만 `createChatMessage`를 호출합니다. 실패는 `forbidden`을 발신자에게 보내고 함수를 종료합니다.
+- **상태/소유권 변화:** 현재 좌석 소속 정보는 GameHub의 경기방/클라이언트 상태가 판정 권한이며 저장소는 형태만 검증합니다. 경기 수신 대상은 `broadcastRoom`, 로비 수신 대상은 `broadcastAll`입니다.
+- **보장 범위/보장하지 않는 범위:** 여러 영역에 걸친 경기방 쓰기와 전달을 서버에서 막지만 브라우저가 오래된 경기방 이벤트를 로컬 상태에 넣는 문제는 별도입니다.
+- **다음 연결:** `4a98bd1e4f22`가 영속 저장 전에 거부와 수신 대상 범위를 두 경기방으로 검증합니다.
 <!-- LEARNER-ANSWER END commit:7759eef59b67 -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `1cead7cc9f35` — `test(db): 채팅 저장 불변식 검증`
-- 다음 Thread 관련 SHA: `4a98bd1e4f22` — `test(game): 타 경기방 채팅 주입 차단 검증`
+- 직전 개발 스레드 관련 SHA: `1cead7cc9f35` — `test(db): 채팅 저장 불변식 검증`
+- 다음 개발 스레드 관련 SHA: `4a98bd1e4f22` — `test(game): 타 경기방 채팅 주입 차단 검증`
 
 ### 5.6. `test(game): 타 경기방 채팅 주입 차단 검증`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `4a98bd1e4f22` |
-| Importance | B |
-| Tags | REALTIME, TEST |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | REALTIME, TEST |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Verifies cross-room rejection before persistence and room-scoped versus global delivery.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 다른 경기방의 메시지를 저장 전에 거부하고 경기방 한정 전달과 전체 전달을 구분하는지 검증합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `apps/api/src/gameHub.chat.test.ts`의 two-room fake socket setup
-- `createChatMessage` spy
-- cross-room forbidden/no-call/no-chat assertions
-- normal room A only 및 lobby all-client cases
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
-- Test technique, failure/boundary fixture, production path, proves/does-not-prove를 실제 assertion으로 구분합니다.
+- `apps/api/src/gameHub.chat.test.ts`의 두 경기방 가짜 소켓 설정
+- `createChatMessage` 호출 감시 객체
+- 다른 경기방 요청의 403 거부·저장소 미호출·채팅 미전달 검증
+- 일반 경기방 A 전용 및 로비 모든 클라이언트 사례
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
+- 테스트 기법, 실패·경계 조건을 만드는 픽스처, 실제 코드 경로, 검증 범위와 미검증 범위를 실제 검증으로 구분합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:4a98bd1e4f22 -->
-- **직전 상태:** authorization fix는 있었지만 저장 전 차단인지, 정상 room audience가 다른 room과 분리되는지, lobby가 여전히 global인지 함께 증명한 test가 없었습니다.
-- **실패 주입:** room B 좌석의 client가 room A UUID로 match message를 보냅니다.
-- **관찰:** room IDs가 다름, repository spy 미호출, sender의 forbidden, 전체 socket의 chat event 0을 확인합니다. 정상 room A message는 A의 두 socket만 받고 B는 0, lobby message는 null room으로 저장되고 모든 socket이 받습니다.
-- **생산 경로:** 실제 GameHub queue pairing, room creation, event parser/handler/broadcast를 fake WebSocket으로 실행합니다.
-- **증명/비증명:** server authorization/audience를 결정적으로 검증하지만 browser reducer filtering은 포함하지 않습니다.
-- **다음 연결:** `85edd6d1e26a`가 client active-room filter를 추가합니다.
+- **직전 상태:** 권한 검사 수정은 있었지만 저장 전 차단인지, 정상 경기방 수신 대상이 다른 경기방과 분리되는지, 로비가 여전히 전역인지 함께 검증한 테스트가 없었습니다.
+- **실패 주입:** 경기방 B 좌석의 클라이언트가 경기방 A UUID로 경기 메시지를 보냅니다.
+- **관찰:** 경기방 ID가 다르고 저장소 호출 감시 객체가 호출되지 않았으며, 발신자는 `forbidden` 오류를 받고 전체 소켓의 채팅 이벤트 수는 0인지 확인합니다. 정상 경기방 A의 메시지는 A의 두 소켓만 받고 B는 받지 않으며, 로비 메시지는 경기방 ID가 `null`인 상태로 저장되고 모든 소켓이 받습니다.
+- **생산 경로:** 실제 GameHub 대기열 pairing, 경기방 생성, 이벤트 파서/처리 함수/전파를 가짜 WebSocket으로 실행합니다.
+- **검증 범위와 미검증 범위:** 서버 권한 검사/수신 대상을 결정적으로 검증하지만 브라우저 리듀서 필터링은 포함하지 않습니다.
+- **다음 연결:** `85edd6d1e26a`가 클라이언트 활성 경기방 필터를 추가합니다.
 <!-- LEARNER-ANSWER END commit:4a98bd1e4f22 -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `7759eef59b67` — `fix(game): 매치 채팅의 좌석과 audience 검증`
-- 다음 Thread 관련 SHA: `85edd6d1e26a` — `fix(web): 현재 경기방의 채팅만 표시`
+- 직전 개발 스레드 관련 SHA: `7759eef59b67` — `fix(game): 매치 채팅의 좌석과 audience 검증`
+- 다음 개발 스레드 관련 SHA: `85edd6d1e26a` — `fix(web): 현재 경기방의 채팅만 표시`
 
 ### 5.7. `fix(web): 현재 경기방의 채팅만 표시`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `85edd6d1e26a` |
-| Importance | B |
-| Tags | REALTIME, WEB |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | REALTIME, WEB |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Filters incoming chat so the game reducer accepts only match messages for the current active room.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 게임 리듀서가 현재 활성 경기방의 경기 메시지만 받도록 수신 채팅을 걸러냅니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `apps/web/src/game/chatScope.ts`의 `isChatForActiveRoom`
 - `apps/web/src/game/useGameConnection.ts`의 `chat.message` 분기
-- dispatch 전 `stateRef.current.roomId` 비교
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
-- Fix chain을 `이전 가정 → 실제 실패/위험 → root cause → 교정된 결정 → 남는 비보장` 순서로 복원합니다.
+- 명령 전달 전 `stateRef.current.roomId` 비교
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
+- 수정 과정을을 `이전 가정 → 실제 실패/위험 → root cause → 교정된 결정 → 남는 비보장` 순서로 복원합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:85edd6d1e26a -->
-- **직전 상태:** server가 room broadcast를 지켜도 reconnect/race/misrouted event가 들어오면 hook이 모든 `chat.message`를 현재 panel에 넣었습니다.
-- **구현 결정:** active room이 non-null이고 message scope가 match이며 `message.roomId === activeRoomId`일 때만 reducer dispatch를 허용하는 pure function을 추가했습니다.
-- **상태/소유권 변화:** browser connection state가 현재 화면 audience의 마지막 수용 기준이 됩니다.
-- **실패/edge:** client filter는 보안 경계가 아니며 악성 sender의 저장을 막지 못합니다. lobby message도 game panel에서는 의도적으로 버립니다.
-- **보장/비보장:** 현재 room panel의 local contamination을 막지만 server auth를 대체하지 않습니다.
-- **다음 연결:** `02775797ab63`이 current/other/lobby/no-active 네 조합을 고정합니다.
+- **직전 상태:** 서버가 경기방 전파를 지켜도 재연결/경쟁 상태나 잘못 전달된 이벤트가 들어오면 훅이 모든 `chat.message`를 현재 패널에 넣었습니다.
+- **구현 결정:** 진행 중인 경기방이 null이 아닌이고 메시지 범위가 경기이며 `message.roomId === activeRoomId`일 때만 리듀서 명령을 전달하는 작업을 허용하는 순수 함수를 추가했습니다.
+- **상태/소유권 변화:** 브라우저 연결 상태가 현재 화면 수신 대상의 마지막 수용 기준이 됩니다.
+- **실패/예외 조건:** 클라이언트 필터는 보안 경계가 아니며 악성 발신자의 저장을 막지 못합니다. 로비 메시지도 게임 패널에서는 의도적으로 버립니다.
+- **보장 범위/보장하지 않는 범위:** 현재 경기방 패널의 로컬 오염을 막지만 서버 인증을 대체하지 않습니다.
+- **다음 연결:** `02775797ab63`이 현재 경기방·다른 경기방·로비·활성 경기방 없음 네 조합을 고정합니다.
 <!-- LEARNER-ANSWER END commit:85edd6d1e26a -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `4a98bd1e4f22` — `test(game): 타 경기방 채팅 주입 차단 검증`
-- 다음 Thread 관련 SHA: `02775797ab63` — `test(web): 매치 채팅 room filtering 검증`
+- 직전 개발 스레드 관련 SHA: `4a98bd1e4f22` — `test(game): 타 경기방 채팅 주입 차단 검증`
+- 다음 개발 스레드 관련 SHA: `02775797ab63` — `test(web): 매치 채팅 room filtering 검증`
 
 ### 5.8. `test(web): 매치 채팅 room filtering 검증`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `02775797ab63` |
-| Importance | B |
-| Tags | REALTIME, WEB, TEST |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | REALTIME, WEB, TEST |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Pins the pure active-room chat filter.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 순수 활성 경기방 채팅 필터의 동작을 고정합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `apps/web/src/game/chatScope.test.ts`
-- current match true
-- other match, lobby, no active room false
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
-- Test technique, failure/boundary fixture, production path, proves/does-not-prove를 실제 assertion으로 구분합니다.
+- 현재 경기 true
+- 다른 경기, 로비, 진행 중인 경기방 없음은 `false`
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
+- 테스트 기법, 실패·경계 조건을 만드는 픽스처, 실제 코드 경로, 검증 범위와 미검증 범위를 실제 검증으로 구분합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:02775797ab63 -->
-- **직전 상태:** pure filter는 있었지만 조건 하나가 느슨해지는 regression을 막을 test가 없었습니다.
-- **기법:** 고정 UUID 두 개와 helper로 만든 `ChatMessage`를 사용해 현재 match만 true이고 다른 room/lobby/active null은 false인지 검사합니다.
-- **생산 경로:** network 없이 production pure predicate를 직접 실행합니다.
-- **증명/비증명:** browser 수용 규칙을 정확히 검증하지만 server broadcast/authorization과 storage는 별도 tests가 담당합니다.
-- **보장:** scope·room·active state 세 조건을 모두 요구합니다.
-- **Thread 종료:** wire, storage, authorization, audience, browser state가 같은 room semantics를 각 책임 범위에서 강제합니다.
+- **직전 상태:** 순수 필터는 있었지만 조건 하나가 느슨해지는 회귀를 막을 테스트가 없었습니다.
+- **기법:** 고정 UUID 두 개와 도우미 함수로 만든 `ChatMessage`를 사용해 현재 경기만 true이고 다른 경기방/로비/활성 null은 false인지 검사합니다.
+- **생산 경로:** 네트워크 없이 운영 순수 조건 함수를 직접 실행합니다.
+- **검증 범위와 미검증 범위:** 브라우저 수용 규칙을 정확히 검증하지만 서버 전파/권한 검사와 저장소는 별도 테스트가 담당합니다.
+- **보장:** 범위·경기방·활성 상태 세 조건을 모두 요구합니다.
+- **개발 스레드 종료:** 전송 형식, 저장소, 권한 검사, 수신 대상, 브라우저 상태가 같은 경기방 동작 의미를 각 책임 범위에서 강제합니다.
 <!-- LEARNER-ANSWER END commit:02775797ab63 -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `85edd6d1e26a` — `fix(web): 현재 경기방의 채팅만 표시`
-- 이 commit을 Thread의 마지막 상태로 사용합니다.
+- 직전 개발 스레드 관련 SHA: `85edd6d1e26a` — `fix(web): 현재 경기방의 채팅만 표시`
+- 이 커밋을 개발 스레드의 마지막 상태로 사용합니다.
 
-## 6. Thread 종합
+## 6. 개발 스레드 종합
 
-다음 항목을 commit 순서에서 재구성합니다: invariant evolution, Failure → Fix → Test 관계, ownership/state 변화, 최종 실행 흐름, 비보장, 실제 실행 증거.
+다음 항목을 커밋 순서에서 재구성합니다: 불변 조건 변화, 실패 → 수정 → 테스트 관계, 소유권/상태 변화, 최종 실행 흐름, 보장하지 않는 범위, 실제 실행 증거.
 
 <!-- LEARNER-ANSWER START thread:05-chat-scope-storage-and-room-authorization.md:synthesis -->
-- **불변식 진화:** 초기 chat contract는 `scope`와 optional room의 잘못된 조합을 표현할 수 있었습니다. `00d0d7941382`가 wire union을 lobby/no-room과 match/UUID-room으로 분리하고 `5a3819aec8d0`이 반례를 고정했습니다. `2ff750fa4ff8`은 같은 규칙을 repository와 DB CHECK로 내리고 legacy rows를 정리했으며 `1cead7cc9f35`가 memory/실제 migration을 검증했습니다. `7759eef59b67`은 syntactically valid room ID만으로 부족하므로 실제 seat membership을 저장 전에 확인합니다. web은 `85edd6d1e26a`에서 active room filter를 추가합니다.
-- **소유권:** shared protocol은 wire shape, repository/DB는 stored row validity, GameHub는 current room membership과 broadcast audience, browser connection state는 현재 화면에 수용할 room을 소유합니다. 어느 한 layer도 다른 layer의 책임을 대신하지 않습니다.
-- **Failure → Fix → Test:** invalid scope-room payload → discriminated schema → table-driven negative test. legacy/우회 저장 → migration + `assertChatRoom` + CHECK → cleanup/idempotent migration/SQLSTATE 23514 test. cross-room sender → seat check before persistence → two-room fake-socket test. stale/misrouted client event → pure room filter → four-case unit test.
-- **최종 흐름:** parser가 payload 조합을 검증 → GameHub가 current room/seat를 authorization → repository가 동일 invariant를 다시 검사 → DB CHECK가 direct/legacy invalid row를 거부 → 성공 record만 해당 room audience에 broadcast → browser가 active room 일치 여부를 확인 후 reducer에 넣습니다. lobby는 room null로 저장하고 global audience에 전달됩니다.
-- **비보장:** 이 Thread는 message content moderation, rate limiting, end-to-end encryption, multi-process room routing을 제공하지 않습니다.
-- **실행 증거:** exact test/migration code를 검사했지만 Vitest/PostgreSQL integration을 실행하지 않았습니다.
+- **불변식 진화:** 초기 채팅 계약은 `scope`와 선택적 경기방의 잘못된 조합을 표현할 수 있었습니다. `00d0d7941382`가 전송 형식 유니언 타입을 로비/경기방 없음과 경기/UUID 경기방으로 분리하고 `5a3819aec8d0`이 반례를 고정했습니다. `2ff750fa4ff8`은 같은 규칙을 저장소와 DB CHECK로 내리고 기존 행을 정리했으며 `1cead7cc9f35`가 메모리/실제 마이그레이션을 검증했습니다. `7759eef59b67`은 형식상 유효한 경기방 ID만으로 부족하므로 실제 좌석 소속 정보를 저장 전에 확인합니다. 웹은 `85edd6d1e26a`에서 진행 중인 경기방 필터를 추가합니다.
+- **소유권:** 공유 프로토콜은 전송 형식, 저장소/DB는 저장된 행 유효성, GameHub는 현재 경기방 참가 상태와 전파 수신 대상, 브라우저 연결 상태는 현재 화면에 수용할 경기방을 소유합니다. 어느 한 계층도 다른 계층의 책임을 대신하지 않습니다.
+- **실패 → 수정 → 테스트:** 잘못된 범위와 경기방 ID 조합의 메시지 본문 → 판별 가능한 스키마 → 표 기반 실패 테스트. 기존/우회 저장 → 마이그레이션 + `assertChatRoom` + CHECK → 정리/멱등 마이그레이션/SQLSTATE 23514 테스트. 여러 영역에 걸친 경기방 발신자 → 좌석 소속을 영속 저장 전에 확인 → 두 경기방을 사용하는 가짜 소켓 테스트. 오래된/잘못 전달된 클라이언트 이벤트 → 순수 경기방 필터 → 네 가지 사례의 단위 테스트.
+- **최종 흐름:** 파서가 메시지 본문 조합을 검증 → GameHub가 현재 경기방/좌석를 권한 검사 → 저장소가 동일 불변 조건을 다시 검사 → DB CHECK가 직접/기존 잘못된 행을 거부 → 성공 레코드만 해당 경기방 수신 대상에 전파 → 브라우저가 진행 중인 경기방 일치 여부를 확인 후 리듀서에 넣습니다. 로비는 경기방 null로 저장하고 전역 수신 대상에 전달됩니다.
+- **보장하지 않는 범위:** 이 개발 스레드는 메시지 콘텐츠 검열, 호출 빈도 제한, 종단 간 암호화, 여러 프로세스 경기방 라우팅을 제공하지 않습니다.
+- **실행 증거:** 정확한 테스트/마이그레이션 코드를 검사했지만 Vitest/PostgreSQL 통합을 실행하지 않았습니다.
 <!-- LEARNER-ANSWER END thread:05-chat-scope-storage-and-room-authorization.md:synthesis -->
 
 ## 7. 학습 완료 확인
 
 <!-- LEARNER-ANSWER START thread:05-chat-scope-storage-and-room-authorization.md:checklist -->
-- [x] 모든 SHA를 지정 브랜치의 exact commit으로 검사했습니다.
-- [x] fixed commit map과 source classification을 보존했습니다.
-- [x] earlier commit을 later HEAD 코드로 설명하지 않았습니다.
-- [x] fix와 test를 원래 failure/production path에 연결했습니다.
-- [x] 실제 실행하지 않은 test를 통과했다고 기록하지 않았습니다.
-- [x] Thread 최종 owner, invariant, flow, non-guarantee를 작성했습니다.
+- [x] 모든 SHA를 지정 브랜치의 정확한 커밋으로 검사했습니다.
+- [x] 고정된 커밋 목록과 원문 분류를 보존했습니다.
+- [x] earlier 커밋을 후속 최종 상태 코드로 설명하지 않았습니다.
+- [x] 수정과 테스트를 원래 실패/실제 코드 경로에 연결했습니다.
+- [x] 실제 실행하지 않은 테스트를 통과했다고 기록하지 않았습니다.
+- [x] 개발 스레드 최종 소유 주체, 불변 조건, 실행 순서, 보장하지 않는 범위를 작성했습니다.
 <!-- LEARNER-ANSWER END thread:05-chat-scope-storage-and-room-authorization.md:checklist -->
 ===== END FILE: 05-chat-scope-storage-and-room-authorization.md =====
 
 ===== BEGIN FILE: 06-pause-resume-and-input-neutralization.md =====
 # 일시정지·재개와 입력 무효화
 
-원문 Development Thread: `Pause, resume, and input neutralization`
+원문 개발 스레드: `Pause, resume, and input neutralization`
 
-## 1. Thread 목표
+## 1. 개발 스레드 목표
 
-- pause/resume를 화면 효과가 아니라 server-owned game phase transition으로 추가하는 과정을 추적합니다.
-- timer/scheduler 중단·재등록과 participant/phase authorization을 복원합니다.
-- pause 직전 paddle direction이 resume 뒤 남는 결함을 snapshot과 simulation 양쪽에서 어떻게 neutralize했는지 확인합니다.
+- 일시정지/재개를 화면 효과가 아니라 서버 소유한 게임 단계 상태 전이로 추가하는 과정을 추적합니다.
+- 타이머/스케줄러 중단·재등록과 참가자/단계 권한 검사를 복원합니다.
+- 일시정지 직전 패들 방향이 재개 뒤 남는 결함을 스냅샷과 시뮬레이션 양쪽에서 어떻게 neutralize했는지 확인합니다.
 
-### Source에서 확정된 significance
+### 원문에서 확인한 중요성
 
-> Stopping ticks is not enough to pause a stateful simulation. Input intent can outlive the timer and become active again on resume. The history first introduces the protocol and server transition, then corrects the hidden input state and protects the boundary with fake-time regression coverage.
+> 틱만 멈춰서는 상태가 있는 시뮬레이션을 일시정지할 수 없습니다. 입력 의도는 타이머보다 오래 남아 재개 시 다시 적용될 수 있습니다. 초기 커밋은 프로토콜과 서버 상태 전이를 추가하고, 후속 수정은 숨은 입력 상태를 초기화한 뒤 가짜 시간 회귀 테스트로 보호합니다.
 
-### 직접 연결되는 Critical Invariants
+### 직접 연결되는 핵심 불변 조건
 
-> Only a seated participant may transition a playing room to paused or a paused room to playing, and simulation ticks/input application occur only in playing.
+> 좌석을 점유한 참가자만 실행 중인 경기방을 일시정지하거나 일시정지한 경기방을 재개할 수 있으며, 시뮬레이션 틱과 입력 적용은 실행 중 상태에서만 수행합니다.
 >
-> Entering paused neutralizes both externally visible paddle velocity and the internal simulation direction so resume starts without carried intent.
+> 일시정지에 들어갈 때 외부에 보이는 패들 속도와 내부 시뮬레이션 방향을 모두 0으로 바꿔, 재개할 때 이전 입력이 남지 않게 합니다.
 
-### 직접 연결되는 Major Engineering Difficulties
+### 직접 연결되는 주요 구현 난점
 
-> Keeping protocol phase, GameHub session state, scheduler registration, snapshot state, simulation state, and UI controls synchronized.
+> 프로토콜 단계, GameHub 세션 상태, 스케줄러 등록, 스냅샷 상태, 시뮬레이션 상태, UI 제어를 함께 맞춰야 합니다.
 >
-> Testing temporal behavior deterministically without depending on wall-clock timing or a real network.
+> 실제 시간과 네트워크에 의존하지 않고 시간에 따른 동작을 결정적으로 테스트해야 합니다.
 
-## 2. 이 Thread를 이해하기 위한 핵심 질문
+## 2. 이 개발 스레드를 이해하기 위한 핵심 질문
 
-- shared `GamePhase`와 client event union은 pause/resume를 어떻게 표현합니까?
-- 초기 `pauseRoom`/`resumeRoom`은 어떤 phase와 seat 조건을 검사하고 timer를 어떻게 관리합니까?
-- 왜 timer를 멈춰도 `paddles[side].dy`와 simulation direction이 남으면 문제가 됩니까?
-- later refactor 뒤 pause는 scheduler와 session state를 어떤 순서로 전환합니까?
-- fake timer test는 pause 전 input, paused snapshot, resume 후 tick을 어떤 순서로 재현합니까?
+- 공유 `GamePhase`와 클라이언트 이벤트 유니언 타입은 일시정지/재개를 어떻게 표현합니까?
+- 초기 `pauseRoom`/`resumeRoom`은 어떤 단계와 좌석 조건을 검사하고 타이머를 어떻게 관리합니까?
+- 왜 타이머를 멈춰도 `paddles[side].dy`와 시뮬레이션 방향이 남으면 문제가 됩니까?
+- 이후 리팩터링 뒤 일시정지는 스케줄러와 세션 상태를 어떤 순서로 전환합니까?
+- 가짜 타이머 테스트는 일시정지 전 입력, 일시정지 스냅샷, 재개 후 틱을 어떤 순서로 재현합니까?
 
 ## 3. 완료 기준
 
-- protocol→hub phase transition→UI control의 호출 흐름을 설명할 수 있습니다.
-- pause가 획득/해제하는 timer 또는 scheduler 자원과 illegal transition no-op 조건을 지적할 수 있습니다.
-- visible snapshot와 internal simulation의 입력 상태를 둘 다 0으로 만들어야 하는 이유를 설명할 수 있습니다.
-- fake timer regression이 증명하는 것과 실제 장시간 pause/reconnect에서 증명하지 않는 것을 구분할 수 있습니다.
-- Commit map의 모든 SHA를 지정 브랜치 ancestry와 source classification에서 확인합니다.
-- 각 SHA의 parent 또는 직전 관련 SHA와 비교해 변경 전후 상태를 구분합니다.
-- 실행한 명령과 코드 검사만으로 확인한 사실을 구분하고 실행하지 않은 test를 통과했다고 기록하지 않습니다.
+- 프로토콜→허브 단계 상태 전이→UI 제어의 호출 흐름을 설명할 수 있습니다.
+- 일시정지가 획득하고 해제하는 타이머·스케줄러 자원과, 허용되지 않은 상태 전이를 무시하는 조건을 설명할 수 있습니다.
+- 표시되는 스냅샷과 내부 시뮬레이션의 입력 상태를 둘 다 0으로 만들어야 하는 이유를 설명할 수 있습니다.
+- 가짜 타이머 회귀가 검증하는 것과 실제 장시간 일시정지/재연결에서 검증하지 않는 것을 구분할 수 있습니다.
+- 커밋 목록의 모든 SHA를 지정 브랜치의 커밋 이력과 원문 분류에서 확인합니다.
+- 각 SHA를 부모 커밋 또는 직전 관련 SHA와 비교해 변경 전후 상태를 구분합니다.
+- 실행한 명령과 코드 검사만으로 확인한 사실을 구분하고 실행하지 않은 테스트를 통과했다고 기록하지 않습니다.
 
-## 4. Commit map
+## 4. 커밋 목록
 
-| 순서 | SHA | Subject | Importance | Tags | Source에서 확정된 역할 |
+| 순서 | SHA | 제목 | 중요도 | 태그 | 원문에서 확인한 역할 |
 | ---: | --- | --- | :---: | --- | --- |
-| 1 | `655bc7bd8df7` | `feat(protocol): 일시정지 WebSocket 계약 추가` | B | PROTOCOL, REALTIME, WEB | Adds the paused game phase and room-scoped pause/resume client commands. |
-| 2 | `d93612c18e6f` | `feat(game): 서버 주도 일시정지 기능 추가` | B | SIMULATION, REALTIME | Handles pause and resume as server-owned room transitions. |
-| 3 | `e4e2dec55805` | `feat(play): 일시정지와 재개 UI 연결` | B | REALTIME, WEB | Derives pause/resume controls from server snapshots and sends room-scoped commands. |
-| 4 | `f46bbab95ea5` | `fix(game): 일시정지 시 paddle 입력 상태 초기화` | A | SIMULATION, REALTIME, RISK | Neutralizes both snapshot and internal simulation paddle directions when a room enters paused. |
-| 5 | `632cbf13b616` | `test(game): pause 전 입력이 재개 뒤 남지 않음 검증` | B | SIMULATION, REALTIME, TEST | Verifies that a pre-pause paddle direction does not survive pause and resume. |
+| 1 | `655bc7bd8df7` | `feat(protocol): 일시정지 WebSocket 계약 추가` | B | PROTOCOL, REALTIME, WEB | 일시정지 경기 단계와 경기방을 명시하는 클라이언트 일시정지·재개 명령을 추가합니다. |
+| 2 | `d93612c18e6f` | `feat(game): 서버 주도 일시정지 기능 추가` | B | SIMULATION, REALTIME | 일시정지와 재개를 서버가 소유하는 경기방 상태 전이로 처리합니다. |
+| 3 | `e4e2dec55805` | `feat(play): 일시정지와 재개 UI 연결` | B | REALTIME, WEB | 서버 스냅샷에서 일시정지·재개 제어 상태를 계산하고 경기방을 지정한 명령을 보냅니다. |
+| 4 | `f46bbab95ea5` | `fix(game): 일시정지 시 paddle 입력 상태 초기화` | A | SIMULATION, REALTIME, RISK | 경기방이 일시정지될 때 스냅샷과 내부 시뮬레이션의 패들 방향을 모두 0으로 바꿉니다. |
+| 5 | `632cbf13b616` | `test(game): pause 전 입력이 재개 뒤 남지 않음 검증` | B | SIMULATION, REALTIME, TEST | 일시정지 전 패들 방향이 일시정지와 재개 뒤에도 남지 않는지 검증합니다. |
 
-## 5. Commit별 학습 기록
+## 5. 커밋별 학습 기록
 
 ### 5.1. `feat(protocol): 일시정지 WebSocket 계약 추가`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `655bc7bd8df7` |
-| Importance | B |
-| Tags | PROTOCOL, REALTIME, WEB |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | PROTOCOL, REALTIME, WEB |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Adds the paused game phase and room-scoped pause/resume client commands.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 일시정지 경기 단계와 경기방을 명시하는 클라이언트 일시정지·재개 명령을 추가합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `packages/shared/src/game.ts`의 `GamePhase`
-- `packages/shared/src/ws.ts`의 `game.pause`/`game.resume` variants
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
+- `packages/shared/src/ws.ts`의 `game.pause`/`game.resume` 유형
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:655bc7bd8df7 -->
-- **직전 상태:** phase는 waiting/countdown/playing/finished뿐이고 client가 server에 pause/resume 의도를 보낼 계약이 없었습니다.
-- **구현 결정:** `paused`를 공유 phase union에 추가하고 두 command가 `roomId`를 필수로 갖게 합니다.
-- **상태/소유권 변화:** protocol은 요청과 관찰 가능한 phase를 표현하지만 전이 권한은 server에 남습니다.
-- **실패/edge:** 타입만으로 sender가 room 참가자인지, 현재 phase가 legal한지는 확인하지 않습니다.
-- **보장/비보장:** wire vocabulary는 통일하지만 timer와 simulation 동작은 다음 commit 전까지 없습니다.
-- **다음 연결:** `d93612c18e6f`가 GameHub transition과 tick/input gating을 구현합니다.
+- **직전 상태:** 단계는 대기 중/countdown/경기 중/종료된뿐이고 클라이언트가 서버에 일시정지/재개 의도를 보낼 계약이 없었습니다.
+- **구현 결정:** `paused`를 공유 단계 유니언 타입에 추가하고 두 명령이 `roomId`를 필수로 갖게 합니다.
+- **상태/소유권 변화:** 프로토콜은 요청과 관찰 가능한 단계를 표현하지만 전이 권한은 서버에 남습니다.
+- **실패/예외 조건:** 타입만으로 발신자가 경기방 참가자인지, 현재 단계가 허용된한지는 확인하지 않습니다.
+- **보장 범위/보장하지 않는 범위:** 전송 형식 이벤트 종류는 통일하지만 타이머와 시뮬레이션 동작은 다음 커밋 전까지 없습니다.
+- **다음 연결:** `d93612c18e6f`가 GameHub 상태 전이와 틱/입력 통과 조건을 구현합니다.
 <!-- LEARNER-ANSWER END commit:655bc7bd8df7 -->
 
 비교 기준:
-- 이 commit의 parent와 비교합니다.
-- 다음 Thread 관련 SHA: `d93612c18e6f` — `feat(game): 서버 주도 일시정지 기능 추가`
+- 이 커밋의 부모 커밋과 비교합니다.
+- 다음 개발 스레드 관련 SHA: `d93612c18e6f` — `feat(game): 서버 주도 일시정지 기능 추가`
 
 ### 5.2. `feat(game): 서버 주도 일시정지 기능 추가`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `d93612c18e6f` |
-| Importance | B |
-| Tags | SIMULATION, REALTIME |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | SIMULATION, REALTIME |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Handles pause and resume as server-owned room transitions.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 일시정지와 재개를 서버가 소유하는 경기방 상태 전이로 처리합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `apps/api/src/gameHub.ts`의 `pauseRoom`, `resumeRoom`
-- playing/paused phase와 `sideFor` 조건
-- timer clear/null 및 single `setInterval` restart
-- `applyInput`/`tick`의 playing-only guard
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
+- 경기 중/일시정지 단계와 `sideFor` 조건
+- 타이머 해제·null 설정 및 단일 `setInterval` 재시작
+- `applyInput`/`tick`의 경기 중 전용 보호 조건
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:d93612c18e6f -->
-- **직전 상태:** protocol command는 parse돼도 server room과 simulation을 바꾸지 않았습니다.
-- **구현 결정:** seated participant만 playing→paused, paused→playing을 요청할 수 있게 하고 pause는 interval을 clear해 null로, resume은 timer가 없을 때만 새 interval을 만듭니다. snapshot phase/time을 갱신해 room에 broadcast합니다. input/tick은 playing일 때만 작동합니다.
-- **상태/소유권 변화:** server room이 phase와 timer authority가 되고 client는 snapshot을 따라갑니다.
-- **실패/edge:** 잘못된 room/phase/non-participant 요청은 no-op입니다. 당시 pause가 기존 paddle direction 자체를 reset하지는 않습니다.
-- **보장/비보장:** tick 중단과 중복 timer 방지는 제공하지만 stale input neutralization은 후속 fix가 필요합니다.
-- **다음 연결:** `e4e2dec55805`가 UI를 authoritative snapshot phase에 연결합니다.
+- **직전 상태:** 프로토콜 명령은 파싱돼도 서버 경기방과 시뮬레이션을 바꾸지 않았습니다.
+- **구현 결정:** seated 참가자만 경기 중→일시정지, 일시정지→경기 중을 요청할 수 있게 하고 일시정지는 주기를 해제해 null로, 재개는 타이머가 없을 때만 새 주기를 만듭니다. 스냅샷 단계/시간을 갱신해 경기방에 전파합니다. 입력/틱은 경기 중일 때만 작동합니다.
+- **상태/소유권 변화:** 서버 경기방이 단계와 타이머 판정 권한이 되고 클라이언트는 스냅샷을 따라갑니다.
+- **실패/예외 조건:** 잘못된 경기방, 허용되지 않은 단계, 참가자가 아닌 사용자의 요청은 상태를 바꾸지 않고 무시합니다. 당시 일시정지 동작은 기존 패들 방향을 초기화하지 않았습니다.
+- **보장 범위/보장하지 않는 범위:** 틱 중단과 중복 타이머 방지는 제공하지만 오래된 입력 중립화은 후속 수정이 필요합니다.
+- **다음 연결:** `e4e2dec55805`가 UI를 서버가 확정한 스냅샷 단계에 연결합니다.
 <!-- LEARNER-ANSWER END commit:d93612c18e6f -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `655bc7bd8df7` — `feat(protocol): 일시정지 WebSocket 계약 추가`
-- 다음 Thread 관련 SHA: `e4e2dec55805` — `feat(play): 일시정지와 재개 UI 연결`
+- 직전 개발 스레드 관련 SHA: `655bc7bd8df7` — `feat(protocol): 일시정지 WebSocket 계약 추가`
+- 다음 개발 스레드 관련 SHA: `e4e2dec55805` — `feat(play): 일시정지와 재개 UI 연결`
 
 ### 5.3. `feat(play): 일시정지와 재개 UI 연결`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `e4e2dec55805` |
-| Importance | B |
-| Tags | REALTIME, WEB |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | REALTIME, WEB |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Derives pause/resume controls from server snapshots and sends room-scoped commands.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 서버 스냅샷에서 일시정지·재개 제어 상태를 계산하고 경기방을 지정한 명령을 보냅니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `apps/web/src/app/play/page.tsx`의 `canPause`, `canResume`
-- `togglePause`의 command send
-- snapshot phase에 따른 status/button label
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
+- `togglePause`의 명령 전송
+- 스냅샷 단계에 따른 상태/버튼 라벨
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:e4e2dec55805 -->
-- **직전 상태:** play 화면에는 disabled “일시정지 예정” 버튼만 있고 server command와 연결되지 않았습니다.
-- **구현 결정:** current room과 snapshot phase에서 pause/resume 가능 여부를 계산하고 같은 버튼이 해당 command를 전송합니다. phase snapshot 수신 시 상태 문구도 갱신합니다.
-- **상태/소유권 변화:** UI는 server snapshot을 근거로 control을 활성화하며 click 직후 local phase를 임의 변경하지 않습니다.
-- **실패/edge:** command rejection/no-op을 별도 acknowledgement로 표시하지 않으며 다음 snapshot이 authority입니다.
-- **보장/비보장:** 정상 interaction은 연결하지만 server input carryover를 해결하지 않습니다.
-- **다음 연결:** `f46bbab95ea5`가 pause 전 direction이 resume에 남는 simulation bug를 교정합니다.
+- **직전 상태:** 플레이 화면에는 비활성화된 “일시정지 예정” 버튼만 있고 서버 명령과 연결되지 않았습니다.
+- **구현 결정:** 현재 경기방과 스냅샷 단계에서 일시정지/재개 가능 여부를 계산하고 같은 버튼이 해당 명령을 전송합니다. 단계 스냅샷 수신 시 상태 문구도 갱신합니다.
+- **상태/소유권 변화:** UI는 서버 스냅샷을 근거로 제어를 활성화하며 클릭 직후 로컬 단계를 임의 변경하지 않습니다.
+- **실패/예외 조건:** 실패하거나 무시된 명령에 별도 확인 응답을 보내지 않으며, 다음 서버 스냅샷이 실제 상태를 알려 줍니다.
+- **보장 범위/보장하지 않는 범위:** 정상 상호작용은 연결하지만 서버 입력 carryover를 해결하지 않습니다.
+- **다음 연결:** `f46bbab95ea5`가 일시정지 전 방향이 재개에 남는 시뮬레이션 bug를 교정합니다.
 <!-- LEARNER-ANSWER END commit:e4e2dec55805 -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `d93612c18e6f` — `feat(game): 서버 주도 일시정지 기능 추가`
-- 다음 Thread 관련 SHA: `f46bbab95ea5` — `fix(game): 일시정지 시 paddle 입력 상태 초기화`
+- 직전 개발 스레드 관련 SHA: `d93612c18e6f` — `feat(game): 서버 주도 일시정지 기능 추가`
+- 다음 개발 스레드 관련 SHA: `f46bbab95ea5` — `fix(game): 일시정지 시 paddle 입력 상태 초기화`
 
 ### 5.4. `fix(game): 일시정지 시 paddle 입력 상태 초기화`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `f46bbab95ea5` |
-| Importance | A |
-| Tags | SIMULATION, REALTIME, RISK |
-| 학습 깊이 | 주요 subsystem, 구현 경로, ownership/failure/non-guarantee를 구체적으로 복원합니다. |
+| 중요도 | A |
+| 태그 | SIMULATION, REALTIME, RISK |
+| 학습 깊이 | 주요 하위 시스템, 구현 경로, 소유권, 실패 처리, 보장하지 않는 범위를 구체적으로 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Neutralizes both snapshot and internal simulation paddle directions when a room enters paused.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 경기방이 일시정지될 때 스냅샷과 내부 시뮬레이션의 패들 방향을 모두 0으로 바꿉니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `apps/api/src/gameHub.ts`의 later `pauseRoom`
+- `apps/api/src/gameHub.ts`의 이후 `pauseRoom`
 - `roomScheduler.unregister`, `room.session.pause()`
-- left/right `snapshot.state.paddles[side].dy = 0`
+- 왼쪽·오른쪽 `snapshot.state.paddles[side].dy = 0`
 - `room.simulation.paddles[side].direction = 0`
-- parent 상태와 비교해 이전 가정, 새 boundary, caller/callee, ownership 또는 failure path를 기록합니다.
-- 이 commit이 보장하지 않는 상태와 다음 fix/test가 보강하는 지점을 구분합니다.
-- Fix chain을 `이전 가정 → 실제 실패/위험 → root cause → 교정된 결정 → 남는 비보장` 순서로 복원합니다.
+- 부모 커밋의 상태와 비교해 이전 가정, 새 경계, 호출자와 피호출자, 소유권 또는 실패 경로를 기록합니다.
+- 이 커밋이 보장하지 않는 범위와 다음 수정·테스트가 보강하는 지점을 구분합니다.
+- 수정 과정을을 `이전 가정 → 실제 실패/위험 → root cause → 교정된 결정 → 남는 비보장` 순서로 복원합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:f46bbab95ea5 -->
-- **직전 가정:** scheduler를 중단하고 phase를 paused로 바꾸면 게임 상태가 완전히 정지한다고 봤습니다.
-- **실제 실패:** pause 직전 눌린 방향이 snapshot `dy` 또는 internal simulation direction에 남아 resume 첫 tick에서 새 input 없이 패들이 계속 움직일 수 있었습니다.
-- **교정:** scheduler unregister와 성공한 `session.pause()` 뒤 양쪽 paddle의 외부 snapshot velocity와 내부 simulation direction을 모두 0으로 설정한 다음 paused snapshot을 broadcast합니다.
-- **상태/소유권 변화:** pause는 단순 clock transition이 아니라 현재 input intent의 terminal boundary가 됩니다. 서로 다른 두 state representation을 함께 갱신합니다.
-- **보장/비보장:** resume는 neutral intent에서 시작하지만 키가 실제로 계속 눌린 client가 resume 후 새 input을 보내는 것은 정상 새 의도입니다.
-- **다음 연결:** `632cbf13b616`이 fake timer로 pre-pause direction이 resume 뒤 재생되지 않는지 검증합니다.
+- **직전 가정:** 스케줄러를 중단하고 단계를 일시정지로 바꾸면 게임 상태가 완전히 정지한다고 봤습니다.
+- **실제 실패:** 일시정지 직전 눌린 방향이 스냅샷 `dy` 또는 내부 시뮬레이션 방향에 남아 재개 첫 틱에서 새 입력 없이 패들이 계속 움직일 수 있었습니다.
+- **교정:** 스케줄러 등록 해제와 성공한 `session.pause()` 뒤 양쪽 패들의 외부 스냅샷 velocity와 내부 시뮬레이션 방향을 모두 0으로 설정한 다음 일시정지 스냅샷을 전파합니다.
+- **상태/소유권 변화:** 일시정지는 단순 시계 상태 전이가 아니라 현재 입력 요청 의도의 종료 경계가 됩니다. 서로 다른 두 상태 표현을 함께 갱신합니다.
+- **보장 범위/보장하지 않는 범위:** 재개는 중립 요청 의도에서 시작하지만 키가 실제로 계속 눌린 클라이언트가 재개 후 새 입력을 보내는 것은 정상 새 의도입니다.
+- **다음 연결:** `632cbf13b616`이 가짜 타이머로 일시정지 전 방향이 재개 뒤 재생되지 않는지 검증합니다.
 <!-- LEARNER-ANSWER END commit:f46bbab95ea5 -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `e4e2dec55805` — `feat(play): 일시정지와 재개 UI 연결`
-- 다음 Thread 관련 SHA: `632cbf13b616` — `test(game): pause 전 입력이 재개 뒤 남지 않음 검증`
+- 직전 개발 스레드 관련 SHA: `e4e2dec55805` — `feat(play): 일시정지와 재개 UI 연결`
+- 다음 개발 스레드 관련 SHA: `632cbf13b616` — `test(game): pause 전 입력이 재개 뒤 남지 않음 검증`
 
 ### 5.5. `test(game): pause 전 입력이 재개 뒤 남지 않음 검증`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `632cbf13b616` |
-| Importance | B |
-| Tags | SIMULATION, REALTIME, TEST |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | SIMULATION, REALTIME, TEST |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Verifies that a pre-pause paddle direction does not survive pause and resume.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 일시정지 전 패들 방향이 일시정지와 재개 뒤에도 남지 않는지 검증합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `apps/api/src/gameHub.pause.test.ts`의 fake timers/fake socket
-- AI room 생성, ready, input sequence 0 direction 1
-- pause snapshot phase/dy 0
-- resume 후 100ms advance와 playing/dy 0
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
-- Test technique, failure/boundary fixture, production path, proves/does-not-prove를 실제 assertion으로 구분합니다.
+- `apps/api/src/gameHub.pause.test.ts`의 가짜 타이머/가짜 소켓
+- AI 경기방 생성, 준비 완료, 입력 순번 0 방향 1
+- 일시정지 스냅샷의 단계와 `dy = 0`
+- 재개 후 100ms 진행과 경기 중 단계의 `dy = 0`
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
+- 테스트 기법, 실패·경계 조건을 만드는 픽스처, 실제 코드 경로, 검증 범위와 미검증 범위를 실제 검증으로 구분합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:632cbf13b616 -->
-- **직전 상태:** neutralization fix는 있었지만 scheduler 재등록과 다음 tick까지 통과한 뒤 상태가 0인지 보장하는 test가 없었습니다.
-- **기법:** fake timers를 사용해 AI room을 만들고 ready→direction 1→pause를 보내 paused snapshot과 left `dy=0`을 확인합니다. paused 중 neutral input event를 보낸 뒤 resume하고 100ms를 진행해 playing snapshot에서도 `dy=0`인지 검사합니다.
-- **생산 경로:** 실제 GameHub event handling, room/session/scheduler, snapshot parsing을 fake WebSocket으로 실행합니다.
-- **증명/비증명:** pause boundary가 stale direction을 지우고 resume ticks가 이를 되살리지 않음을 검증하도록 작성됐습니다. 실제 브라우저 keyup, 장시간 pause, reconnect는 검증하지 않습니다.
-- **보장:** snapshot과 simulation neutralization 중 하나가 빠지는 regression을 감지합니다.
-- **Thread 종료:** pause/resume는 server phase·scheduler·input intent를 함께 전환하는 lifecycle이 됩니다.
+- **직전 상태:** 중립화 수정은 있었지만 스케줄러 재등록과 다음 틱까지 통과한 뒤 상태가 0인지 보장하는 테스트가 없었습니다.
+- **기법:** 가짜 타이머를 사용해 AI 경기방을 만들고 준비 완료→방향 1→일시정지를 보내 일시정지 스냅샷과 left `dy=0`을 확인합니다. 일시정지 중 중립 입력 이벤트를 보낸 뒤 재개하고 100ms를 진행해 경기 중 스냅샷에서도 `dy=0`인지 검사합니다.
+- **생산 경로:** 실제 GameHub 이벤트 처리, 경기방/세션/스케줄러, 스냅샷 파싱을 가짜 WebSocket으로 실행합니다.
+- **검증 범위와 미검증 범위:** 일시정지 경계가 오래된 방향을 지우고 재개 틱이 이를 되살리지 않음을 검증하도록 작성됐습니다. 실제 브라우저 keyup, 장시간 일시정지, 재연결은 검증하지 않습니다.
+- **보장:** 스냅샷과 시뮬레이션 중립화 중 하나가 빠지는 회귀를 감지합니다.
+- **개발 스레드 종료:** 일시정지/재개는 서버 단계·스케줄러·입력 요청 의도를 함께 전환하는 수명주기가 됩니다.
 <!-- LEARNER-ANSWER END commit:632cbf13b616 -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `f46bbab95ea5` — `fix(game): 일시정지 시 paddle 입력 상태 초기화`
-- 이 commit을 Thread의 마지막 상태로 사용합니다.
+- 직전 개발 스레드 관련 SHA: `f46bbab95ea5` — `fix(game): 일시정지 시 paddle 입력 상태 초기화`
+- 이 커밋을 개발 스레드의 마지막 상태로 사용합니다.
 
-## 6. Thread 종합
+## 6. 개발 스레드 종합
 
-다음 항목을 commit 순서에서 재구성합니다: invariant evolution, Failure → Fix → Test 관계, ownership/state 변화, 최종 실행 흐름, 비보장, 실제 실행 증거.
+다음 항목을 커밋 순서에서 재구성합니다: 불변 조건 변화, 실패 → 수정 → 테스트 관계, 소유권/상태 변화, 최종 실행 흐름, 보장하지 않는 범위, 실제 실행 증거.
 
 <!-- LEARNER-ANSWER START thread:06-pause-resume-and-input-neutralization.md:synthesis -->
-- **불변식 진화:** `655bc7bd8df7`은 `paused` phase와 pause/resume commands를 공유 계약에 추가했습니다. `d93612c18e6f`는 GameHub가 participant/phase를 검사하고 timer를 clear/restart하며 playing일 때만 input/tick을 허용하게 했습니다. `e4e2dec55805`는 snapshot phase로 UI 가능 여부를 계산했습니다. 그러나 later simulation/session refactor 상태에서 pause 전 direction이 남았고, `f46bbab95ea5`가 snapshot `dy`와 internal simulation direction을 모두 0으로 만들었습니다.
-- **소유권:** server session/room이 phase authority이며 scheduler/timer는 tick ownership을 표현합니다. snapshot은 client-visible state, simulation object는 다음 tick에 사용할 internal intent를 소유합니다. UI는 command를 요청할 뿐 phase를 낙관적으로 바꾸지 않습니다.
-- **Failure → Fix → Test:** timer 중단만 수행 → resume 첫 tick에서 stale direction 재적용 위험 → 두 state representation 모두 neutralize → fake timers와 fake socket으로 input 1→pause→dy 0→resume/tick→dy 0을 검증합니다.
-- **최종 흐름:** participant가 playing room에 pause 전송 → scheduler unregister/session pause → 양 paddle의 snapshot/internal direction 0 → paused snapshot broadcast → paused 중 input은 적용되지 않음 → participant resume → session playing/scheduler register → neutral state에서 ticks 재개입니다.
-- **비보장:** pause timeout, 합의형 pause, reconnect 후 pause ownership, process restart persistence는 이 Thread의 기능이 아닙니다.
-- **실행 증거:** test 구현은 exact SHA에서 검사했으나 Vitest fake-timer suite를 실행하지 않았습니다.
+- **불변식 진화:** `655bc7bd8df7`은 `paused` 단계와 일시정지/재개 명령을 공유 계약에 추가했습니다. `d93612c18e6f`는 GameHub가 참가자/단계를 검사하고 타이머를 해제/재시작하며 경기 중일 때만 입력/틱을 허용하게 했습니다. `e4e2dec55805`는 스냅샷 단계로 UI 가능 여부를 계산했습니다. 그러나 이후 시뮬레이션/세션 리팩터링 상태에서 일시정지 전 방향이 남았고, `f46bbab95ea5`가 스냅샷 `dy`와 내부 시뮬레이션 방향을 모두 0으로 만들었습니다.
+- **소유권:** 서버 세션/경기방이 단계 판정 권한이며 스케줄러/타이머는 틱 소유권을 표현합니다. 스냅샷은 클라이언트 표시되는 상태, 시뮬레이션 객체는 다음 틱에 사용할 내부 요청 의도를 소유합니다. UI는 명령을 요청할 뿐 단계를 낙관적으로 바꾸지 않습니다.
+- **실패 → 수정 → 테스트:** 타이머 중단만 수행 → 재개 첫 틱에서 오래된 방향 재적용 위험 → 두 상태 표현 모두 neutralize → 가짜 타이머와 가짜 소켓으로 입력 1→일시정지→dy 0→재개/틱→dy 0을 검증합니다.
+- **최종 흐름:** 참가자가 경기 중 경기방에 일시정지 전송 → 스케줄러 등록 해제/세션 일시정지 → 양 패들의 스냅샷/내부 방향 0 → 일시정지 스냅샷 전파 → 일시정지 중 입력은 적용되지 않음 → 참가자 재개 → 세션 경기 중/스케줄러 등록 → 중립 상태에서 틱 재개입니다.
+- **보장하지 않는 범위:** 일시정지 시간 초과, 합의형 일시정지, 재연결 후 일시정지 소유권, 프로세스 재시작 영속 저장은 이 개발 스레드의 기능이 아닙니다.
+- **실행 증거:** 테스트 구현은 정확한 SHA에서 검사했으나 Vitest 가짜 타이머 테스트 모음을 실행하지 않았습니다.
 <!-- LEARNER-ANSWER END thread:06-pause-resume-and-input-neutralization.md:synthesis -->
 
 ## 7. 학습 완료 확인
 
 <!-- LEARNER-ANSWER START thread:06-pause-resume-and-input-neutralization.md:checklist -->
-- [x] 모든 SHA를 지정 브랜치의 exact commit으로 검사했습니다.
-- [x] fixed commit map과 source classification을 보존했습니다.
-- [x] earlier commit을 later HEAD 코드로 설명하지 않았습니다.
-- [x] fix와 test를 원래 failure/production path에 연결했습니다.
-- [x] 실제 실행하지 않은 test를 통과했다고 기록하지 않았습니다.
-- [x] Thread 최종 owner, invariant, flow, non-guarantee를 작성했습니다.
+- [x] 모든 SHA를 지정 브랜치의 정확한 커밋으로 검사했습니다.
+- [x] 고정된 커밋 목록과 원문 분류를 보존했습니다.
+- [x] earlier 커밋을 후속 최종 상태 코드로 설명하지 않았습니다.
+- [x] 수정과 테스트를 원래 실패/실제 코드 경로에 연결했습니다.
+- [x] 실제 실행하지 않은 테스트를 통과했다고 기록하지 않았습니다.
+- [x] 개발 스레드 최종 소유 주체, 불변 조건, 실행 순서, 보장하지 않는 범위를 작성했습니다.
 <!-- LEARNER-ANSWER END thread:06-pause-resume-and-input-neutralization.md:checklist -->
 ===== END FILE: 06-pause-resume-and-input-neutralization.md =====
 
 ===== BEGIN FILE: 07-npc-ai-policy-and-fallback-journey.md =====
-# NPC AI 정책과 fallback 여정
+# NPC AI 정책과 대체 처리 여정
 
-원문 Development Thread: `NPC AI policy and fallback journey`
+원문 개발 스레드: `NPC AI policy and fallback journey`
 
-## 1. Thread 목표
+## 1. 개발 스레드 목표
 
-- NPC를 익명 문자열이 아니라 `isNpc`가 저장된 사용자 identity로 도입하고 rating band별 상대를 구성하는 과정을 추적합니다.
-- 직접 AI 모드와 6초 human-queue fallback이 같은 persisted NPC를 room participant와 match result에 연결하는 경로를 복원합니다.
-- rating 기반 반응 주기·예측 오차·실수 확률·속도·dead zone을 deterministic policy로 구현하고 UI/smoke test에 노출하는 과정을 확인합니다.
+- NPC를 익명 문자열이 아니라 `isNpc`가 저장된 사용자 신원으로 도입하고 레이팅 band별 상대를 구성하는 과정을 추적합니다.
+- 직접 AI 모드와 6초 사람 사용자 대기열 대체 처리가 같은 저장된 NPC를 경기방 참가자와 경기 결과에 연결하는 경로를 복원합니다.
+- 레이팅 기반 반응 주기·예측 오차·실수 확률·속도·무반응 구간을 결정적 규칙으로 구현하고 UI/실행 확인 테스트에 노출하는 과정을 확인합니다.
 
-### Source에서 확정된 significance
+### 원문에서 확인한 중요성
 
-> An AI opponent affects identity, matchmaking, room membership, simulation policy, persistence, ranking/profile presentation, and cleanup. Treating it as a label loses result attribution; treating fallback as an uncancelled timer can create duplicate matches. The history gives NPCs durable identity and explicit timer/state ownership.
+> AI 상대는 신원, 대전 상대 연결, 경기방 참가, 시뮬레이션 규칙, 영속 저장, 순위·프로필 표시, 정리에 영향을 줍니다. 단순 라벨로 취급하면 결과 귀속이 사라지고, 취소하지 않은 대체 타이머로 처리하면 중복 경기가 생길 수 있습니다. 이후 커밋은 NPC에 영속 신원과 명시적 타이머·상태 소유권을 부여합니다.
 
-### 직접 연결되는 Critical Invariants
+### 직접 연결되는 핵심 불변 조건
 
-> NPC opponents are persisted users marked `isNpc`, remain offline as presence, and are selected by rating without being confused with authenticated human identities.
+> NPC 상대는 `isNpc`로 표시해 사용자 테이블에 저장합니다. 접속 상태는 항상 오프라인으로 유지하며, 인증된 사람 사용자와 구분한 채 평점에 따라 상대를 선택합니다.
 >
-> A queued player is matched at most once: human pairing, leave, disconnect/prune, or NPC fallback all clear the queue timer and revalidate membership before room creation.
+> 대기 사용자는 최대 한 번만 매칭됩니다. 사람 사용자와의 매칭, 대기열 이탈, 연결 해제·정리, NPC 대체 처리 모두 대기열 타이머를 해제하고 경기방 생성 전에 참가 상태를 다시 확인합니다.
 
-### 직접 연결되는 Major Engineering Difficulties
+### 직접 연결되는 주요 구현 난점
 
-> Maintaining PostgreSQL/memory parity for seeded NPC identity while avoiding handle collisions that leave a real login marked as NPC.
+> NPC 초기 데이터 동작을 PostgreSQL과 메모리 저장소에서 맞추면서, 핸들 충돌로 실제 로그인 사용자가 NPC 상태에 남는 문제를 막아야 합니다.
 >
-> Making AI variation reproducible from room/tick state so policy can be reasoned about and tested without ambient randomness.
+> 주변 난수에 의존하지 않고 경기방·틱 상태에서 AI 변화를 재현할 수 있어야 규칙을 분석하고 테스트할 수 있습니다.
 
-## 2. 이 Thread를 이해하기 위한 핵심 질문
+## 2. 이 개발 스레드를 이해하기 위한 핵심 질문
 
-- `is_npc`는 schema, shared `PublicUser`, row mapper, chat/tournament projections에 어떻게 전파됩니까?
-- dev login과 NPC upsert가 같은 handle을 만날 때 어떤 값을 다시 설정해 identity 오염을 막습니까?
-- `findClosestNpc`는 rating distance 동률과 empty NPC list를 어떻게 처리합니까?
-- 6초 fallback callback은 timer가 발화한 뒤 queue membership, socket open, existing room을 왜 다시 확인합니까?
-- human match, leave, prune에서 `clearQueueTimer`를 빠뜨리면 어떤 duplicate room 위험이 생깁니까?
-- AI profile의 reaction/noise/mistake/speed/dead-zone와 `predictedBallY` 반사가 gameplay에 어떻게 반영됩니까?
-- smoke test는 solo queue가 실제 persisted NPC handle을 가진 snapshot으로 이어졌음을 어떻게 확인합니까?
+- `is_npc`는 스키마, 공유 `PublicUser`, 행 변환기, 채팅/토너먼트 외부 표현에 어떻게 전파됩니까?
+- 개발 로그인과 NPC 업서트가 같은 핸들을 만날 때 어떤 값을 다시 설정해 신원 오염을 막습니까?
+- `findClosestNpc`는 레이팅 distance 동률과 빈 NPC 목록을 어떻게 처리합니까?
+- 6초 대체 처리 콜백은 타이머가 발화한 뒤 대기열 소속 정보, 소켓 열기, 기존 경기방을 왜 다시 확인합니까?
+- 사람 사용자 경기, 이탈, 정리에서 `clearQueueTimer`를 빠뜨리면 어떤 중복 경기방 위험이 생깁니까?
+- AI 프로필의 `reaction`, `noise`, `mistake`, `speed`, `dead-zone` 설정과 `predictedBallY` 계산 결과가 게임 진행에 어떻게 반영됩니까?
+- 실행 확인 테스트는 solo 대기열이 실제 저장된 NPC 핸들을 가진 스냅샷으로 이어졌음을 어떻게 확인합니까?
 
 ## 3. 완료 기준
 
-- NPC identity가 DB row에서 room snapshot과 persisted match result까지 이동하는 경로를 설명할 수 있습니다.
-- queue entry와 fallback timer의 lifetime 및 모든 cancellation path를 나열할 수 있습니다.
-- rating band별 AI profile과 deterministic pseudo-random 입력의 seed를 실제 함수로 설명할 수 있습니다.
-- UI의 AI badge/친구 버튼 제한과 server-side identity rule의 차이를 구분할 수 있습니다.
-- smoke test가 검증하는 end-to-end 연결과 AI 품질 자체를 검증하지 않는다는 한계를 설명할 수 있습니다.
-- Commit map의 모든 SHA를 지정 브랜치 ancestry와 source classification에서 확인합니다.
-- 각 SHA의 parent 또는 직전 관련 SHA와 비교해 변경 전후 상태를 구분합니다.
-- 실행한 명령과 코드 검사만으로 확인한 사실을 구분하고 실행하지 않은 test를 통과했다고 기록하지 않습니다.
+- NPC 신원이 DB 행에서 경기방 스냅샷과 저장된 경기 결과까지 이동하는 경로를 설명할 수 있습니다.
+- 대기열 항목과 대체 처리 타이머의 수명 및 모든 취소 경로를 나열할 수 있습니다.
+- 레이팅 band별 AI 프로필과 결정적 pseudo-random 입력의 시드를 실제 함수로 설명할 수 있습니다.
+- UI의 AI 배지/친구 버튼 제한과 서버 측 신원 확인 규칙의 차이를 구분할 수 있습니다.
+- 실행 확인 테스트가 검증하는 종단 간 연결과 AI 품질 자체를 검증하지 않는다는 한계를 설명할 수 있습니다.
+- 커밋 목록의 모든 SHA를 지정 브랜치의 커밋 이력과 원문 분류에서 확인합니다.
+- 각 SHA를 부모 커밋 또는 직전 관련 SHA와 비교해 변경 전후 상태를 구분합니다.
+- 실행한 명령과 코드 검사만으로 확인한 사실을 구분하고 실행하지 않은 테스트를 통과했다고 기록하지 않습니다.
 
-## 4. Commit map
+## 4. 커밋 목록
 
-| 순서 | SHA | Subject | Importance | Tags | Source에서 확정된 역할 |
+| 순서 | SHA | 제목 | 중요도 | 태그 | 원문에서 확인한 역할 |
 | ---: | --- | --- | :---: | --- | --- |
-| 1 | `72d23baefc3c` | `feat(db): NPC 사용자 contract와 schema 추가` | B | REALTIME, PERSISTENCE, TOURNAMENT | Adds a persisted NPC marker to user storage and every shared projection that can carry a user. |
-| 2 | `b3239bae51e5` | `feat(db): rating 구간별 NPC 상대 저장` | B | REALTIME, PERSISTENCE | Seeds rating-banded NPC users and exposes active NPC opponents separately from presence. |
-| 3 | `dec431822873` | `test(db): NPC seed와 leaderboard 분리 검증` | B | REALTIME, PERSISTENCE, TEST | Verifies the memory repository exposes rating-banded NPC opponents as NPC and offline projections. |
-| 4 | `87b38e2f23c8` | `feat(game): NPC 상대를 경기 방에 연결` | B | REALTIME | Uses persisted NPC identity in AI rooms and match-result attribution. |
-| 5 | `1122e6a4b901` | `feat(game): 대기 플레이어 NPC fallback 구성` | B | REALTIME | Adds six-second NPC fallback with explicit timer cleanup and asynchronous revalidation. |
-| 6 | `b159bcda3b83` | `feat(game): rating 기반 NPC AI policy 구현` | B | SIMULATION, REALTIME, WEB | Maps NPC rating bands to deterministic reaction, prediction, mistake, speed, and dead-zone policy. |
-| 7 | `afd0a97c5c1c` | `feat(web): 대기열에서 NPC 상대 표시` | B | REALTIME, WEB | Exposes NPC identity and fallback behavior in queue, play, profile, and ranking presentation. |
-| 8 | `cfb15fc84dee` | `test(app): NPC fallback matching 검증` | B | PROTOCOL, REALTIME, PERSISTENCE | Extends the WebSocket smoke test through solo queue fallback into an NPC-backed room snapshot. |
+| 1 | `72d23baefc3c` | `feat(db): NPC 사용자 contract와 schema 추가` | B | REALTIME, PERSISTENCE, TOURNAMENT | 사용자 저장소와 사용자를 포함할 수 있는 모든 공유 조회 결과에 영속 NPC 표시값을 추가합니다. |
+| 2 | `b3239bae51e5` | `feat(db): rating 구간별 NPC 상대 저장` | B | REALTIME, PERSISTENCE | 레이팅 구간별 NPC 사용자를 초기 데이터로 만들고 활성 NPC 상대 목록을 접속 상태와 분리해 제공합니다. |
+| 3 | `dec431822873` | `test(db): NPC seed와 leaderboard 분리 검증` | B | REALTIME, PERSISTENCE, TEST | 메모리 저장소가 레이팅 구간별 NPC 상대를 NPC이면서 오프라인인 조회 결과로 제공하는지 검증합니다. |
+| 4 | `87b38e2f23c8` | `feat(game): NPC 상대를 경기 방에 연결` | B | REALTIME | AI 경기방과 경기 결과 작성자 표시에 영속 NPC 신원을 사용합니다. |
+| 5 | `1122e6a4b901` | `feat(game): 대기 플레이어 NPC fallback 구성` | B | REALTIME | 명시적 타이머 정리와 비동기 재검증을 포함한 6초 NPC 대체 처리를 추가합니다. |
+| 6 | `b159bcda3b83` | `feat(game): rating 기반 NPC AI policy 구현` | B | SIMULATION, REALTIME, WEB | NPC 레이팅 구간을 결정적인 반응, 예측, 실수, 속도, 무반응 구간 규칙에 연결합니다. |
+| 7 | `afd0a97c5c1c` | `feat(web): 대기열에서 NPC 상대 표시` | B | REALTIME, WEB | 대기열, 경기, 프로필, 순위 화면에서 NPC 신원과 대체 동작을 표시합니다. |
+| 8 | `cfb15fc84dee` | `test(app): NPC fallback matching 검증` | B | PROTOCOL, REALTIME, PERSISTENCE | WebSocket 스모크 테스트를 1인 대기열의 NPC 대체 처리와 NPC 경기방 스냅샷까지 확장합니다. |
 
-## 5. Commit별 학습 기록
+## 5. 커밋별 학습 기록
 
 ### 5.1. `feat(db): NPC 사용자 contract와 schema 추가`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `72d23baefc3c` |
-| Importance | B |
-| Tags | REALTIME, PERSISTENCE, TOURNAMENT |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | REALTIME, PERSISTENCE, TOURNAMENT |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Adds a persisted NPC marker to user storage and every shared projection that can carry a user.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 사용자 저장소와 사용자를 포함할 수 있는 모든 공유 조회 결과에 영속 NPC 표시값을 추가합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `packages/shared/src/http.ts`의 `PublicUser.isNpc`
 - `packages/db/src/migrations.ts`의 `users.is_npc boolean not null default false`
-- `packages/db/src/schema.ts`의 user/projection row 타입
-- `packages/db/src/rowMappers.ts` 및 chat/tournament query projection
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
+- `packages/db/src/schema.ts`의 사용자 행과 외부 표현용 행 타입
+- `packages/db/src/rowMappers.ts` 및 채팅/토너먼트 쿼리 결과 변환
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:72d23baefc3c -->
-- **직전 상태:** AI 상대는 room 안의 특수 문자열/flag로 표현돼 사용자·chat·tournament projection과 같은 identity contract를 갖지 못했습니다.
-- **구현 결정:** users row에 `is_npc`를 추가하고 shared `PublicUser.isNpc`로 mapping하며 chat sender와 tournament creator/participant query도 해당 column을 선택합니다. memory dev user는 false입니다.
-- **상태/소유권 변화:** NPC 여부가 room 임시 label이 아니라 durable user identity 속성이 됩니다.
-- **실패/edge:** marker만 추가했으므로 실제 NPC row와 선택 정책은 아직 없습니다. 기존 row는 default false입니다.
-- **보장/비보장:** user가 전달되는 contract 전반에서 NPC 여부를 보존하지만 NPC가 online인지, 어떤 rating인지, 누구와 match할지는 정하지 않습니다.
-- **다음 연결:** `b3239bae51e5`가 rating band별 NPC row를 seed하고 별도 조회를 구현합니다.
+- **직전 상태:** AI 상대는 경기방 안의 특수 문자열/표시값으로 표현돼 사용자·채팅·토너먼트 외부 표현과 같은 신원 계약을 갖지 못했습니다.
+- **구현 결정:** 사용자 행에 `is_npc`를 추가하고 공유 `PublicUser.isNpc`로 매핑하며 채팅 발신자와 토너먼트 생성자/참가자 쿼리도 해당 열을 선택합니다. 메모리 개발 사용자는 false입니다.
+- **상태/소유권 변화:** NPC 여부가 경기방 임시 라벨이 아니라 영속 사용자 신원 속성이 됩니다.
+- **실패/예외 조건:** 표식만 추가했으므로 실제 NPC 행과 선택 정책은 아직 없습니다. 기존 행은 기본값 false입니다.
+- **보장 범위/보장하지 않는 범위:** 사용자가 전달되는 계약 전반에서 NPC 여부를 보존하지만 NPC가 온라인인지, 어떤 레이팅인지, 누구와 경기할지는 정하지 않습니다.
+- **다음 연결:** `b3239bae51e5`가 레이팅 band별 NPC 행을 시드하고 별도 조회를 구현합니다.
 <!-- LEARNER-ANSWER END commit:72d23baefc3c -->
 
 비교 기준:
-- 이 commit의 parent와 비교합니다.
-- 다음 Thread 관련 SHA: `b3239bae51e5` — `feat(db): rating 구간별 NPC 상대 저장`
+- 이 커밋의 부모 커밋과 비교합니다.
+- 다음 개발 스레드 관련 SHA: `b3239bae51e5` — `feat(db): rating 구간별 NPC 상대 저장`
 
 ### 5.2. `feat(db): rating 구간별 NPC 상대 저장`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `b3239bae51e5` |
-| Importance | B |
-| Tags | REALTIME, PERSISTENCE |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | REALTIME, PERSISTENCE |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Seeds rating-banded NPC users and exposes active NPC opponents separately from presence.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 레이팅 구간별 NPC 사용자를 초기 데이터로 만들고 활성 NPC 상대 목록을 접속 상태와 분리해 제공합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `packages/db/src/index.ts`의 `NPC_PLAYERS` 1100/1200/1300/1400
 - PostgreSQL `upsertNpc`와 `listNpcOpponents`
-- memory seed/list parity
-- dev user upsert의 `is_npc = false` 복구
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
+- 메모리 시드/목록 동작 일치
+- 개발 사용자 업서트의 `is_npc = false` 복구
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:b3239bae51e5 -->
-- **직전 상태:** `isNpc` 필드는 있었지만 사용할 NPC row가 없고 repository에서 NPC 후보를 가져올 API가 없었습니다.
-- **구현 결정:** 네 고정 handle/display/avatar/rating seed를 active `is_npc=true`, email null로 upsert하고 rating 오름차순 `listNpcOpponents`를 추가합니다. projection은 online false입니다. 같은 handle로 dev login하면 `is_npc=false`로 되돌립니다.
-- **상태/소유권 변화:** NPC identity/rating band는 repository seed가 소유하며 realtime presence와 분리됩니다.
-- **실패/edge:** 고정 seed 정책은 운영 콘텐츠 변경 시 migration/seed update가 필요하고, 단순 rating distance 외 gameplay skill calibration은 아직 없습니다.
-- **보장/비보장:** 양 backend에서 같은 후보 집합과 human/NPC marker 복구를 제공하지만 match selection은 다음 commit입니다.
-- **다음 연결:** `dec431822873`이 seed ratings/marker/offline projection을 고정합니다.
+- **직전 상태:** `isNpc` 필드는 있었지만 사용할 NPC 행이 없고 저장소에서 NPC 후보를 가져올 API가 없었습니다.
+- **구현 결정:** 네 고정 핸들/표시 이름·아바타/레이팅 시드를 활성 `is_npc=true`, 이메일 null로 업서트하고 레이팅 오름차순 `listNpcOpponents`를 추가합니다. 외부 표현의 `online` 값은 `false`입니다. 같은 핸들로 개발 로그인하면 `is_npc=false`로 되돌립니다.
+- **상태/소유권 변화:** NPC 신원/레이팅 band는 저장소 시드가 소유하며 실시간 접속 상태와 분리됩니다.
+- **실패/예외 조건:** 고정 시드 정책은 운영 콘텐츠 변경 시 마이그레이션/시드 갱신이 필요하고, 단순 레이팅 distance 외 게임 진행 skill calibration은 아직 없습니다.
+- **보장 범위/보장하지 않는 범위:** 양 백엔드에서 같은 후보 집합과 사람 사용자/NPC 표식 복구를 제공하지만 경기 선택은 다음 커밋입니다.
+- **다음 연결:** `dec431822873`이 시드 레이팅/표식/오프라인 변환 결과를 고정합니다.
 <!-- LEARNER-ANSWER END commit:b3239bae51e5 -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `72d23baefc3c` — `feat(db): NPC 사용자 contract와 schema 추가`
-- 다음 Thread 관련 SHA: `dec431822873` — `test(db): NPC seed와 leaderboard 분리 검증`
+- 직전 개발 스레드 관련 SHA: `72d23baefc3c` — `feat(db): NPC 사용자 contract와 schema 추가`
+- 다음 개발 스레드 관련 SHA: `dec431822873` — `test(db): NPC seed와 leaderboard 분리 검증`
 
 ### 5.3. `test(db): NPC seed와 leaderboard 분리 검증`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `dec431822873` |
-| Importance | B |
-| Tags | REALTIME, PERSISTENCE, TEST |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | REALTIME, PERSISTENCE, TEST |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Verifies the memory repository exposes rating-banded NPC opponents as NPC and offline projections.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 메모리 저장소가 레이팅 구간별 NPC 상대를 NPC이면서 오프라인인 조회 결과로 제공하는지 검증합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `packages/db/src/index.test.ts`의 `ensureSeedData` 후 `listNpcOpponents`
-- ratings `[1100, 1200, 1300, 1400]`
+- 레이팅 `[1100, 1200, 1300, 1400]`
 - 모두 `isNpc === true`, `online === false`
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
-- Test technique, failure/boundary fixture, production path, proves/does-not-prove를 실제 assertion으로 구분합니다.
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
+- 테스트 기법, 실패·경계 조건을 만드는 픽스처, 실제 코드 경로, 검증 범위와 미검증 범위를 실제 검증으로 구분합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:dec431822873 -->
-- **직전 상태:** seed/list 구현은 있었지만 order, marker, presence projection이 바뀌어도 감지할 regression이 없었습니다.
-- **기법:** memory repository를 seed한 뒤 NPC 목록 rating 배열과 모든 `isNpc`, 모든 offline 값을 직접 검사합니다.
-- **생산 경로:** 실제 memory seed와 public projection/list sorting을 통과합니다.
-- **증명/비증명:** 후보 집합과 identity/presence 분리를 검증하도록 작성됐지만 PostgreSQL seed, leaderboard 표시, match 결과 저장은 포함하지 않습니다.
-- **보장:** 개발/test backend에서 stable rating bands를 제공합니다.
-- **다음 연결:** `87b38e2f23c8`이 후보를 실제 room과 result persistence에 연결합니다.
+- **직전 상태:** 시드/목록 구현은 있었지만 순서, 표식, 접속 상태 변환 결과가 바뀌어도 감지할 회귀가 없었습니다.
+- **기법:** 메모리 저장소를 시드한 뒤 NPC 목록 레이팅 배열과 모든 `isNpc`, 모든 오프라인 값을 직접 검사합니다.
+- **생산 경로:** 실제 메모리 시드와 공개 사용자 정보/목록 sorting을 통과합니다.
+- **검증 범위와 미검증 범위:** 후보 집합과 신원/접속 상태 분리를 검증하도록 작성됐지만 PostgreSQL 시드, 순위표 표시, 경기 결과 저장은 포함하지 않습니다.
+- **보장:** 개발·테스트 백엔드에서 안정적인 레이팅 구간을 제공합니다.
+- **다음 연결:** `87b38e2f23c8`이 후보를 실제 경기방과 결과 영속 저장에 연결합니다.
 <!-- LEARNER-ANSWER END commit:dec431822873 -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `b3239bae51e5` — `feat(db): rating 구간별 NPC 상대 저장`
-- 다음 Thread 관련 SHA: `87b38e2f23c8` — `feat(game): NPC 상대를 경기 방에 연결`
+- 직전 개발 스레드 관련 SHA: `b3239bae51e5` — `feat(db): rating 구간별 NPC 상대 저장`
+- 다음 개발 스레드 관련 SHA: `87b38e2f23c8` — `feat(game): NPC 상대를 경기 방에 연결`
 
 ### 5.4. `feat(game): NPC 상대를 경기 방에 연결`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `87b38e2f23c8` |
-| Importance | B |
-| Tags | REALTIME |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | REALTIME |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Uses persisted NPC identity in AI rooms and match-result attribution.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: AI 경기방과 경기 결과 작성자 표시에 영속 NPC 신원을 사용합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `apps/api/src/gameHub.ts`의 async `joinQueue`와 `findClosestNpc`
-- absolute rating distance selection
-- `createRoom`의 `npc` option/right player snapshot
-- `finishRoom`의 winner/loser ID에 NPC identity 사용
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
+- `apps/api/src/gameHub.ts`의 비동기 처리 `joinQueue`와 `findClosestNpc`
+- absolute 레이팅 distance 선택
+- `createRoom`의 `npc` 옵션/right 플레이어 스냅샷
+- `finishRoom`의 승자/패자 ID에 NPC 신원 사용
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:87b38e2f23c8 -->
-- **직전 상태:** AI room의 오른쪽 참가자는 `ai-opponent`/`ai`/`연습 AI` 같은 익명 fallback이라 generic match가 실제 상대 user를 참조하지 못했습니다.
-- **구현 결정:** repository NPC 목록에서 `abs(npc.rating - player.rating)`이 가장 작은 후보를 선택하고 room snapshot의 오른쪽 participant와 opponent label에 사용합니다. 종료 시 room이 보관한 NPC user ID를 winner/loser로 넘깁니다.
-- **상태/소유권 변화:** room은 선택된 persisted NPC identity를 lifetime 동안 보존하고 result persistence도 같은 ID를 사용합니다.
-- **실패/edge:** 후보가 없으면 기존 anonymous fallback이 남을 수 있고 동률은 먼저 나온 rating-order 후보가 선택됩니다. 일반 human queue의 지연 fallback은 아직 없습니다.
-- **보장/비보장:** 직접 AI room의 identity attribution은 제공하지만 queue timeout ownership은 다음 commit입니다.
-- **다음 연결:** `1122e6a4b901`이 human 상대가 없을 때 같은 NPC를 6초 fallback으로 배정합니다.
+- **직전 상태:** AI 경기방의 오른쪽 참가자는 `ai-opponent`/`ai`/`연습 AI` 같은 익명 대체 처리이라 일반 경기가 실제 상대 사용자를 참조하지 못했습니다.
+- **구현 결정:** 저장소 NPC 목록에서 `abs(npc.rating - player.rating)`이 가장 작은 후보를 선택하고 경기방 스냅샷의 오른쪽 참가자와 상대 라벨에 사용합니다. 종료 시 경기방이 보관한 NPC 사용자 ID를 승자/패자로 넘깁니다.
+- **상태/소유권 변화:** 경기방은 선택된 저장된 NPC 신원을 수명 동안 보존하고 결과 영속 저장도 같은 ID를 사용합니다.
+- **실패/예외 조건:** 후보가 없으면 기존 anonymous 대체 처리가 남을 수 있고 동률은 먼저 나온 레이팅 순서 후보가 선택됩니다. 일반 사람 사용자 대기열의 지연 대체 처리는 아직 없습니다.
+- **보장 범위/보장하지 않는 범위:** 직접 AI 경기방의 신원 attribution은 제공하지만 대기열 시간 초과 소유권은 다음 커밋입니다.
+- **다음 연결:** `1122e6a4b901`이 사람 사용자 상대가 없을 때 같은 NPC를 6초 대체 처리로 배정합니다.
 <!-- LEARNER-ANSWER END commit:87b38e2f23c8 -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `dec431822873` — `test(db): NPC seed와 leaderboard 분리 검증`
-- 다음 Thread 관련 SHA: `1122e6a4b901` — `feat(game): 대기 플레이어 NPC fallback 구성`
+- 직전 개발 스레드 관련 SHA: `dec431822873` — `test(db): NPC seed와 leaderboard 분리 검증`
+- 다음 개발 스레드 관련 SHA: `1122e6a4b901` — `feat(game): 대기 플레이어 NPC fallback 구성`
 
 ### 5.5. `feat(game): 대기 플레이어 NPC fallback 구성`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `1122e6a4b901` |
-| Importance | B |
-| Tags | REALTIME |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | REALTIME |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Adds six-second NPC fallback with explicit timer cleanup and asynchronous revalidation.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 명시적 타이머 정리와 비동기 재검증을 포함한 6초 NPC 대체 처리를 추가합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `apps/api/src/gameHub.ts`의 `QueueEntry.npcFallbackTimer`
 - `NPC_QUEUE_FALLBACK_MS = 6000`
-- `matchQueuedClientWithNpc` membership/socket/room checks
-- human match, `leaveQueue`, `pruneQueue`의 `clearQueueTimer`
-- Room `npcUser`와 result attribution
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
+- `matchQueuedClientWithNpc` 소속 정보/소켓/경기방 검사
+- 사람 사용자 경기, `leaveQueue`, `pruneQueue`의 `clearQueueTimer`
+- 경기방 `npcUser`와 결과 귀속
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:1122e6a4b901 -->
-- **직전 상태:** 일반 queue에 human이 없으면 무기한 기다렸고 NPC는 명시적 AI mode에서만 즉시 배정됐습니다.
-- **구현 결정:** unmatched queue entry마다 6초 timer를 만들고 callback에서 entry가 아직 queue에 있는지, socket이 OPEN인지, 이미 room이 없는지 재확인한 뒤 closest NPC로 room을 만듭니다. human pair, leave, closed-socket prune는 timer를 clear/null합니다.
-- **상태/소유권 변화:** fallback timer는 queue entry의 자원이며 queue membership이 lifetime을 결정합니다. room은 선택된 `npcUser`를 별도로 보관합니다.
-- **실패/edge:** callback의 NPC lookup은 async이므로 timer 발화 뒤 상태가 바뀔 수 있어 재검사가 필수입니다. 정리를 빠뜨리면 human room 뒤 두 번째 NPC room이 생길 수 있습니다.
-- **보장/비보장:** 단일 GameHub process에서 queue entry당 한 fallback path를 목표로 하지만 multi-process reservation은 later Matchmaker(category 05)가 담당합니다.
-- **다음 연결:** `b159bcda3b83`이 NPC rating을 실제 AI 행동 profile로 사용합니다.
+- **직전 상태:** 일반 대기열에 사람 사용자가 없으면 무기한 기다렸고 NPC는 명시적 AI 모드에서만 즉시 배정됐습니다.
+- **구현 결정:** 아직 매칭되지 않은 대기열 항목마다 6초 타이머를 만듭니다. 콜백에서는 항목이 대기열에 남아 있는지, 소켓 상태가 `OPEN`인지, 이미 참가 중인 경기방이 없는지 다시 확인한 뒤 레이팅이 가장 가까운 NPC와 경기방을 만듭니다. 두 사용자가 매칭되거나 사용자가 이탈하거나 닫힌 소켓을 정리할 때는 타이머를 해제하고 참조를 `null`로 바꿉니다.
+- **상태/소유권 변화:** 대체 처리 타이머는 대기열 항목의 자원이며 대기열 소속 정보가 수명을 결정합니다. 경기방은 선택된 `npcUser`를 별도로 보관합니다.
+- **실패/예외 조건:** 콜백의 NPC 조회는 비동기 처리이므로 타이머 발화 뒤 상태가 바뀔 수 있어 재검사가 필수입니다. 정리를 빠뜨리면 사람 사용자 경기방 뒤 두 번째 NPC 경기방이 생길 수 있습니다.
+- **보장 범위/보장하지 않는 범위:** 단일 GameHub 프로세스에서 대기열 항목당 한 대체 처리 경로를 목표로 하지만 여러 프로세스 예약은 이후 대전 상대 연결 관리자(카테고리 05)가 담당합니다.
+- **다음 연결:** `b159bcda3b83`이 NPC 레이팅을 실제 AI 행동 프로필로 사용합니다.
 <!-- LEARNER-ANSWER END commit:1122e6a4b901 -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `87b38e2f23c8` — `feat(game): NPC 상대를 경기 방에 연결`
-- 다음 Thread 관련 SHA: `b159bcda3b83` — `feat(game): rating 기반 NPC AI policy 구현`
+- 직전 개발 스레드 관련 SHA: `87b38e2f23c8` — `feat(game): NPC 상대를 경기 방에 연결`
+- 다음 개발 스레드 관련 SHA: `b159bcda3b83` — `feat(game): rating 기반 NPC AI policy 구현`
 
 ### 5.6. `feat(game): rating 기반 NPC AI policy 구현`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `b159bcda3b83` |
-| Importance | B |
-| Tags | SIMULATION, REALTIME, WEB |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | SIMULATION, REALTIME, WEB |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Maps NPC rating bands to deterministic reaction, prediction, mistake, speed, and dead-zone policy.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: NPC 레이팅 구간을 결정적인 반응, 예측, 실수, 속도, 무반응 구간 규칙에 연결합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `apps/api/src/gameHub.ts`의 `AiProfile`, `aiProfileFor`
 - `updateAiPaddleIntent`, `predictedBallY`
 - `deterministicUnit`, `signedDeterministic`, `hashString`
-- Room `aiTargetY`와 right paddle speed multiplier
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
+- 경기방 `aiTargetY`와 right 패들 속도 배율
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:b159bcda3b83 -->
-- **직전 상태:** AI는 매 tick 현재 ball Y를 단순 추적해 persisted rating이 gameplay에 영향을 주지 않았습니다.
-- **구현 결정:** 1400/1300/1200/lower band에 reaction ticks, prediction noise, mistake chance, paddle speed multiplier, dead zone을 지정합니다. 공이 AI 쪽으로 갈 때 벽 반사를 포함한 도착 Y를 예측하고 room ID·tick·salt 기반 deterministic noise/mistake를 적용합니다. 공이 반대 방향이면 중앙을 목표로 합니다.
-- **상태/소유권 변화:** room이 `aiTargetY`를 유지하고 rating이 simulation policy를 선택합니다. ambient `Math.random` 대신 재현 가능한 pseudo-random 값을 사용합니다.
-- **실패/edge:** policy 값은 경험적 설정이며 난이도·공정성 통계가 없습니다. `predictedBallY`는 현재 단순 직선/벽 반사 모델을 전제로 합니다.
-- **보장/비보장:** 동일 room/tick/state에서 같은 intent를 계산하고 rating band별 차이를 만들지만 인간 수준 성능은 보장하지 않습니다.
-- **다음 연결:** `afd0a97c5c1c`이 queue/NPC identity를 UI에 명시합니다.
+- **직전 상태:** AI는 매 틱 현재 공 Y를 단순 추적해 저장된 레이팅이 게임 진행에 영향을 주지 않았습니다.
+- **구현 결정:** 1400/1300/1200/그보다 낮은 레이팅 구간에 반응 틱 수, 예측 오차, 실수 확률, 패들 속도 배율, 무반응 구간을 지정합니다. 공이 AI 쪽으로 갈 때 벽 반사를 포함한 도착 Y를 예측하고 경기방 ID·틱·salt 기반 결정적인 예측 오차와 실수를 적용합니다. 공이 반대 방향이면 중앙을 목표로 합니다.
+- **상태/소유권 변화:** 경기방이 `aiTargetY`를 유지하고 레이팅이 시뮬레이션 규칙을 선택합니다. ambient `Math.random` 대신 재현 가능한 pseudo-random 값을 사용합니다.
+- **실패/예외 조건:** 규칙 값은 경험적 설정이며 난이도·공정성 통계가 없습니다. `predictedBallY`는 현재 단순 직선/벽 반사 모델을 전제로 합니다.
+- **보장 범위/보장하지 않는 범위:** 동일 경기방/틱/상태에서 같은 요청 의도를 계산하고 레이팅 band별 차이를 만들지만 인간 수준 성능은 보장하지 않습니다.
+- **다음 연결:** `afd0a97c5c1c`이 대기열/NPC 신원을 UI에 명시합니다.
 <!-- LEARNER-ANSWER END commit:b159bcda3b83 -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `1122e6a4b901` — `feat(game): 대기 플레이어 NPC fallback 구성`
-- 다음 Thread 관련 SHA: `afd0a97c5c1c` — `feat(web): 대기열에서 NPC 상대 표시`
+- 직전 개발 스레드 관련 SHA: `1122e6a4b901` — `feat(game): 대기 플레이어 NPC fallback 구성`
+- 다음 개발 스레드 관련 SHA: `afd0a97c5c1c` — `feat(web): 대기열에서 NPC 상대 표시`
 
 ### 5.7. `feat(web): 대기열에서 NPC 상대 표시`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `afd0a97c5c1c` |
-| Importance | B |
-| Tags | REALTIME, WEB |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | REALTIME, WEB |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Exposes NPC identity and fallback behavior in queue, play, profile, and ranking presentation.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: 대기열, 경기, 프로필, 순위 화면에서 NPC 신원과 대체 동작을 표시합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `apps/web/src/app/page.tsx`의 `/play?mode=queue`와 fallback 설명
-- `apps/web/src/app/play/page.tsx`의 auto queue 및 opponent `ai` 설명
-- leaderboard/profile AI badge
-- NPC profile의 friend button disable
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
+- `apps/web/src/app/page.tsx`의 `/play?mode=queue`와 대체 처리 설명
+- `apps/web/src/app/play/page.tsx`의 자동 대기열 및 상대 `ai` 설명
+- 순위표/프로필 AI 배지
+- NPC 프로필의 친구 버튼 비활성화
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:afd0a97c5c1c -->
-- **직전 상태:** server가 NPC를 배정해도 home/play/profile/leaderboard는 human과 구분되지 않거나 queue route가 자동 참가하지 않았습니다.
-- **구현 결정:** queue CTA가 queue mode query로 play를 열어 자동 join하고 human이 없으면 AI 배정됨을 설명합니다. snapshot `player.ai`로 상대 문구를 바꾸고 `isNpc` badge를 profile/leaderboard에 표시하며 NPC 친구 추가를 비활성화합니다.
-- **상태/소유권 변화:** web은 server-provided `isNpc`/`ai`를 표시할 뿐 NPC를 추정하지 않습니다.
-- **실패/edge:** UI disable은 보안 경계가 아니므로 friend API가 NPC 관계를 허용하지 않는 invariant는 server가 별도로 책임져야 합니다. 당시 profile의 handle-length 선수 번호 같은 unrelated placeholder는 남을 수 있습니다.
-- **보장/비보장:** 사용자 journey의 명시성은 높이지만 fallback 성공 자체는 server/smoke가 검증합니다.
-- **다음 연결:** `cfb15fc84dee`가 solo queue에서 AI-labelled match와 persisted NPC handle snapshot을 기다립니다.
+- **직전 상태:** 서버가 NPC를 배정해도 홈·플레이/프로필/순위표는 사람 사용자와 구분되지 않거나 대기열 라우트가 자동 참가하지 않았습니다.
+- **구현 결정:** 대기열 CTA가 대기열 모드 쿼리로 플레이를 열어 자동 참가하고 사람 사용자가 없으면 AI 배정됨을 설명합니다. 스냅샷 `player.ai`로 상대 문구를 바꾸고 `isNpc` 배지를 프로필/순위표에 표시하며 NPC 친구 추가를 비활성화합니다.
+- **상태/소유권 변화:** 웹은 서버가 제공한 `isNpc`/`ai`를 표시할 뿐 NPC를 추정하지 않습니다.
+- **실패/예외 조건:** UI 비활성화는 보안 검사가 아니므로 친구 API가 NPC와의 관계를 허용하지 않는 규칙은 서버에서 별도로 검사해야 합니다. 당시 프로필에 표시하던 핸들 길이 기반 선수 번호처럼 기능과 관계없는 임시 표시는 남을 수 있습니다.
+- **보장 범위/보장하지 않는 범위:** 사용자 동선의 명시성은 높이지만 대체 처리 성공 자체는 서버/실행 확인이 검증합니다.
+- **다음 연결:** `cfb15fc84dee`가 solo 대기열에서 AI-labelled 경기와 저장된 NPC 핸들 스냅샷을 기다립니다.
 <!-- LEARNER-ANSWER END commit:afd0a97c5c1c -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `b159bcda3b83` — `feat(game): rating 기반 NPC AI policy 구현`
-- 다음 Thread 관련 SHA: `cfb15fc84dee` — `test(app): NPC fallback matching 검증`
+- 직전 개발 스레드 관련 SHA: `b159bcda3b83` — `feat(game): rating 기반 NPC AI policy 구현`
+- 다음 개발 스레드 관련 SHA: `cfb15fc84dee` — `test(app): NPC fallback matching 검증`
 
 ### 5.8. `test(app): NPC fallback matching 검증`
 
 | 항목 | 값 |
 | --- | --- |
 | SHA | `cfb15fc84dee` |
-| Importance | B |
-| Tags | PROTOCOL, REALTIME, PERSISTENCE |
-| 학습 깊이 | Thread 안에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
+| 중요도 | B |
+| 태그 | PROTOCOL, REALTIME, PERSISTENCE |
+| 학습 깊이 | 이 개발 스레드에서 필요한 실제 구현 역할과 상태 변화를 복원합니다. |
 
-#### Source에서 확정된 역할과 범위
+#### 원문에서 확인한 역할과 범위
 
-- Thread 역할: Extends the WebSocket smoke test through solo queue fallback into an NPC-backed room snapshot.
-- 이 역할·제목·Importance·Tags는 지정 브랜치의 source classification과 exact commit diff를 대조해 고정했습니다.
+- 개발 스레드에서의 역할: WebSocket 스모크 테스트를 1인 대기열의 NPC 대체 처리와 NPC 경기방 스냅샷까지 확장합니다.
+- 이 역할·제목·중요도·태그는 지정 브랜치의 원문 분류와 정확한 커밋 변경 내용을 대조해 고정했습니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `tests/smoke-ws.mjs`의 solo login/socket
-- `queue.join` mode queue
-- 8초 안 `queue.matched` opponent가 `AI` 포함
-- `game.ready` 후 snapshot의 `player.ai` 및 `handle.startsWith("npc-")`
-- finally socket close
-- parent 또는 직전 Thread SHA와 비교해 concrete state/data/caller 변화와 edge path를 기록합니다.
-- Test technique, failure/boundary fixture, production path, proves/does-not-prove를 실제 assertion으로 구분합니다.
+- `tests/smoke-ws.mjs`의 solo 로그인/소켓
+- `queue.join` 모드 대기열
+- 8초 안 `queue.matched` 상대가 `AI` 포함
+- `game.ready` 후 스냅샷의 `player.ai` 및 `handle.startsWith("npc-")`
+- finally 소켓 종료
+- 부모 커밋 또는 직전 관련 SHA와 비교해 구체적인 상태, 데이터, 호출자 변화와 예외 경로를 기록합니다.
+- 테스트 기법, 실패·경계 조건을 만드는 픽스처, 실제 코드 경로, 검증 범위와 미검증 범위를 실제 검증으로 구분합니다.
 
 #### 학습자 기록
 
 <!-- LEARNER-ANSWER START commit:cfb15fc84dee -->
-- **직전 상태:** seed/unit 검사와 GameHub 구현은 있었지만 실제 login→WebSocket→queue timer→room snapshot의 서비스 경로를 연결한 smoke 근거가 없었습니다.
-- **기법:** 별도 solo 사용자를 로그인/연결하고 일반 queue에 참가시킵니다. 6초 fallback을 고려해 8초 timeout으로 AI opponent match를 기다린 뒤 ready를 보내고 AI participant handle이 `npc-`로 시작하는 snapshot을 기다립니다.
-- **생산 경로:** HTTP login, WebSocket auth/parse, queue timer, repository NPC lookup, room creation, snapshot encoding을 통과하도록 작성됐습니다.
-- **증명/비증명:** end-to-end fallback과 persisted NPC identity 노출을 검증하지만 AI paddle policy 품질, match completion/result row, 동시 queue race를 검증하지 않습니다.
-- **cleanup:** `finally`에서 solo socket을 닫고 기존 PvP socket cleanup도 유지합니다.
-- **Thread 종료:** 저장 identity, delayed matching, simulation policy, UI disclosure, service smoke가 하나의 journey로 연결됩니다.
+- **직전 상태:** 시드/단위 검사와 GameHub 구현은 있었지만 실제 로그인→WebSocket→대기열 타이머→경기방 스냅샷의 서비스 경로를 연결한 실행 확인 근거가 없었습니다.
+- **기법:** 별도 solo 사용자를 로그인/연결하고 일반 대기열에 참가시킵니다. 6초 대체 처리를 고려해 8초 시간 초과로 AI 상대 경기를 기다린 뒤 준비 완료를 보내고 AI 참가자 핸들이 `npc-`로 시작하는 스냅샷을 기다립니다.
+- **생산 경로:** HTTP 로그인, WebSocket 인증/파싱, 대기열 타이머, 저장소 NPC 조회, 경기방 생성, 스냅샷 encoding을 통과하도록 작성됐습니다.
+- **검증 범위와 미검증 범위:** 종단 간 대체 처리와 저장된 NPC 신원 노출을 검증하지만 AI 패들 규칙 품질, 경기 완료/결과 행, 동시 대기열 경쟁 상태를 검증하지 않습니다.
+- **정리:** `finally`에서 단독 플레이 소켓을 닫고 기존 PvP 소켓 정리도 유지합니다.
+- **개발 스레드 종료:** 저장 신원, 지연 매칭, 시뮬레이션 규칙, UI disclosure, 서비스 실행 확인이 하나의 사용자 동선으로 연결됩니다.
 <!-- LEARNER-ANSWER END commit:cfb15fc84dee -->
 
 비교 기준:
-- 직전 Thread 관련 SHA: `afd0a97c5c1c` — `feat(web): 대기열에서 NPC 상대 표시`
-- 이 commit을 Thread의 마지막 상태로 사용합니다.
+- 직전 개발 스레드 관련 SHA: `afd0a97c5c1c` — `feat(web): 대기열에서 NPC 상대 표시`
+- 이 커밋을 개발 스레드의 마지막 상태로 사용합니다.
 
-## 6. Thread 종합
+## 6. 개발 스레드 종합
 
-다음 항목을 commit 순서에서 재구성합니다: invariant evolution, Failure → Fix → Test 관계, ownership/state 변화, 최종 실행 흐름, 비보장, 실제 실행 증거.
+다음 항목을 커밋 순서에서 재구성합니다: 불변 조건 변화, 실패 → 수정 → 테스트 관계, 소유권/상태 변화, 최종 실행 흐름, 보장하지 않는 범위, 실제 실행 증거.
 
 <!-- LEARNER-ANSWER START thread:07-npc-ai-policy-and-fallback-journey.md:synthesis -->
-- **불변식 진화:** `72d23baefc3c`은 user contract/schema에 `isNpc`를 추가했고 `b3239bae51e5`는 1100/1200/1300/1400 rating NPC를 PostgreSQL/memory에 seed하며 별도 조회를 제공했습니다. `87b38e2f23c8`은 closest NPC를 room participant·result identity로 연결했습니다. `1122e6a4b901`은 human queue에서 6초 뒤 fallback하되 queue/socket/room을 재검사하고 모든 terminal path에서 timer를 정리합니다. `b159bcda3b83`은 rating을 simulation policy로 바꿉니다.
-- **소유권:** repository는 NPC identity와 rating band를, queue entry는 fallback timer를, GameHub room은 선택된 `npcUser`와 result attribution을, simulation은 `aiTargetY`와 profile 기반 intent를, web은 AI 표시와 action 제한을 소유합니다.
-- **Failure → Fix → Test:** 익명 `ai-opponent` 결과 attribution → persisted NPC user. 대기 timer 미정리/async stale callback 위험 → entry-owned timer와 membership/socket/room 재검사. NPC seed가 human identity를 오염할 위험 → dev login upsert가 `is_npc=false`. memory seed/rating/offline test와 실제 WebSocket solo fallback smoke가 경계를 검증합니다.
-- **최종 흐름:** seed 시 NPC users 저장 → queue/AI 요청 시 현재 user rating과 가장 가까운 NPC 조회 → 직접 AI는 즉시, 일반 queue는 human이 없으면 6초 후 재검사해 room 생성 → snapshot participant에 NPC identity/`ai` 표시 → deterministic policy가 paddle intent 계산 → 종료 결과는 NPC user ID로 저장 → web은 badge와 AI 상대 설명을 표시합니다.
-- **비보장:** rating policy가 공정하거나 인간과 동일한 난이도를 제공한다는 통계적 증거는 없습니다. multi-instance queue timer coordination과 later Matchmaker reservation ownership은 category 05가 주 소유자입니다.
-- **실행 증거:** seed/unit/smoke test 구현을 검사했지만 실제 repository seed나 8초 WebSocket smoke를 실행하지 않았습니다.
+- **불변식 진화:** `72d23baefc3c`은 사용자 계약/스키마에 `isNpc`를 추가했고 `b3239bae51e5`는 1100/1200/1300/1400 레이팅 NPC를 PostgreSQL/메모리에 시드하며 별도 조회를 제공했습니다. `87b38e2f23c8`은 레이팅이 가장 가까운 NPC를 경기방 참가자·결과 신원으로 연결했습니다. `1122e6a4b901`은 사람 사용자 대기열에서 6초 뒤 대체 처리하되 대기열/소켓/경기방을 재검사하고 모든 종료 경로에서 타이머를 정리합니다. `b159bcda3b83`은 레이팅을 시뮬레이션 규칙으로 바꿉니다.
+- **소유권:** 저장소는 NPC 신원과 레이팅 band를, 대기열 항목은 대체 처리 타이머를, GameHub 경기방은 선택된 `npcUser`와 결과 귀속을, 시뮬레이션은 `aiTargetY`와 프로필 기반 요청 의도를, 웹은 AI 표시와 동작 제한을 소유합니다.
+- **실패 → 수정 → 테스트:** 익명 `ai-opponent` 결과 attribution → 저장된 NPC 사용자. 대기 타이머 미정리/비동기 처리 오래된 콜백 위험 → 항목 소유한 타이머와 소속 정보/소켓/경기방 재검사. NPC 시드가 사람 사용자 신원을 오염할 위험 → 개발 로그인 업서트가 `is_npc=false`. 메모리 시드/레이팅/오프라인 테스트와 실제 WebSocket solo 대체 처리 실행 확인이 경계를 검증합니다.
+- **최종 흐름:** 시드 시 NPC 사용자 저장 → 대기열/AI 요청 시 현재 사용자 레이팅과 레이팅이 가장 가까운 NPC 조회 → 직접 AI는 즉시, 일반 대기열은 사람 사용자가 없으면 6초 후 재검사해 경기방 생성 → 스냅샷 참가자에 NPC 신원/`ai` 표시 → 결정적 규칙이 패들 요청 의도 계산 → 종료 결과는 NPC 사용자 ID로 저장 → 웹은 배지와 AI 상대 설명을 표시합니다.
+- **보장하지 않는 범위:** 레이팅 규칙이 공정하거나 인간과 동일한 난이도를 제공한다는 통계적 증거는 없습니다. 여러 인스턴스 대기열 타이머 coordination과 이후 대전 상대 연결 관리자 예약 소유권은 카테고리 05가 주 소유자입니다.
+- **실행 증거:** 시드/단위/실행 확인 테스트 구현을 검사했지만 실제 저장소 시드나 8초 WebSocket 실행 확인을 실행하지 않았습니다.
 <!-- LEARNER-ANSWER END thread:07-npc-ai-policy-and-fallback-journey.md:synthesis -->
 
 ## 7. 학습 완료 확인
 
 <!-- LEARNER-ANSWER START thread:07-npc-ai-policy-and-fallback-journey.md:checklist -->
-- [x] 모든 SHA를 지정 브랜치의 exact commit으로 검사했습니다.
-- [x] fixed commit map과 source classification을 보존했습니다.
-- [x] earlier commit을 later HEAD 코드로 설명하지 않았습니다.
-- [x] fix와 test를 원래 failure/production path에 연결했습니다.
-- [x] 실제 실행하지 않은 test를 통과했다고 기록하지 않았습니다.
-- [x] Thread 최종 owner, invariant, flow, non-guarantee를 작성했습니다.
+- [x] 모든 SHA를 지정 브랜치의 정확한 커밋으로 검사했습니다.
+- [x] 고정된 커밋 목록과 원문 분류를 보존했습니다.
+- [x] earlier 커밋을 후속 최종 상태 코드로 설명하지 않았습니다.
+- [x] 수정과 테스트를 원래 실패/실제 코드 경로에 연결했습니다.
+- [x] 실제 실행하지 않은 테스트를 통과했다고 기록하지 않았습니다.
+- [x] 개발 스레드 최종 소유 주체, 불변 조건, 실행 순서, 보장하지 않는 범위를 작성했습니다.
 <!-- LEARNER-ANSWER END thread:07-npc-ai-policy-and-fallback-journey.md:checklist -->
 ===== END FILE: 07-npc-ai-policy-and-fallback-journey.md =====
 
 ===== BEGIN FILE: README.md =====
-# 04 — Domain Workflows and Realtime Features
+# 04 — 도메인 작업 흐름과 실시간 기능
 
-Repository: `seungwoo7050/42-archive`  
-Branch: `web/ft_transcendence`  
-Category path: `development-thread-workbook/04-domain-workflows-and-realtime-features`
+저장소: `seungwoo7050/42-archive`  
+브랜치: `web/ft_transcendence`  
+카테고리 경로: `development-thread-workbook/04-domain-workflows-and-realtime-features`
 
-## Phase 1 감사 결과와 동결 범위
+## 1단계 감사 결과와 동결 범위
 
-- 이 category boundary는 유지했습니다. 제품 사용자가 거치는 tournament, profile/dashboard/ranking, lobby/chat, pause/resume, NPC/AI journey와 realtime 기능 통합이 대상입니다.
-- canonical friendship pair 및 tournament admission/capacity concurrency는 `02-persistence-and-data-integrity`가 주 소유자입니다.
-- simulation loop, connection lifecycle, Matchmaker reservation ownership, scheduler, finalization retry와 process drain은 `05-core-realtime-architecture`가 주 소유자입니다.
-- 이 category는 위 subsystem을 중복 재구성하지 않고 제품 workflow에서 호출·표시·rollback·handoff되는 지점만 포함합니다.
-- Thread 수와 파일명은 7개로 유지했습니다. 독립 Thread를 합치거나 분리하거나 다른 category commit을 흡수하지 않았습니다.
+- 이 카테고리 경계는 유지했습니다. 제품 사용자가 거치는 토너먼트, 프로필/대시보드/순위 계산, 로비/채팅, 일시정지/재개, NPC/AI 사용자 동선과 실시간 기능 통합이 대상입니다.
+- 표준 친구 관계 쌍 및 토너먼트 참가/용량 동시성은 `02-persistence-and-data-integrity`가 주 소유자입니다.
+- 시뮬레이션 루프, 연결 수명주기, 대전 상대 연결 관리자 예약 소유권, 스케줄러, 결과 확정 재시도와 프로세스 작업 중단은 `05-core-realtime-architecture`가 주 소유자입니다.
+- 이 카테고리는 위 하위 시스템을 중복 재구성하지 않고 제품 처리 과정에서 호출·표시·되돌리기·인계되는 지점만 포함합니다.
+- 개발 스레드 수와 파일명은 7개로 유지했습니다. 독립 개발 스레드를 합치거나 분리하거나 다른 카테고리 커밋을 흡수하지 않았습니다.
 
 ### Scaffold 보정 내역
 
-- 기존 60개 reference에 repository evidence상 필요한 10개 intermediate/fix/test commit을 추가해 총 70개를 동결했습니다.
-- Thread 01에 `9b1dabcc4bb4`, `4370ac3162b2`를 추가해 entry-only repository와 UI-fabricated bracket이라는 선행 상태를 보존했습니다.
-- Thread 02에 `e338ea32b2a6`, `582a1615a2c6`, `10bf15723591`을 추가해 atomic finalization 구현·동시성/rollback 검증·GameHub handoff를 포함했습니다.
-- Thread 03에 `8d79139a32da`, `be31566ac0fd`, `7fe29f991a9b`을 추가하고 실제 시간순으로 재배치해 fixed/sample read model 교정 chain을 복원했습니다.
-- Thread 04에 `8ce1199ffd12`, `23a978879b81`을 추가하고 실제 시간순으로 재배치해 missing-body fix와 eventual presence smoke regression을 포함했습니다.
-- commit을 삭제하거나 다른 Thread로 이동하지 않았습니다. cross-cutting `be31566ac0fd`는 profile/dashboard/ranking read-model 정직성 Thread에 한 번만 두고 lobby/tournament Thread에서 참조합니다.
-- generic investigation 문구를 exact file, function, SQL, schema, test, timer, state owner, cleanup/failure/non-guarantee 질문으로 교체했습니다.
+- 기존 60개 참조에 저장소 근거상 필요한 중간 구현·수정·테스트 커밋 10개를 추가해 총 70개를 동결했습니다.
+- 개발 스레드 01에 `9b1dabcc4bb4`, `4370ac3162b2`를 추가해 참가 기록만 있는 저장소와 UI가 임의로 만든 대진이라는 선행 상태를 보존했습니다.
+- 개발 스레드 02에 `e338ea32b2a6`, `582a1615a2c6`, `10bf15723591`을 추가해 원자적 결과 확정 구현·동시성/되돌리기 검증·GameHub 인계를 포함했습니다.
+- 개발 스레드 03에 `8d79139a32da`, `be31566ac0fd`, `7fe29f991a9b`을 추가하고 실제 시간순으로 재배치해 고정된/예시 조회 모델 교정 과정을 복원했습니다.
+- 개발 스레드 04에 `8ce1199ffd12`, `23a978879b81`을 추가하고 실제 시간순으로 재배치해 누락된 본문 수정과 지연 후 최종적으로 반영되는 접속 상태 실행 확인 회귀를 포함했습니다.
+- 커밋을 삭제하거나 다른 개발 스레드로 이동하지 않았습니다. cross-cutting `be31566ac0fd`는 프로필/대시보드/순위 계산 조회 모델 정직성 개발 스레드에 한 번만 두고 로비/토너먼트 개발 스레드에서 참조합니다.
+- 일반 investigation 문구를 정확한 파일, 함수, SQL, 스키마, 테스트, 타이머, 상태 소유 주체, 정리/실패/보장하지 않는 범위 질문으로 교체했습니다.
 
-### Thread boundary와 ordering 판단
+### 개발 스레드 경계와 순서 판단
 
-- Thread 01과 02는 분리했습니다. 전자는 tournament-match contract/schema/bracket topology의 생성과 소비를, 후자는 그 persisted match를 realtime room으로 publish하고 durable result로 인계하는 cross-boundary lifecycle을 소유합니다.
-- Thread 03은 분리하지 않았습니다. profile, dashboard, leaderboard, friendship journey가 동일한 user/recent-match read model과 identity/cache invalidation에 연결되기 때문입니다. 단, friendship canonical pair와 동시성은 category 02를 참조합니다.
-- Thread 04와 05는 분리했습니다. Thread 04는 `/lobby`와 한 화면에서 durable chat history, process-local presence, live statistics, HTTP/WebSocket 반영을 합치는 제품 journey를 소유합니다. Thread 05는 lobby/match scope-room 저장 불변식과 current-seat authorization이라는 독립 보안 story를 소유합니다.
-- Thread 06은 scheduler/phase/input state를 함께 전환하는 독립 temporal lifecycle이고, Thread 07은 persisted NPC identity, queue timer, simulation policy, UI disclosure를 잇는 독립 fallback journey입니다.
-- 전체 Thread 순서는 contract/storage → realtime handoff → user read journey → lobby composition → chat hardening → pause lifecycle → NPC fallback 순으로 유지했습니다. 서로 다른 기능의 commit은 branch에서 교차하지만 각 Thread 내부 commit map은 actual commit chronology로 정렬했습니다.
+- 개발 스레드 01과 02는 분리했습니다. 전자는 토너먼트 경기 계약/스키마/대진 구성의 생성과 소비를, 후자는 그 저장된 경기를 실시간 경기방으로 공개하고 영속 결과로 인계하는 여러 영역에 걸친 경계 수명주기를 소유합니다.
+- 개발 스레드 03은 분리하지 않았습니다. 프로필, 대시보드, 순위표, 친구 관계 사용자 동선이 동일한 사용자·최근 경기 조회 모델과 신원·캐시 무효화에 연결되기 때문입니다. 단, 친구 관계의 정규화된 사용자 쌍과 동시성은 카테고리 02를 참조합니다.
+- 개발 스레드 04와 05는 분리했습니다. 개발 스레드 04는 `/lobby`와 한 화면에서 영속 채팅 이력, 프로세스 내부 접속 상태, 실시간 통계, HTTP·WebSocket 반영을 합치는 사용자 동선을 다룹니다. 개발 스레드 05는 로비·경기 범위와 경기방 저장 불변식, 현재 좌석 권한 검사라는 독립된 보안 과정을 다룹니다.
+- 개발 스레드 06은 스케줄러/단계/입력 상태를 함께 전환하는 독립 temporal 수명주기이고, 개발 스레드 07은 저장된 NPC 신원, 대기열 타이머, 시뮬레이션 규칙, UI disclosure를 잇는 독립 대체 처리 사용자 동선입니다.
+- 전체 개발 스레드 순서는 계약/저장소 → 실시간 인계 → 사용자 조회 화면 → 로비 조합 → 채팅 보강 → 일시정지 수명주기 → NPC 대체 처리 순으로 유지했습니다. 서로 다른 기능의 커밋은 브랜치에서 교차하지만 각 개발 스레드 내부 커밋 목록은 실제 커밋 순서로 정렬했습니다.
 
-### 동결된 파일과 commit 수
+### 동결된 파일과 커밋 수
 
-| 파일 | Commit 수 |
+| 파일 | 커밋 수 |
 | --- | ---: |
 | `01-tournament-contract-schema-and-bracket-construction.md` | 10 |
 | `02-tournament-room-start-rollback-and-finalization-handoff.md` | 10 |
@@ -3233,8 +3233,8 @@ Category path: `development-thread-workbook/04-domain-workflows-and-realtime-fea
 | `07-npc-ai-policy-and-fallback-journey.md` | 8 |
 | **합계** | **70** |
 
-- Frozen commit manifest SHA-256: `16394a851a8ac4eae148544ffed672a2f47f717ec21af4b7bee53244da9fbf00`
-- Phase 2에서는 위 commit map, 제목, 순서, Importance, Tags, source-defined 역할과 문서 구조를 변경하지 않습니다.
+- 동결된 커밋 매니페스트 SHA-256: `16394a851a8ac4eae148544ffed672a2f47f717ec21af4b7bee53244da9fbf00`
+- 2단계에서는 위 커밋 목록, 제목, 순서, 중요도, 태그, 원문에서 정의한 역할과 문서 구조를 변경하지 않습니다.
 
 ## 읽는 순서
 
@@ -3242,27 +3242,27 @@ Category path: `development-thread-workbook/04-domain-workflows-and-realtime-fea
 2. [`02-tournament-room-start-rollback-and-finalization-handoff.md`](02-tournament-room-start-rollback-and-finalization-handoff.md) — 토너먼트 경기방 시작 롤백과 결과 확정 인계
 3. [`03-profile-friendship-dashboard-and-ranking-journeys.md`](03-profile-friendship-dashboard-and-ranking-journeys.md) — 프로필·친구·대시보드·순위표 여정
 4. [`04-lobby-presence-chat-and-live-statistics.md`](04-lobby-presence-chat-and-live-statistics.md) — 로비 접속 상태·채팅과 실시간 지표
-5. [`05-chat-scope-storage-and-room-authorization.md`](05-chat-scope-storage-and-room-authorization.md) — 채팅 scope 저장 불변식과 경기방 권한
+5. [`05-chat-scope-storage-and-room-authorization.md`](05-chat-scope-storage-and-room-authorization.md) — 채팅 범위 저장 불변식과 경기방 권한
 6. [`06-pause-resume-and-input-neutralization.md`](06-pause-resume-and-input-neutralization.md) — 일시정지·재개와 입력 무효화
-7. [`07-npc-ai-policy-and-fallback-journey.md`](07-npc-ai-policy-and-fallback-journey.md) — NPC AI 정책과 fallback 여정
+7. [`07-npc-ai-policy-and-fallback-journey.md`](07-npc-ai-policy-and-fallback-journey.md) — NPC AI 정책과 대체 처리 여정
 
-## Evidence discipline
+## 근거 discipline
 
-- 모든 구현 설명은 해당 SHA의 commit diff와 그 시점 파일/심볼을 기준으로 작성합니다.
-- later refactor가 있는 경우 earlier section에 역투영하지 않고, 해당 commit에서 실제로 존재한 표현과 비보장을 기록합니다.
-- test commit은 fixture/failure injection, production path, assertion, 증명/비증명 범위를 분리합니다.
-- 로컬 checkout을 만들 수 없어 repository command나 test runner를 실행하지 않았습니다. 실행 결과를 만들지 않았으며 코드·test 구현 검사와 runtime evidence를 구분합니다.
+- 모든 구현 설명은 해당 SHA의 커밋 변경 내용과 그 시점 파일/심볼을 기준으로 작성합니다.
+- 이후 리팩터링이 있는 경우 앞선 절에 역투영하지 않고, 해당 커밋에서 실제로 존재한 표현과 보장하지 않는 범위를 기록합니다.
+- 테스트 커밋은 픽스처/실패 주입, 실제 코드 경로, 검증, 검증 범위와 미검증 범위를 분리합니다.
+- 로컬 체크아웃을 만들 수 없어 저장소 명령이나 테스트 실행기를 실행하지 않았습니다. 실행 결과를 만들지 않았으며 코드·테스트 구현 검사와 실행 근거를 구분합니다.
 
-## Phase 2 완료 및 검증 기록
+## 2단계 완료 및 검증 기록
 
 <!-- LEARNER-ANSWER START readme:phase2-validation -->
-- [x] frozen scaffold 8개 파일(README + 7 Threads)에 정확히 대응하는 completed 8개 파일을 생성했습니다.
-- [x] 총 70개 commit reference의 SHA/subject/order/Importance/Tags/source role이 scaffold와 completed에서 일치합니다.
-- [x] 모든 referenced SHA는 branch source classification과 exact commit 조회에서 `web/ft_transcendence` 이력의 commit으로 확인했습니다.
-- [x] completed의 learner-facing placeholder를 모두 채웠으며 S/A/B/C 깊이를 구분했습니다.
-- [x] fix/test 관계, historical SHA, 실행하지 않은 test의 비실행 표기를 검사했습니다.
-- [x] Phase 2 전후 frozen scaffold tree SHA-256이 `cc53210489e51fe33c556628828cb23e680e7e35a4c7ce59b5c555889364629c`로 동일합니다.
-- [x] remote repository에는 commit/push/PR/파일 변경을 수행하지 않았습니다.
+- [x] 동결된 작업 틀 8개 파일(README + 7 개발 스레드)에 정확히 대응하는 완료된 8개 파일을 생성했습니다.
+- [x] 총 70개 커밋 참조의 SHA/제목/순서/중요도/태그/원문 역할이 작업 틀과 완료된에서 일치합니다.
+- [x] 모든 referenced SHA는 브랜치 원문 분류와 정확한 커밋 조회에서 `web/ft_transcendence` 이력의 커밋으로 확인했습니다.
+- [x] 완료본의 학습자 작성용 임시 표시를 모두 채웠으며 S/A/B/C 깊이를 구분했습니다.
+- [x] 수정/테스트 관계, 과거 SHA, 실행하지 않은 테스트의 비실행 표기를 검사했습니다.
+- [x] 2단계 전후 동결된 작업 틀 파일 트리 SHA-256이 `cc53210489e51fe33c556628828cb23e680e7e35a4c7ce59b5c555889364629c`로 동일합니다.
+- [x] 원격 저장소에는 커밋/푸시·PR/파일 변경을 수행하지 않았습니다.
 <!-- LEARNER-ANSWER END readme:phase2-validation -->
 ===== END FILE: README.md =====
 

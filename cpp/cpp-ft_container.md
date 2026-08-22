@@ -25,7 +25,7 @@ The branch begins by constructing the generic vocabulary that C++98 does not pro
 
 ## 3. 완료 기준
 
-- A: 주요 subsystem/boundary/failure path/integration point를 실제 코드와 설계 판단으로 연결하고, 관련 regression 또는 다음 fix와의 관계를 설명할 수 있어야 합니다.
+- A: 주요 subsystem/boundary/실패 처리/integration point를 실제 코드와 설계 판단으로 연결하고, 관련 regression 또는 다음 fix와의 관계를 설명할 수 있어야 합니다.
 - B: Thread 흐름에서 맡는 구현 역할, 필요한 상태 변화와 핵심 코드 위치를 해당 SHA 기준으로 확인할 수 있어야 합니다.
 - 모든 commit은 해당 SHA의 코드 또는 test/build diff를 근거로 기록합니다.
 - Thread 최종 설명은 source 요약을 복사하는 것으로 끝내지 않고, 직접 확인한 코드 근거와 commit 간 변화로 재구성합니다.
@@ -60,7 +60,7 @@ The branch begins by constructing the generic vocabulary that C++98 does not pro
 - `integral_constant`, `true_type`, `false_type`의 value/type 관계와 `is_integral` primary template 및 C++98 integral specialization 목록을 확인합니다.
 - 이 SHA에는 아직 실제 container overload consumer가 없다면 그 사실을 기록하고, later HEAD의 사용처를 소급해서 설명하지 않습니다.
 - 확인한 파일/심볼: `include/ft_type_traits.hpp`의 `enable_if`, `integral_constant`, `true_type`, `false_type`, `is_integral`.
-- 필요한 경우 비교할 직전 관련 SHA/parent: 해당 commit의 parent에는 이 header가 없으며, 이 SHA에서는 독립 utility 선언만 추가됩니다.
+- 필요한 경우 비교할 직전 관련 SHA/parent: 해당 commit의 parent에는이 header가 없으며, 이 SHA에서는 독립 utility 선언만 추가됩니다.
 
 #### 설계·상태 변화 기록
 
@@ -71,10 +71,10 @@ The branch begins by constructing the generic vocabulary that C++98 does not pro
 
 #### A-level 핵심 확인
 
-- 중요 boundary/failure path: false 조건은 compile error를 직접 발생시키는 경로가 아니라 substitution 대상에서 해당 후보를 제거하는 경계입니다. 이 SHA에는 실제 consumer가 없으므로 동작 연결은 아직 선언 수준에서만 확인됩니다.
+- 중요 boundary/실패 처리: false 조건은 compile error를 직접 발생시키는 경로가 아니라 substitution 대상에서 해당 후보를 제거하는 경계입니다. 이 SHA에는 실제 consumer가 없으므로 동작 연결은 아직 선언 수준에서만 확인됩니다.
 - state/ownership/lifecycle 영향: 없습니다. 전부 compile-time 형식과 상수입니다.
-- 이 commit이 보장하는 것과 남은 한계: 기본 SFINAE와 C++98 integral 분류를 제공합니다. cv-qualified 정수 형식 처리나 실제 fill/range overload 적용은 이 SHA에서 증명하지 않습니다.
-- 다음 관련 commit과의 연결: `pair`, algorithm, iterator utility가 같은 독립 header 계층을 확장하며, 이후 vector/map 공개 API가 이 공용 vocabulary를 소비합니다.
+- 이 commit이 보장하는 것과 남은 한계: 기본 SFINAE와 C++98 integral 분류를 제공합니다. cv-qualified 정수 형식 처리나 실제 fill/range overload 적용은이 SHA에서 증명하지 않습니다.
+- 다음 관련 commit과의 연결: `pair`, algorithm, iterator utility가 같은 독립 header 계층을 확장하며, 이후 vector/map 공개 API가이 공용 vocabulary를 소비합니다.
 
 ### 2. feat(pair): 값 쌍과 관계 연산 구현
 
@@ -259,7 +259,7 @@ The branch begins by constructing the generic vocabulary that C++98 does not pro
 
 - Thread 흐름에서 맡는 구현 역할: container 구현 전 utility 문제를 독립적으로 좁혀 잡을 기준을 만듭니다.
 - 핵심 코드와 상태 변화: production 상태 변화는 없고 test target이 utility API를 소비합니다.
-- 다음 commit에 넘기는 전제: strict C++98 flags와 반복 가능한 Make target이 이 test를 동일 조건으로 compile/run해야 합니다.
+- 다음 commit에 넘기는 전제: strict C++98 flags와 반복 가능한 Make target이이 test를 동일 조건으로 compile/run해야 합니다.
 
 ### 8. build(makefile): CXX98 검사 빌드 구성
 
@@ -290,7 +290,7 @@ The branch begins by constructing the generic vocabulary that C++98 does not pro
 - Thread 흐름에서 맡는 구현 역할: utility API의 C++98 compile 가능성을 프로젝트 build 규칙으로 강제합니다.
 - 핵심 코드와 상태 변화: source/header가 바뀌면 binary가 재빌드되며 generated artifacts는 source tree와 분리됩니다.
 - 다음 commit에 넘기는 전제: 이후 vector/map/test가 같은 flags와 target convention에 편입될 수 있습니다.
-- 실행 증거: Makefile 코드는 검사했으나 이 환경에서는 checkout 실패 때문에 `make test`를 실제 실행하지 않았습니다.
+- 실행 증거: Makefile 코드는 검사했으나이 환경에서는 checkout 실패 때문에 `make test`를 실제 실행하지 않았습니다.
 
 ## 6. Invariant ledger
 
@@ -392,7 +392,7 @@ The original representation is durable, but the first modifier implementations r
 ## 3. 완료 기준
 
 - S: 핵심 architecture/invariant를 직전 상태 → failure 가능성 → 결정 → 실제 핵심 코드 → ownership/lifecycle/state transition → 후속 fix/test까지 코드 근거로 설명할 수 있어야 합니다.
-- A: 주요 subsystem/boundary/failure path/integration point를 실제 코드와 설계 판단으로 연결하고, 관련 regression 또는 다음 fix와의 관계를 설명할 수 있어야 합니다.
+- A: 주요 subsystem/boundary/실패 처리/integration point를 실제 코드와 설계 판단으로 연결하고, 관련 regression 또는 다음 fix와의 관계를 설명할 수 있어야 합니다.
 - 모든 commit은 해당 SHA의 코드 또는 test/build diff를 근거로 기록합니다.
 - Thread 최종 설명은 source 요약을 복사하는 것으로 끝내지 않고, 직접 확인한 코드 근거와 commit 간 변화로 재구성합니다.
 
@@ -425,7 +425,7 @@ The original representation is durable, but the first modifier implementations r
 #### Source에서 확정된 핵심 판단
 
 - Problem: A C++98 vector implementation must own raw contiguous storage while separately tracking which positions contain live `T` objects. Allocation alone does not create elements, and destruction must never be applied to unconstructed slots or omitted for constructed ones.
-- Decision: The commit represents vector as allocator state, a data pointer, a constructed size, and an allocation capacity. Fill construction allocates one block and constructs elements sequentially, while the failure path destroys the completed prefix and deallocates the block. Destruction centralizes reverse element teardown and storage release.
+- Decision: The commit represents vector as allocator state, a data pointer, a constructed size, and an allocation capacity. Fill construction allocates one block and constructs elements sequentially, while the 실패 처리 destroys the completed prefix and deallocates the block. Destruction centralizes reverse element teardown and storage release.
 - Why it mattered: Every later vector operation—reserve, resize, assignment, insertion, erasure, swap, and exception rollback—depends on this separation between storage ownership and object lifetime. It is the core invariant that later fixes refine rather than replace.
 
 #### 해당 SHA에서 확인할 실제 코드
@@ -435,7 +435,7 @@ The original representation is durable, but the first modifier implementations r
 - fill construction 중 copy/construct가 실패할 때 이미 생성된 prefix를 역순 destroy하고 block을 deallocate하는 failure branch를 추적합니다.
 - destructor/cleanup helper가 정확히 live prefix만 destroy한 뒤 storage를 해제하는지 확인합니다.
 - 확인한 파일/심볼: `include/ft_vector.hpp`의 `_alloc`, `_data`, `_size`, `_capacity`, fill constructor/`_assign_fill`, `_destroy_elements`, destructor.
-- 필요한 경우 비교할 직전 관련 SHA/parent: parent에는 vector header가 없으며 이 commit이 representation을 처음 추가합니다.
+- 필요한 경우 비교할 직전 관련 SHA/parent: parent에는 vector header가 없으며이 commit이 representation을 처음 추가합니다.
 
 #### 설계·상태 변화 기록
 
@@ -461,7 +461,7 @@ The original representation is durable, but the first modifier implementations r
 - Tags: VECTOR, ALLOCATOR, CORE
 - Source-established role: Adds replacement-block reallocation and geometric capacity growth.
 - Source summary: Adds capacity queries, reserve, geometric growth, and exception-aware reallocation.
-- Source rationale: Reallocation is the central dynamic mechanism of vector: values must be copied into a new block before the old block is released. The decision is significant, though later commits strengthen arithmetic and transactional edge cases.
+- Source rationale: Reallocation is the central dynamic mechanism of vector: values must be copied into a new block before the old block is released. The decision is significant, though later commits strengthen arithmetic and transactional 경계 조건s.
 
 #### 해당 SHA에서 확인할 실제 코드
 
@@ -481,7 +481,7 @@ The original representation is durable, but the first modifier implementations r
 
 #### A-level 핵심 확인
 
-- 중요 boundary/failure path: copy constructor가 중간에 던지는 경우입니다. new block의 완료 prefix만 destroy/deallocate하며 old state는 건드리지 않습니다.
+- 중요 boundary/실패 처리: copy constructor가 중간에 던지는 경우입니다. new block의 완료 prefix만 destroy/deallocate하며 old state는 건드리지 않습니다.
 - state/ownership/lifecycle 영향: 성공 전에는 old vector가 owner이고 new block은 helper의 임시 소유입니다. 성공 시 old를 release하고 `_data/_capacity`를 교체합니다. `_size` 값은 동일합니다.
 - 이 commit이 보장하는 것과 남은 한계: reallocation construction failure의 strong guarantee를 제공합니다. 하지만 doubling 계산이 `max_size()` 인접 구간에서 overflow할 위험은 남습니다.
 - 다음 관련 commit과의 연결: `6f3cbf4794c9`가 growth arithmetic을 allocator 상한에서 포화시킵니다.
@@ -515,10 +515,10 @@ The original representation is durable, but the first modifier implementations r
 
 #### A-level 핵심 확인
 
-- 중요 boundary/failure path: allocator가 작은 `max_size()`를 반환하거나 capacity가 limit 절반을 넘는 경계입니다.
+- 중요 boundary/실패 처리: allocator가 작은 `max_size()`를 반환하거나 capacity가 limit 절반을 넘는 경계입니다.
 - state/ownership/lifecycle 영향: 잘못된 요청을 mutation 전에 거부하므로 기존 block과 live objects는 변하지 않습니다.
 - 이 commit이 보장하는 것과 남은 한계: capacity 선택 arithmetic은 allocator limit 안에서 안전합니다. 실제 allocation 실패는 여전히 allocator 예외로 처리됩니다.
-- 다음 관련 commit과의 연결: 이후 insertion/resize transaction은 이 validated capacity를 전제로 새 block을 준비합니다.
+- 다음 관련 commit과의 연결: 이후 insertion/resize transaction은이 validated capacity를 전제로 새 block을 준비합니다.
 
 ### 4. fix(vector): 자기 범위 assign과 insert 입력 보존
 
@@ -549,7 +549,7 @@ The original representation is durable, but the first modifier implementations r
 
 #### A-level 핵심 확인
 
-- 중요 boundary/failure path: destination range가 source range와 동일하거나 부분 중첩될 때입니다.
+- 중요 boundary/실패 처리: destination range가 source range와 동일하거나 부분 중첩될 때입니다.
 - state/ownership/lifecycle 영향: snapshot이 완성되기 전 destination은 변하지 않습니다. snapshot 자체의 construction failure는 temporary destructor가 정리합니다.
 - 이 commit이 보장하는 것과 남은 한계: chosen snapshot semantics의 입력 보존을 보장합니다. 이 시점 insert reconstruction은 여전히 public operations를 통한 incremental mutation이라 일반 exception guarantee는 완성되지 않았습니다.
 - 다음 관련 commit과의 연결: `797c33904db3`가 snapshot을 유지하면서 insertion lifetime algorithm 자체를 재설계합니다.
@@ -583,10 +583,10 @@ The original representation is durable, but the first modifier implementations r
 
 #### A-level 핵심 확인
 
-- 중요 boundary/failure path: default-constructed vector와 모든 원소를 지운 뒤 null storage인 상태입니다.
+- 중요 boundary/실패 처리: default-constructed vector와 모든 원소를 지운 뒤 null storage인 상태입니다.
 - state/ownership/lifecycle 영향: no-op 경로가 storage나 live count를 건드리지 않습니다.
 - 이 commit이 보장하는 것과 남은 한계: empty API 경로에서 invalid pointer arithmetic을 제거합니다. dereferenceable iterator를 제공하는 것은 아니며 empty begin/end는 비교만 가능합니다.
-- 다음 관련 commit과의 연결: 이후 transaction/insertion helper가 위치를 index로 바꿀 때 이 safe conversion을 사용합니다.
+- 다음 관련 commit과의 연결: 이후 transaction/insertion helper가 위치를 index로 바꿀 때이 safe conversion을 사용합니다.
 
 ### 6. fix(vector): 저장소 교체와 크기 증가를 트랜잭션으로 처리
 
@@ -624,7 +624,7 @@ The original representation is durable, but the first modifier implementations r
 
 #### A-level 핵심 확인
 
-- 중요 boundary/failure path: replacement construction, resize suffix construction, reserve 중 allocation/copy, self-aliased push argument입니다.
+- 중요 boundary/실패 처리: replacement construction, resize suffix construction, reserve 중 allocation/copy, self-aliased push argument입니다.
 - state/ownership/lifecycle 영향: `_size`는 성공한 live object만 포함하며, failed temporary가 자신의 allocator로 block을 정리합니다. destination allocator object는 assignment commit에서 바뀌지 않습니다.
 - 이 commit이 보장하는 것과 남은 한계: 여러 일반 modifier에서 original preservation 또는 정확한 suffix rollback을 제공합니다. 복잡한 fill/range insertion의 in-place lifetime은 아직 해결되지 않았습니다.
 - 다음 관련 commit과의 연결: `797c33904db3`가 같은 transaction 원리를 insertion reallocation에 적용하고 in-place 경로는 별도 basic guarantee로 설계합니다.
@@ -661,7 +661,7 @@ The original representation is durable, but the first modifier implementations r
 
 #### A-level 핵심 확인
 
-- 중요 boundary/failure path: allocator가 아예 block을 주지 않는 경우와 element construction 후 일부 progress가 있는 경우를 분리합니다.
+- 중요 boundary/실패 처리: allocator가 아예 block을 주지 않는 경우와 element construction 후 일부 progress가 있는 경우를 분리합니다.
 - state/ownership/lifecycle 영향: `tracked_value`의 live-address registry와 allocator block counter가 서로 다른 차원의 leak/invalid lifetime을 검출합니다.
 - 이 commit이 보장하는 것과 남은 한계: 검사한 deterministic 지점의 rollback을 증명합니다. sanitizer나 실제 표준 allocator 전 조합을 대체하지 않습니다.
 - 다음 관련 commit과의 연결: insertion redesign 뒤에는 `8df3d8e067c0`이 같은 기법을 fill/range insert 양쪽 capacity branch로 확장합니다.
@@ -743,7 +743,7 @@ The original representation is durable, but the first modifier implementations r
 
 #### A-level 핵심 확인
 
-- 중요 boundary/failure path: failure가 new block publish 전인지, raw tail construction 중인지, live assignment 중인지에 따라 보장 수준이 다릅니다.
+- 중요 boundary/실패 처리: failure가 new block publish 전인지, raw tail construction 중인지, live assignment 중인지에 따라 보장 수준이 다릅니다.
 - state/ownership/lifecycle 영향: trackers가 object address와 allocation block을 따로 세어 logical size만으로 놓칠 수 있는 문제를 검출합니다.
 - 이 commit이 보장하는 것과 남은 한계: 구현이 의도한 strong/basic guarantee 분리를 테스트합니다. 성능 복잡도나 모든 iterator invalidation 규칙은 별도입니다.
 - 다음 관련 commit과의 연결: self-range scenario의 expected result가 독립적인지 `5bdb6eb81a89`에서 교정됩니다.
@@ -780,7 +780,7 @@ The original representation is durable, but the first modifier implementations r
 
 #### A-level 핵심 확인
 
-- 중요 boundary/failure path: production failure가 아니라 verification 신뢰성의 경계입니다. oracle이 정의되지 않은/지원 범위 밖 동작에 기대면 test pass가 근거가 되지 않습니다.
+- 중요 boundary/실패 처리: production failure가 아니라 verification 신뢰성의 경계입니다. oracle이 정의되지 않은/지원 범위 밖 동작에 기대면 test pass가 근거가 되지 않습니다.
 - state/ownership/lifecycle 영향: production state 변화는 없지만 self-aliasing contract의 기대 sequence가 독립적으로 고정됩니다.
 - 이 commit이 보장하는 것과 남은 한계: 이 테스트의 expected 값이 project contract에서 직접 유도됩니다. 전체 standard conformance oracle은 아닙니다.
 - 다음 관련 commit과의 연결: vector Thread의 최종 evidence에서 self-range 결과와 failure/lifetime evidence를 분리해 신뢰할 수 있게 합니다.
@@ -902,7 +902,7 @@ The public map surface first exists as an ordinary BST, which is sufficient to e
 
 ## 3. 완료 기준
 
-- A: 주요 subsystem/boundary/failure path/integration point를 실제 코드와 설계 판단으로 연결하고, 관련 regression 또는 다음 fix와의 관계를 설명할 수 있어야 합니다.
+- A: 주요 subsystem/boundary/실패 처리/integration point를 실제 코드와 설계 판단으로 연결하고, 관련 regression 또는 다음 fix와의 관계를 설명할 수 있어야 합니다.
 - B: Thread 흐름에서 맡는 구현 역할, 필요한 상태 변화와 핵심 코드 위치를 해당 SHA 기준으로 확인할 수 있어야 합니다.
 - S: 핵심 architecture/invariant를 직전 상태 → failure 가능성 → 결정 → 실제 핵심 코드 → ownership/lifecycle/state transition → 후속 fix/test까지 코드 근거로 설명할 수 있어야 합니다.
 - 모든 commit은 해당 SHA의 코드 또는 test/build diff를 근거로 기록합니다.
@@ -951,7 +951,7 @@ The public map surface first exists as an ordinary BST, which is sufficient to e
 
 #### A-level 핵심 확인
 
-- 중요 boundary/failure path: allocate 성공 뒤 node construction이 던지는 경우입니다. `_create_node`가 방금 받은 block을 즉시 deallocate하고 예외를 재전파합니다.
+- 중요 boundary/실패 처리: allocate 성공 뒤 node construction이 던지는 경우입니다. `_create_node`가 방금 받은 block을 즉시 deallocate하고 예외를 재전파합니다.
 - state/ownership/lifecycle 영향: successful node만 tree에 연결되며 clear는 child subtree를 먼저 해제한 뒤 해당 node를 destroy/deallocate합니다.
 - 이 commit이 보장하는 것과 남은 한계: 개별 node lifetime과 빈 `_root == NULL`, `_size == 0` 상태를 정의합니다. tree는 unbalanced이고 `_node_alloc`을 기본 생성해 stateful value allocator와 상태가 분리되는 결함이 있습니다.
 - 다음 관련 commit과의 연결: `c0fdb8e3f84c`가 comparator search와 link를 추가하고, `f29fd8a91523`이 color/rotation을 추가합니다. allocator state는 Thread 05에서 교정됩니다.
@@ -1051,7 +1051,7 @@ The public map surface first exists as an ordinary BST, which is sufficient to e
 
 #### S-level 심화 추적
 
-- 기존 설계가 충분하지 않았던 이유: ascending/descending input에서는 모든 node가 한쪽 child가 되어 search/insert가 O(n)입니다. sorted output만으로 이 문제는 보이지 않습니다.
+- 기존 설계가 충분하지 않았던 이유: ascending/descending input에서는 모든 node가 한쪽 child가 되어 search/insert가 O(n)입니다. sorted output만으로이 문제는 보이지 않습니다.
 - 핵심 state/ownership/lifetime transition: red leaf link → parent red 여부 검사 → red uncle이면 parent/uncle black, grandparent red 후 위로 진행 → black uncle이면 inner case를 먼저 rotate해 outer case로 만든 뒤 parent/grandparent recolor와 rotation → root black입니다.
 - failure scenario별 cleanup/rollback: balancing 단계 자체는 allocation이나 user copy를 하지 않고 pointer/color만 바꿉니다. comparator와 node construction은 repair 전에 끝납니다. 따라서 fix-up 중 일반 exception cleanup 경로는 없습니다.
 - 이 commit이 보장하는 것: insertion 뒤 root black, no red-red path, ordering/parent links를 유지하는 red-black insertion mechanism입니다.
@@ -1093,7 +1093,7 @@ The public map surface first exists as an ordinary BST, which is sufficient to e
 
 - Thread 흐름에서 맡는 구현 역할: insertion balancing 직후 public behavior가 유지되는지 확인합니다.
 - 핵심 코드와 상태 변화: test가 두 map에 같은 insertion/query를 적용하고 결과만 비교합니다.
-- 다음 commit에 넘기는 전제: erase balancing은 별도 mechanism이며 이 insertion stress로 검증되지 않습니다.
+- 다음 commit에 넘기는 전제: erase balancing은 별도 mechanism이며이 insertion stress로 검증되지 않습니다.
 
 ### 6. feat(map): 레드-블랙 삭제 보정 구현
 
@@ -1210,7 +1210,7 @@ The public map surface first exists as an ordinary BST, which is sufficient to e
 
 #### A-level 핵심 확인
 
-- 중요 boundary/failure path: null leaves의 black-height base case, empty header self-reference, root parent가 header인 non-empty case, swap 후 두 header 갱신입니다.
+- 중요 boundary/실패 처리: null leaves의 black-height base case, empty header self-reference, root parent가 header인 non-empty case, swap 후 두 header 갱신입니다.
 - state/ownership/lifecycle 영향: reachable node count가 size와 같아야 하므로 detached leak 또는 duplicate reachability를 구조 수준에서 탐지합니다. allocator block 자체는 별도 test 대상입니다.
 - 이 commit이 보장하는 것과 남은 한계: deterministic sequences에 대한 강한 structure evidence입니다. exception injection과 asymptotic upper bound는 각각 다른 test가 필요합니다.
 - 다음 관련 commit과의 연결: `cd8ebbb2c01e`가 same inspector의 height 접근과 counting comparator로 complexity claim을 executable bound로 만듭니다.
@@ -1247,7 +1247,7 @@ The public map surface first exists as an ordinary BST, which is sufficient to e
 
 #### A-level 핵심 확인
 
-- 중요 boundary/failure path: ordinary BST여도 functional tests가 통과할 수 있는 sorted input이 핵심 adversarial boundary입니다.
+- 중요 boundary/실패 처리: ordinary BST여도 functional tests가 통과할 수 있는 sorted input이 핵심 adversarial boundary입니다.
 - state/ownership/lifecycle 영향: production ownership을 바꾸지 않으며 height와 comparator state만 관찰합니다.
 - 이 commit이 보장하는 것과 남은 한계: deterministic structural/operation complexity evidence를 제공합니다. timing performance를 보장하지 않습니다.
 - 다음 관련 commit과의 연결: 이 Thread의 최종 red-black architecture가 correctness와 asymptotic evidence를 모두 갖추게 합니다.
@@ -1353,7 +1353,7 @@ The initial iterator can traverse a static tree, but `--end()` depends on a root
 
 - B: Thread 흐름에서 맡는 구현 역할, 필요한 상태 변화와 핵심 코드 위치를 해당 SHA 기준으로 확인할 수 있어야 합니다.
 - S: 핵심 architecture/invariant를 직전 상태 → failure 가능성 → 결정 → 실제 핵심 코드 → ownership/lifecycle/state transition → 후속 fix/test까지 코드 근거로 설명할 수 있어야 합니다.
-- A: 주요 subsystem/boundary/failure path/integration point를 실제 코드와 설계 판단으로 연결하고, 관련 regression 또는 다음 fix와의 관계를 설명할 수 있어야 합니다.
+- A: 주요 subsystem/boundary/실패 처리/integration point를 실제 코드와 설계 판단으로 연결하고, 관련 regression 또는 다음 fix와의 관계를 설명할 수 있어야 합니다.
 - 모든 commit은 해당 SHA의 코드 또는 test/build diff를 근거로 기록합니다.
 - Thread 최종 설명은 source 요약을 복사하는 것으로 끝내지 않고, 직접 확인한 코드 근거와 commit 간 변화로 재구성합니다.
 
@@ -1383,7 +1383,7 @@ The initial iterator can traverse a static tree, but `--end()` depends on a root
 - mutable iterator가 current node 외에 root snapshot을 어떤 필드로 보관하는지 확인합니다.
 - successor는 right-subtree minimum 또는 parent climb, predecessor는 대칭 경로를 사용하는지 추적합니다.
 - `begin()`의 minimum 선택과 null `end()` 표현, `--end()`가 copied root에서 maximum을 찾는 경로를 확인합니다.
-- root가 rotation/replacement/swap으로 바뀌었을 때 saved iterator의 root snapshot이 왜 stale해질 수 있는지 이 SHA의 state만 근거로 기록합니다.
+- root가 rotation/replacement/swap으로 바뀌었을 때 saved iterator의 root snapshot이 왜 stale해질 수 있는지이 SHA의 state만 근거로 기록합니다.
 - 확인한 파일/심볼: `include/ft_map.hpp`의 mutable `iterator`, iterator fields `_node`/`_root`, successor/predecessor helpers, `begin`, `end`.
 - 필요한 경우 비교할 직전 관련 SHA/parent: iterator가 없던 직전 map 상태; limitation fix `15a8460ccdfe`.
 
@@ -1539,7 +1539,7 @@ The initial iterator can traverse a static tree, but `--end()` depends on a root
 
 #### A-level 핵심 확인
 
-- 중요 boundary/failure path: 저장한 iterator를 만든 뒤 topology/owner가 바뀌는 시간적 경계입니다. 단순히 mutation 후 새 iterator를 얻는 test로는 검출되지 않습니다.
+- 중요 boundary/실패 처리: 저장한 iterator를 만든 뒤 topology/owner가 바뀌는 시간적 경계입니다. 단순히 mutation 후 새 iterator를 얻는 test로는 검출되지 않습니다.
 - state/ownership/lifecycle 영향: header는 container lifetime에 고정되고 value nodes만 owner 간 이동합니다. swap 뒤 held element iterator는 node와 함께 새 owner topology에 속합니다.
 - 이 commit이 보장하는 것과 남은 한계: exact motivating cases에 대한 evidence를 제공합니다. exhaustive iterator conformance suite는 아닙니다.
 - 다음 관련 commit과의 연결: 이후 randomized inspector와 consumer tests가 same final representation을 더 넓게 사용합니다.
@@ -1610,7 +1610,7 @@ The initial iterator can traverse a static tree, but `--end()` depends on a root
 
 ### Source-established significance
 
-Map correctness depends on more than key/value ordering: allocator identity determines which state owns each node, and comparator state determines whether the same links describe a valid ordering. The thread first repairs lost allocator state, then ensures a comparator cannot throw after an allocation has no owner. It next makes construction and assignment transactional, and finally addresses a subtler policy failure where comparator assignment can interrupt swap. The resulting rule is consistent across the sequence: policy state must be settled before physical tree ownership is committed, and every failure path must leave each node associated with exactly one valid owner.
+Map correctness depends on more than key/value ordering: allocator identity determines which state owns each node, and comparator state determines whether the same links describe a valid ordering. The thread first repairs lost allocator state, then ensures a comparator cannot throw after an allocation has no owner. It next makes construction and assignment transactional, and finally addresses a subtler policy failure where comparator assignment can interrupt swap. The resulting rule is consistent across the sequence: policy state must be settled before physical tree ownership is committed, and every 실패 처리 must leave each node associated with exactly one valid owner.
 
 ### 이 Thread에서 복원할 것
 
@@ -1634,7 +1634,7 @@ Map correctness depends on more than key/value ordering: allocator identity dete
 
 ## 3. 완료 기준
 
-- A: 주요 subsystem/boundary/failure path/integration point를 실제 코드와 설계 판단으로 연결하고, 관련 regression 또는 다음 fix와의 관계를 설명할 수 있어야 합니다.
+- A: 주요 subsystem/boundary/실패 처리/integration point를 실제 코드와 설계 판단으로 연결하고, 관련 regression 또는 다음 fix와의 관계를 설명할 수 있어야 합니다.
 - 모든 commit은 해당 SHA의 코드 또는 test/build diff를 근거로 기록합니다.
 - Thread 최종 설명은 source 요약을 복사하는 것으로 끝내지 않고, 직접 확인한 코드 근거와 commit 간 변화로 재구성합니다.
 
@@ -1680,7 +1680,7 @@ Map correctness depends on more than key/value ordering: allocator identity dete
 
 #### A-level 핵심 확인
 
-- 중요 boundary/failure path: public allocator type과 internal node allocator type 사이의 rebind boundary입니다. 컴파일은 통과하지만 stateful allocator에서만 드러나는 silent ownership 오류입니다.
+- 중요 boundary/실패 처리: public allocator type과 internal node allocator type 사이의 rebind boundary입니다. 컴파일은 통과하지만 stateful allocator에서만 드러나는 silent ownership 오류입니다.
 - state/ownership/lifecycle 영향: node allocation과 destruction/deallocation이 같은 allocator family state에 귀속됩니다.
 - 이 commit이 보장하는 것과 남은 한계: constructor에서 rebind identity를 유지합니다. insertion/constructor/assignment 실패 시 ownership transaction 자체는 다음 commits에서 강화됩니다.
 - 다음 관련 commit과의 연결: `cb08194d17b0`은 node가 allocator에서 나온 직후 tree owner에 연결되기 전의 orphan window를 제거합니다.
@@ -1714,7 +1714,7 @@ Map correctness depends on more than key/value ordering: allocator identity dete
 
 #### A-level 핵심 확인
 
-- 중요 boundary/failure path: acquired node가 아직 root/parent에서 reachable하지 않은 짧은 구간입니다.
+- 중요 boundary/실패 처리: acquired node가 아직 root/parent에서 reachable하지 않은 짧은 구간입니다.
 - state/ownership/lifecycle 영향: comparator failure는 acquisition 전에 발생하므로 map state/allocator blocks가 변하지 않습니다. acquisition 성공 후 node는 즉시 map reachability에 들어갑니다.
 - 이 commit이 보장하는 것과 남은 한계: normal insertion에서 post-allocation comparator throw orphan을 제거합니다. bulk construction과 assignment가 여러 successful inserts 뒤 실패하는 rollback은 별도입니다.
 - 다음 관련 commit과의 연결: `55d3b3e7c104`가 여러 insertion으로 만든 partial tree 전체의 transaction을 처리합니다.
@@ -1755,7 +1755,7 @@ Map correctness depends on more than key/value ordering: allocator identity dete
 
 #### A-level 핵심 확인
 
-- 중요 boundary/failure path: object construction이 완료되기 전 destructor 자동 호출이 없는 구간과 assignment replacement build 구간입니다.
+- 중요 boundary/실패 처리: object construction이 완료되기 전 destructor 자동 호출이 없는 구간과 assignment replacement build 구간입니다.
 - state/ownership/lifecycle 영향: partial constructor nodes는 under-construction object가 clear하고, replacement nodes는 temporary가 소유합니다. commit 후 temporary가 old target owner가 됩니다.
 - 이 commit이 보장하는 것과 남은 한계: comparator/allocation failure에서 partial constructor cleanup과 target preservation을 제공합니다. comparator exchange 자체가 throw할 때 tree/allocator보다 뒤에서 수행되면 partial commit 위험이 남아 `0f4dd84e44ed`가 순서를 고칩니다.
 - 다음 관련 commit과의 연결: `d72b04c5ddc6`이 transaction을 검증하고, `0f4dd84e44ed`/`55d4ba1fb493`가 policy-assignment failure를 별도로 다룹니다.
@@ -1786,14 +1786,14 @@ Map correctness depends on more than key/value ordering: allocator identity dete
 - test technique: deterministic comparator/allocation failure injection과 outstanding-node accounting입니다.
 - 통과하는 production 코드 경로: insertion search/acquisition/link, range/copy constructor catch/clear, temporary-tree assignment build/exchange입니다.
 - 이 테스트가 증명하는 것: 검사한 fail points에서 insertion은 leak 없이 실패하고, constructors는 residual block 0이며, assignment target keys와 baseline target allocation count가 유지됩니다. rebind된 allocator copies가 같은 shared owner state를 사용합니다.
-- 이 테스트가 증명하지 않는 것: comparator assignment 중 failure와 public swap commit ordering은 이 SHA의 suite 범위가 아닙니다. 모든 third-party allocator/comparator behavior도 exhaustive하지 않습니다.
+- 이 테스트가 증명하지 않는 것: comparator assignment 중 failure와 public swap commit ordering은이 SHA의 suite 범위가 아닙니다. 모든 third-party allocator/comparator behavior도 exhaustive하지 않습니다.
 - 성격: transaction boundary를 고정하는 deterministic failure-injection regression입니다.
 - 후속 변경에서 막아야 하는 회귀: allocate-after/compare ordering 역전, constructor catch 제거, assignment target 조기 clear, rebind state 단절입니다.
 - 실행 증거: fixture와 fail-point loops를 코드로 확인했습니다. test binary를 실행하지 않았습니다.
 
 #### A-level 핵심 확인
 
-- 중요 boundary/failure path: `throwing_less`는 지정 call에서 던지고 tracking allocator는 지정 acquisition에서 던집니다. generated iterator는 external container behavior 없이 range construction을 진행시킵니다.
+- 중요 boundary/실패 처리: `throwing_less`는 지정 call에서 던지고 tracking allocator는 지정 acquisition에서 던집니다. generated iterator는 external container behavior 없이 range construction을 진행시킵니다.
 - state/ownership/lifecycle 영향: shared allocator state가 rebound type마다 같은 outstanding count를 보므로 node block leak를 직접 계측합니다.
 - 이 commit이 보장하는 것과 남은 한계: preceding fixes의 compare/allocation transaction을 강하게 뒷받침합니다. policy object assignment failure는 다음 fix/test가 필요합니다.
 - 다음 관련 commit과의 연결: `0f4dd84e44ed`가 comparator assignment를 ownership commit보다 앞으로 옮기고 `55d4ba1fb493`가 그 failure를 주입합니다.
@@ -1827,7 +1827,7 @@ Map correctness depends on more than key/value ordering: allocator identity dete
 
 #### A-level 핵심 확인
 
-- 중요 boundary/failure path: comparator copy/assignment가 throw 가능한 policy operation이라는 점입니다.
+- 중요 boundary/실패 처리: comparator copy/assignment가 throw 가능한 policy operation이라는 점입니다.
 - state/ownership/lifecycle 영향: failure 시 physical node tree와 allocator owners는 원래 map에 남고 complete replacement temporary는 자신의 allocator로 해제됩니다.
 - 이 commit이 보장하는 것과 남은 한계: tree ownership이 comparator exchange failure 뒤 부분 이동하지 않게 합니다. comparator type 자체가 assignment 전에 state를 변형한 뒤 던지는 경우까지 일반적인 strong guarantee를 구현이 별도로 복원하지는 않습니다. regression fixture는 throw 전에 자기 state를 유지하는 동작을 검증합니다.
 - 다음 관련 commit과의 연결: `55d4ba1fb493`가 distinct ordering directions/allocator owners로 policy-tree mismatch를 observable하게 만듭니다.
@@ -1864,8 +1864,8 @@ Map correctness depends on more than key/value ordering: allocator identity dete
 
 #### A-level 핵심 확인
 
-- 중요 boundary/failure path: temporary tree가 완성된 뒤 최종 commit 첫 policy assignment에서 실패하는 late failure입니다.
-- state/ownership/lifecycle 영향: target/source physical trees는 그대로이고 temporary가 replacement nodes를 소유한 채 scope unwinding으로 해제됩니다. allocator counters가 이 ownership 분리를 확인합니다.
+- 중요 boundary/실패 처리: temporary tree가 완성된 뒤 최종 commit 첫 policy assignment에서 실패하는 late failure입니다.
+- state/ownership/lifecycle 영향: target/source physical trees는 그대로이고 temporary가 replacement nodes를 소유한 채 scope unwinding으로 해제됩니다. allocator counters가이 ownership 분리를 확인합니다.
 - 이 commit이 보장하는 것과 남은 한계: 해당 comparator/allocator 모델에서 state preservation과 leak absence를 증명합니다. 언어 수준의 모든 policy implementation을 일반화하지는 않습니다.
 - 다음 관련 commit과의 연결: 이 Thread의 최종 transaction rule을 검증하며 이후 acceptance/sanitizer suite에 포함됩니다.
 
@@ -2066,7 +2066,7 @@ A header-only library can appear correct inside one monolithic test while still 
 - 이 commit 직전 상태: aggregate entry point는 utility/vector/stack까지만 포함해 associative container surface가 불완전했습니다.
 - 해결하려던 문제: map을 직접 include해야 했고, map의 public comparison/swap surface도 동일 commit에서 완성될 필요가 있었습니다.
 - 선택한 결정: map header를 aggregate list에 추가하고, key comparator를 value pairs에 적용하는 `value_compare`, shared `ft::equal`/`ft::lexicographical_compare` 기반 relations, member swap forwarding을 공개했습니다.
-- 새로 생긴 책임 경계 또는 상태 변화: `ft_containers.hpp`가 이 repository의 utility, sequential, adaptor, associative surface를 한 entry point에서 노출합니다. runtime tree representation은 이 commit에서 새로 정의되지 않습니다.
+- 새로 생긴 책임 경계 또는 상태 변화: `ft_containers.hpp`가이 repository의 utility, sequential, adaptor, associative surface를 한 entry point에서 노출합니다. runtime tree representation은이 commit에서 새로 정의되지 않습니다.
 
 #### B-level 확인
 
@@ -2122,7 +2122,7 @@ A header-only library can appear correct inside one monolithic test while still 
 
 - vector consumer TU, map consumer TU, shared declaration header, caller/main TU의 include와 symbol 관계를 그립니다.
 - 각 TU가 독립 compile된 뒤 하나의 executable로 link되는 target을 확인합니다.
-- single-file test가 잡지 못하는 header-only ODR/linkage failure를 이 구조가 어떻게 노출하는지 기록합니다.
+- single-file test가 잡지 못하는 header-only ODR/linkage failure를이 구조가 어떻게 노출하는지 기록합니다.
 - new `check` target이 behavioral tests, header compilation, linked consumer를 어떤 순서/의존성으로 묶는지 확인합니다.
 - 확인한 파일/심볼: `tests/consumer/consumer_api.hpp`, `vector_consumer.cpp`, `map_consumer.cpp`, `main.cpp`; Makefile의 `CONSUMER_OBJECTS`, `CONSUMER_BIN`, `consumer`, `check` targets입니다.
 - 필요한 경우 비교할 직전 관련 SHA/parent: independent compile probes `d938c0079994`입니다.
@@ -2244,7 +2244,7 @@ A header-only library can appear correct inside one monolithic test while still 
 
 - 최종적으로 성립한 representation/state: component public headers와 aggregate `ft_containers.hpp`가 공존합니다. Makefile acceptance는 behavioral tests, independent-header objects, multi-TU linked consumer를 `check`로 묶고, 동일 graph를 separate sanitizer build에서 재실행합니다. CI는 normal compiler/platform matrix와 sanitizer job을 호출합니다.
 - 최종적으로 보장하는 invariant: repository가 정의한 probes 범위에서 각 public header는 strict C++98로 first-include compile되고, header-only implementation은 representative vector/map consumer TUs를 함께 link할 수 있도록 구성됩니다.
-- 남아 있는 precondition 또는 보장하지 않는 범위: probes가 instantiate하지 않은 모든 template/type 조합, ABI/shared-library compatibility, unexercised runtime path의 memory safety를 전부 증명하지 않습니다. CI workflow 정의는 확인했지만 이 작업에서 run 결과를 검증하지 않았습니다.
+- 남아 있는 precondition 또는 보장하지 않는 범위: probes가 instantiate하지 않은 모든 template/type 조합, ABI/shared-library compatibility, unexercised runtime path의 memory safety를 전부 증명하지 않습니다. CI workflow 정의는 확인했지만이 작업에서 run 결과를 검증하지 않았습니다.
 - 최종 verification evidence: aggregate include diff, eight independent header probes, separate consumer compile/link/run rules와 expected 29/55, isolated ASan/UBSan recursive target, three normal matrix entries와 one sanitizer job을 코드로 확인했습니다. local checkout 제한 때문에 명령은 실행하지 않았습니다.
 - 이 상태에 도달하기 위해 필요했던 핵심 turning point commit: self-containment를 분리한 `d938c0079994`, real linked consumer를 만든 `072c49832ddc`, complete acceptance를 자동화한 `228f457988be`입니다.
 
@@ -2280,7 +2280,7 @@ A header-only library can appear correct inside one monolithic test while still 
 
 이 디렉터리는 확정된 `commit-importance.md`와 `commit-bodies.md`만을 기준으로, 실제 commit history와 해당 SHA의 코드를 직접 읽으며 `ft_container`의 개발 과정을 복원하기 위한 학습 골격입니다.
 
-완성형 해설서가 아닙니다. 문서에 미리 적힌 내용은 source에서 이미 확정된 Thread 구조, commit metadata, 역할, 중요도, 태그, invariant와 engineering difficulty입니다. 실제 구현 해석, 함수별 추적, ownership/lifetime 확인, failure path, test 결과, 최종 설명은 학습자가 채웁니다.
+완성형 해설서가 아닙니다. 문서에 미리 적힌 내용은 source에서 이미 확정된 Thread 구조, commit metadata, 역할, 중요도, 태그, invariant와 engineering difficulty입니다. 실제 구현 해석, 함수별 추적, ownership/lifetime 확인, 실패 처리, test 결과, 최종 설명은 학습자가 채웁니다.
 
 ## 권장 학습 순서
 
@@ -2320,7 +2320,7 @@ Development Thread의 source 순서를 그대로 따릅니다.
 ## S/A/B/C별 학습 깊이
 
 - S: 핵심 architecture/invariant입니다. Problem, 기존 상태, failure 가능성, 결정, 핵심 코드, ownership/lifecycle/state transition, 후속 fix/test까지 추적합니다.
-- A: 주요 subsystem, boundary, failure path, integration point입니다. 핵심 코드와 설계 판단, 관련 regression을 확인합니다.
+- A: 주요 subsystem, boundary, 실패 처리, integration point입니다. 핵심 코드와 설계 판단, 관련 regression을 확인합니다.
 - B: Thread 흐름에서 맡는 구현 역할과 필요한 코드/state 변화를 확인합니다.
 - C: Thread 이해에 필요한 맥락만 확인합니다. S/A와 동일한 깊이의 분석을 만들지 않습니다.
 
@@ -2334,13 +2334,13 @@ Development Thread의 source 순서를 그대로 따릅니다.
 
 ## Test commit 학습 방법
 
-- 먼저 이 test가 보호하는 production invariant를 한 문장으로 적습니다.
+- 먼저이 test가 보호하는 production invariant를 한 문장으로 적습니다.
 - 어떤 failure/boundary를 주입하거나 재현하는지 확인합니다.
 - differential, failure injection, white-box, deterministic randomized, structural bound, integration compile/link 중 실제 technique을 코드로 확인합니다.
 - test fixture에서 끝내지 말고 실제 production path까지 연결합니다.
 - 성공 assertion이 증명하는 것과 증명하지 않는 것을 분리합니다.
 - broad integration test인지 특정 regression을 고정하는 deterministic test인지 근거를 적습니다.
-- 후속 변경이 어떤 회귀를 만들면 이 test가 실패해야 하는지 적습니다.
+- 후속 변경이 어떤 회귀를 만들면이 test가 실패해야 하는지 적습니다.
 
 ## 문서 완료 기준
 

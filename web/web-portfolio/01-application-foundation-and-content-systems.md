@@ -1,3961 +1,3961 @@
 ===== BEGIN FILE: 01-runnable-next-application-boundary.md =====
-# Thread: Runnable Next application boundary
+# 개발 흐름: 실행 가능한 Next 애플리케이션 시작점
 
-> Repository: `https://github.com/seungwoo7050/42-archive`  
-> Branch: `web/portfolio`  
-> Category: `01-application-foundation-and-content-systems`
+> 저장소: `https://github.com/seungwoo7050/42-archive`
+> 브랜치: `web/portfolio`
+> 분류: `01-application-foundation-and-content-systems`
 
 ## 0. 분류 출처와 변경 가능 범위
 
-- Commit SHA, subject, importance, tags는 target branch의 `commit/commit-importance.md` 분류와 exact commit metadata를 사용합니다.
-- 이 문서의 Thread grouping, 목표, 역할, 조사 지점은 Phase 1 category audit에서 repository evidence를 기준으로 확정했습니다.
-- Phase 2에서는 이 fixed information을 바꾸지 않고 learner-facing 기록만 채웠습니다.
-- 다른 branch나 final HEAD 구현을 과거 SHA 설명에 소급하지 않습니다.
+- 커밋 SHA·제목·중요도·태그는 대상 브랜치의 `commit/commit-importance.md` 분류와 해당 커밋의 정확한 메타데이터를 사용합니다.
+- 이 문서의 개발 흐름 묶음·목표·역할·확인 지점은 1단계 분류 검토에서 저장소 근거를 바탕으로 확정했습니다.
+- 2단계에서는 이 고정 정보를 바꾸지 않고 학습자용 기록만 작성했습니다.
+- 다른 브랜치나 최종 HEAD의 구현을 과거 SHA의 설명으로 소급하지 않습니다.
 
-## 1. Thread 목표
+## 1. 개발 흐름 목표
 
-문서뿐인 저장소가 고정된 Next.js 애플리케이션, 전역 스타일 입력점, content aggregate를 소비하는 첫 route까지 갖추는 경계를 복원합니다.
+문서뿐인 저장소가 고정된 Next.js 애플리케이션, 전역 스타일 입력점, 콘텐츠 집계 객체를 소비하는 첫 라우트까지 갖추는 경계를 복원합니다.
 
-### 계획된 핵심 invariant
+### 계획된 핵심 불변 조건
 
-- 실행 경계는 package script, TypeScript/Next/PostCSS 설정, App Router root로 명시됩니다.
-- 전역 스타일은 하나의 `globals.css`와 root layout import를 통해 적용됩니다.
-- 첫 route는 JSON을 직접 조립하지 않고 portfolio aggregate를 호출합니다.
+- 실행 경계는 패키지 스크립트, TypeScript/Next/PostCSS 설정, App Router 최상위 구성으로 명시됩니다.
+- 전역 스타일은 하나의 `globals.css`를 최상위 레이아웃에서 불러와 적용합니다.
+- 첫 라우트는 JSON을 직접 조립하지 않고 포트폴리오 집계 객체를 호출합니다.
 
-## 2. 이 Thread를 이해하기 위한 핵심 질문
+## 2. 이 개발 흐름을 이해하기 위한 핵심 질문
 
-- 문서용 저장소와 실행 가능한 애플리케이션의 경계는 어느 commit에서 생기는가?
-- `globals.css`가 추가된 시점과 실제 import된 시점을 구분하면 무엇이 보이는가?
-- 초기 route가 content와 renderer 사이에서 맡은 책임과 아직 맡지 않은 책임은 무엇인가?
+- 문서용 저장소와 실행 가능한 애플리케이션의 경계는 어느 커밋에서 생기는가?
+- `globals.css`가 추가된 시점과 실제 불러온 시점을 구분하면 무엇이 보이는가?
+- 초기 라우트가 콘텐츠와 렌더러 사이에서 맡은 책임과 아직 맡지 않은 책임은 무엇인가?
 
 ## 3. 완료 기준
 
-- 각 SHA의 parent diff와 resulting tree에서 실제 file/symbol을 확인합니다.
-- 이전 상태, implementation decision, owner/lifetime, absence/failure/fallback, guarantee/non-guarantee를 분리합니다.
-- Fix·refactor·integration은 바로 앞의 assumption이나 duplicated responsibility와 연결합니다.
-- 테스트나 command는 실제 실행 여부를 정적 검토와 명확히 구분합니다.
-- Thread 종료 시 invariant evolution과 최종 flow를 코드 없이 설명합니다.
+- 각 SHA의 부모 커밋과의 차이와 변경 후 파일 트리에서 실제 파일과 심볼을 확인합니다.
+- 이전 상태, 구현 결정, 소유 주체와 수명, 누락·실패·대체 처리, 보장 범위와 보장하지 않는 범위를 나눠 기록합니다.
+- 수정·리팩터링·통합은 바로 앞선 가정이나 중복 구현과 연결합니다.
+- 테스트와 명령은 실제 실행 여부를 정적 검토와 명확히 구분합니다.
+- 개발 흐름 마지막에는 불변 조건의 변화와 최종 실행 순서를 코드 없이 설명합니다.
 
-## 4. Commit map
+## 4. 커밋 목록
 
-| 순서 | Commit | Subject | Importance | Tags | 이 Thread에서의 역할 |
-| ---: | --- | --- | :---: | --- | --- |
+| 순서 | 커밋 | 제목 | 중요도 | 태그 | 이 개발 흐름에서의 역할 |
+| ---: | --- | --- |:---: | --- | --- |
 | 1 | `cce7dd020563` | docs(portfolio): 프로젝트 목적과 초기 규약 정의 | C | CONTENT | 문서 기반 초기 상태 |
 | 2 | `448bc2510f34` | build(next): 실행 가능한 애플리케이션 골격 구성 | A | DEPLOY | 실행 가능한 애플리케이션 기반 |
-| 3 | `0a28cb050bc8` | style(theme): 포트폴리오 기본 디자인 토큰 추가 | B | RENDERER | 전역 스타일 vocabulary 도입 |
-| 4 | `03c4e1f7b439` | feat(app): 콘텐츠 기반 디자인 홈 연결 | B | CONTENT | 첫 content-to-renderer 통합 |
+| 3 | `0a28cb050bc8` | style(theme): 포트폴리오 기본 디자인 토큰 추가 | B | RENDERER | 전역 스타일 허용 값 집합 도입 |
+| 4 | `03c4e1f7b439` | feat(app): 콘텐츠 기반 디자인 홈 연결 | B | CONTENT | 첫 콘텐츠에서 렌더러로 이어지는 통합 |
 
-## 5. Commit별 학습 기록
+## 5. 커밋별 학습 기록
 
 ### 1. `cce7dd020563` — docs(portfolio): 프로젝트 목적과 초기 규약 정의
 
 - **Importance:** C
 - **Tags:** CONTENT
-- **Thread 역할:** 문서 기반 초기 상태
-- **조사 깊이:** Thread의 출발점을 이해하는 데 필요한 context와 후속 제약만 기록합니다.
+- **개발 흐름에서의 역할:** 문서 기반 초기 상태
+- **조사 깊이:** 개발 흐름의 출발점을 이해하는 데 필요한 맥락과 후속 제약만 기록합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `README.md`의 목적, 콘텐츠 편집 위치, 코드/콘텐츠 분리 규칙을 확인합니다.
-- 이 tree에 `package.json`, `src/app`, 실행 script가 없는지 확인합니다.
+- `README.md`의 목적, 콘텐츠 편집 위치, 코드·콘텐츠 분리 규칙을 확인합니다.
+- 이 파일 트리에 `package.json`, `src/app`, 실행 스크립트가 없는지 확인합니다.
 
 확인 원칙:
 
-- 먼저 `cce7dd020563^`와 `cce7dd020563`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `cce7dd020563^`와 `cce7dd020563`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모가 없음을 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
 | 직전 상태와 부족함 | 저장소에는 실행 코드가 없고 포트폴리오의 목적과 향후 디렉터리 규칙만 문서화되어 있었습니다. |
-| 실제 변경 file/symbol/call path | `README.md`가 `src/content`, `src/lib/portfolio`, `src/components/portfolio`를 각각 source, 조립, 표현 위치로 예고합니다. |
-| Data/state/resource owner와 lifetime | 소유권은 아직 문서 규칙에만 있으며 runtime owner는 존재하지 않습니다. |
-| Failure·absence·fallback 처리 | 문서가 맞아도 build·route·렌더링을 검증할 방법은 없습니다. |
+| 실제 변경 파일·심볼·호출 경로 | `README.md`가 `src/content`, `src/lib/portfolio`, `src/components/portfolio`를 각각 원본, 조립, 표현 위치로 예고합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 소유권은 아직 문서 규칙에만 있으며 실행 시점 소유 주체는 존재하지 않습니다. |
+| 실패·누락·대체 처리 | 문서가 맞아도 빌드·라우트·렌더링을 검증할 방법은 없습니다. |
 | 보장하는 것과 보장하지 않는 것 | 후속 구현이 따라야 할 편집 경계는 제시하지만 실행 가능성은 보장하지 않습니다. |
-| 다음 commit 또는 관련 test 연결 | `448bc2510f34`가 이 문서 규칙 위에 실제 Next 애플리케이션 경계를 만듭니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `448bc2510f34`가 이 문서 규칙 위에 실제 Next 애플리케이션 경계를 만듭니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `cce7dd020563`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `cce7dd020563`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 2. `448bc2510f34` — build(next): 실행 가능한 애플리케이션 골격 구성
 
 - **Importance:** A
 - **Tags:** DEPLOY
-- **Thread 역할:** 실행 가능한 애플리케이션 기반
-- **조사 깊이:** 주요 subsystem의 결정 경로, owner, failure/non-guarantee와 integration evidence를 구체적으로 복원합니다.
+- **개발 흐름에서의 역할:** 실행 가능한 애플리케이션 기반
+- **조사 깊이:** 주요 하위 기능의 결정 경로, 소유 주체, 실패와 보장하지 않는 범위와 통합 근거를 구체적으로 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `package.json`의 `dev`, `build`, `start`, `lint`, `typecheck` script와 Next/React version을 확인합니다.
-- `tsconfig.json`, `next.config.ts`, `postcss.config.mjs`, `eslint.config.mjs`의 compiler/build 경계를 확인합니다.
-- `src/app/layout.tsx`와 `src/app/page.tsx`가 제공하는 최소 App Router tree를 확인합니다.
+- `package.json`의 `dev`, `build`, `start`, `lint`, `typecheck` 스크립트와 Next/React 버전을 확인합니다.
+- `tsconfig.json`, `next.config.ts`, `postcss.config.mjs`, `eslint.config.mjs`의 컴파일러·빌드 경계를 확인합니다.
+- `src/app/layout.tsx`와 `src/app/page.tsx`가 제공하는 최소 App Router 파일 트리를 확인합니다.
 
 확인 원칙:
 
-- 먼저 `448bc2510f34^`와 `448bc2510f34`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `448bc2510f34^`와 `448bc2510f34`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | 직전 tree에는 dependency graph, compiler 설정, App Router entry가 없어 어떤 콘텐츠도 웹 애플리케이션으로 실행할 수 없었습니다. |
-| 실제 변경 file/symbol/call path | Next 16.2.4·React 19.2.4 기반 package와 strict TypeScript, Tailwind PostCSS plugin, ESLint, root layout/page를 한 번에 추가합니다. 개발 서버와 production server는 포트 3100을 사용합니다. |
-| Data/state/resource owner와 lifetime | `package.json`이 lifecycle command를, `src/app/layout.tsx`가 document shell을, `src/app/page.tsx`가 첫 route output을 소유합니다. |
-| Failure·absence·fallback 처리 | 설정 파일이 생겨도 당시 page는 정적 placeholder이며 content schema·loader·실제 renderer 통합은 없습니다. Node/npm 재현성 pinning도 이 Thread가 아니라 category 08의 후속 책임입니다. |
-| 보장하는 것과 보장하지 않는 것 | `npm run build`가 가능한 구조와 App Router root는 생기지만 실제 실행 성공은 이번 작업에서 재현하지 않았습니다. |
-| 다음 commit 또는 관련 test 연결 | `0a28cb050bc8`이 styling input을 만들고 `03c4e1f7b439`가 content/render integration을 연결합니다. |
+| 직전 상태와 부족함 | 직전 파일 트리에는 의존성 관계, 컴파일러 설정, App Router 진입점이 없어 어떤 콘텐츠도 웹 애플리케이션으로 실행할 수 없었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | Next 16.2.4·React 19.2.4 기반 패키지와 엄격한 TypeScript, Tailwind PostCSS 플러그인, ESLint, 최상위 레이아웃·페이지를 한 번에 추가합니다. 개발 서버와 배포용 서버는 포트 3100을 사용합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | `package.json`이 실행 주기 명령을, `src/app/layout.tsx`가 문서 셸을, `src/app/page.tsx`가 첫 라우트 출력을 소유합니다. |
+| 실패·누락·대체 처리 | 설정 파일이 생겨도 당시 페이지는 정적 자리표시자이며 콘텐츠 스키마·로더·실제 렌더러 통합은 없습니다. Node/npm 재현성 버전 고정도 이 개발 흐름이 아니라 분류 08의 후속 책임입니다. |
+| 보장하는 것과 보장하지 않는 것 | `npm run build`가 가능한 구조와 App Router 최상위 구성은 생기지만 실제 실행 성공은 이번 작업에서 재현하지 않았습니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `0a28cb050bc8`이 스타일 적용 입력을 만들고 `03c4e1f7b439`가 콘텐츠·렌더링 통합을 연결합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `448bc2510f34`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다. 정적 증거: exact SHA diff에서 package/config/App Router 파일 추가를 확인했습니다. 저장소 command는 로컬 checkout 부재로 실행하지 않았습니다.
+정적 근거: `448bc2510f34`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다. 정적 증거: 해당 SHA의 변경 내용에서 패키지·설정·App Router 파일 추가를 확인했습니다. 저장소 명령은 로컬 체크아웃 부재로 실행하지 않았습니다.
 
 ### 3. `0a28cb050bc8` — style(theme): 포트폴리오 기본 디자인 토큰 추가
 
 - **Importance:** B
 - **Tags:** RENDERER
-- **Thread 역할:** 전역 스타일 vocabulary 도입
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 전역 스타일 허용 값 집합 도입
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `src/app/globals.css`의 Tailwind import, `:root` token, `@theme inline`, body/anchor/selection 규칙을 확인합니다.
-- 이 SHA에서 root layout이 파일을 import하는지와 아직 미연결인지 구분합니다.
+- `src/app/globals.css`의 Tailwind 가져오기, `:root` 토큰, `@theme inline`, 본문·기준·선택 규칙을 확인합니다.
+- 이 SHA에서 최상위 레이아웃이 파일을 불러오는지와 아직 미연결인지 구분합니다.
 
 확인 원칙:
 
-- 먼저 `0a28cb050bc8^`와 `0a28cb050bc8`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `0a28cb050bc8^`와 `0a28cb050bc8`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | 초기 App Router에는 전역 token과 base style을 담을 프로젝트 파일이 없었습니다. |
-| 실제 변경 file/symbol/call path | `globals.css`가 색상·font token을 CSS custom property로 정의하고 Tailwind theme alias와 document base style을 제공합니다. |
-| Data/state/resource owner와 lifetime | 스타일 값의 owner는 component별 class가 아니라 root stylesheet로 이동하지만, 이 SHA만으로는 layout import가 없어 소비가 시작되지 않습니다. |
-| Failure·absence·fallback 처리 | 파일이 존재해도 import되지 않으면 runtime CSS bundle에 포함된다는 보장이 없습니다. |
-| 보장하는 것과 보장하지 않는 것 | 공용 token vocabulary를 보장하지만 실제 적용은 다음 commit까지 보장하지 않습니다. |
-| 다음 commit 또는 관련 test 연결 | `03c4e1f7b439`의 root layout import가 이 파일을 실제 application boundary에 연결합니다. |
+| 직전 상태와 부족함 | 초기 App Router에는 전역 토큰과 기본 스타일을 담을 프로젝트 파일이 없었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | `globals.css`가 색상·글꼴 토큰을 CSS 사용자 정의 속성으로 정의하고 Tailwind theme 별칭와 문서 기본 스타일을 제공합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 스타일 값의 소유 주체는 컴포넌트별 클래스가 아니라 최상위 스타일시트로 이동하지만, 이 SHA만으로는 레이아웃 가져오기가 없어 소비가 시작되지 않습니다. |
+| 실패·누락·대체 처리 | 파일이 존재해도 가져오기되지 않으면 실행 시점 CSS 번들에 포함된다는 보장이 없습니다. |
+| 보장하는 것과 보장하지 않는 것 | 공용 토큰 허용 값 집합을 보장하지만 실제 적용은 다음 커밋까지 보장하지 않습니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `03c4e1f7b439`의 최상위 레이아웃 가져오기가 이 파일을 실제 애플리케이션 시작점에 연결합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `0a28cb050bc8`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `0a28cb050bc8`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 4. `03c4e1f7b439` — feat(app): 콘텐츠 기반 디자인 홈 연결
 
 - **Importance:** B
 - **Tags:** CONTENT
-- **Thread 역할:** 첫 content-to-renderer 통합
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 첫 콘텐츠에서 렌더러로 이어지는 통합
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `src/app/layout.tsx`의 Geist font, `site.json`, `globals.css` import와 metadata/lang 설정을 확인합니다.
-- `src/app/page.tsx`의 `getPortfolioContent()` → `DesignHomeRoute` 호출과 전달 props를 확인합니다.
-- `contentDebug={false}`와 단일 Design renderer라는 초기 제한을 기록합니다.
+- `src/app/layout.tsx`의 Geist 글꼴, `site.json`, `globals.css` 가져오기와 메타데이터·lang 설정을 확인합니다.
+- `src/app/page.tsx`의 `getPortfolioContent()` → `DesignHomeRoute` 호출과 전달 속성을 확인합니다.
+- `contentDebug={false}`와 단일 Design 렌더러라는 초기 제한을 기록합니다.
 
 확인 원칙:
 
-- 먼저 `03c4e1f7b439^`와 `03c4e1f7b439`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `03c4e1f7b439^`와 `03c4e1f7b439`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | App Router skeleton과 stylesheet는 있었지만 site metadata, portfolio aggregate, home renderer가 연결되지 않았습니다. |
-| 실제 변경 file/symbol/call path | root layout이 site source로 metadata와 language를 정하고 globals/font를 적용하며, page는 `getPortfolioContent()` 결과를 `DesignHomeRoute`에 전달합니다. |
-| Data/state/resource owner와 lifetime | route는 aggregate 호출과 renderer 선택을 소유하고, content 조립은 `src/lib/portfolio`, 표현은 Design route component가 소유합니다. |
-| Failure·absence·fallback 처리 | 고정 `contentDebug={false}`이고 다른 design 선택·runtime validation·route error policy는 아직 없습니다. |
-| 보장하는 것과 보장하지 않는 것 | 첫 page가 직접 JSON을 조립하지 않는 application/content boundary를 보장하지만 source의 runtime 신뢰성은 보장하지 않습니다. |
-| 다음 commit 또는 관련 test 연결 | T2가 aggregate 모델을, T3 이후가 presentation/다중 route 계약을 확장합니다. |
+| 직전 상태와 부족함 | App Router 기본 골격과 스타일시트는 있었지만 사이트 메타데이터, 포트폴리오 집계 객체, 홈 렌더러가 연결되지 않았습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 최상위 레이아웃이 사이트 원본으로 메타데이터와 언어를 정하고 globals·글꼴을 적용하며, 페이지는 `getPortfolioContent()` 결과를 `DesignHomeRoute`에 전달합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 라우트는 집계 객체 호출과 렌더러 선택을 소유하고, 콘텐츠 조립은 `src/lib/portfolio`, 표현은 Design 라우트 컴포넌트가 소유합니다. |
+| 실패·누락·대체 처리 | 고정 `contentDebug={false}`이고 다른 디자인 선택·실행 시점 검증·라우트 오류 규칙은 아직 없습니다. |
+| 보장하는 것과 보장하지 않는 것 | 첫 페이지가 직접 JSON을 조립하지 않는 애플리케이션·콘텐츠 처리 지점을 보장하지만 원본의 실행 시점 신뢰성은 보장하지 않습니다. |
+| 다음 커밋 또는 관련 테스트 연결 | T2가 집계 객체 모델을, T3 이후가 화면 구성·다중 라우트 계약을 확장합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `03c4e1f7b439`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `03c4e1f7b439`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
-## 6. Invariant evolution ledger
+## 6. 불변 조건 변화 기록
 
-| 추적할 invariant | 도입·변화 SHA | 실제 owner/evidence | 제한·후속 보호 |
+| 추적할 불변 조건 | 도입·변화 SHA | 실제 소유 주체·근거 | 제한·후속 보호 |
 | --- | --- | --- | --- |
-| 실행 command와 App Router root가 존재한다. | `448bc2510f34` | `package.json`, `src/app/layout.tsx`, `src/app/page.tsx` | Node/npm pin과 production smoke는 category 08에서 보강됩니다. |
-| 전역 token은 root stylesheet에서 정의되고 layout이 import한다. | `0a28cb050bc8` → `03c4e1f7b439` | `src/app/globals.css`, `src/app/layout.tsx` | token 의미의 visual regression은 이 Thread가 검증하지 않습니다. |
-| 첫 route는 portfolio aggregate를 renderer에 전달한다. | `03c4e1f7b439` | `src/app/page.tsx`의 `getPortfolioContent()` 호출 | aggregate 내부 값은 아직 assertion 기반입니다. |
+| 실행 명령과 App Router 최상위 구성이 존재합니다. | `448bc2510f34` | `package.json`, `src/app/layout.tsx`, `src/app/page.tsx` | Node/npm 버전 고정과 배포 환경 기본 동작 확인는 분류 08에서 보강됩니다. |
+| 전역 토큰은 최상위 스타일시트에서 정의되고 레이아웃이 불러옵니다. | `0a28cb050bc8` → `03c4e1f7b439` | `src/app/globals.css`, `src/app/layout.tsx` | 토큰 의미의 시각 회귀는 이 개발 흐름이 검증하지 않습니다. |
+| 첫 라우트는 포트폴리오 집계 객체를 렌더러에 전달합니다. | `03c4e1f7b439` | `src/app/page.tsx`의 `getPortfolioContent()` 호출 | 집계 객체 내부 값은 아직 단언문 기반입니다. |
 
-## 7. Failure → Fix → Test 관계
+## 7. 실패 → 수정 → 테스트 관계
 
-| Failure 또는 risk | Fix/전환 SHA | 교정된 결정 | Regression·검증 관계 |
+| 실패 또는 위험 | 수정·전환 SHA | 교정된 결정 | 회귀·검증 관계 |
 | --- | --- | --- | --- |
-| 문서만 있고 실행 경계가 없음 | `448bc2510f34` | package/config/App Router root 추가 | 이번 작업에서는 repository command 미실행; 후속 category 08 검증과 연결 |
-| stylesheet가 존재하지만 소비되지 않을 수 있음 | `03c4e1f7b439` | root layout에서 `./globals.css` import | 후속 browser/visual tests가 실제 회귀 면을 보호 |
-| route가 source를 직접 조립할 위험 | `03c4e1f7b439` | `getPortfolioContent()`를 단일 호출점으로 사용 | `3353032ba23b` 이후 content test가 aggregate 경로를 검증 |
+| 문서만 있고 실행 경계가 없음 | `448bc2510f34` | 패키지·설정·App Router 최상위 구성 추가 | 이번 작업에서는 저장소 명령 미실행; 후속 분류 08 검증과 연결 |
+| 스타일시트가 존재하지만 소비되지 않을 수 있음 | `03c4e1f7b439` | 최상위 레이아웃에서 `./globals.css` 가져오기 | 후속 브라우저·시각 테스트가 실제 회귀 면을 보호 |
+| 라우트가 원본을 직접 조립할 위험 | `03c4e1f7b439` | `getPortfolioContent()`를 단일 호출점으로 사용 | `3353032ba23b` 이후 콘텐츠 테스트가 집계 객체 경로를 검증 |
 
-## 8. Ownership·state·responsibility 변화
+## 8. 소유 주체·상태·담당 작업 변화
 
-| 대상 | 이전 owner/state | 최종 owner/state | 근거 |
+| 대상 | 이전 소유 주체·상태 | 최종 소유 주체·상태 | 근거 |
 | --- | --- | --- | --- |
-| 실행 lifecycle | 없음 | `package.json` scripts | `npm run dev/build/start/lint/typecheck` |
-| document shell | 없음 | `src/app/layout.tsx` | metadata, language, font, globals |
-| content 조립 | 없음 | `src/lib/portfolio` | `getPortfolioContent()` |
-| home 표현 | 정적 placeholder | `DesignHomeRoute` | `src/app/page.tsx`가 aggregate를 전달 |
+| 실행 주기 | 없음 | `package.json` 스크립트 | `npm run dev/build/start/lint/typecheck` |
+| 문서 셸 | 없음 | `src/app/layout.tsx` | 메타데이터, 언어, 글꼴, globals |
+| 콘텐츠 조립 | 없음 | `src/lib/portfolio` | `getPortfolioContent()` |
+| 홈 표현 | 정적 자리표시자 | `DesignHomeRoute` | `src/app/page.tsx`가 집계 객체를 전달 |
 
-## 9. Thread 최종 상태
+## 9. 개발 흐름 최종 상태
 
-Thread 종료 시점에는 Next App Router가 실행 구조를 갖고 전역 스타일과 site metadata를 root에서 적용하며, 첫 page가 portfolio aggregate를 Design home renderer에 전달합니다. 다만 toolchain pin, production smoke, runtime content validation과 다중 design routing은 별도 후속 책임입니다.
+개발 흐름 종료 시점에는 Next App Router가 실행 구조를 갖고 전역 스타일과 사이트 메타데이터를 최상위에서 적용하며, 첫 페이지가 포트폴리오 집계 객체를 Design 홈 렌더러에 전달합니다. 다만 개발 도구 버전 고정, 배포 환경 기본 동작 확인, 실행 시점 콘텐츠 검증과 다중 디자인 라우팅은 별도 후속 책임입니다.
 
 ### 최종 설명
 
-- 문서 규칙만 있던 root에 Next/React/TypeScript/PostCSS/ESLint lifecycle을 추가했습니다.
-- 전역 CSS token을 별도 파일에 만들고 root layout import로 실제 소비를 연결했습니다.
-- page는 content 조립을 소유하지 않고 `getPortfolioContent()` 결과를 renderer에 넘기는 얇은 경계가 되었습니다.
-- 실행 성공과 production server 상태는 이번 정적 조사로 증명하지 않았습니다.
+- 문서 규칙만 있던 최상위에 Next/React/TypeScript/PostCSS/ESLint 실행 주기를 추가했습니다.
+- 전역 CSS 토큰을 별도 파일에 만들고 최상위 레이아웃 가져오기로 실제 소비를 연결했습니다.
+- 페이지는 콘텐츠 조립을 소유하지 않고 `getPortfolioContent()` 결과를 렌더러에 넘기는 얇은 경계가 되었습니다.
+- 실행 성공과 배포용 서버 상태는 이번 정적 조사로 증명하지 않았습니다.
 
 ## 10. 최종 실행·데이터 흐름
 
-| 단계 | Owner/call path | 입력·출력 | Failure/non-guarantee |
+| 단계 | 담당 위치·호출 경로 | 입력·출력 | 실패·보장하지 않는 범위 |
 | --- | --- | --- | --- |
-| 애플리케이션 lifecycle을 선택합니다. | `package.json` | script와 dependency graph | command 자체의 환경 오류는 이 Thread에서 실행 검증하지 않음 |
-| root document를 구성합니다. | `src/app/layout.tsx` | site metadata, language, fonts, global CSS | 잘못된 source 값은 당시 runtime parse 없이 소비 |
-| portfolio aggregate를 요청합니다. | `src/app/page.tsx` → `getPortfolioContent()` | 한 개 aggregate | loader/schema failure path는 후속 Thread |
-| Design home을 렌더링합니다. | `DesignHomeRoute` | content와 fixed debug flag | 다른 design/route 선택 없음 |
+| 애플리케이션 실행 주기를 선택합니다. | `package.json` | 스크립트와 의존성 관계 | 명령 자체의 환경 오류는 이 개발 흐름에서 실행 검증하지 않음 |
+| 최상위 문서를 구성합니다. | `src/app/layout.tsx` | 사이트 메타데이터, 언어, 글꼴, 전역 CSS | 잘못된 원본 값은 당시 실행 시점 파싱 없이 소비 |
+| 포트폴리오 집계 객체를 요청합니다. | `src/app/page.tsx` → `getPortfolioContent()` | 한 개 집계 객체 | 로더·스키마 실패 경로는 후속 개발 흐름 |
+| Design 홈을 렌더링합니다. | `DesignHomeRoute` | 콘텐츠와 고정된 디버그 값 | 다른 디자인·라우트 선택 없음 |
 
 ## 11. 학습 완료 확인
 
-완료했습니다. 모든 commit은 exact SHA의 parent diff/resulting tree를 기준으로 기록했고, direct execution evidence와 static inspection을 구분했습니다. 후속 category 08의 toolchain/production smoke와 category 07의 integration/visual tests가 실행·회귀 증거를 추가합니다. 이 Thread에서 repository command는 실행하지 않았습니다.
+완료했습니다. 모든 커밋은 해당 SHA의 부모 커밋과의 차이·변경 후 파일 트리를 기준으로 기록했고, 직접 실행 근거와 정적 검토를 구분했습니다. 후속 분류 08의 개발 도구 버전·배포 환경 기본 동작 확인와 분류 07의 통합·시각 테스트가 실행·회귀 증거를 추가합니다. 이 개발 흐름에서 저장소 명령은 실행하지 않았습니다.
 ===== END FILE: 01-runnable-next-application-boundary.md =====
 
 ===== BEGIN FILE: 02-portfolio-domain-and-aggregate-model.md =====
-# Thread: Portfolio domain and aggregate model
+# 개발 흐름: 포트폴리오 데이터 모델과 집계 객체
 
-> Repository: `https://github.com/seungwoo7050/42-archive`  
-> Branch: `web/portfolio`  
-> Category: `01-application-foundation-and-content-systems`
+> 저장소: `https://github.com/seungwoo7050/42-archive`
+> 브랜치: `web/portfolio`
+> 분류: `01-application-foundation-and-content-systems`
 
 ## 0. 분류 출처와 변경 가능 범위
 
-- Commit SHA, subject, importance, tags는 target branch의 `commit/commit-importance.md` 분류와 exact commit metadata를 사용합니다.
-- 이 문서의 Thread grouping, 목표, 역할, 조사 지점은 Phase 1 category audit에서 repository evidence를 기준으로 확정했습니다.
-- Phase 2에서는 이 fixed information을 바꾸지 않고 learner-facing 기록만 채웠습니다.
-- 다른 branch나 final HEAD 구현을 과거 SHA 설명에 소급하지 않습니다.
+- 커밋 SHA·제목·중요도·태그는 대상 브랜치의 `commit/commit-importance.md` 분류와 해당 커밋의 정확한 메타데이터를 사용합니다.
+- 이 문서의 개발 흐름 묶음·목표·역할·확인 지점은 1단계 분류 검토에서 저장소 근거를 바탕으로 확정했습니다.
+- 2단계에서는 이 고정 정보를 바꾸지 않고 학습자용 기록만 작성했습니다.
+- 다른 브랜치나 최종 HEAD의 구현을 과거 SHA의 설명으로 소급하지 않습니다.
 
-## 1. Thread 목표
+## 1. 개발 흐름 목표
 
-분산 JSON source와 수동 TypeScript shape가 하나의 `PortfolioContent` aggregate 및 파생 map/filter 흐름으로 조립되는 초기 domain 모델을 복원합니다.
+분산 JSON 원본과 수동 TypeScript 형식이 하나의 `PortfolioContent` 집계 객체 및 파생 매핑·필터링 흐름으로 조립되는 초기 데이터 영역 모델을 복원합니다.
 
-### 계획된 핵심 invariant
+### 계획된 핵심 불변 조건
 
-- 콘텐츠 source는 JSON에 있고 renderer-facing aggregate는 `src/lib/portfolio`가 구성합니다.
-- 정렬·enabled filtering·environment href resolution은 호출자마다 재구현하지 않습니다.
-- 이 단계의 TypeScript assertion은 runtime validation이 아니라 정적 편의에 불과합니다.
+- 콘텐츠 원본은 JSON에 있고 렌더러에 전달할 집계 객체는 `src/lib/portfolio`가 구성합니다.
+- 정렬·활성 항목 필터링·환경 변수에 따른 href 결정은 호출자마다 재구현하지 않습니다.
+- 이 단계의 TypeScript 타입 단언은 실행 시점 검증이 아니라 정적 편의에 불과합니다.
 
-## 2. 이 Thread를 이해하기 위한 핵심 질문
+## 2. 이 개발 흐름을 이해하기 위한 핵심 질문
 
-- 각 JSON source와 대응 TypeScript type은 어떤 순서로 확장되는가?
-- `getPortfolioContent()`가 새 aggregate를 만들면서 공유하는 객체와 복사하는 배열은 무엇인가?
-- disabled 항목과 environment override는 어디에서 제거·적용되는가?
+- 각 JSON 원본과 대응 TypeScript 타입은 어떤 순서로 확장되는가?
+- `getPortfolioContent()`가 새 집계 객체를 만들면서 공유하는 객체와 복사하는 배열은 무엇인가?
+- 비활성화된 항목과 환경 변수 덮어쓰기는 어디에서 제거·적용되는가?
 
 ## 3. 완료 기준
 
-- 각 SHA의 parent diff와 resulting tree에서 실제 file/symbol을 확인합니다.
-- 이전 상태, implementation decision, owner/lifetime, absence/failure/fallback, guarantee/non-guarantee를 분리합니다.
-- Fix·refactor·integration은 바로 앞의 assumption이나 duplicated responsibility와 연결합니다.
-- 테스트나 command는 실제 실행 여부를 정적 검토와 명확히 구분합니다.
-- Thread 종료 시 invariant evolution과 최종 flow를 코드 없이 설명합니다.
+- 각 SHA의 부모 커밋과의 차이와 변경 후 파일 트리에서 실제 파일과 심볼을 확인합니다.
+- 이전 상태, 구현 결정, 소유 주체와 수명, 누락·실패·대체 처리, 보장 범위와 보장하지 않는 범위를 나눠 기록합니다.
+- 수정·리팩터링·통합은 바로 앞선 가정이나 중복 구현과 연결합니다.
+- 테스트와 명령은 실제 실행 여부를 정적 검토와 명확히 구분합니다.
+- 개발 흐름 마지막에는 불변 조건의 변화와 최종 실행 순서를 코드 없이 설명합니다.
 
-## 4. Commit map
+## 4. 커밋 목록
 
-| 순서 | Commit | Subject | Importance | Tags | 이 Thread에서의 역할 |
-| ---: | --- | --- | :---: | --- | --- |
-| 1 | `efb1e2e26b74` | feat(content): 사이트와 프로필 콘텐츠 기반 추가 | B | CONTENT | 기본 identity source와 type 도입 |
-| 2 | `5eb01dfecabb` | feat(content): 링크와 프로젝트 도메인 정의 | B | CONTENT | project/link core vocabulary |
-| 3 | `0d891d41cf4c` | feat(content): 기술과 여정 콘텐츠 모델 추가 | B | CONTENT | 경력/기술/여정 source 확장 |
-| 4 | `8661cc00c45d` | feat(content): 연락과 이력 집계 모델 완성 | B | CONTENT | aggregate type 완성 |
-| 5 | `a365b3d19118` | feat(content): 정적 포트폴리오 콘텐츠 로딩 | B | CONTENT | 직접 JSON import 기반 조립 |
-| 6 | `0b134b1a6cf6` | feat(content): 여정 정렬과 콘텐츠 인덱스 구성 | B | CONTENT | 전체 source와 파생 index 연결 |
-| 7 | `7c95a6f387b4` | feat(content): 환경 링크를 반영한 콘텐츠 집계 | B | CONTENT | 초기 aggregate policy 완성 |
+| 순서 | 커밋 | 제목 | 중요도 | 태그 | 이 개발 흐름에서의 역할 |
+| ---: | --- | --- |:---: | --- | --- |
+| 1 | `efb1e2e26b74` | feat(content): 사이트와 프로필 콘텐츠 기반 추가 | B | CONTENT | 기본 식별 정보 원본과 타입 도입 |
+| 2 | `5eb01dfecabb` | feat(content): 링크와 프로젝트 도메인 정의 | B | CONTENT | 프로젝트·링크 코어 허용 값 집합 |
+| 3 | `0d891d41cf4c` | feat(content): 기술과 여정 콘텐츠 모델 추가 | B | CONTENT | 경력·기술·여정 원본 확장 |
+| 4 | `8661cc00c45d` | feat(content): 연락과 이력 집계 모델 완성 | B | CONTENT | 집계 객체 타입 완성 |
+| 5 | `a365b3d19118` | feat(content): 정적 포트폴리오 콘텐츠 로딩 | B | CONTENT | JSON 직접 가져오기 기반 조립 |
+| 6 | `0b134b1a6cf6` | feat(content): 여정 정렬과 콘텐츠 인덱스 구성 | B | CONTENT | 전체 원본과 파생 목록 연결 |
+| 7 | `7c95a6f387b4` | feat(content): 환경 링크를 반영한 콘텐츠 집계 | B | CONTENT | 초기 집계 객체 규칙 완성 |
 
-## 5. Commit별 학습 기록
+## 5. 커밋별 학습 기록
 
 ### 1. `efb1e2e26b74` — feat(content): 사이트와 프로필 콘텐츠 기반 추가
 
 - **Importance:** B
 - **Tags:** CONTENT
-- **Thread 역할:** 기본 identity source와 type 도입
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 기본 식별 정보 원본과 타입 도입
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `src/content/site.json`, `profile.json`의 초기 필드를 확인합니다.
-- `src/lib/portfolio/types.ts`의 `SiteContent`, `ProfileContent`와 JSON 사이에 runtime parse가 없는지 확인합니다.
+- `src/lib/portfolio/types.ts`의 `SiteContent`, `ProfileContent`와 JSON 사이에 실행 시점 파싱이 없는지 확인합니다.
 
 확인 원칙:
 
-- 먼저 `efb1e2e26b74^`와 `efb1e2e26b74`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `efb1e2e26b74^`와 `efb1e2e26b74`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | site/profile 값이 route 또는 component에 하드코딩될 수 있는 상태였습니다. |
-| 실제 변경 file/symbol/call path | site metadata/navigation/footer와 profile identity/summary/principles를 JSON source와 TypeScript shape로 분리합니다. |
-| Data/state/resource owner와 lifetime | 편집 가능한 값은 JSON이, compile-time shape는 `types.ts`가 소유합니다. |
-| Failure·absence·fallback 처리 | JSON이 type을 만족한다는 보장은 runtime에 없고, assertion을 쓰면 malformed source도 import될 수 있습니다. |
-| 보장하는 것과 보장하지 않는 것 | 기본 identity vocabulary를 제공하지만 aggregate·validation은 아직 없습니다. |
-| 다음 commit 또는 관련 test 연결 | `5eb01dfecabb`부터 project/link domain이 추가됩니다. |
+| 직전 상태와 부족함 | 사이트·프로필 값이 라우트 또는 컴포넌트에 하드코딩될 수 있는 상태였습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 사이트 메타데이터·탐색·푸터와 프로필 식별 정보·요약·원칙을 JSON 원본과 TypeScript 형식으로 분리합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 편집 가능한 값은 JSON이, 컴파일 시점 형식은 `types.ts`가 소유합니다. |
+| 실패·누락·대체 처리 | JSON이 타입을 만족한다는 보장은 실행 시점에 없고, 단언문을 쓰면 잘못된 형식의 원본도 가져오기될 수 있습니다. |
+| 보장하는 것과 보장하지 않는 것 | 기본 식별 정보 허용 값 집합을 제공하지만 집계 객체·검증은 아직 없습니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `5eb01dfecabb`부터 프로젝트·링크 데이터 영역이 추가됩니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `efb1e2e26b74`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `efb1e2e26b74`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 2. `5eb01dfecabb` — feat(content): 링크와 프로젝트 도메인 정의
 
 - **Importance:** B
 - **Tags:** CONTENT
-- **Thread 역할:** project/link core vocabulary
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 프로젝트·링크 코어 허용 값 집합
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `src/content/projects.json`, `links.json`의 초기 빈 collection을 확인합니다.
-- `ContentLink`, deployment/project model, environment key 정의를 확인합니다.
+- `src/content/projects.json`, `links.json`의 초기 빈 목록을 확인합니다.
+- `ContentLink`, 배포 상태·프로젝트 모델, 환경 키 정의를 확인합니다.
 
 확인 원칙:
 
-- 먼저 `5eb01dfecabb^`와 `5eb01dfecabb`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `5eb01dfecabb^`와 `5eb01dfecabb`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | site/profile 외에 작업 결과와 외부 행동을 표현할 domain type이 없었습니다. |
-| 실제 변경 file/symbol/call path | 프로젝트 상세 필드, deployment 상태, screenshot, link type 및 environment key shape를 추가합니다. |
-| Data/state/resource owner와 lifetime | project/link record의 shape는 types가 소유하지만 실제 collection은 비어 있어 consumer evidence는 없습니다. |
-| Failure·absence·fallback 처리 | 빈 배열도 유효하게 보이며 ID uniqueness·link 안전성·참조 존재성은 검증하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | 향후 renderer가 사용할 기본 project/link vocabulary만 보장합니다. |
-| 다음 commit 또는 관련 test 연결 | `0d891d41cf4c`이 기술·경험·여정 domain을 추가합니다. |
+| 직전 상태와 부족함 | 사이트·프로필 외에 작업 결과와 외부 행동을 표현할 데이터 영역 타입이 없었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 프로젝트 상세 필드, 배포 상태, 화면 캡처, 링크 타입 및 환경 키 형식을 추가합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 프로젝트·링크 레코드의 형식은 타입이 소유하지만 실제 목록은 비어 있어 소비자 근거는 없습니다. |
+| 실패·누락·대체 처리 | 빈 배열도 유효하게 보이며 ID 고유성·링크 안전성·참조 존재성은 검증하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 향후 렌더러가 사용할 기본 프로젝트·링크 허용 값 집합만 보장합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `0d891d41cf4c`이 기술·경험·여정 데이터 영역을 추가합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `5eb01dfecabb`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `5eb01dfecabb`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 3. `0d891d41cf4c` — feat(content): 기술과 여정 콘텐츠 모델 추가
 
 - **Importance:** B
 - **Tags:** CONTENT
-- **Thread 역할:** 경력/기술/여정 source 확장
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 경력·기술·여정 원본 확장
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `tech-stack.json`, `skills.json`, `experience.json`, `journey.json`과 대응 type을 확인합니다.
-- journey의 `projectId` nullability와 technology ID reference가 단순 문자열인지 확인합니다.
+- `tech-stack.json`, `skills.json`, `experience.json`, `journey.json`과 대응 타입을 확인합니다.
+- 여정의 `projectId` nullability와 기술 ID 참조가 단순 문자열인지 확인합니다.
 
 확인 원칙:
 
-- 먼저 `0d891d41cf4c^`와 `0d891d41cf4c`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `0d891d41cf4c^`와 `0d891d41cf4c`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | project 외의 역량·시간 흐름을 표현할 source가 없었습니다. |
-| 실제 변경 file/symbol/call path | 기술 stack, skill group, experience, journey item의 JSON과 TypeScript shape를 추가합니다. |
-| Data/state/resource owner와 lifetime | 각 파일이 raw record를 소유하며 cross-file ID 관계는 문자열 약속에 머뭅니다. |
-| Failure·absence·fallback 처리 | 존재하지 않는 기술/project ID도 compile-time에는 걸러지지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | aggregate에 포함될 domain 범위가 넓어지지만 참조 무결성은 보장하지 않습니다. |
-| 다음 commit 또는 관련 test 연결 | `8661cc00c45d`가 contact/resume와 전체 aggregate shape를 만듭니다. |
+| 직전 상태와 부족함 | 프로젝트 외의 역량·시간 흐름을 표현할 원본이 없었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 기술 스택, 기술 그룹, 경력, 여정 항목의 JSON과 TypeScript 형식을 추가합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 각 파일이 원본 레코드를 소유하며 파일 간 ID 관계는 문자열 약속에 머뭅니다. |
+| 실패·누락·대체 처리 | 존재하지 않는 기술·프로젝트 ID도 컴파일 시점에는 걸러지지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 집계 객체에 포함될 데이터 영역 범위가 넓어지지만 참조 무결성은 보장하지 않습니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `8661cc00c45d`가 연락처·이력서와 전체 집계 객체 형식을 만듭니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `0d891d41cf4c`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `0d891d41cf4c`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 4. `8661cc00c45d` — feat(content): 연락과 이력 집계 모델 완성
 
 - **Importance:** B
 - **Tags:** CONTENT
-- **Thread 역할:** aggregate type 완성
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 집계 객체 타입 완성
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `contact.json`, `resume.json`과 `ContactContent`, `ResumeContent`를 확인합니다.
-- `PortfolioContent`, `PortfolioEnv`, `RouteSearchParams`가 어떤 하위 source를 묶는지 확인합니다.
+- `PortfolioContent`, `PortfolioEnv`, `RouteSearchParams`가 어떤 하위 원본을 묶는지 확인합니다.
 
 확인 원칙:
 
-- 먼저 `8661cc00c45d^`와 `8661cc00c45d`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `8661cc00c45d^`와 `8661cc00c45d`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | 여러 source type은 존재했지만 renderer가 받을 단일 aggregate 계약이 없었습니다. |
-| 실제 변경 file/symbol/call path | contact/resume source와 함께 모든 domain을 묶는 `PortfolioContent`, public env shape, route search params를 정의합니다. |
-| Data/state/resource owner와 lifetime | aggregate의 정적 계약은 `types.ts`가 소유하지만 실제 construction은 아직 없습니다. |
-| Failure·absence·fallback 처리 | type alias만으로 disabled filtering, ordering, env resolution 또는 runtime 검증은 발생하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | consumer가 기대할 전체 필드 집합은 정의하지만 값의 신뢰성은 보장하지 않습니다. |
-| 다음 commit 또는 관련 test 연결 | `a365b3d19118`이 JSON imports를 실제 aggregate module에 연결합니다. |
+| 직전 상태와 부족함 | 여러 원본 타입은 존재했지만 렌더러가 받을 단일 집계 객체 계약이 없었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 연락처·이력서 원본과 함께 모든 데이터 영역을 묶는 `PortfolioContent`, 공개 env 형식, 라우트 조회 매개변수를 정의합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 집계 객체의 정적 계약은 `types.ts`가 소유하지만 실제 구축은 아직 없습니다. |
+| 실패·누락·대체 처리 | 타입 별칭만으로 비활성화된 필터링, 순서 결정, 환경 변수 해석 또는 실행 시점 검증은 발생하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 소비자가 기대할 전체 필드 집합은 정의하지만 값의 신뢰성은 보장하지 않습니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `a365b3d19118`이 JSON 가져오기를 실제 집계 객체 모듈에 연결합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `8661cc00c45d`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `8661cc00c45d`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 5. `a365b3d19118` — feat(content): 정적 포트폴리오 콘텐츠 로딩
 
 - **Importance:** B
 - **Tags:** CONTENT
-- **Thread 역할:** 직접 JSON import 기반 조립
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** JSON 직접 가져오기 기반 조립
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `src/lib/portfolio/content.ts`의 JSON imports와 `as` assertions를 확인합니다.
-- 어떤 source가 module-level singleton으로 저장되고 `getPortfolioContent()`가 무엇을 반환하는지 확인합니다.
+- `src/lib/portfolio/content.ts`의 JSON 가져오기와 `as` 단언문을 확인합니다.
+- 어떤 원본이 모듈 범위의 단일 인스턴스로 저장되고 `getPortfolioContent()`가 무엇을 반환하는지 확인합니다.
 
 확인 원칙:
 
-- 먼저 `a365b3d19118^`와 `a365b3d19118`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `a365b3d19118^`와 `a365b3d19118`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | 정적 aggregate type은 있었지만 JSON을 한 곳에서 읽고 반환하는 구현이 없었습니다. |
-| 실제 변경 file/symbol/call path | `content.ts`가 source files를 import하고 수동 assertion으로 typed module values를 만든 뒤 aggregate 반환점을 제공합니다. |
-| Data/state/resource owner와 lifetime | module-level imports가 source lifetime을 소유하고 호출자는 반환 aggregate를 소비합니다. |
-| Failure·absence·fallback 처리 | `as`는 검증이 아니므로 잘못된 JSON이 fail-closed 되지 않습니다. 파생 정렬/filter도 아직 분산될 여지가 있습니다. |
-| 보장하는 것과 보장하지 않는 것 | JSON direct import를 한 module로 모으지만 안전한 trust boundary는 보장하지 않습니다. |
-| 다음 commit 또는 관련 test 연결 | `0b134b1a6cf6`이 나머지 source와 파생 map/sort를 연결합니다. |
+| 직전 상태와 부족함 | 정적 집계 객체 타입은 있었지만 JSON을 한 곳에서 읽고 반환하는 구현이 없었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | `content.ts`가 원본 파일을 가져오고 수동 타입 단언으로 모듈 값의 타입을 지정한 뒤 집계 객체 반환 지점을 제공합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 모듈 범위 가져오기가 원본 수명을 소유하고 호출자는 반환 집계 객체를 소비합니다. |
+| 실패·누락·대체 처리 | `as`는 검증이 아니므로 잘못된 JSON이 검증에 실패해도 차단되지 않습니다. 파생 정렬·필터도 아직 분산될 여지가 있습니다. |
+| 보장하는 것과 보장하지 않는 것 | JSON 직접 가져오기를 한 모듈로 모으지만 안전한 검증을 통과해야 하는 지점는 보장하지 않습니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `0b134b1a6cf6`이 나머지 원본과 파생 맵·정렬을 연결합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `a365b3d19118`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `a365b3d19118`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 6. `0b134b1a6cf6` — feat(content): 여정 정렬과 콘텐츠 인덱스 구성
 
 - **Importance:** B
 - **Tags:** CONTENT
-- **Thread 역할:** 전체 source와 파생 index 연결
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 전체 원본과 파생 목록 연결
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `content.ts`에서 skills/tech/experience/journey/links/contact/resume import를 확인합니다.
-- journey의 date→title 정렬, `portfolioTechStackById` Map, `getEnabledLinks()`를 확인합니다.
+- `content.ts`에서 기술 목록·기술·경력·여정·링크·연락처·이력서 가져오기를 확인합니다.
+- 여정의 날짜 → 제목 정렬, `portfolioTechStackById` 맵, `getEnabledLinks()`를 확인합니다.
 
 확인 원칙:
 
-- 먼저 `0b134b1a6cf6^`와 `0b134b1a6cf6`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `0b134b1a6cf6^`와 `0b134b1a6cf6`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | 초기 조립 모듈은 일부 source만 반환하고 반복 lookup·정렬 정책이 정해지지 않았습니다. |
-| 실제 변경 file/symbol/call path | 나머지 source를 aggregate에 넣고 journey를 copy 후 정렬하며 technology Map과 enabled link filter를 중앙화합니다. |
-| Data/state/resource owner와 lifetime | module이 파생 collection과 lookup index를 소유하고 renderer는 정렬/filter 구현을 알 필요가 없어집니다. |
-| Failure·absence·fallback 처리 | Map은 unknown ID를 `undefined`로 반환할 뿐 누락을 오류로 바꾸지 않습니다. source assertion 문제도 남습니다. |
-| 보장하는 것과 보장하지 않는 것 | 일관된 journey order와 enabled top-level links를 보장하지만 project enablement/env resolution은 아직 불완전합니다. |
-| 다음 commit 또는 관련 test 연결 | `7c95a6f387b4`가 project/link 활성화와 env href를 완성합니다. |
+| 직전 상태와 부족함 | 초기 조립 모듈은 일부 원본만 반환하고 반복 조회·정렬 규칙이 정해지지 않았습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 나머지 원본을 집계 객체에 넣고 여정을 복사 후 정렬하며 기술 맵과 활성화된 링크 필터를 중앙화합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 모듈이 파생 목록과 조회 목록을 소유하고 렌더러는 정렬·필터 구현을 알 필요가 없어집니다. |
+| 실패·누락·대체 처리 | 맵은 알 수 없는 ID를 `undefined`로 반환할 뿐 누락을 오류로 바꾸지 않습니다. 원본 단언문 문제도 남습니다. |
+| 보장하는 것과 보장하지 않는 것 | 일관된 여정 순서와 활성화된 최상위 링크를 보장하지만 프로젝트 활성화 여부·환경 변수 해석은 아직 불완전합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `7c95a6f387b4`가 프로젝트·링크 활성화와 환경 변수 href를 완성합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `0b134b1a6cf6`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `0b134b1a6cf6`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 7. `7c95a6f387b4` — feat(content): 환경 링크를 반영한 콘텐츠 집계
 
 - **Importance:** B
 - **Tags:** CONTENT
-- **Thread 역할:** 초기 aggregate policy 완성
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 초기 집계 객체 규칙 완성
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `withEnvHref`, `getPortfolioContent`의 env default와 project/link mapping을 확인합니다.
-- project `enabled !== false`, nested link `enabled !== false`, top-level `getEnabledLinks()`의 차이를 확인합니다.
+- `withEnvHref`, `getPortfolioContent`의 env 기본값과 프로젝트·링크 대응을 확인합니다.
+- 프로젝트 `enabled !== false`, 중첩된 링크 `enabled !== false`, 최상위 `getEnabledLinks()`의 차이를 확인합니다.
 
 확인 원칙:
 
-- 먼저 `7c95a6f387b4^`와 `7c95a6f387b4`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `7c95a6f387b4^`와 `7c95a6f387b4`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | aggregate는 source를 모았지만 disabled project/link와 environment-specific href를 일관되게 해석하지 않았습니다. |
-| 실제 변경 file/symbol/call path | public env 값을 trim해 non-empty일 때 href를 덮어쓰고, disabled project와 nested/top-level links를 제거합니다. |
-| Data/state/resource owner와 lifetime | `getPortfolioContent()`가 활성화·href resolution policy를 소유하며 호출자는 filtered aggregate만 받습니다. |
-| Failure·absence·fallback 처리 | environment 값 자체의 URL 안전성, cross-file 참조, schema validation은 보장하지 않습니다. module-level source 객체 일부는 계속 공유됩니다. |
-| 보장하는 것과 보장하지 않는 것 | 초기 domain aggregate의 호출 계약을 완성하지만 후속 validated facade 이전에는 source를 신뢰합니다. |
-| 다음 commit 또는 관련 test 연결 | T4가 selector policy를 확장하고 T8–T10이 runtime validation과 validated facade로 교체합니다. |
+| 직전 상태와 부족함 | 집계 객체는 원본을 모았지만 비활성화된 프로젝트·링크와 환경 전용 href를 일관되게 해석하지 않았습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 공개 env 값을 trim해 비어 있지 않은일 때 href를 덮어쓰고, 비활성화된 프로젝트와 중첩된·최상위 링크를 제거합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | `getPortfolioContent()`가 활성화·href 결정 규칙을 소유하며 호출자는 필터링된 집계 객체만 받습니다. |
+| 실패·누락·대체 처리 | 환경 값 자체의 URL 안전성, 파일 간 참조, 스키마 검증은 보장하지 않습니다. 모듈 범위 원본 객체 일부는 계속 공유됩니다. |
+| 보장하는 것과 보장하지 않는 것 | 초기 데이터 영역 집계 객체의 호출 계약을 완성하지만 후속 검증된 공개 모듈 이전에는 원본을 신뢰합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | T4가 선택자 규칙을 확장하고 T8–T10이 실행 시점 검증과 검증된 공개 모듈로 교체합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `7c95a6f387b4`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `7c95a6f387b4`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
-## 6. Invariant evolution ledger
+## 6. 불변 조건 변화 기록
 
-| 추적할 invariant | 도입·변화 SHA | 실제 owner/evidence | 제한·후속 보호 |
+| 추적할 불변 조건 | 도입·변화 SHA | 실제 소유 주체·근거 | 제한·후속 보호 |
 | --- | --- | --- | --- |
-| JSON source와 renderer aggregate를 분리한다. | `efb1e2e26b74` → `a365b3d19118` | `src/content/*.json`, `src/lib/portfolio/content.ts` | 초기 연결은 assertion 기반 |
-| journey order와 lookup/filter 정책은 aggregate module이 소유한다. | `0b134b1a6cf6` | date/title sort, `portfolioTechStackById`, `getEnabledLinks` | unknown references는 오류가 아님 |
-| disabled project/link와 env href를 호출 전에 해석한다. | `7c95a6f387b4` | `getPortfolioContent`, `withEnvHref` | URL/schema/cross-file integrity는 후속 loader 책임 |
+| JSON 원본과 렌더러 집계 객체를 분리합니다. | `efb1e2e26b74` → `a365b3d19118` | `src/content/*.json`, `src/lib/portfolio/content.ts` | 초기 연결은 단언문 기반 |
+| 여정 순서와 조회·필터 규칙은 집계 객체 모듈이 소유합니다. | `0b134b1a6cf6` | 날짜·제목 정렬, `portfolioTechStackById`, `getEnabledLinks` | 찾을 수 없는 참조는 오류가 아님 |
+| 비활성화된 프로젝트·링크와 환경 변수 href를 호출 전에 해석합니다. | `7c95a6f387b4` | `getPortfolioContent`, `withEnvHref` | URL·스키마·파일 간 무결성은 후속 로더 책임 |
 
-## 7. Failure → Fix → Test 관계
+## 7. 실패 → 수정 → 테스트 관계
 
-| Failure 또는 risk | Fix/전환 SHA | 교정된 결정 | Regression·검증 관계 |
+| 실패 또는 위험 | 수정·전환 SHA | 교정된 결정 | 회귀·검증 관계 |
 | --- | --- | --- | --- |
-| 각 component가 JSON을 직접 import할 위험 | `a365b3d19118` | 한 aggregate module로 import 집중 | `508e0b71024b`에서 validated source로 교체 |
-| journey 순서와 tech lookup이 consumer마다 달라질 위험 | `0b134b1a6cf6` | 정렬과 Map 중앙화 | `b77b386b344e`의 view-model regression이 후속 보호 |
-| disabled/env link가 그대로 노출될 위험 | `7c95a6f387b4` | explicit false filter와 non-empty env override | 후속 schema/route/link tests가 허용 범위를 검증 |
+| 각 컴포넌트가 JSON을 직접 가져오기할 위험 | `a365b3d19118` | 한 집계 객체 모듈로 가져오기 집중 | `508e0b71024b`에서 검증된 원본으로 교체 |
+| 여정 순서와 기술 조회가 소비자마다 달라질 위험 | `0b134b1a6cf6` | 정렬과 맵 중앙화 | `b77b386b344e`의 뷰 모델 회귀가 후속 보호 |
+| 비활성화된·env 링크가 그대로 노출될 위험 | `7c95a6f387b4` | 명시적인 false 필터와 비어 있지 않은 환경 변수 덮어쓰기 | 후속 스키마·라우트·링크 테스트가 허용 범위를 검증 |
 
-## 8. Ownership·state·responsibility 변화
+## 8. 소유 주체·상태·담당 작업 변화
 
-| 대상 | 이전 owner/state | 최종 owner/state | 근거 |
+| 대상 | 이전 소유 주체·상태 | 최종 소유 주체·상태 | 근거 |
 | --- | --- | --- | --- |
-| 원본 값 | component 하드코딩 가능 | `src/content/*.json` | 각 JSON file |
-| aggregate shape | 분산 type | `PortfolioContent` | `types.ts` |
-| 파생 정렬/index/filter | 호출자 책임 | `content.ts` | journey sort, tech Map, enabled filters |
-| runtime 신뢰 | 없음 | 여전히 없음 | `as` assertion; T8 이후 loader가 인수 |
+| 원본 값 | 컴포넌트 하드코딩 가능 | `src/content/*.json` | 각 JSON 파일 |
+| 집계 객체 형식 | 분산 타입 | `PortfolioContent` | `types.ts` |
+| 파생 정렬·목록·필터 | 호출자 책임 | `content.ts` | 여정 정렬, 기술 맵, 활성화된 필터 |
+| 실행 시점 신뢰 | 없음 | 여전히 없음 | `as` 단언문; T8 이후 로더가 인수 |
 
-## 9. Thread 최종 상태
+## 9. 개발 흐름 최종 상태
 
-Thread 종료 시점에는 `getPortfolioContent()`가 모든 JSON source를 하나의 aggregate로 묶고 journey 정렬, technology lookup, enabled filtering, environment href resolution을 수행합니다. 그러나 이 aggregate는 runtime schema나 cross-file integrity 검증 없이 source를 assertion으로 신뢰합니다.
+개발 흐름 종료 시점에는 `getPortfolioContent()`가 모든 JSON 원본을 하나의 집계 객체로 묶고 여정 정렬, 기술 조회, 활성 항목 필터링, 환경 변수에 따른 href 결정을 수행합니다. 그러나 이 집계 객체는 실행 시점 스키마나 파일 간 무결성 검증 없이 원본을 단언문으로 신뢰합니다.
 
 ### 최종 설명
 
-- site/profile에서 project, technology, experience, journey, contact, resume로 domain source 범위를 확장했습니다.
-- 단일 `PortfolioContent`와 `content.ts`가 renderer-facing aggregate를 소유하게 했습니다.
-- 정렬·lookup·enabled/env 정책을 consumer 밖으로 이동했습니다.
-- 이 단계의 핵심 비보장은 `as` 기반 source 신뢰이며 T8–T10이 이를 제거합니다.
+- 사이트·프로필에서 프로젝트, 기술, 경력, 여정, 연락처, 이력서로 데이터 영역 원본 범위를 확장했습니다.
+- 단일 `PortfolioContent`와 `content.ts`가 렌더러에 전달할 집계 객체를 소유하게 했습니다.
+- 정렬·조회·활성화된·env 규칙을 소비자 밖으로 이동했습니다.
+- 이 단계의 핵심 비보장은 `as` 기반 원본 신뢰이며 T8–T10이 이를 제거합니다.
 
 ## 10. 최종 실행·데이터 흐름
 
-| 단계 | Owner/call path | 입력·출력 | Failure/non-guarantee |
+| 단계 | 담당 위치·호출 경로 | 입력·출력 | 실패·보장하지 않는 범위 |
 | --- | --- | --- | --- |
-| JSON modules를 import합니다. | `src/lib/portfolio/content.ts` | module-level source objects | malformed JSON shape를 runtime에서 거부하지 않음 |
-| 파생 collection을 준비합니다. | journey sort, tech Map, enabled links | 정렬된 배열과 lookup/filter | unknown ID는 `undefined` 또는 omission |
-| 환경 링크와 project 활성화를 해석합니다. | `getPortfolioContent()` | filtered projects/links | invalid URL은 별도 검증 없음 |
-| aggregate를 route에 반환합니다. | `PortfolioContent` | renderer-facing object | nested 공유/복사 경계는 후속 test에서 고정 |
+| JSON 모듈을 불러옵니다. | `src/lib/portfolio/content.ts` | 모듈 범위 원본 objects | 잘못된 형식의 JSON 형식을 실행 시점에서 거부하지 않음 |
+| 파생 목록을 준비합니다. | 여정 정렬, 기술 맵, 활성화된 링크 | 정렬된 배열과 조회·필터 | 알 수 없는 ID는 `undefined` 또는 제외 |
+| 환경 링크와 프로젝트 활성화를 해석합니다. | `getPortfolioContent()` | 필터링된 프로젝트·링크 | 유효하지 않은 URL은 별도 검증 없음 |
+| 집계 객체를 라우트에 반환합니다. | `PortfolioContent` | 렌더러에 전달할 객체 | 중첩된 공유·복사 경계는 후속 테스트에서 고정 |
 
 ## 11. 학습 완료 확인
 
-완료했습니다. 모든 commit은 exact SHA의 parent diff/resulting tree를 기준으로 기록했고, direct execution evidence와 static inspection을 구분했습니다. `3353032ba23b`, `dc07871c4d24`, `b77b386b344e`, `527b9f872333`이 이후 public export, clone boundary, selector/view-model 결과를 테스트합니다. 이 Thread에서는 테스트 command를 실행하지 않았습니다.
+완료했습니다. 모든 커밋은 해당 SHA의 부모 커밋과의 차이·변경 후 파일 트리를 기준으로 기록했고, 직접 실행 근거와 정적 검토를 구분했습니다. `3353032ba23b`, `dc07871c4d24`, `b77b386b344e`, `527b9f872333`이 이후 공개 항목, 복제 범위, 선택자·뷰 모델 결과를 테스트합니다. 이 개발 흐름에서는 테스트 명령을 실행하지 않았습니다.
 ===== END FILE: 02-portfolio-domain-and-aggregate-model.md =====
 
 ===== BEGIN FILE: 03-presentation-contracts-for-multi-route-ui.md =====
-# Thread: Presentation contracts for multi-route UI
+# 개발 흐름: 여러 라우트의 화면 문구와 섹션 규칙
 
-> Repository: `https://github.com/seungwoo7050/42-archive`  
-> Branch: `web/portfolio`  
-> Category: `01-application-foundation-and-content-systems`
+> 저장소: `https://github.com/seungwoo7050/42-archive`
+> 브랜치: `web/portfolio`
+> 분류: `01-application-foundation-and-content-systems`
 
 ## 0. 분류 출처와 변경 가능 범위
 
-- Commit SHA, subject, importance, tags는 target branch의 `commit/commit-importance.md` 분류와 exact commit metadata를 사용합니다.
-- 이 문서의 Thread grouping, 목표, 역할, 조사 지점은 Phase 1 category audit에서 repository evidence를 기준으로 확정했습니다.
-- Phase 2에서는 이 fixed information을 바꾸지 않고 learner-facing 기록만 채웠습니다.
-- 다른 branch나 final HEAD 구현을 과거 SHA 설명에 소급하지 않습니다.
+- 커밋 SHA·제목·중요도·태그는 대상 브랜치의 `commit/commit-importance.md` 분류와 해당 커밋의 정확한 메타데이터를 사용합니다.
+- 이 문서의 개발 흐름 묶음·목표·역할·확인 지점은 1단계 분류 검토에서 저장소 근거를 바탕으로 확정했습니다.
+- 2단계에서는 이 고정 정보를 바꾸지 않고 학습자용 기록만 작성했습니다.
+- 다른 브랜치나 최종 HEAD의 구현을 과거 SHA의 설명으로 소급하지 않습니다.
 
-## 1. Thread 목표
+## 1. 개발 흐름 목표
 
-한 개 home placeholder에서 다섯 design과 여러 route가 공유·분리하는 copy, section order, metric key, ARIA/empty-state vocabulary까지 `presentation.json` 계약으로 성장하는 과정을 복원합니다.
+한 개 홈 자리표시자에서 다섯 디자인과 여러 라우트가 공유·분리하는 복사, 섹션 순서, 지표 키, ARIA·빈 상태 허용 값 집합까지 `presentation.json` 계약으로 성장하는 과정을 복원합니다.
 
-### 계획된 핵심 invariant
+### 계획된 핵심 불변 조건
 
-- route/design별 표시 문구와 section order는 renderer 코드가 아니라 presentation source가 소유합니다.
-- count key, section ID, empty/ARIA label은 제한된 vocabulary로 소비됩니다.
-- placeholder 추가와 실제 copy 완성을 구분하고, JSON 변경만으로 renderer 지원을 과장하지 않습니다.
+- 라우트·디자인별 표시 문구와 섹션 순서는 렌더러 코드가 아니라 화면 구성 원본이 소유합니다.
+- 개수 키, 섹션 ID, 빈·ARIA 문구는 제한된 허용 값 집합으로 소비됩니다.
+- 자리표시자 추가와 실제 복사 완성을 구분하고, JSON 변경만으로 렌더러 지원을 과장하지 않습니다.
 
-## 2. 이 Thread를 이해하기 위한 핵심 질문
+## 2. 이 개발 흐름을 이해하기 위한 핵심 질문
 
-- Design/Classic의 초기 home 계약에서 다섯 design·다중 route로 어떻게 확장되는가?
-- 새 copy가 추가된 commit과 실제 placeholder가 완성된 commit은 각각 무엇인가?
-- 공용 vocabulary와 design-specific vocabulary의 경계는 어디인가?
+- Design/Classic의 초기 홈 계약에서 다섯 디자인·다중 라우트로 어떻게 확장되는가?
+- 새 복사가 추가된 커밋과 실제 자리표시자가 완성된 커밋은 각각 무엇인가?
+- 공용 허용 값 집합과 디자인별 허용 값 집합의 경계는 어디인가?
 
 ## 3. 완료 기준
 
-- 각 SHA의 parent diff와 resulting tree에서 실제 file/symbol을 확인합니다.
-- 이전 상태, implementation decision, owner/lifetime, absence/failure/fallback, guarantee/non-guarantee를 분리합니다.
-- Fix·refactor·integration은 바로 앞의 assumption이나 duplicated responsibility와 연결합니다.
-- 테스트나 command는 실제 실행 여부를 정적 검토와 명확히 구분합니다.
-- Thread 종료 시 invariant evolution과 최종 flow를 코드 없이 설명합니다.
+- 각 SHA의 부모 커밋과의 차이와 변경 후 파일 트리에서 실제 파일과 심볼을 확인합니다.
+- 이전 상태, 구현 결정, 소유 주체와 수명, 누락·실패·대체 처리, 보장 범위와 보장하지 않는 범위를 나눠 기록합니다.
+- 수정·리팩터링·통합은 바로 앞선 가정이나 중복 구현과 연결합니다.
+- 테스트와 명령은 실제 실행 여부를 정적 검토와 명확히 구분합니다.
+- 개발 흐름 마지막에는 불변 조건의 변화와 최종 실행 순서를 코드 없이 설명합니다.
 
-## 4. Commit map
+## 4. 커밋 목록
 
-| 순서 | Commit | Subject | Importance | Tags | 이 Thread에서의 역할 |
-| ---: | --- | --- | :---: | --- | --- |
-| 1 | `7f5017b21d37` | feat(content): 디자인 홈 표현 모델 추가 | B | CONTENT | Design home 계약 시작 |
-| 2 | `04a810bb0ab4` | feat(content): 클래식과 공용 홈 표현 추가 | B | CONTENT | Classic/shared home 계약 |
-| 3 | `d21d53591b5c` | feat(content): 프로젝트 목록 표현 계약 정의 | B | CONTENT | projects route type 계약 |
-| 4 | `d55a2017e725` | feat(content): 프로젝트 목록 화면 문구 추가 | B | CONTENT | projects route placeholder source |
-| 5 | `d6468cbea9e2` | feat(content): 보조 페이지 표현 계약 정의 | B | CONTENT | detail/about/resume/contact 계약 |
-| 6 | `da3941184155` | feat(content): 상세 소개 이력 연락 문구 추가 | B | CONTENT | 초기 route copy source |
-| 7 | `96c8ba5733f5` | feat(content): 공용 UI 표현 콘텐츠 구성 | B | CONTENT | 공용 ARIA/empty-state vocabulary |
-| 8 | `9a7d41edfad0` | feat(content): Design과 Classic 홈 표현 콘텐츠 구성 | B | CONTENT, RENDERER | 초기 두 home의 의미 있는 구성 |
+| 순서 | 커밋 | 제목 | 중요도 | 태그 | 이 개발 흐름에서의 역할 |
+| ---: | --- | --- |:---: | --- | --- |
+| 1 | `7f5017b21d37` | feat(content): 디자인 홈 표현 모델 추가 | B | CONTENT | Design 홈 계약 시작 |
+| 2 | `04a810bb0ab4` | feat(content): 클래식과 공용 홈 표현 추가 | B | CONTENT | Classic·공용 홈 계약 |
+| 3 | `d21d53591b5c` | feat(content): 프로젝트 목록 표현 계약 정의 | B | CONTENT | 프로젝트 라우트 타입 계약 |
+| 4 | `d55a2017e725` | feat(content): 프로젝트 목록 화면 문구 추가 | B | CONTENT | 프로젝트 라우트 자리표시자 원본 |
+| 5 | `d6468cbea9e2` | feat(content): 보조 페이지 표현 계약 정의 | B | CONTENT | 상세·소개·이력서·연락처 계약 |
+| 6 | `da3941184155` | feat(content): 상세 소개 이력 연락 문구 추가 | B | CONTENT | 초기 라우트 복사 원본 |
+| 7 | `96c8ba5733f5` | feat(content): 공용 UI 표현 콘텐츠 구성 | B | CONTENT | 공용 ARIA·빈 상태 허용 값 집합 |
+| 8 | `9a7d41edfad0` | feat(content): Design과 Classic 홈 표현 콘텐츠 구성 | B | CONTENT, RENDERER | 초기 두 홈의 의미 있는 구성 |
 | 9 | `2b9b35d4b8de` | feat(content): 확장 디자인 홈 표현 콘텐츠 구성 | B | CONTENT | Editorial/Brutalist/Cinematic 계약 |
-| 10 | `8886459d1b0d` | feat(content): 공용 홈 섹션 표현 콘텐츠 구성 | B | CONTENT | shared home copy 완성 |
-| 11 | `61d1976cde0d` | feat(content): 프로젝트 목록 표현 콘텐츠 구성 | B | CONTENT | 다섯 design projects route copy |
-| 12 | `a6c72a6b3b34` | feat(content): 프로젝트 상세 표현 콘텐츠 구성 | B | CONTENT | project detail copy 완성 |
-| 13 | `20dfc298375c` | feat(content): About과 Journey 표현 콘텐츠 구성 | B | CONTENT, RENDERER | About/Journey narrative 계약 |
-| 14 | `13c8c52c54d9` | feat(content): Interview Map과 Resume 표현 콘텐츠 구성 | B | CONTENT, RENDERER | Resume/Interview Map 계약 완성 |
-| 15 | `a7a2000ff462` | feat(content): Contact 표현 콘텐츠와 최종 문서 형식 구성 | B | CONTENT, RENDERER | 문서형 route 최종 구성 |
+| 10 | `8886459d1b0d` | feat(content): 공용 홈 섹션 표현 콘텐츠 구성 | B | CONTENT | 공용 홈 문구 완성 |
+| 11 | `61d1976cde0d` | feat(content): 프로젝트 목록 표현 콘텐츠 구성 | B | CONTENT | 다섯 디자인 프로젝트 라우트 복사 |
+| 12 | `a6c72a6b3b34` | feat(content): 프로젝트 상세 표현 콘텐츠 구성 | B | CONTENT | 프로젝트 상세 복사 완성 |
+| 13 | `20dfc298375c` | feat(content): About과 Journey 표현 콘텐츠 구성 | B | CONTENT, RENDERER | 소개·여정 설명 계약 |
+| 14 | `13c8c52c54d9` | feat(content): Interview Map과 Resume 표현 콘텐츠 구성 | B | CONTENT, RENDERER | 이력서·인터뷰 맵 계약 완성 |
+| 15 | `a7a2000ff462` | feat(content): Contact 표현 콘텐츠와 최종 문서 형식 구성 | B | CONTENT, RENDERER | 문서형 라우트 최종 구성 |
 
-## 5. Commit별 학습 기록
+## 5. 커밋별 학습 기록
 
 ### 1. `7f5017b21d37` — feat(content): 디자인 홈 표현 모델 추가
 
 - **Importance:** B
 - **Tags:** CONTENT
-- **Thread 역할:** Design home 계약 시작
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** Design 홈 계약 시작
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `presentation.json`의 `defaultHomeTemplate`, templates, `home.design`을 확인합니다.
-- `types.ts`의 home section/count key/Design hero type을 확인합니다.
+- `presentation.json`의 `defaultHomeTemplate`, 템플릿, `home.design`을 확인합니다.
+- `types.ts`의 홈 섹션·개수 키·Design 히어로 타입을 확인합니다.
 
 확인 원칙:
 
-- 먼저 `7f5017b21d37^`와 `7f5017b21d37`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `7f5017b21d37^`와 `7f5017b21d37`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | home 문구와 section order가 renderer 내부에 머물 수 있었습니다. |
-| 실제 변경 file/symbol/call path | Design/Classic template ID와 Design hero stats, section order, featured copy를 presentation source/type으로 이동합니다. |
-| Data/state/resource owner와 lifetime | `presentation.json`이 표시 순서와 문구를, renderer가 구조/스타일을 소유하도록 경계를 시작합니다. |
-| Failure·absence·fallback 처리 | Classic 세부 계약과 다른 route는 없고 runtime schema도 없습니다. |
-| 보장하는 것과 보장하지 않는 것 | Design home의 데이터 기반 표현 계약을 보장하지만 multi-route 지원은 보장하지 않습니다. |
-| 다음 commit 또는 관련 test 연결 | `04a810bb0ab4`가 Classic terminal과 shared home copy를 추가합니다. |
+| 직전 상태와 부족함 | 홈 문구와 섹션 순서가 렌더러 내부에 머물 수 있었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | Design/Classic 템플릿 ID와 Design 히어로 통계, 섹션 순서, 대표 복사를 화면 구성 원본·타입으로 이동합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | `presentation.json`이 표시 순서와 문구를, 렌더러가 구조·스타일을 소유하도록 경계를 시작합니다. |
+| 실패·누락·대체 처리 | Classic 세부 계약과 다른 라우트는 없고 실행 시점 스키마도 없습니다. |
+| 보장하는 것과 보장하지 않는 것 | Design 홈의 데이터 기반 표현 계약을 보장하지만 여러 라우트 지원은 보장하지 않습니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `04a810bb0ab4`가 Classic 터미널과 공용 홈 문구를 추가합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `7f5017b21d37`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `7f5017b21d37`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 2. `04a810bb0ab4` — feat(content): 클래식과 공용 홈 표현 추가
 
 - **Importance:** B
 - **Tags:** CONTENT
-- **Thread 역할:** Classic/shared home 계약
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** Classic·공용 홈 계약
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `home.classic.terminal`, shared `workMap`, `technicalFocus`, `stack`, `journey`, `contact`를 확인합니다.
-- terminal command/output 배열의 소유 위치를 확인합니다.
+- `home.classic.terminal`, 공용 `workMap`, `technicalFocus`, `stack`, `journey`, `contact`를 확인합니다.
+- 터미널 명령·출력 배열의 소유 위치를 확인합니다.
 
 확인 원칙:
 
-- 먼저 `04a810bb0ab4^`와 `04a810bb0ab4`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `04a810bb0ab4^`와 `04a810bb0ab4`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | Design home만 source-driven이고 Classic terminal과 공용 section copy는 코드에 남을 수 있었습니다. |
-| 실제 변경 file/symbol/call path | Classic hero/featured/terminal과 두 renderer가 공유할 home section copy를 presentation source에 추가합니다. |
-| Data/state/resource owner와 lifetime | terminal script-like text와 shared section copy는 JSON이 소유하고 component는 형식만 렌더링합니다. |
-| Failure·absence·fallback 처리 | 값은 대부분 placeholder이고 section ID 유일성이나 template consistency는 검증하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | 두 초기 design의 공용/전용 copy 경계를 정의하지만 완성된 editorial content는 아닙니다. |
-| 다음 commit 또는 관련 test 연결 | `d21d53591b5c`부터 projects route 계약이 분리됩니다. |
+| 직전 상태와 부족함 | Design 홈만 원본 driven이고 Classic 터미널과 공용 섹션 복사는 코드에 남을 수 있었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | Classic 히어로·대표·터미널과 두 렌더러가 공유할 홈 섹션 복사를 화면 구성 원본에 추가합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 터미널 스크립트 형식의 문구와 공용 섹션 복사는 JSON이 소유하고 컴포넌트는 형식만 렌더링합니다. |
+| 실패·누락·대체 처리 | 값은 대부분 자리표시자이고 섹션 ID 유일성이나 템플릿 일관성은 검증하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 두 초기 디자인의 공용·전용 복사 경계를 정의하지만 완성된 editorial 콘텐츠는 아닙니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `d21d53591b5c`부터 프로젝트 라우트 계약이 분리됩니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `04a810bb0ab4`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `04a810bb0ab4`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 3. `d21d53591b5c` — feat(content): 프로젝트 목록 표현 계약 정의
 
 - **Importance:** B
 - **Tags:** CONTENT
-- **Thread 역할:** projects route type 계약
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 프로젝트 라우트 타입 계약
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `ProjectPageContent`와 Design/Classic hero stats, terminal, selected/grouped shape를 확인합니다.
-- countKey가 renderer 계산 결과와 연결될 단순 문자열 union인지 확인합니다.
+- `ProjectPageContent`와 Design/Classic 히어로 통계, 터미널, 선택 목록·그룹 목록 형식을 확인합니다.
+- `countKey`가 렌더러 계산 결과와 연결될 단순 문자열 유니언인지 확인합니다.
 
 확인 원칙:
 
-- 먼저 `d21d53591b5c^`와 `d21d53591b5c`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `d21d53591b5c^`와 `d21d53591b5c`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | home 외 projects index의 문구·통계 label·terminal 설정이 code-local일 수 있었습니다. |
-| 실제 변경 file/symbol/call path | projects list page의 Design/Classic presentation type을 추가하여 route-level copy contract를 분리합니다. |
-| Data/state/resource owner와 lifetime | presentation type이 route copy shape를 소유하지만 JSON 값은 다음 commit까지 없습니다. |
-| Failure·absence·fallback 처리 | 타입만 추가되어 runtime 데이터 존재나 count key 유효 계산은 보장하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | projects route가 요구할 shape를 명시하지만 실제 source 연결은 다음 commit 책임입니다. |
-| 다음 commit 또는 관련 test 연결 | `d55a2017e725`가 placeholder source를 추가합니다. |
+| 직전 상태와 부족함 | 홈 외 프로젝트 목록의 문구·통계 문구·터미널 설정이 코드 내부일 수 있었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 프로젝트 목록 페이지의 Design/Classic 화면 구성 타입을 추가하여 라우트 단위 복사 규칙을 분리합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 화면 구성 타입이 라우트 복사 형식을 소유하지만 JSON 값은 다음 커밋까지 없습니다. |
+| 실패·누락·대체 처리 | 타입만 추가되어 실행 시점 데이터 존재나 개수 키 유효 계산은 보장하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 프로젝트 라우트가 요구할 형식을 명시하지만 실제 원본 연결은 다음 커밋 책임입니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `d55a2017e725`가 자리표시자 원본을 추가합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `d21d53591b5c`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `d21d53591b5c`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 4. `d55a2017e725` — feat(content): 프로젝트 목록 화면 문구 추가
 
 - **Importance:** B
 - **Tags:** CONTENT
-- **Thread 역할:** projects route placeholder source
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 프로젝트 라우트 자리표시자 원본
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `presentation.json.pages.projects`의 Design/Classic 구조를 확인합니다.
-- 빈 `groups`, placeholder body, stats/countKey, terminal `maxGroups`를 구분합니다.
+- 빈 `groups`, 자리표시자 본문, 통계/`countKey`, 터미널 `maxGroups`를 구분합니다.
 
 확인 원칙:
 
-- 먼저 `d55a2017e725^`와 `d55a2017e725`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `d55a2017e725^`와 `d55a2017e725`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | projects route type은 있었지만 source 값이 없어 renderer가 계약을 소비할 수 없었습니다. |
-| 실제 변경 file/symbol/call path | Design/Classic projects page의 hero, stats, featured, terminal, selected/grouped 문구를 placeholder 형태로 추가합니다. |
-| Data/state/resource owner와 lifetime | route copy는 JSON이 소유하지만 groups는 빈 배열이고 실제 group description은 아직 연결되지 않습니다. |
-| Failure·absence·fallback 처리 | 구조 존재만 보장하며 의미 있는 copy와 모든 design 지원은 보장하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | projects route source contract의 최소 값을 제공하지만 완성 상태는 아닙니다. |
-| 다음 commit 또는 관련 test 연결 | `d6468cbea9e2`가 다른 route type/source 계약을 확장합니다. |
+| 직전 상태와 부족함 | 프로젝트 라우트 타입은 있었지만 원본 값이 없어 렌더러가 계약을 소비할 수 없었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | Design/Classic 프로젝트 페이지의 히어로, 통계, 대표, 터미널, 선택 목록·그룹 목록 문구를 자리표시자 형태로 추가합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 라우트 복사는 JSON이 소유하지만 그룹은 빈 배열이고 실제 그룹 설명은 아직 연결되지 않습니다. |
+| 실패·누락·대체 처리 | 구조 존재만 보장하며 의미 있는 복사와 모든 디자인 지원은 보장하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 프로젝트 라우트 원본 규칙의 최소 값을 제공하지만 완성 상태는 아닙니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `d6468cbea9e2`가 다른 라우트 타입·원본 계약을 확장합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `d55a2017e725`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `d55a2017e725`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 5. `d6468cbea9e2` — feat(content): 보조 페이지 표현 계약 정의
 
 - **Importance:** B
 - **Tags:** CONTENT
-- **Thread 역할:** detail/about/resume/contact 계약
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 상세·소개·이력서·연락처 계약
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `types.ts`의 project detail section, About, Resume, Contact page content와 `PresentationContent.pages`를 확인합니다.
-- project detail section key 집합과 route별 필수 field를 확인합니다.
+- `types.ts`의 프로젝트 상세 섹션, 소개, 이력서, 연락처 페이지 콘텐츠와 `PresentationContent.pages`를 확인합니다.
+- 프로젝트 상세 섹션 키 집합과 라우트별 필수 필드를 확인합니다.
 
 확인 원칙:
 
-- 먼저 `d6468cbea9e2^`와 `d6468cbea9e2`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `d6468cbea9e2^`와 `d6468cbea9e2`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | projects index 외 상세/정보 route는 code-local copy에 의존할 수 있었습니다. |
-| 실제 변경 file/symbol/call path | project detail, About, Resume, Contact의 page-level presentation type을 aggregate에 추가합니다. |
-| Data/state/resource owner와 lifetime | `PresentationContent.pages`가 multi-route copy contract를 소유합니다. |
-| Failure·absence·fallback 처리 | Journey/Interview Map과 다섯 design-specific 확장은 없고 JSON values도 placeholder 단계입니다. |
-| 보장하는 것과 보장하지 않는 것 | 초기 핵심 route의 type contract를 보장하지만 complete copy와 runtime parse는 보장하지 않습니다. |
-| 다음 commit 또는 관련 test 연결 | `da3941184155`가 실제 route copy를 채웁니다. |
+| 직전 상태와 부족함 | 프로젝트 목록 외 상세·정보 라우트는 코드 내부 복사에 의존할 수 있었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 프로젝트 상세, 소개, 이력서, 연락처의 페이지별 화면 구성 타입을 집계 객체에 추가합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | `PresentationContent.pages`가 여러 라우트 복사 규칙을 소유합니다. |
+| 실패·누락·대체 처리 | 여정·인터뷰 맵과 다섯 디자인별 확장은 없고 JSON 값도 자리표시자 단계입니다. |
+| 보장하는 것과 보장하지 않는 것 | 초기 핵심 라우트의 타입 규칙을 보장하지만 전체 복사와 실행 시점 파싱은 보장하지 않습니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `da3941184155`가 실제 라우트 복사를 채웁니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `d6468cbea9e2`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `d6468cbea9e2`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 6. `da3941184155` — feat(content): 상세 소개 이력 연락 문구 추가
 
 - **Importance:** B
 - **Tags:** CONTENT
-- **Thread 역할:** 초기 route copy source
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 초기 라우트 복사 원본
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `presentation.json.pages`의 projectDetail/about/resume/contact 값을 확인합니다.
-- placeholder와 실제 label을 구분하고 renderer가 아직 소비하지 않는 field가 있는지 확인합니다.
+- `presentation.json.pages`의 projectDetail·소개·이력서·연락처 값을 확인합니다.
+- 자리표시자와 실제 문구를 구분하고 렌더러가 아직 소비하지 않는 필드가 있는지 확인합니다.
 
 확인 원칙:
 
-- 먼저 `da3941184155^`와 `da3941184155`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `da3941184155^`와 `da3941184155`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | route type은 있었지만 JSON에 대응 값이 없어 source-driven rendering이 불완전했습니다. |
-| 실제 변경 file/symbol/call path | 상세/About/Resume/Contact의 heading, label, action copy를 presentation source에 추가합니다. |
-| Data/state/resource owner와 lifetime | route copy owner가 component에서 JSON으로 이동할 기반이 생깁니다. |
-| Failure·absence·fallback 처리 | 여러 값은 placeholder이고 모든 component가 즉시 이 source를 소비한다는 보장은 없습니다. |
-| 보장하는 것과 보장하지 않는 것 | 필수 route copy 구조를 제공합니다. |
-| 다음 commit 또는 관련 test 연결 | `96c8ba5733f5`가 공용 UI vocabulary와 template description을 추가합니다. |
+| 직전 상태와 부족함 | 라우트 타입은 있었지만 JSON에 대응 값이 없어 원본 driven 렌더링이 불완전했습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 상세·소개·이력서·연락처의 제목, 문구, 동작 복사를 화면 구성 원본에 추가합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 라우트 복사 소유 주체가 컴포넌트에서 JSON으로 이동할 기반이 생깁니다. |
+| 실패·누락·대체 처리 | 여러 값은 자리표시자이고 모든 컴포넌트가 즉시 이 원본을 소비한다는 보장은 없습니다. |
+| 보장하는 것과 보장하지 않는 것 | 필수 라우트 복사 구조를 제공합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `96c8ba5733f5`가 공용 UI 허용 값 집합과 템플릿 설명을 추가합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `da3941184155`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `da3941184155`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 7. `96c8ba5733f5` — feat(content): 공용 UI 표현 콘텐츠 구성
 
 - **Importance:** B
 - **Tags:** CONTENT
-- **Thread 역할:** 공용 ARIA/empty-state vocabulary
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 공용 ARIA·빈 상태 허용 값 집합
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `presentation.json.ui`의 debug/skip/nav/switcher/ARIA/emptyStates를 확인합니다.
-- template description과 public UI label이 component-local literal을 대체할 범위를 확인합니다.
+- `presentation.json.ui`의 디버그·건너뛰기·탐색·선택기·ARIA·빈 상태를 확인합니다.
+- 템플릿 설명과 공개 UI 문구가 컴포넌트 내부 리터럴을 대체할 범위를 확인합니다.
 
 확인 원칙:
 
-- 먼저 `96c8ba5733f5^`와 `96c8ba5733f5`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `96c8ba5733f5^`와 `96c8ba5733f5`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | navigation, accessibility label, empty-state 문구가 여러 component에 중복될 위험이 있었습니다. |
-| 실제 변경 file/symbol/call path | 공용 UI label과 ARIA template, empty-state vocabulary를 presentation source에 중앙화합니다. |
-| Data/state/resource owner와 lifetime | 문구의 owner는 공용 JSON node로 이동하고 component는 format/placement만 담당합니다. |
-| Failure·absence·fallback 처리 | 문구가 존재해도 실제 semantic markup과 screen-reader 동작을 검증하지는 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | 공용 vocabulary 일관성을 제공하지만 accessibility behavior 자체는 보장하지 않습니다. |
-| 다음 commit 또는 관련 test 연결 | `9a7d41edfad0`이 Design/Classic home placeholder를 실제 copy와 section order로 완성합니다. |
+| 직전 상태와 부족함 | 탐색, 접근성 문구, 빈 상태 문구가 여러 컴포넌트에 중복될 위험이 있었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 공용 UI 문구와 ARIA 템플릿, 빈 상태 허용 값 집합을 화면 구성 원본에 중앙화합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 문구의 소유 주체는 공용 JSON 노드로 이동하고 컴포넌트는 형식·노출 위치만 담당합니다. |
+| 실패·누락·대체 처리 | 문구가 존재해도 실제 의미상 마크업과 화면 읽기 프로그램 동작을 검증하지는 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 공용 허용 값 집합 일관성을 제공하지만 접근성 동작 자체는 보장하지 않습니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `9a7d41edfad0`이 Design/Classic 홈 자리표시자를 실제 복사와 섹션 순서로 완성합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `96c8ba5733f5`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `96c8ba5733f5`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 8. `9a7d41edfad0` — feat(content): Design과 Classic 홈 표현 콘텐츠 구성
 
 - **Importance:** B
 - **Tags:** CONTENT, RENDERER
-- **Thread 역할:** 초기 두 home의 의미 있는 구성
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 초기 두 홈의 의미 있는 구성
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `presentation.json.home.design/classic.sections`가 여섯 section으로 채워지는 diff를 확인합니다.
-- Design action/featured copy와 Classic terminal commands/output placeholder 교체를 확인합니다.
+- `presentation.json.home.design/classic.sections`가 여섯 섹션으로 채워지는 변경 내용을 확인합니다.
+- Design 동작·대표 복사와 Classic 터미널 명령·출력 자리표시자 교체를 확인합니다.
 
 확인 원칙:
 
-- 먼저 `9a7d41edfad0^`와 `9a7d41edfad0`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `9a7d41edfad0^`와 `9a7d41edfad0`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | 두 home 계약은 있었지만 빈 section order와 placeholder terminal/copy 때문에 실제 정보 구조가 정해지지 않았습니다. |
-| 실제 변경 file/symbol/call path | Design/Classic의 section order를 채우고 action label, featured copy, terminal command sequence를 실제 콘텐츠로 교체합니다. |
-| Data/state/resource owner와 lifetime | home 정보 구조와 terminal narrative는 JSON이 소유합니다. |
-| Failure·absence·fallback 처리 | 다른 세 design과 shared section body는 아직 완성되지 않았고 renderer behavior는 이 JSON diff만으로 증명되지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | 초기 두 home의 완성된 순서/문구 계약을 제공합니다. |
-| 다음 commit 또는 관련 test 연결 | `2b9b35d4b8de`가 추가 design 계약을 만들고 `8886459d1b0d`이 shared copy를 완성합니다. |
+| 직전 상태와 부족함 | 두 홈 계약은 있었지만 빈 섹션 순서와 자리표시자 터미널·복사 때문에 실제 정보 구조가 정해지지 않았습니다. |
+| 실제 변경 파일·심볼·호출 경로 | Design/Classic의 섹션 순서를 채우고 동작 문구, 대표 복사, 터미널 명령 순서를 실제 콘텐츠로 교체합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 홈 정보 구조와 터미널 설명은 JSON이 소유합니다. |
+| 실패·누락·대체 처리 | 다른 세 디자인과 공용 섹션 본문은 아직 완성되지 않았고 렌더러 동작은 이 JSON 변경 내용만으로 증명되지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 초기 두 홈의 완성된 순서·문구 계약을 제공합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `2b9b35d4b8de`가 추가 디자인 계약을 만들고 `8886459d1b0d`이 공용 문구를 완성합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `9a7d41edfad0`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `9a7d41edfad0`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 9. `2b9b35d4b8de` — feat(content): 확장 디자인 홈 표현 콘텐츠 구성
 
 - **Importance:** B
 - **Tags:** CONTENT
-- **Thread 역할:** Editorial/Brutalist/Cinematic 계약
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** Editorial/Brutalist/Cinematic 계약
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `presentation.json`과 type에서 editorial/brutalist/cinematic shell/home nodes를 확인합니다.
-- 각 design의 section ID vocabulary와 action label 차이를 확인합니다.
+- `presentation.json`과 타입에서 editorial/brutalist/cinematic 셸·홈 노드를 확인합니다.
+- 각 디자인의 섹션 ID 허용 값 집합과 동작 문구 차이를 확인합니다.
 
 확인 원칙:
 
-- 먼저 `2b9b35d4b8de^`와 `2b9b35d4b8de`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `2b9b35d4b8de^`와 `2b9b35d4b8de`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | Design/Classic 외 visual system은 공용 contract에 표현할 위치가 없었습니다. |
-| 실제 변경 file/symbol/call path | 세 추가 design의 shell/home section order, hero/action, design-specific copy shape를 추가합니다. |
-| Data/state/resource owner와 lifetime | design별 정보 구조는 JSON이, 실제 layout/visual language는 각 renderer가 소유합니다. |
-| Failure·absence·fallback 처리 | JSON node 추가만으로 renderer 구현·lazy loading·visual regression은 보장하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | 다섯 design을 표현할 source contract를 제공합니다. |
-| 다음 commit 또는 관련 test 연결 | `8886459d1b0d`과 후속 route copy commits가 placeholder를 실제 콘텐츠로 바꿉니다. |
+| 직전 상태와 부족함 | Design/Classic 외 시각 시스템은 공용 규칙에 표현할 위치가 없었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 세 추가 디자인의 셸·홈 섹션 순서, 히어로·동작, 디자인별 복사 형식을 추가합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 디자인별 정보 구조는 JSON이, 실제 레이아웃·시각 언어는 각 렌더러가 소유합니다. |
+| 실패·누락·대체 처리 | JSON 노드 추가만으로 렌더러 구현·지연 로딩·시각 회귀는 보장하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 다섯 디자인을 표현할 원본 규칙을 제공합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `8886459d1b0d`과 후속 라우트 복사 커밋이 자리표시자를 실제 콘텐츠로 바꿉니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `2b9b35d4b8de`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `2b9b35d4b8de`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 10. `8886459d1b0d` — feat(content): 공용 홈 섹션 표현 콘텐츠 구성
 
 - **Importance:** B
 - **Tags:** CONTENT
-- **Thread 역할:** shared home copy 완성
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 공용 홈 문구 완성
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `home.shared.workMap` card IDs/labels/body/countKey와 technicalFocus/stack/journey/contact diff를 확인합니다.
-- `curriculum` card ID가 `archive`로 바뀐 의미를 확인합니다.
+- `home.shared.workMap` 카드 ID·문구·본문/`countKey`와 technicalFocus·기술 스택·여정·연락처 변경 내용을 확인합니다.
+- `curriculum` 카드 ID가 `archive`로 바뀐 의미를 확인합니다.
 
 확인 원칙:
 
-- 먼저 `8886459d1b0d^`와 `8886459d1b0d`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `8886459d1b0d^`와 `8886459d1b0d`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | 공용 home sections는 placeholder body와 임시 card vocabulary를 사용했습니다. |
-| 실제 변경 file/symbol/call path | work-map 분류를 product/archive/reliability로 정리하고 각 shared section의 실제 설명과 contact title을 채웁니다. |
-| Data/state/resource owner와 lifetime | 공용 cross-design narrative는 shared node가 소유합니다. |
-| Failure·absence·fallback 처리 | count 값 계산과 card ID 참조 무결성은 selector/schema/loader가 별도로 책임집니다. |
+| 직전 상태와 부족함 | 공용 홈 섹션은 자리표시자 본문과 임시 카드 허용 값 집합을 사용했습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 작업 지표 분류를 product·아카이브·reliability로 정리하고 각 공용 섹션의 실제 설명과 연락처 제목을 채웁니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 공용 디자인 공통 설명은 공용 노드가 소유합니다. |
+| 실패·누락·대체 처리 | 개수 값 계산과 카드 ID 참조 무결성은 선택자·스키마·로더가 별도로 책임집니다. |
 | 보장하는 것과 보장하지 않는 것 | 공용 문구 일관성을 제공하지만 계산 결과를 보장하지 않습니다. |
-| 다음 commit 또는 관련 test 연결 | `61d1976cde0d`부터 다섯 design의 projects route copy가 완성됩니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `61d1976cde0d`부터 다섯 디자인의 프로젝트 라우트 복사가 완성됩니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `8886459d1b0d`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `8886459d1b0d`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 11. `61d1976cde0d` — feat(content): 프로젝트 목록 표현 콘텐츠 구성
 
 - **Importance:** B
 - **Tags:** CONTENT
-- **Thread 역할:** 다섯 design projects route copy
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 다섯 디자인 프로젝트 라우트 복사
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `presentation.json.pages.projects`의 groups와 editorial/brutalist/cinematic nodes를 확인합니다.
-- 초기 Design/Classic placeholder가 실제 archive copy로 교체되는지 확인합니다.
+- `presentation.json.pages.projects`의 그룹과 editorial/brutalist/cinematic 노드를 확인합니다.
+- 초기 Design/Classic 자리표시자가 실제 아카이브 복사로 교체되는지 확인합니다.
 
 확인 원칙:
 
-- 먼저 `61d1976cde0d^`와 `61d1976cde0d`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `61d1976cde0d^`와 `61d1976cde0d`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | projects route는 초기 두 design placeholder만 갖고 추가 design 표현 계약이 비어 있었습니다. |
-| 실제 변경 file/symbol/call path | group copy와 다섯 design의 hero/archive vocabulary를 실제 콘텐츠로 구성합니다. |
-| Data/state/resource owner와 lifetime | projects route의 design-specific copy는 presentation source가 소유합니다. |
-| Failure·absence·fallback 처리 | group/project 실제 데이터 결합과 route rendering은 별도 selector/view-model 책임입니다. |
-| 보장하는 것과 보장하지 않는 것 | 모든 design이 projects route에 필요한 copy를 얻습니다. |
-| 다음 commit 또는 관련 test 연결 | `a6c72a6b3b34`가 project detail copy를 확장합니다. |
+| 직전 상태와 부족함 | 프로젝트 라우트는 초기 두 디자인 자리표시자만 갖고 추가 디자인 표현 계약이 비어 있었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 그룹 복사와 다섯 디자인의 히어로·아카이브 허용 값 집합을 실제 콘텐츠로 구성합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 프로젝트 라우트의 디자인별 복사는 화면 구성 원본이 소유합니다. |
+| 실패·누락·대체 처리 | 그룹·프로젝트 실제 데이터 결합과 라우트 렌더링은 별도 선택자·뷰 모델 책임입니다. |
+| 보장하는 것과 보장하지 않는 것 | 모든 디자인이 프로젝트 라우트에 필요한 복사를 얻습니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `a6c72a6b3b34`가 프로젝트 상세 복사를 확장합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `61d1976cde0d`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `61d1976cde0d`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 12. `a6c72a6b3b34` — feat(content): 프로젝트 상세 표현 콘텐츠 구성
 
 - **Importance:** B
 - **Tags:** CONTENT
-- **Thread 역할:** project detail copy 완성
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 프로젝트 상세 복사 완성
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `pages.projectDetail`의 missing/facts/outro/frame/editorial/sections를 확인합니다.
-- highlights section과 기존 section label의 최종 집합을 확인합니다.
+- `pages.projectDetail`의 누락된·핵심 정보·outro·프레임·editorial·섹션을 확인합니다.
+- 주요 내용 섹션과 기존 섹션 문구의 최종 집합을 확인합니다.
 
 확인 원칙:
 
-- 먼저 `a6c72a6b3b34^`와 `a6c72a6b3b34`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `a6c72a6b3b34^`와 `a6c72a6b3b34`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | project detail에는 기본 heading만 있고 missing state, facts, outro, design-specific label이 불완전했습니다. |
-| 실제 변경 file/symbol/call path | 없는 프로젝트 fallback과 상세 facts/outro/frame, highlights 포함 section vocabulary를 채웁니다. |
-| Data/state/resource owner와 lifetime | 상세 상태 문구는 presentation source가, project 존재 판단은 route/view-model이 소유합니다. |
-| Failure·absence·fallback 처리 | 문구는 missing state를 표현하지만 404 status나 route generation behavior는 보장하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | project detail renderer가 사용할 완전한 copy contract를 제공합니다. |
-| 다음 commit 또는 관련 test 연결 | `20dfc298375c`이 About/Journey route 구조를 완성합니다. |
+| 직전 상태와 부족함 | 프로젝트 상세에는 기본 제목만 있고 누락된 상태, 핵심 정보, outro, 디자인별 문구가 불완전했습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 없는 프로젝트 대체 처리와 상세 핵심 정보·outro·프레임, 주요 내용 포함 섹션 허용 값 집합을 채웁니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 상세 상태 문구는 화면 구성 원본이, 프로젝트 존재 판단은 라우트·뷰 모델이 소유합니다. |
+| 실패·누락·대체 처리 | 문구는 누락된 상태를 표현하지만 404 상태나 라우트 생성 동작은 보장하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 프로젝트 상세 렌더러가 사용할 완전한 복사 규칙을 제공합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `20dfc298375c`이 소개·여정 라우트 구조를 완성합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `a6c72a6b3b34`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `a6c72a6b3b34`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 13. `20dfc298375c` — feat(content): About과 Journey 표현 콘텐츠 구성
 
 - **Importance:** B
 - **Tags:** CONTENT, RENDERER
-- **Thread 역할:** About/Journey narrative 계약
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 소개·여정 설명 계약
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `pages.about.curation`과 `pages.journey` hero/narrative/timeline/now를 확인합니다.
-- state/reason/result labels와 anchor label을 확인합니다.
+- `pages.about.curation`과 `pages.journey` 히어로·설명·타임라인·now를 확인합니다.
+- 상태·이유·결과 문구와 기준 문구를 확인합니다.
 
 확인 원칙:
 
-- 먼저 `20dfc298375c^`와 `20dfc298375c`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `20dfc298375c^`와 `20dfc298375c`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | About curation과 Journey narrative가 독립 source를 표시할 route copy 계약이 부족했습니다. |
-| 실제 변경 file/symbol/call path | curation 설명/section label과 Journey의 현재 상태·이유·결과·timeline/current-position vocabulary를 추가합니다. |
-| Data/state/resource owner와 lifetime | route copy는 presentation source가, 실제 milestone/project resolution은 domain/view-model이 소유합니다. |
-| Failure·absence·fallback 처리 | 참조 project 존재성과 timeline chronology는 이 JSON 변경이 검증하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | About/Journey route가 source-driven section structure를 갖습니다. |
-| 다음 commit 또는 관련 test 연결 | `13c8c52c54d9`가 Resume/Interview Map을 완성합니다. |
+| 직전 상태와 부족함 | 소개 선별 기록과 여정 설명이 독립 원본을 표시할 라우트 복사 계약이 부족했습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 선별 기록 설명·섹션 문구와 여정의 현재 상태·이유·결과·타임라인·현재 위치 허용 값 집합을 추가합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 라우트 복사는 화면 구성 원본이, 실제 주요 시점·프로젝트 해석은 데이터 영역·뷰 모델이 소유합니다. |
+| 실패·누락·대체 처리 | 참조 프로젝트 존재성과 타임라인 시간순 기록은 이 JSON 변경이 검증하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 소개·여정 라우트가 원본 driven 섹션 구성을 갖습니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `13c8c52c54d9`가 이력서·인터뷰 맵을 완성합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `20dfc298375c`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `20dfc298375c`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 14. `13c8c52c54d9` — feat(content): Interview Map과 Resume 표현 콘텐츠 구성
 
 - **Importance:** B
 - **Tags:** CONTENT, RENDERER
-- **Thread 역할:** Resume/Interview Map 계약 완성
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 이력서·인터뷰 맵 계약 완성
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `pages.resume`의 experience/education/notes/identity/editorial/brutalist를 확인합니다.
-- `pages.interviewMap`의 hero/tracks/gaps label과 empty label을 확인합니다.
+- `pages.resume`의 경력·학력·안내·식별 정보·editorial/brutalist를 확인합니다.
+- `pages.interviewMap`의 히어로·트랙·부족한 부분 문구와 빈 문구를 확인합니다.
 
 확인 원칙:
 
-- 먼저 `13c8c52c54d9^`와 `13c8c52c54d9`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `13c8c52c54d9^`와 `13c8c52c54d9`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | Resume는 기본 summary/projects/training만, Interview Map은 route-level presentation copy가 없었습니다. |
-| 실제 변경 file/symbol/call path | Resume의 identity·experience·education·notes와 design-specific eyebrow, Interview Map의 evidence index/empty/gaps vocabulary를 추가합니다. |
-| Data/state/resource owner와 lifetime | 문서 구조와 label은 presentation source가 소유하고 실제 project evidence mapping은 domain content가 소유합니다. |
-| Failure·absence·fallback 처리 | download asset 존재성이나 answer project 참조는 이 commit이 검증하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | 두 route의 presentation contract를 완성합니다. |
-| 다음 commit 또는 관련 test 연결 | `a7a2000ff462`가 Contact/Journey/Interview Map의 최종 문서 순서와 copy를 다듬습니다. |
+| 직전 상태와 부족함 | 이력서는 기본 요약·프로젝트·교육만, 인터뷰 맵은 라우트 단위 화면 문구가 없었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 이력서의 식별 정보·경력·학력·안내와 디자인별 eyebrow, 인터뷰 맵의 근거 목록·빈·부족한 부분 허용 값 집합을 추가합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 문서 구조와 문구는 화면 구성 원본이 소유하고 실제 프로젝트 근거 대응은 데이터 영역 콘텐츠가 소유합니다. |
+| 실패·누락·대체 처리 | 다운로드 자산 존재성이나 답변과 프로젝트 참조는 이 커밋이 검증하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 두 라우트의 화면 표시 규칙을 완성합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `a7a2000ff462`가 연락처·여정·인터뷰 맵의 최종 문서 순서와 복사를 다듬습니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `13c8c52c54d9`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `13c8c52c54d9`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 15. `a7a2000ff462` — feat(content): Contact 표현 콘텐츠와 최종 문서 형식 구성
 
 - **Importance:** B
 - **Tags:** CONTENT, RENDERER
-- **Thread 역할:** 문서형 route 최종 구성
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 문서형 라우트 최종 구성
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `presentation.json`의 Contact copy와 Journey/Interview Map grouping/reordering diff를 확인합니다.
-- 삭제·재배치된 field가 단순 copy 수정인지 contract shape 변경인지 구분합니다.
+- `presentation.json`의 연락처 복사와 여정·인터뷰 맵 그룹화·reordering 변경 내용을 확인합니다.
+- 삭제·재배치된 필드가 단순 복사 수정인지 규칙 형식 변경인지 구분합니다.
 
 확인 원칙:
 
-- 먼저 `a7a2000ff462^`와 `a7a2000ff462`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `a7a2000ff462^`와 `a7a2000ff462`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | 문서형 route의 copy는 존재했지만 Contact와 evidence-oriented 화면의 읽기 순서가 최종 정보 구조와 맞지 않았습니다. |
-| 실제 변경 file/symbol/call path | Contact 문구를 완성하고 Journey/Interview Map nodes를 renderer가 소비할 최종 문서 순서로 재구성합니다. |
-| Data/state/resource owner와 lifetime | presentation source가 route의 문서 계층을 소유합니다. |
-| Failure·absence·fallback 처리 | 실제 DOM heading hierarchy, responsive layout, accessibility behavior는 renderer/test 책임입니다. |
-| 보장하는 것과 보장하지 않는 것 | 다중 route presentation source의 최종 shape를 제공합니다. |
-| 다음 commit 또는 관련 test 연결 | T6가 같은 shape를 runtime schema로 제한하고 후속 renderer/view-model tests가 소비 경로를 보호합니다. |
+| 직전 상태와 부족함 | 문서형 라우트의 복사는 존재했지만 연락처와 근거 중심 화면의 읽기 순서가 최종 정보 구조와 맞지 않았습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 연락처 문구를 완성하고 여정·인터뷰 맵 노드를 렌더러가 소비할 최종 문서 순서로 재구성합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 화면 구성 원본이 라우트의 문서 계층을 소유합니다. |
+| 실패·누락·대체 처리 | 실제 DOM 제목 배치 순서, 반응형 레이아웃, 접근성 동작은 렌더러·테스트 책임입니다. |
+| 보장하는 것과 보장하지 않는 것 | 다중 라우트 화면 구성 원본의 최종 형식을 제공합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | T6가 같은 형식을 실행 시점 스키마로 제한하고 후속 렌더러·뷰 모델 테스트가 소비 경로를 보호합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `a7a2000ff462`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `a7a2000ff462`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
-## 6. Invariant evolution ledger
+## 6. 불변 조건 변화 기록
 
-| 추적할 invariant | 도입·변화 SHA | 실제 owner/evidence | 제한·후속 보호 |
+| 추적할 불변 조건 | 도입·변화 SHA | 실제 소유 주체·근거 | 제한·후속 보호 |
 | --- | --- | --- | --- |
-| 표시 문구와 section order는 JSON source가 소유한다. | `7f5017b21d37` → `a7a2000ff462` | `src/content/presentation.json` | renderer는 구조·스타일·interaction을 유지 |
-| 공용 UI/empty/ARIA vocabulary는 한 node에서 공유한다. | `96c8ba5733f5` | `presentation.ui` | semantic behavior 자체는 별도 검증 |
-| 다섯 design과 핵심 routes가 명시적 copy 계약을 가진다. | `2b9b35d4b8de` → `13c8c52c54d9` | `home.*`, `pages.*` | runtime validity는 T6가 인수 |
+| 표시 문구와 섹션 순서는 JSON 원본이 소유합니다. | `7f5017b21d37` → `a7a2000ff462` | `src/content/presentation.json` | 렌더러는 구조·스타일·상호작용을 유지 |
+| 공용 UI·빈·ARIA 허용 값 집합은 한 노드에서 공유합니다. | `96c8ba5733f5` | `presentation.ui` | 의미상 동작 자체는 별도 검증 |
+| 다섯 디자인과 핵심 라우트가 명시적 복사 계약을 가집니다. | `2b9b35d4b8de` → `13c8c52c54d9` | `home.*`, `pages.*` | 실행 시점 유효성은 T6가 인수 |
 
-## 7. Failure → Fix → Test 관계
+## 7. 실패 → 수정 → 테스트 관계
 
-| Failure 또는 risk | Fix/전환 SHA | 교정된 결정 | Regression·검증 관계 |
+| 실패 또는 위험 | 수정·전환 SHA | 교정된 결정 | 회귀·검증 관계 |
 | --- | --- | --- | --- |
-| 문구·순서가 renderer마다 하드코딩될 위험 | `7f5017b21d37` 이후 | presentation source와 type으로 이동 | 후속 route/view-model tests가 source consumption을 검증 |
-| placeholder/빈 section이 정상 콘텐츠처럼 노출될 위험 | `9a7d41edfad0`, `8886459d1b0d`, route copy commits | 실제 section order와 body로 교체 | visual/content completeness 자체는 자동 증명하지 않음 |
-| 추가 design/route가 계약 밖 field를 요구할 위험 | `2b9b35d4b8de`와 route 확장 | design/page별 node 추가 | T6 runtime schema가 known fields를 검사 |
+| 문구·순서가 렌더러마다 하드코딩될 위험 | `7f5017b21d37` 이후 | 화면 구성 원본과 타입으로 이동 | 후속 라우트·뷰 모델 테스트가 원본 사용을 검증 |
+| 자리표시자·빈 섹션이 정상 콘텐츠처럼 노출될 위험 | `9a7d41edfad0`, `8886459d1b0d`, 라우트 복사 커밋 | 실제 섹션 순서와 본문으로 교체 | 시각·콘텐츠 완전성 자체는 자동 증명하지 않음 |
+| 추가 디자인·라우트가 계약 밖 필드를 요구할 위험 | `2b9b35d4b8de`와 라우트 확장 | 디자인·페이지별 노드 추가 | T6 실행 시점 스키마가 알려진 필드를 검사 |
 
-## 8. Ownership·state·responsibility 변화
+## 8. 소유 주체·상태·담당 작업 변화
 
-| 대상 | 이전 owner/state | 최종 owner/state | 근거 |
+| 대상 | 이전 소유 주체·상태 | 최종 소유 주체·상태 | 근거 |
 | --- | --- | --- | --- |
-| 표시 source | component literal | `presentation.json` | home/pages/ui nodes |
-| section order | renderer 고정 | design별 arrays | `home.<design>.sections` |
-| 공용 label | 여러 component | `presentation.ui`, `home.shared` | ARIA/empty/work-map copy |
-| 실제 data resolution | 혼재 가능 | presentation 밖 selector/view-model | T4·후속 view-model Thread |
+| 표시 원본 | 컴포넌트 리터럴 | `presentation.json` | 홈·페이지·ui 노드 |
+| 섹션 순서 | 렌더러 고정 | 디자인별 배열 | `home.<design>.sections` |
+| 공용 문구 | 여러 컴포넌트 | `presentation.ui`, `home.shared` | ARIA·빈·작업 지표 복사 |
+| 실제 데이터 해석 | 혼재 가능 | 화면 구성 밖 선택자·뷰 모델 | T4·후속 뷰 모델 개발 흐름 |
 
-## 9. Thread 최종 상태
+## 9. 개발 흐름 최종 상태
 
-Thread 종료 시점에는 다섯 design과 Projects, Project Detail, About, Resume, Contact, Journey, Interview Map이 presentation source의 명시적 copy/section 계약을 공유합니다. JSON은 무엇을 말하고 어떤 순서로 보여 줄지를 소유하지만 실제 data resolution, DOM semantics, runtime schema와 visual behavior는 별도 계층이 책임집니다.
+개발 흐름 종료 시점에는 다섯 디자인과 프로젝트, 프로젝트 Detail, 소개, 이력서, 연락처, 여정, 인터뷰 맵이 화면 구성 원본의 명시적 복사·섹션 계약을 공유합니다. JSON은 무엇을 말하고 어떤 순서로 보여 줄지를 소유하지만 실제 데이터 해석, DOM 의미 구조, 실행 시점 스키마와 시각 동작은 별도 계층이 책임집니다.
 
 ### 최종 설명
 
-- Design/Classic home에서 시작해 공용 section과 다섯 design-specific 계약으로 확장했습니다.
-- Projects와 문서형 routes의 placeholder를 실제 copy와 section order로 교체했습니다.
-- ARIA/empty/count-key vocabulary를 공용 source로 이동했습니다.
-- 이 Thread는 presentation 데이터의 의미를 다루며 runtime parsing과 renderer 동작을 직접 보장하지 않습니다.
+- Design/Classic 홈에서 시작해 공용 섹션과 다섯 디자인별 계약으로 확장했습니다.
+- 프로젝트와 문서형 라우트의 자리표시자를 실제 복사와 섹션 순서로 교체했습니다.
+- ARIA·빈·개수 키 허용 값 집합을 공용 원본으로 이동했습니다.
+- 이 개발 흐름은 화면 구성 데이터의 의미를 다루며 실행 시점 파싱과 렌더러 동작을 직접 보장하지 않습니다.
 
 ## 10. 최종 실행·데이터 흐름
 
-| 단계 | Owner/call path | 입력·출력 | Failure/non-guarantee |
+| 단계 | 담당 위치·호출 경로 | 입력·출력 | 실패·보장하지 않는 범위 |
 | --- | --- | --- | --- |
-| route가 active design과 page copy key를 선택합니다. | `presentation.defaultHomeTemplate`, `templates`, `pages` | design/page node | 없는 key는 당시 type assertion 단계에서 runtime 거부 없음 |
-| presentation copy를 읽습니다. | `presentation.json` | section order, labels, templates | placeholder 여부는 자동 판별하지 않음 |
-| domain/view model 값과 결합합니다. | T4 selectors 및 route view models | count/project/evidence와 copy | unknown references는 T9 loader가 후속 차단 |
-| design renderer가 구조와 스타일을 적용합니다. | 각 design route renderer | DOM/UI | visual/ARIA behavior는 category 05/07 검증 |
+| 라우트가 현재 디자인과 페이지 문구 키를 선택합니다. | `presentation.defaultHomeTemplate`, `templates`, `pages` | 디자인·페이지 노드 | 없는 키는 당시 타입 단언 단계에서 실행 시점 거부 없음 |
+| 화면 문구를 읽습니다. | `presentation.json` | 섹션 순서, 문구, 템플릿 | 자리표시자 여부는 자동 판별하지 않음 |
+| 데이터 영역·뷰 모델 값과 결합합니다. | T4 선택자 및 라우트 뷰 모델 | 개수·프로젝트·근거와 복사 | 찾을 수 없는 참조는 T9 로더가 후속 차단 |
+| 디자인 렌더러가 구조와 스타일을 적용합니다. | 각 디자인 라우트 렌더러 | DOM/UI | 시각·ARIA 동작은 분류 05/07 검증 |
 
 ## 11. 학습 완료 확인
 
-완료했습니다. 모든 commit은 exact SHA의 parent diff/resulting tree를 기준으로 기록했고, direct execution evidence와 static inspection을 구분했습니다. `3353032ba23b`은 다섯 design과 presentation validation을, `b77b386b344e`·`527b9f872333`은 route별 view-model/scoped payload를 후속 검증합니다. 이번 작업에서 테스트는 실행하지 않았습니다.
+완료했습니다. 모든 커밋은 해당 SHA의 부모 커밋과의 차이·변경 후 파일 트리를 기준으로 기록했고, 직접 실행 근거와 정적 검토를 구분했습니다. `3353032ba23b`은 다섯 디자인과 화면 구성 검증을, `b77b386b344e`·`527b9f872333`은 라우트별 뷰 모델·범위가 제한된 페이로드를 후속 검증합니다. 이번 작업에서 테스트는 실행하지 않았습니다.
 ===== END FILE: 03-presentation-contracts-for-multi-route-ui.md =====
 
 ===== BEGIN FILE: 04-selectors-links-and-derived-content-policy.md =====
-# Thread: Selectors, links, and derived content policy
+# 개발 흐름: 선택자·링크·파생 콘텐츠 규칙
 
-> Repository: `https://github.com/seungwoo7050/42-archive`  
-> Branch: `web/portfolio`  
-> Category: `01-application-foundation-and-content-systems`
+> 저장소: `https://github.com/seungwoo7050/42-archive`
+> 브랜치: `web/portfolio`
+> 분류: `01-application-foundation-and-content-systems`
 
 ## 0. 분류 출처와 변경 가능 범위
 
-- Commit SHA, subject, importance, tags는 target branch의 `commit/commit-importance.md` 분류와 exact commit metadata를 사용합니다.
-- 이 문서의 Thread grouping, 목표, 역할, 조사 지점은 Phase 1 category audit에서 repository evidence를 기준으로 확정했습니다.
-- Phase 2에서는 이 fixed information을 바꾸지 않고 learner-facing 기록만 채웠습니다.
-- 다른 branch나 final HEAD 구현을 과거 SHA 설명에 소급하지 않습니다.
+- 커밋 SHA·제목·중요도·태그는 대상 브랜치의 `commit/commit-importance.md` 분류와 해당 커밋의 정확한 메타데이터를 사용합니다.
+- 이 문서의 개발 흐름 묶음·목표·역할·확인 지점은 1단계 분류 검토에서 저장소 근거를 바탕으로 확정했습니다.
+- 2단계에서는 이 고정 정보를 바꾸지 않고 학습자용 기록만 작성했습니다.
+- 다른 브랜치나 최종 HEAD의 구현을 과거 SHA의 설명으로 소급하지 않습니다.
 
-## 1. Thread 목표
+## 1. 개발 흐름 목표
 
-renderer와 route에 흩어질 수 있는 lookup, fallback, enabled page, link placement, project metric 계산을 pure selector policy로 중앙화하고 실제 consumer가 이를 사용하도록 전환하는 과정을 복원합니다.
+렌더러와 라우트에 흩어질 수 있는 조회, 대체 처리, 활성화된 페이지, 링크 노출 위치, 프로젝트 지표 계산을 입력에만 의존하는 선택자 규칙으로 중앙화하고 실제 소비자가 이를 사용하도록 전환하는 과정을 복원합니다.
 
-### 계획된 핵심 invariant
+### 계획된 핵심 불변 조건
 
-- lookup/fallback/filter/metric 계산은 selector가 소유하고 renderer는 결과를 표현합니다.
-- page enablement는 `false`만 차단하는 명시적 fail-open 정책입니다.
-- link placement와 live deployment 조건은 같은 selector 경로에서 함께 적용됩니다.
+- 조회·대체 처리·필터·지표 계산은 선택자가 소유하고 렌더러는 결과를 표현합니다.
+- 페이지 활성화 여부는 `false`만 차단하는 명시적 명시적으로 차단하지 않는 규칙입니다.
+- 링크 노출 위치와 배포 중 배포 상태 조건은 같은 선택자 경로에서 함께 적용됩니다.
 
-## 2. 이 Thread를 이해하기 위한 핵심 질문
+## 2. 이 개발 흐름을 이해하기 위한 핵심 질문
 
-- unknown technology, missing reference, disabled page는 각각 fallback·omission·false 중 무엇으로 처리되는가?
-- metric filter의 여러 조건은 AND인가 OR인가?
-- placement vocabulary가 도입된 뒤 어떤 consumer의 임의 type filter가 제거되는가?
+- 알 수 없는 기술, 누락된 참조, 비활성화된 페이지는 각각 대체 처리·제외·false 중 무엇으로 처리되는가?
+- 지표 필터의 여러 조건은 AND인가 OR인가?
+- 노출 위치 값 집합이 도입된 뒤 어떤 소비자의 임의 타입 필터가 제거되는가?
 
 ## 3. 완료 기준
 
-- 각 SHA의 parent diff와 resulting tree에서 실제 file/symbol을 확인합니다.
-- 이전 상태, implementation decision, owner/lifetime, absence/failure/fallback, guarantee/non-guarantee를 분리합니다.
-- Fix·refactor·integration은 바로 앞의 assumption이나 duplicated responsibility와 연결합니다.
-- 테스트나 command는 실제 실행 여부를 정적 검토와 명확히 구분합니다.
-- Thread 종료 시 invariant evolution과 최종 flow를 코드 없이 설명합니다.
+- 각 SHA의 부모 커밋과의 차이와 변경 후 파일 트리에서 실제 파일과 심볼을 확인합니다.
+- 이전 상태, 구현 결정, 소유 주체와 수명, 누락·실패·대체 처리, 보장 범위와 보장하지 않는 범위를 나눠 기록합니다.
+- 수정·리팩터링·통합은 바로 앞선 가정이나 중복 구현과 연결합니다.
+- 테스트와 명령은 실제 실행 여부를 정적 검토와 명확히 구분합니다.
+- 개발 흐름 마지막에는 불변 조건의 변화와 최종 실행 순서를 코드 없이 설명합니다.
 
-## 4. Commit map
+## 4. 커밋 목록
 
-| 순서 | Commit | Subject | Importance | Tags | 이 Thread에서의 역할 |
-| ---: | --- | --- | :---: | --- | --- |
-| 1 | `eb988f5e09e4` | feat(portfolio): 기술과 프로젝트 조회기 추가 | B | CONTENT | 기본 lookup/fallback selectors |
-| 2 | `ba8da56d3fcf` | feat(portfolio): 연락과 프로젝트 링크 선택기 추가 | A | CONTENT | link/deployment 정책 중앙화 |
-| 3 | `3e2e95a3a28c` | feat(content): 페이지 활성화 selector 추가 | B | CONTENT, ROUTING | page enablement selector |
-| 4 | `7c539b142d6d` | feat(content): 프로젝트 지표 selector 추가 | B | CONTENT | declarative metric evaluator |
-| 5 | `daa6815a6dfa` | feat(project): 카드 링크를 콘텐츠 배치 기준으로 선택 | B | CONTENT, RENDERER | card placement 최초 소비 |
-| 6 | `383a3b86e119` | feat(content): 프로젝트 지표를 화면에 적용 | B | CONTENT | metric selector consumer migration |
-| 7 | `119ff9a92090` | feat(content): 링크 배치 selector 추가 | B | CONTENT | 공용 LinkPlacement vocabulary |
-| 8 | `2d87b62dcce8` | refactor(project): 상세 링크를 배치 기준으로 선택 | B | RENDERER, REFACTOR | detail component consumer migration |
-| 9 | `ee2c118a76d6` | feat(content): 홈 링크를 배치 기준으로 선택 | B | CONTENT | home hero consumer migration |
+| 순서 | 커밋 | 제목 | 중요도 | 태그 | 이 개발 흐름에서의 역할 |
+| ---: | --- | --- |:---: | --- | --- |
+| 1 | `eb988f5e09e4` | feat(portfolio): 기술과 프로젝트 조회기 추가 | B | CONTENT | 기본 조회·대체 처리 선택자 |
+| 2 | `ba8da56d3fcf` | feat(portfolio): 연락과 프로젝트 링크 선택기 추가 | A | CONTENT | 링크·배포 상태 규칙 중앙화 |
+| 3 | `3e2e95a3a28c` | feat(content): 페이지 활성화 selector 추가 | B | CONTENT, ROUTING | 페이지 활성화 여부 선택자 |
+| 4 | `7c539b142d6d` | feat(content): 프로젝트 지표 selector 추가 | B | CONTENT | 선언형 지표 계산 함수 |
+| 5 | `daa6815a6dfa` | feat(project): 카드 링크를 콘텐츠 배치 기준으로 선택 | B | CONTENT, RENDERER | 카드 노출 위치 최초 소비 |
+| 6 | `383a3b86e119` | feat(content): 프로젝트 지표를 화면에 적용 | B | CONTENT | 지표 선택자 소비자 전환 |
+| 7 | `119ff9a92090` | feat(content): 링크 배치 selector 추가 | B | CONTENT | 공용 LinkPlacement 허용 값 집합 |
+| 8 | `2d87b62dcce8` | refactor(project): 상세 링크를 배치 기준으로 선택 | B | RENDERER, REFACTOR | 상세 컴포넌트 소비자 전환 |
+| 9 | `ee2c118a76d6` | feat(content): 홈 링크를 배치 기준으로 선택 | B | CONTENT | 홈 히어로 소비자 전환 |
 
-## 5. Commit별 학습 기록
+## 5. 커밋별 학습 기록
 
 ### 1. `eb988f5e09e4` — feat(portfolio): 기술과 프로젝트 조회기 추가
 
 - **Importance:** B
 - **Tags:** CONTENT
-- **Thread 역할:** 기본 lookup/fallback selectors
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 기본 조회·대체 처리 선택자
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `src/lib/portfolio/selectors.ts`의 technology fallback, featured/project-by-id, resume project selectors를 확인합니다.
-- unknown tech와 missing project ID가 각각 어떤 결과를 내는지 확인합니다.
+- `src/lib/portfolio/selectors.ts`의 기술 대체 처리, 대표·프로젝트 ID 조회, 이력서 프로젝트 선택자를 확인합니다.
+- 알 수 없는 기술과 누락된 프로젝트 ID가 각각 어떤 결과를 내는지 확인합니다.
 
 확인 원칙:
 
-- 먼저 `eb988f5e09e4^`와 `eb988f5e09e4`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `eb988f5e09e4^`와 `eb988f5e09e4`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | renderer가 Map lookup, featured filtering, resume ID resolution을 직접 반복할 수 있었습니다. |
-| 실제 변경 file/symbol/call path | unknown technology를 `tool` fallback과 기본 색으로 정규화하고, project lookup/featured/resume resolution을 함수로 모읍니다. |
-| Data/state/resource owner와 lifetime | selector가 파생 정책을 소유하며 component는 반환된 record만 소비합니다. |
-| Failure·absence·fallback 처리 | missing resume/project reference는 omission 또는 `undefined`가 되어 오류가 아닙니다. cross-file validation은 아직 없습니다. |
-| 보장하는 것과 보장하지 않는 것 | 일관된 fallback/omission을 보장하지만 source integrity를 보장하지 않습니다. |
-| 다음 commit 또는 관련 test 연결 | `ba8da56d3fcf`가 link/deployment policy를 확장합니다. |
+| 직전 상태와 부족함 | 렌더러가 맵 조회, 대표 필터링, 이력서 ID 해석을 직접 반복할 수 있었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 알 수 없는 기술을 `tool` 대체 처리와 기본 색으로 정규화하고, 프로젝트 조회·대표·이력서 해석을 함수로 모읍니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 선택자가 파생 규칙을 소유하며 컴포넌트는 반환된 레코드만 소비합니다. |
+| 실패·누락·대체 처리 | 누락된 이력서·프로젝트 참조는 제외 또는 `undefined`가 되어 오류가 아닙니다. 파일 간 검증은 아직 없습니다. |
+| 보장하는 것과 보장하지 않는 것 | 일관된 대체 처리·제외를 보장하지만 원본 무결성을 보장하지 않습니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `ba8da56d3fcf`가 링크·배포 상태 규칙을 확장합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `eb988f5e09e4`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `eb988f5e09e4`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 2. `ba8da56d3fcf` — feat(portfolio): 연락과 프로젝트 링크 선택기 추가
 
 - **Importance:** A
 - **Tags:** CONTENT
-- **Thread 역할:** link/deployment 정책 중앙화
-- **조사 깊이:** 주요 subsystem의 결정 경로, owner, failure/non-guarantee와 integration evidence를 구체적으로 복원합니다.
+- **개발 흐름에서의 역할:** 링크·배포 상태 규칙 중앙화
+- **조사 깊이:** 주요 하위 기능의 결정 경로, 소유 주체, 실패와 보장하지 않는 범위와 통합 근거를 구체적으로 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `getPreferredContactLinks`, project link selectors, `isProjectLive`, `getProjectCardLinks`, external link props를 확인합니다.
-- demo link가 live deployment 조건을 통과해야 하는지와 source/github/case-study 처리 차이를 확인합니다.
-- barrel export에서 public selector surface를 확인합니다.
+- `getPreferredContactLinks`, 프로젝트 링크 선택자, `isProjectLive`, `getProjectCardLinks`, 외부 링크 속성을 확인합니다.
+- 데모 링크가 공개 중인 배포 상태 조건을 통과해야 하는지와 원본·github·프로젝트 사례 처리 차이를 확인합니다.
+- 통합 공개 모듈에서 선택자를 확인합니다.
 
 확인 원칙:
 
-- 먼저 `ba8da56d3fcf^`와 `ba8da56d3fcf`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `ba8da56d3fcf^`와 `ba8da56d3fcf`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | contact preferred IDs, project action links, live badge/external props를 component마다 type과 deployment 상태로 판단할 위험이 있었습니다. |
-| 실제 변경 file/symbol/call path | preferred contact ID order를 보존해 enabled links를 resolve하고, project link type별 선택, live 상태, card action, external target/rel props를 selector로 중앙화합니다. |
-| Data/state/resource owner와 lifetime | `selectors.ts`가 선택 정책을 소유하고 components는 link record/props를 표현합니다. missing preferred IDs는 생략되고 demo는 live일 때만 노출됩니다. |
-| Failure·absence·fallback 처리 | 아직 `placements`가 없어 card/detail/hero 문맥을 link type으로 추정합니다. URL route integrity도 검사하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | link/deployment policy의 단일 호출 경로를 보장하지만 문맥별 author intent는 보장하지 않습니다. |
-| 다음 commit 또는 관련 test 연결 | `3e2e95a3a28c`가 page policy를, `119ff9a92090` 이후가 placement vocabulary를 추가합니다. |
+| 직전 상태와 부족함 | 연락처 우선 ID, 프로젝트 동작 링크, 배포 중 배지·외부 속성을 컴포넌트마다 타입과 배포 상태로 판단할 위험이 있었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 우선 연락처 ID 순서를 보존해 활성화된 링크를 해석하고, 프로젝트 링크 타입별 선택, 배포 중 상태, 카드 동작, 외부 대상·rel 속성을 선택자로 중앙화합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | `selectors.ts`가 선택 규칙을 소유하고 컴포넌트는 링크 레코드·속성을 표현합니다. 누락된 우선 ID는 생략되고 데모는 배포 중일 때만 노출됩니다. |
+| 실패·누락·대체 처리 | 아직 `placements`가 없어 카드·상세·히어로 문맥을 링크 타입으로 추정합니다. URL 라우트 무결성도 검사하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 링크·배포 상태 규칙의 단일 호출 경로를 보장하지만 문맥별 작성자 intent는 보장하지 않습니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `3e2e95a3a28c`가 페이지 규칙을, `119ff9a92090` 이후가 노출 위치 값 집합을 추가합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `ba8da56d3fcf`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다. 후속 `dc07871c4d24`가 public export surface를, `b77b386b344e`가 selector 결과를 테스트합니다.
+정적 근거: `ba8da56d3fcf`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다. 후속 `dc07871c4d24`가 공개 항목 표시 영역을, `b77b386b344e`가 선택자 결과를 테스트합니다.
 
 ### 3. `3e2e95a3a28c` — feat(content): 페이지 활성화 selector 추가
 
 - **Importance:** B
 - **Tags:** CONTENT, ROUTING
-- **Thread 역할:** page enablement selector
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 페이지 활성화 여부 선택자
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `isPortfolioPageEnabled` 또는 대응 selector가 `site.pages?.[pageId] !== false`를 사용하는지 확인합니다.
-- missing pages map과 missing page key의 결과를 확인합니다.
+- `isPortfolioPageEnabled` 또는 대응 선택자가 `site.pages?.[pageId] !== false`를 사용하는지 확인합니다.
+- 누락된 페이지 맵과 누락된 페이지 키의 결과를 확인합니다.
 
 확인 원칙:
 
-- 먼저 `3e2e95a3a28c^`와 `3e2e95a3a28c`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `3e2e95a3a28c^`와 `3e2e95a3a28c`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | route가 page availability를 각자 판단하거나 optional config 누락을 disabled로 오해할 수 있었습니다. |
-| 실제 변경 file/symbol/call path | 명시적 `false`만 비활성으로 보고 누락/true는 활성으로 해석하는 selector를 추가합니다. |
-| Data/state/resource owner와 lifetime | site config가 policy input을, selector가 fail-open 판단을 소유합니다. |
-| Failure·absence·fallback 처리 | 오타 난 page ID는 type/runtime schema가 별도 차단해야 하며, route가 selector를 사용하지 않으면 정책은 적용되지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | optional page config의 backward-compatible 활성화 규칙을 보장합니다. |
-| 다음 commit 또는 관련 test 연결 | T9 loader가 disabled page를 가리키는 internal route를 후속 거부합니다. |
+| 직전 상태와 부족함 | 라우트가 페이지 사용 가능 여부를 각자 판단하거나 선택적 설정 누락을 비활성화된로 오해할 수 있었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 명시적 `false`만 비활성으로 보고 누락·true는 활성으로 해석하는 선택자를 추가합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 사이트 설정이 규칙 입력을, 선택자가 명시적으로 차단하지 않는 판단을 소유합니다. |
+| 실패·누락·대체 처리 | 오타 난 페이지 ID는 타입·실행 시점 스키마가 별도 차단해야 하며, 라우트가 선택자를 사용하지 않으면 규칙은 적용되지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 선택적 페이지 설정의 backward-compatible 활성화 규칙을 보장합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | T9 로더가 비활성화된 페이지를 가리키는 내부 라우트를 후속 거부합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `3e2e95a3a28c`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `3e2e95a3a28c`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 4. `7c539b142d6d` — feat(content): 프로젝트 지표 selector 추가
 
 - **Importance:** B
 - **Tags:** CONTENT
-- **Thread 역할:** declarative metric evaluator
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 선언형 지표 계산 함수
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `getProjectMetricValue`와 filter predicate를 확인합니다.
+- `getProjectMetricValue`와 필터 판정 함수를 확인합니다.
 - `projectIds`, `groupIds`, `tags`, `featured`, `deploymentStatuses` 조건이 함께 있을 때 AND로 적용되는지 확인합니다.
-- `aggregate: count`와 `sum-highlights`, unknown metric ID의 0 fallback을 확인합니다.
+- `aggregate: count`와 `sum-highlights`, 알 수 없는 지표 ID의 0 대체 처리를 확인합니다.
 
 확인 원칙:
 
-- 먼저 `7c539b142d6d^`와 `7c539b142d6d`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `7c539b142d6d^`와 `7c539b142d6d`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | 프로젝트 통계가 featured, path prefix, 특정 ID 같은 화면별 heuristic으로 계산될 수 있었습니다. |
-| 실제 변경 file/symbol/call path | metric definition을 ID로 찾고 여러 filter 조건을 모두 만족하는 project만 선택한 뒤 count 또는 highlights 합계를 계산합니다. |
-| Data/state/resource owner와 lifetime | metric 정의는 content가, 평가 알고리즘은 selector가 소유합니다. |
-| Failure·absence·fallback 처리 | unknown metric은 0으로 fallback하므로 구성 누락을 오류로 만들지 않습니다. project/tag/group reference integrity는 loader 전까지 보장되지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | 동일 metric ID에 대한 일관된 계산을 보장하지만 정의의 비즈니스 타당성은 보장하지 않습니다. |
-| 다음 commit 또는 관련 test 연결 | `383a3b86e119`이 실제 projects/work-map consumers의 heuristic을 제거합니다. |
+| 직전 상태와 부족함 | 프로젝트 통계가 대표, 경로 접두사, 특정 ID 같은 화면별 추정 규칙으로 계산될 수 있었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 지표 정의를 ID로 찾고 여러 필터 조건을 모두 만족하는 프로젝트만 선택한 뒤 개수 또는 주요 내용 합계를 계산합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 지표 정의는 콘텐츠가, 평가 알고리즘은 선택자가 소유합니다. |
+| 실패·누락·대체 처리 | 알 수 없는 지표는 0으로 대체 처리하므로 구성 누락을 오류로 만들지 않습니다. 프로젝트·태그·그룹 참조 무결성은 로더 전까지 보장되지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 동일 지표 ID에 대한 일관된 계산을 보장하지만 정의의 비즈니스 타당성은 보장하지 않습니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `383a3b86e119`이 실제 프로젝트·작업 지표 소비자의 추정 규칙을 제거합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `7c539b142d6d`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `7c539b142d6d`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 5. `daa6815a6dfa` — feat(project): 카드 링크를 콘텐츠 배치 기준으로 선택
 
 - **Importance:** B
 - **Tags:** CONTENT, RENDERER
-- **Thread 역할:** card placement 최초 소비
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 카드 노출 위치 최초 소비
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `getProjectCardLinks`의 `placements?.includes("card")` 선행 조건을 확인합니다.
-- demo link에만 `isProjectLive`가 추가로 적용되고 다른 type은 placement만 통과하면 반환되는지 확인합니다.
+- 데모 링크에만 `isProjectLive`가 추가로 적용되고 다른 타입은 노출 위치만 통과하면 반환되는지 확인합니다.
 
 확인 원칙:
 
-- 먼저 `daa6815a6dfa^`와 `daa6815a6dfa`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `daa6815a6dfa^`와 `daa6815a6dfa`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | card action은 github/case-study type을 암묵적으로 허용해 author가 지정한 문맥을 표현할 수 없었습니다. |
-| 실제 변경 file/symbol/call path | card placement가 없는 link를 먼저 제거하고 demo에는 live 조건을 유지하며 나머지 type은 배치 의도를 따릅니다. |
-| Data/state/resource owner와 lifetime | content author가 placement를 소유하고 selector가 deployment guard와 함께 해석합니다. |
-| Failure·absence·fallback 처리 | placement 누락은 omission이며 오류가 아닙니다. 다른 hero/detail/contact consumers는 아직 이전 정책일 수 있습니다. |
-| 보장하는 것과 보장하지 않는 것 | project card가 explicit placement를 따르는 것을 보장합니다. |
-| 다음 commit 또는 관련 test 연결 | `119ff9a92090`이 공용 placement vocabulary/selectors를 정리합니다. |
+| 직전 상태와 부족함 | 카드 동작은 github·프로젝트 사례 타입을 암묵적으로 허용해 작성자가 지정한 문맥을 표현할 수 없었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 카드 노출 위치가 없는 링크를 먼저 제거하고 데모에는 배포 중 조건을 유지하며 나머지 타입은 배치 의도를 따릅니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 콘텐츠 작성자가 노출 위치를 소유하고 선택자가 배포 상태 검사와 함께 해석합니다. |
+| 실패·누락·대체 처리 | 노출 위치 누락은 제외이며 오류가 아닙니다. 다른 히어로·상세·연락처 소비자는 아직 이전 규칙일 수 있습니다. |
+| 보장하는 것과 보장하지 않는 것 | 프로젝트 카드가 명시적인 노출 위치를 따르는 것을 보장합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `119ff9a92090`이 공용 노출 위치 값 집합·선택자를 정리합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `daa6815a6dfa`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `daa6815a6dfa`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 6. `383a3b86e119` — feat(content): 프로젝트 지표를 화면에 적용
 
 - **Importance:** B
 - **Tags:** CONTENT
-- **Thread 역할:** metric selector consumer migration
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 지표 선택자 소비자 전환
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `src/app/projects/page.tsx`와 `work-map-section.tsx`에서 path/ID/featured heuristic이 `getProjectMetricValue`로 교체되는지 확인합니다.
-- `project-detail-view.tsx`에 highlights section이 추가되는 별도 표현 변경을 구분합니다.
+- `src/app/projects/page.tsx`와 `work-map-section.tsx`에서 경로·ID·대표 추정 규칙이 `getProjectMetricValue`로 교체되는지 확인합니다.
+- `project-detail-view.tsx`에 주요 내용 섹션이 추가되는 별도 표현 변경을 구분합니다.
 
 확인 원칙:
 
-- 먼저 `383a3b86e119^`와 `383a3b86e119`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `383a3b86e119^`와 `383a3b86e119`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | projects page와 work map이 screenshot path, 특정 project ID, `featured`를 직접 해석해 metric source와 중복되었습니다. |
-| 실제 변경 file/symbol/call path | 두 consumer가 named metric selector를 호출하도록 바꾸고 project detail에 이미 계약화된 highlights section을 표시합니다. |
-| Data/state/resource owner와 lifetime | 통계 정책 owner는 selector/content metric으로 이동하고 route/component는 key 선택과 표시만 담당합니다. |
-| Failure·absence·fallback 처리 | metric ID 오타는 0으로 보일 수 있으며 이 commit의 highlights 추가는 metric migration과 독립적인 표현 변화입니다. |
-| 보장하는 것과 보장하지 않는 것 | 주요 화면이 동일 metric evaluator를 소비함을 보장합니다. |
-| 다음 commit 또는 관련 test 연결 | `119ff9a92090` 이후 link placement policy도 공용화됩니다. |
+| 직전 상태와 부족함 | 프로젝트 페이지와 작업 지표가 화면 캡처 경로, 특정 프로젝트 ID, `featured`를 직접 해석해 지표 원본과 중복되었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 두 소비자가 이름이 있는 지표 선택자를 호출하도록 바꾸고 프로젝트 상세에 이미 계약화된 주요 내용 섹션을 표시합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 통계 규칙 소유 주체는 선택자·콘텐츠 지표로 이동하고 라우트·컴포넌트는 키 선택과 표시만 담당합니다. |
+| 실패·누락·대체 처리 | 지표 ID 오타는 0으로 보일 수 있으며 이 커밋의 주요 내용 추가는 지표 전환과 독립적인 표현 변화입니다. |
+| 보장하는 것과 보장하지 않는 것 | 주요 화면이 동일 지표 계산 함수를 소비함을 보장합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `119ff9a92090` 이후 링크 노출 위치 규칙도 공용화됩니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `383a3b86e119`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `383a3b86e119`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 7. `119ff9a92090` — feat(content): 링크 배치 selector 추가
 
 - **Importance:** B
 - **Tags:** CONTENT
-- **Thread 역할:** 공용 LinkPlacement vocabulary
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 공용 LinkPlacement 허용 값 집합
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `LinkPlacement` type과 placement 기반 selector들을 확인합니다.
-- hero/contact/card/detail/footer별 selection과 demo live guard가 어디에서 공유되는지 확인합니다.
+- `LinkPlacement` 타입과 노출 위치 기반 선택자들을 확인합니다.
+- 히어로·연락처·카드·상세·푸터별 선택과 데모 배포 중 검사가 어디에서 공유되는지 확인합니다.
 
 확인 원칙:
 
-- 먼저 `119ff9a92090^`와 `119ff9a92090`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `119ff9a92090^`와 `119ff9a92090`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | card만 placement를 사용하고 다른 문맥은 type/수동 filter에 남아 정책이 비대칭이었습니다. |
-| 실제 변경 file/symbol/call path | 공용 `LinkPlacement` vocabulary와 context별 selectors를 추가합니다. |
-| Data/state/resource owner와 lifetime | selector module이 모든 placement 해석을 소유하고 content link가 author intent를 담습니다. |
-| Failure·absence·fallback 처리 | 빈/누락 placements를 오류로 만들지 않으며 schema/loader가 placement enum만 별도 검증합니다. |
-| 보장하는 것과 보장하지 않는 것 | 문맥별 link 선택의 단일 정책을 제공합니다. |
-| 다음 commit 또는 관련 test 연결 | `2d87b62dcce8`과 `ee2c118a76d6`이 실제 components/renderers를 migration합니다. |
+| 직전 상태와 부족함 | 카드만 노출 위치를 사용하고 다른 문맥은 타입·수동 필터에 남아 규칙이 비대칭이었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 공용 `LinkPlacement` 허용 값 집합과 맥락별 선택자를 추가합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 선택자 모듈이 모든 노출 위치 해석을 소유하고 콘텐츠 링크가 작성자 intent를 담습니다. |
+| 실패·누락·대체 처리 | 빈·누락 노출 위치를 오류로 만들지 않으며 스키마·로더가 노출 위치 열거형만 별도 검증합니다. |
+| 보장하는 것과 보장하지 않는 것 | 문맥별 링크 선택의 단일 규칙을 제공합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `2d87b62dcce8`과 `ee2c118a76d6`이 실제 컴포넌트·렌더러를 전환합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `119ff9a92090`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `119ff9a92090`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 8. `2d87b62dcce8` — refactor(project): 상세 링크를 배치 기준으로 선택
 
 - **Importance:** B
 - **Tags:** RENDERER, REFACTOR
-- **Thread 역할:** detail component consumer migration
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 상세 컴포넌트 소비자 전환
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- project detail links component의 local `link.type` filter 제거를 확인합니다.
-- 새 detail selector 호출과 렌더링 props가 behavior-preserving인지 비교합니다.
+- 프로젝트 상세 링크 컴포넌트의 로컬 `link.type` 필터 제거를 확인합니다.
+- 새 상세 선택자 호출과 렌더링 속성이 동작을 보존하는지 비교합니다.
 
 확인 원칙:
 
-- 먼저 `2d87b62dcce8^`와 `2d87b62dcce8`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `2d87b62dcce8^`와 `2d87b62dcce8`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | project detail component가 허용 link type을 자체 filter하여 placement policy와 중복되었습니다. |
-| 실제 변경 file/symbol/call path | local filter를 제거하고 detail placement selector 결과만 렌더링하도록 refactor합니다. |
-| Data/state/resource owner와 lifetime | 선택 책임은 selector로, markup/action 표현은 component에 남습니다. |
-| Failure·absence·fallback 처리 | DOM/action behavior가 동일하다는 실행 증거는 이 commit 자체에 없고 source placements가 비어 있으면 링크가 사라질 수 있습니다. |
-| 보장하는 것과 보장하지 않는 것 | detail link 선택이 공용 policy를 사용함을 보장합니다. |
-| 다음 commit 또는 관련 test 연결 | `ee2c118a76d6`이 home hero consumers를 같은 policy로 전환합니다. |
+| 직전 상태와 부족함 | 프로젝트 상세 컴포넌트가 허용 링크 타입을 자체 필터하여 노출 위치 규칙과 중복되었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 로컬 필터를 제거하고 상세 노출 위치 선택자 결과만 렌더링하도록 리팩터링합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 선택 책임은 선택자로, 마크업·동작 표현은 컴포넌트에 남습니다. |
+| 실패·누락·대체 처리 | DOM·동작 동작이 동일하다는 실행 증거는 이 커밋 자체에 없고 원본 노출 위치가 비어 있으면 링크가 사라질 수 있습니다. |
+| 보장하는 것과 보장하지 않는 것 | 상세 링크 선택이 공용 규칙을 사용함을 보장합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `ee2c118a76d6`이 홈 히어로 소비자를 같은 규칙으로 전환합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `2d87b62dcce8`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `2d87b62dcce8`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 9. `ee2c118a76d6` — feat(content): 홈 링크를 배치 기준으로 선택
 
 - **Importance:** B
 - **Tags:** CONTENT
-- **Thread 역할:** home hero consumer migration
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 홈 히어로 소비자 전환
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- Design/Classic home renderer에서 link type 기반 selection이 hero placement selector로 바뀌는지 확인합니다.
-- live demo guard와 fallback action이 유지되는지 확인합니다.
+- Design/Classic 홈 렌더러에서 링크 타입 기반 선택이 히어로 노출 위치 선택자로 바뀌는지 확인합니다.
+- 배포 중 데모 검사와 대체 처리 동작이 유지되는지 확인합니다.
 
 확인 원칙:
 
-- 먼저 `ee2c118a76d6^`와 `ee2c118a76d6`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `ee2c118a76d6^`와 `ee2c118a76d6`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | home hero가 link type을 직접 해석해 detail/card와 다른 규칙을 가질 수 있었습니다. |
-| 실제 변경 file/symbol/call path | Design/Classic home action selection을 placement selector로 전환합니다. |
-| Data/state/resource owner와 lifetime | selector가 author intent/deployment를 결정하고 renderer는 반환 action을 표현합니다. |
-| Failure·absence·fallback 처리 | 다른 design renderer 소비와 visual 결과는 별도 commits/tests가 책임집니다. |
-| 보장하는 것과 보장하지 않는 것 | 초기 두 home이 공용 placement policy를 따릅니다. |
-| 다음 commit 또는 관련 test 연결 | 후속 design/view-model tests가 모든 renderer와 scoped payload의 일관성을 보호합니다. |
+| 직전 상태와 부족함 | 홈 히어로가 링크 타입을 직접 해석해 상세·카드와 다른 규칙을 가질 수 있었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | Design/Classic 홈 동작 선택을 노출 위치 선택자로 전환합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 선택자가 작성자 intent·배포 상태를 결정하고 렌더러는 반환 동작을 표현합니다. |
+| 실패·누락·대체 처리 | 다른 디자인 렌더러 소비와 시각 결과는 별도 커밋·테스트가 책임집니다. |
+| 보장하는 것과 보장하지 않는 것 | 초기 두 홈이 공용 노출 위치 규칙을 따릅니다. |
+| 다음 커밋 또는 관련 테스트 연결 | 후속 디자인·뷰 모델 테스트가 모든 렌더러와 범위가 제한된 페이로드의 일관성을 보호합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `ee2c118a76d6`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `ee2c118a76d6`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
-## 6. Invariant evolution ledger
+## 6. 불변 조건 변화 기록
 
-| 추적할 invariant | 도입·변화 SHA | 실제 owner/evidence | 제한·후속 보호 |
+| 추적할 불변 조건 | 도입·변화 SHA | 실제 소유 주체·근거 | 제한·후속 보호 |
 | --- | --- | --- | --- |
-| fallback/omission/selection 정책은 selector가 소유한다. | `eb988f5e09e4` → `ba8da56d3fcf` | `src/lib/portfolio/selectors.ts` | unknown tech는 fallback, missing refs는 omission |
-| page는 명시적 false만 비활성이다. | `3e2e95a3a28c` | page enablement selector | disabled route references는 T9에서 오류 |
-| metric은 content definition을 AND filter로 평가한다. | `7c539b142d6d` → `383a3b86e119` | `getProjectMetricValue`와 consumers | unknown metric은 0 |
-| link 문맥은 explicit placement로 결정한다. | `daa6815a6dfa` → `119ff9a92090` → consumers | placement selectors | placement 누락은 omission |
+| 대체 처리·제외·선택 규칙은 선택자가 소유합니다. | `eb988f5e09e4` → `ba8da56d3fcf` | `src/lib/portfolio/selectors.ts` | 알 수 없는 기술는 대체 처리, 누락된 참조는 제외 |
+| 페이지는 명시적 false만 비활성입니다. | `3e2e95a3a28c` | 페이지 활성화 여부 선택자 | 비활성화된 라우트 참조는 T9에서 오류 |
+| 지표는 콘텐츠 정의를 AND 조건 필터로 평가합니다. | `7c539b142d6d` → `383a3b86e119` | `getProjectMetricValue`와 소비자 | 알 수 없는 지표는 0 |
+| 링크 문맥은 명시적인 노출 위치로 결정합니다. | `daa6815a6dfa` → `119ff9a92090` → 소비자 | 노출 위치 선택자 | 노출 위치 누락은 제외 |
 
-## 7. Failure → Fix → Test 관계
+## 7. 실패 → 수정 → 테스트 관계
 
-| Failure 또는 risk | Fix/전환 SHA | 교정된 결정 | Regression·검증 관계 |
+| 실패 또는 위험 | 수정·전환 SHA | 교정된 결정 | 회귀·검증 관계 |
 | --- | --- | --- | --- |
-| renderer마다 lookup/fallback이 달라질 위험 | `eb988f5e09e4` | technology/project/resume selectors | 후속 selector/view-model tests |
-| link type이 문맥을 암묵적으로 결정 | `daa6815a6dfa`, `119ff9a92090` | placement-first selectors | `3353032ba23b`의 card/live selector regression |
-| 화면이 ID/path heuristic으로 metric 계산 | `383a3b86e119` | 공용 metric evaluator 소비 | `3353032ba23b`의 metric differential test |
+| 렌더러마다 조회·대체 처리가 달라질 위험 | `eb988f5e09e4` | 기술·프로젝트·이력서 선택자 | 후속 선택자·뷰 모델 테스트 |
+| 링크 타입이 문맥을 암묵적으로 결정 | `daa6815a6dfa`, `119ff9a92090` | 노출 노출 위치 우선 선택자 | `3353032ba23b`의 카드·배포 중 선택자 회귀 |
+| 화면이 ID·경로 추정 규칙으로 지표 계산 | `383a3b86e119` | 공용 지표 계산 함수 소비 | `3353032ba23b`의 지표 차이 비교 테스트 |
 
-## 8. Ownership·state·responsibility 변화
+## 8. 소유 주체·상태·담당 작업 변화
 
-| 대상 | 이전 owner/state | 최종 owner/state | 근거 |
+| 대상 | 이전 소유 주체·상태 | 최종 소유 주체·상태 | 근거 |
 | --- | --- | --- | --- |
-| raw source | renderer/component | portfolio aggregate | `PortfolioContent` |
-| lookup/fallback | 각 consumer | `selectors.ts` | pure lookup/filter functions |
-| metric 계산 | route/component heuristic | `getProjectMetricValue` | content metrics + AND filters |
-| link 문맥 | type 추정 | content placements + selectors | consumer는 결과만 렌더링 |
+| 원본 | 렌더러·컴포넌트 | 포트폴리오 집계 객체 | `PortfolioContent` |
+| 조회·대체 처리 | 각 소비자 | `selectors.ts` | 입력에만 의존하는 조회·필터 함수 |
+| 지표 계산 | 라우트·컴포넌트별 추정 규칙 | `getProjectMetricValue` | 콘텐츠 지표 + AND 조건 필터 |
+| 링크 문맥 | 타입 추정 | 콘텐츠 노출 위치 + 선택자 | 소비자는 결과만 렌더링 |
 
-## 9. Thread 최종 상태
+## 9. 개발 흐름 최종 상태
 
-Thread 종료 시점에는 technology/project/contact/resume lookup, page enablement, metric 계산, deployment/live link와 placement 정책이 selector로 집중됩니다. Consumer는 domain rule을 재해석하지 않고 selector 결과를 표시하지만, missing configuration의 상당수는 error가 아니라 fallback/omission/0으로 처리됩니다.
+개발 흐름 종료 시점에는 기술·프로젝트·연락처·이력서 조회, 페이지 활성화 여부, 지표 계산, 배포 상태·배포 중 링크와 노출 위치 규칙이 선택자로 집중됩니다. 소비자는 데이터 영역 규칙을 재해석하지 않고 선택자 결과를 표시하지만, 누락된 설정의 상당수는 오류가 아니라 대체 처리·제외/0으로 처리됩니다.
 
 ### 최종 설명
 
-- 조회·fallback·enabled/deployment 정책을 pure selectors로 모았습니다.
-- hard-coded metric heuristics를 declarative metric evaluator로 교체했습니다.
-- link type 추정에서 explicit placement vocabulary로 이동하고 실제 components를 migration했습니다.
-- fail-open/omission/0 fallback이 의도된 비보장임을 runtime integrity 오류와 구분해야 합니다.
+- 조회·대체 처리·활성화된·배포 상태 규칙을 입력에만 의존하는 선택자로 모았습니다.
+- 코드에 고정된 지표 추정 규칙을 선언형 지표 계산 함수로 교체했습니다.
+- 링크 타입 추정에서 명시적인 노출 위치 값 집합으로 이동하고 실제 컴포넌트를 전환했습니다.
+- 명시적으로 차단하지 않는·제외/0 대체 처리가 의도된 비보장임을 실행 시점 무결성 오류와 구분해야 합니다.
 
 ## 10. 최종 실행·데이터 흐름
 
-| 단계 | Owner/call path | 입력·출력 | Failure/non-guarantee |
+| 단계 | 담당 위치·호출 경로 | 입력·출력 | 실패·보장하지 않는 범위 |
 | --- | --- | --- | --- |
-| aggregate와 context를 입력합니다. | `PortfolioContent`, project/link/page ID | selector input | unknown/missing 값은 각 selector 정책으로 처리 |
-| lookup/filter/metric을 평가합니다. | `selectors.ts` | records, booleans, counts, links | unknown metric 0; missing refs omission |
-| route/view model이 결과를 조합합니다. | projects/home/detail consumers | scoped values | consumer가 local heuristic을 다시 넣으면 invariant가 깨짐 |
-| renderer가 표시합니다. | components/design routes | actions/stats/content | DOM/visual behavior는 별도 test |
+| 집계 객체와 맥락을 입력합니다. | `PortfolioContent`, 프로젝트·링크·페이지 ID | 선택자 입력 | 알 수 없거나 누락된된 값은 각 선택자 규칙으로 처리 |
+| 조회·필터·지표를 평가합니다. | `selectors.ts` | 레코드, booleans, 개수, 링크 | 알 수 없는 지표 0; 누락된 참조 제외 |
+| 라우트·뷰 모델이 결과를 조합합니다. | 프로젝트·홈·상세 소비자 | 범위가 제한된 값 | 소비자가 로컬 추정 규칙을 다시 넣으면 불변 조건이 깨짐 |
+| 렌더러가 표시합니다. | 컴포넌트·디자인 라우트 | 동작·통계·콘텐츠 | DOM·시각 동작은 별도 테스트 |
 
 ## 11. 학습 완료 확인
 
-완료했습니다. 모든 commit은 exact SHA의 parent diff/resulting tree를 기준으로 기록했고, direct execution evidence와 static inspection을 구분했습니다. `3353032ba23b`은 metric differential, featured/resume/card/live selectors를, `b77b386b344e`와 `527b9f872333`은 route별 derived/scoped view models를 후속 테스트합니다. 이 작업에서는 실행하지 않았습니다.
+완료했습니다. 모든 커밋은 해당 SHA의 부모 커밋과의 차이·변경 후 파일 트리를 기준으로 기록했고, 직접 실행 근거와 정적 검토를 구분했습니다. `3353032ba23b`은 지표 차이 비교, 대표·이력서·카드·배포 중 선택자를, `b77b386b344e`와 `527b9f872333`은 라우트별 파생된·범위가 제한된 뷰 모델을 후속 테스트합니다. 이 작업에서는 실행하지 않았습니다.
 ===== END FILE: 04-selectors-links-and-derived-content-policy.md =====
 
 ===== BEGIN FILE: 05-runtime-schema-vocabulary.md =====
-# Thread: Runtime schema vocabulary
+# 개발 흐름: 실행 시점 스키마의 공통 값 집합
 
-> Repository: `https://github.com/seungwoo7050/42-archive`  
-> Branch: `web/portfolio`  
-> Category: `01-application-foundation-and-content-systems`
+> 저장소: `https://github.com/seungwoo7050/42-archive`
+> 브랜치: `web/portfolio`
+> 분류: `01-application-foundation-and-content-systems`
 
 ## 0. 분류 출처와 변경 가능 범위
 
-- Commit SHA, subject, importance, tags는 target branch의 `commit/commit-importance.md` 분류와 exact commit metadata를 사용합니다.
-- 이 문서의 Thread grouping, 목표, 역할, 조사 지점은 Phase 1 category audit에서 repository evidence를 기준으로 확정했습니다.
-- Phase 2에서는 이 fixed information을 바꾸지 않고 learner-facing 기록만 채웠습니다.
-- 다른 branch나 final HEAD 구현을 과거 SHA 설명에 소급하지 않습니다.
+- 커밋 SHA·제목·중요도·태그는 대상 브랜치의 `commit/commit-importance.md` 분류와 해당 커밋의 정확한 메타데이터를 사용합니다.
+- 이 문서의 개발 흐름 묶음·목표·역할·확인 지점은 1단계 분류 검토에서 저장소 근거를 바탕으로 확정했습니다.
+- 2단계에서는 이 고정 정보를 바꾸지 않고 학습자용 기록만 작성했습니다.
+- 다른 브랜치나 최종 HEAD의 구현을 과거 SHA의 설명으로 소급하지 않습니다.
 
-## 1. Thread 목표
+## 1. 개발 흐름 목표
 
-TypeScript assertion만 존재하던 domain source에 Zod dependency와 공용 primitive를 도입하고 site, profile, links, projects, technology, experience, journey, contact, résumé, interview map, curation의 runtime shape를 단계적으로 고정하는 과정을 복원합니다.
+TypeScript 타입 단언만 존재하던 데이터 영역 원본에 Zod 의존성과 공용 컴포넌트를 도입하고 사이트, 프로필, 링크, 프로젝트, 기술, 경력, 여정, 연락처, résumé, 인터뷰 맵, 선별 기록의 실행 시점 형식을 단계적으로 고정하는 과정을 복원합니다.
 
-### 계획된 핵심 invariant
+### 계획된 핵심 불변 조건
 
-- 공백뿐인 문자열, 허용하지 않은 ID·URL·asset path는 공용 primitive에서 거부합니다.
-- 알려진 domain object는 대체로 `strict()`로 예상 밖 key를 거부하되 optional field는 schema에 명시합니다.
-- Schema 정의와 실제 source parsing, cross-file reference validation은 서로 다른 책임입니다.
+- 공백뿐인 문자열, 허용하지 않은 ID·URL·자산 경로는 공용 컴포넌트에서 거부합니다.
+- 알려진 데이터 영역 객체는 대체로 `strict()`로 예상 밖 키를 거부하되 선택적 필드는 스키마에 명시합니다.
+- 스키마 정의와 실제 원본 파싱, 파일 간 참조 검증은 서로 다른 책임입니다.
 
-## 2. 이 Thread를 이해하기 위한 핵심 질문
+## 2. 이 개발 흐름을 이해하기 위한 핵심 질문
 
-- 정적 TypeScript type이 runtime source 신뢰를 제공하지 못하는 이유는 무엇인가?
-- `strict()`, `optional()`, `nullable()`, `min(1)`이 각 source의 허용 범위를 어떻게 바꾸는가?
-- 이 Thread가 검증하는 단일 파일 shape와 후속 loader가 검증하는 참조 무결성은 어디서 갈리는가?
+- 정적 TypeScript 타입이 실행 시점 원본 신뢰를 제공하지 못하는 이유는 무엇인가?
+- `strict()`, `optional()`, `nullable()`, `min(1)`이 각 원본의 허용 범위를 어떻게 바꾸는가?
+- 이 개발 흐름이 검증하는 단일 파일 형식과 후속 로더가 검증하는 참조 무결성은 어디서 갈리는가?
 
 ## 3. 완료 기준
 
-- 각 SHA의 parent diff와 resulting tree에서 실제 file/symbol을 확인합니다.
-- 이전 상태, implementation decision, owner/lifetime, absence/failure/fallback, guarantee/non-guarantee를 분리합니다.
-- Fix·refactor·integration은 바로 앞의 assumption이나 duplicated responsibility와 연결합니다.
-- 테스트나 command는 실제 실행 여부를 정적 검토와 명확히 구분합니다.
-- Thread 종료 시 invariant evolution과 최종 flow를 코드 없이 설명합니다.
+- 각 SHA의 부모 커밋과의 차이와 변경 후 파일 트리에서 실제 파일과 심볼을 확인합니다.
+- 이전 상태, 구현 결정, 소유 주체와 수명, 누락·실패·대체 처리, 보장 범위와 보장하지 않는 범위를 나눠 기록합니다.
+- 수정·리팩터링·통합은 바로 앞선 가정이나 중복 구현과 연결합니다.
+- 테스트와 명령은 실제 실행 여부를 정적 검토와 명확히 구분합니다.
+- 개발 흐름 마지막에는 불변 조건의 변화와 최종 실행 순서를 코드 없이 설명합니다.
 
-## 4. Commit map
+## 4. 커밋 목록
 
-| 순서 | Commit | Subject | Importance | Tags | 이 Thread에서의 역할 |
-| ---: | --- | --- | :---: | --- | --- |
-| 1 | `a1977dc7f026` | build(content): runtime 콘텐츠 검증 의존성 추가 | B | CONTENT, VALIDATION, DEPLOY | runtime validation 도구 기반 |
-| 2 | `51ceb76ad88a` | feat(content): 콘텐츠 경로와 기본 식별자 schema 추가 | B | CONTENT, VALIDATION | 공용 primitive vocabulary |
-| 3 | `c2f3d376e96b` | feat(content): 사이트와 프로필 schema 추가 | B | CONTENT, VALIDATION | site/profile runtime shape |
-| 4 | `857fa82a2030` | feat(content): 링크와 배포 상태 schema 추가 | B | CONTENT, VALIDATION | link/deployment/image schema |
-| 5 | `f1163dc120bc` | feat(content): 프로젝트 분류와 지표 schema 추가 | B | CONTENT, VALIDATION | project group/metric vocabulary |
-| 6 | `a944c73f0557` | feat(content): 프로젝트 사례 schema 추가 | A | CONTENT, VALIDATION | 완전한 project catalog schema |
-| 7 | `d93ec9730edd` | feat(content): 기술과 경력 schema 추가 | B | CONTENT, VALIDATION | technology/skills/experience schemas |
-| 8 | `6fc79f058744` | feat(content): 여정과 연락 schema 추가 | B | CONTENT, VALIDATION | journey/link-list/contact schemas |
-| 9 | `03aacfddc364` | feat(content): Resume 콘텐츠 schema 추가 | B | CONTENT, VALIDATION, RENDERER | résumé schema |
-| 10 | `80152dae761f` | feat(content): 여정 narrative schema 추가 | B | CONTENT, VALIDATION | journey narrative schema |
-| 11 | `51ce1c15a0e5` | feat(content): Interview Map 콘텐츠 schema 추가 | B | CONTENT, VALIDATION, RENDERER | interview evidence schema |
-| 12 | `d0a62a7da4bd` | feat(content): 큐레이션 schema와 타입 export 추가 | A | CONTENT, VALIDATION | curation schema 및 schema-derived source types |
+| 순서 | 커밋 | 제목 | 중요도 | 태그 | 이 개발 흐름에서의 역할 |
+| ---: | --- | --- |:---: | --- | --- |
+| 1 | `a1977dc7f026` | build(content): runtime 콘텐츠 검증 의존성 추가 | B | CONTENT, VALIDATION, DEPLOY | 실행 시점 검증 도구 기반 |
+| 2 | `51ceb76ad88a` | feat(content): 콘텐츠 경로와 기본 식별자 schema 추가 | B | CONTENT, VALIDATION | 공용 컴포넌트 허용 값 집합 |
+| 3 | `c2f3d376e96b` | feat(content): 사이트와 프로필 schema 추가 | B | CONTENT, VALIDATION | 사이트·프로필 실행 시점 형식 |
+| 4 | `857fa82a2030` | feat(content): 링크와 배포 상태 schema 추가 | B | CONTENT, VALIDATION | 링크·배포 상태·이미지 스키마 |
+| 5 | `f1163dc120bc` | feat(content): 프로젝트 분류와 지표 schema 추가 | B | CONTENT, VALIDATION | 프로젝트 그룹·지표 허용 값 집합 |
+| 6 | `a944c73f0557` | feat(content): 프로젝트 사례 schema 추가 | A | CONTENT, VALIDATION | 완전한 프로젝트 카탈로그 스키마 |
+| 7 | `d93ec9730edd` | feat(content): 기술과 경력 schema 추가 | B | CONTENT, VALIDATION | 기술·기술 목록·경력 스키마 |
+| 8 | `6fc79f058744` | feat(content): 여정과 연락 schema 추가 | B | CONTENT, VALIDATION | 여정·링크 목록·연락처 스키마 |
+| 9 | `03aacfddc364` | feat(content): Resume 콘텐츠 schema 추가 | B | CONTENT, VALIDATION, RENDERER | résumé 스키마 |
+| 10 | `80152dae761f` | feat(content): 여정 narrative schema 추가 | B | CONTENT, VALIDATION | 여정 설명 스키마 |
+| 11 | `51ce1c15a0e5` | feat(content): Interview Map 콘텐츠 schema 추가 | B | CONTENT, VALIDATION, RENDERER | 인터뷰 근거 스키마 |
+| 12 | `d0a62a7da4bd` | feat(content): 큐레이션 schema와 타입 export 추가 | A | CONTENT, VALIDATION | 선별 기록 스키마 및 스키마에서 파생된 원본 타입 |
 
-## 5. Commit별 학습 기록
+## 5. 커밋별 학습 기록
 
 ### 1. `a1977dc7f026` — build(content): runtime 콘텐츠 검증 의존성 추가
 
 - **Importance:** B
 - **Tags:** CONTENT, VALIDATION, DEPLOY
-- **Thread 역할:** runtime validation 도구 기반
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 실행 시점 검증 도구 기반
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `package.json`과 lockfile에서 `zod`와 `tsx` 추가를 확인합니다.
-- `zod`가 runtime dependency이고 `tsx`가 development command 실행 도구인지 구분합니다.
+- `package.json`과 잠금 파일에서 `zod`와 `tsx` 추가를 확인합니다.
+- `zod`가 실행 시점 의존성이고 `tsx`가 개발 명령 실행 도구인지 구분합니다.
 
 확인 원칙:
 
-- 먼저 `a1977dc7f026^`와 `a1977dc7f026`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `a1977dc7f026^`와 `a1977dc7f026`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | 콘텐츠 type은 TypeScript에만 있었고 JSON import 결과를 runtime에서 검사할 library나 TypeScript script runner가 없었습니다. |
-| 실제 변경 file/symbol/call path | `zod` 4.x와 `tsx`를 dependency graph에 넣어 schema 및 후속 validation command를 구현할 기반을 만듭니다. |
-| Data/state/resource owner와 lifetime | package manifest가 validation toolchain의 version range를 소유합니다. |
-| Failure·absence·fallback 처리 | Dependency만 추가되었으므로 source가 자동으로 parse되거나 build가 fail-closed 되지는 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | 후속 schema/command를 구현할 수 있는 도구 기반만 보장합니다. |
-| 다음 commit 또는 관련 test 연결 | `51ceb76ad88a`가 첫 공용 primitive를 추가합니다. |
+| 직전 상태와 부족함 | 콘텐츠 타입은 TypeScript에만 있었고 JSON 가져오기 결과를 실행 시점에서 검사할 라이브러리나 TypeScript 스크립트 실행기가 없었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | `zod` 4.x와 `tsx`를 의존성 관계에 넣어 스키마 및 후속 검증 명령을 구현할 기반을 만듭니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 패키지 명세가 검증 개발 도구 버전의 버전 range를 소유합니다. |
+| 실패·누락·대체 처리 | 의존성만 추가되었으므로 원본이 자동으로 파싱되거나 빌드가 검증에 실패해도 차단되지는 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 후속 스키마·명령을 구현할 수 있는 도구 기반만 보장합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `51ceb76ad88a`가 첫 공용 컴포넌트를 추가합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `a1977dc7f026`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `a1977dc7f026`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 2. `51ceb76ad88a` — feat(content): 콘텐츠 경로와 기본 식별자 schema 추가
 
 - **Importance:** B
 - **Tags:** CONTENT, VALIDATION
-- **Thread 역할:** 공용 primitive vocabulary
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 공용 컴포넌트 허용 값 집합
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `nonEmptyString`, `contentId`, href/asset path schema의 구현을 확인합니다.
-- trim 후 `min(1)`, ID 정규식, 허용 protocol과 `/template`·`/assets` prefix 범위를 기록합니다.
+- `nonEmptyString`, `contentId`, href·자산 경로 스키마의 구현을 확인합니다.
+- trim 후 `min(1)`, ID 정규식, 허용 처리 형식과 `/template`·`/assets` 접두사 범위를 기록합니다.
 
 확인 원칙:
 
-- 먼저 `51ceb76ad88a^`와 `51ceb76ad88a`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `51ceb76ad88a^`와 `51ceb76ad88a`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | 각 source가 임의 문자열을 받아 공백 값, 불안정한 ID, 위험하거나 지원하지 않는 경로를 구분하지 못했습니다. |
-| 실제 변경 file/symbol/call path | trimmed non-empty string, 제한된 content ID, 외부 URL·mailto·tel·root asset path의 공용 schema를 정의합니다. |
-| Data/state/resource owner와 lifetime | `content-schema.ts`의 primitive가 후속 모든 object schema의 입력 경계를 소유합니다. |
-| Failure·absence·fallback 처리 | 문자열 형식만 확인하며 실제 URL endpoint나 asset 파일 존재성은 확인하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | 공통 문자열·식별자·경로 형식을 일관되게 거부/수용합니다. |
-| 다음 commit 또는 관련 test 연결 | `c2f3d376e96b`부터 domain object가 이 primitive를 조합합니다. |
+| 직전 상태와 부족함 | 각 원본이 임의 문자열을 받아 공백 값, 불안정한 ID, 위험하거나 지원하지 않는 경로를 구분하지 못했습니다. |
+| 실제 변경 파일·심볼·호출 경로 | trimmed 비어 있지 않은 문자열, 제한된 콘텐츠 ID, 외부 URL·mailto·tel·최상위 자산 경로의 공용 스키마를 정의합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | `content-schema.ts`의 공용 컴포넌트가 후속 모든 객체 스키마의 입력 경계를 소유합니다. |
+| 실패·누락·대체 처리 | 문자열 형식만 확인하며 실제 URL 진입점나 자산 파일 존재성은 확인하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 공통 문자열·식별자·경로 형식을 일관되게 거부·수용합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `c2f3d376e96b`부터 데이터 영역 객체가 이 공용 컴포넌트를 조합합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `51ceb76ad88a`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `51ceb76ad88a`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 3. `c2f3d376e96b` — feat(content): 사이트와 프로필 schema 추가
 
 - **Importance:** B
 - **Tags:** CONTENT, VALIDATION
-- **Thread 역할:** site/profile runtime shape
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 사이트·프로필 실행 시점 형식
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `siteContentSchema`, `profileContentSchema`와 하위 navigation/footer/photo/principle schema를 확인합니다.
-- `siteContentSchema`의 `passthrough()`와 `pages` 하위 object의 strictness 차이를 기록합니다.
+- `siteContentSchema`, `profileContentSchema`와 하위 탐색·푸터·사진·원칙 스키마를 확인합니다.
+- `siteContentSchema`의 `passthrough()`와 `pages` 하위 객체의 strictness 차이를 기록합니다.
 
 확인 원칙:
 
-- 먼저 `c2f3d376e96b^`와 `c2f3d376e96b`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `c2f3d376e96b^`와 `c2f3d376e96b`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | site/profile JSON은 수동 type assertion만 통과해 공백 title이나 잘못된 nested shape를 runtime에서 거부하지 못했습니다. |
-| 실제 변경 file/symbol/call path | site metadata/navigation/footer와 profile identity/photo/principles를 Zod object로 정의합니다. |
-| Data/state/resource owner와 lifetime | schema가 known field의 shape를 소유하며 site 최상위는 확장 key를 허용합니다. |
-| Failure·absence·fallback 처리 | 최상위 `passthrough()` 때문에 알려지지 않은 site key를 모두 거부하지 않으며 navigation route 존재성도 검사하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | known site/profile field의 runtime 형식은 고정하지만 파일 간 의미 관계는 보장하지 않습니다. |
-| 다음 commit 또는 관련 test 연결 | `857fa82a2030`이 link/deployment vocabulary를 추가합니다. |
+| 직전 상태와 부족함 | 사이트·프로필 JSON은 수동 타입 단언만 통과해 공백 제목이나 잘못된 중첩된 형식을 실행 시점에서 거부하지 못했습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 사이트 메타데이터·탐색·푸터와 프로필 식별 정보·사진·원칙을 Zod 객체로 정의합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 스키마가 알려진 필드의 형식을 소유하며 사이트 최상위는 확장 키를 허용합니다. |
+| 실패·누락·대체 처리 | 최상위 `passthrough()` 때문에 알려지지 않은 사이트 키를 모두 거부하지 않으며 탐색 라우트 존재성도 검사하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 알려진 사이트·프로필 필드의 실행 시점 형식은 고정하지만 파일 간 의미 관계는 보장하지 않습니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `857fa82a2030`이 링크·배포 상태 허용 값 집합을 추가합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `c2f3d376e96b`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `c2f3d376e96b`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 4. `857fa82a2030` — feat(content): 링크와 배포 상태 schema 추가
 
 - **Importance:** B
 - **Tags:** CONTENT, VALIDATION
-- **Thread 역할:** link/deployment/image schema
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 링크·배포 상태·이미지 스키마
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `contentLinkSchema`, `deploymentStatusSchema`, `projectImageSchema`를 확인합니다.
-- link type, env key, external/enabled/placements optional field와 object `strict()`를 기록합니다.
+- 링크 타입, env 키, 외부·활성화된·노출 위치 선택적 필드와 객체 `strict()`를 기록합니다.
 
 확인 원칙:
 
-- 먼저 `857fa82a2030^`와 `857fa82a2030`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `857fa82a2030^`와 `857fa82a2030`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | link와 deployment record는 임의 string union 및 assertion에만 의존했습니다. |
-| 실제 변경 file/symbol/call path | 허용 link type, deployment status, project image, optional environment/placement metadata를 strict object로 정의합니다. |
-| Data/state/resource owner와 lifetime | schema가 link record의 vocabulary와 nested object shape를 소유합니다. |
-| Failure·absence·fallback 처리 | href가 실제 route나 enabled target을 가리키는지는 확인하지 않고, placement 누락도 허용합니다. |
-| 보장하는 것과 보장하지 않는 것 | 개별 link/deployment/image record의 runtime shape를 보장합니다. |
-| 다음 commit 또는 관련 test 연결 | `f1163dc120bc`이 project grouping과 metric schema를 추가합니다. |
+| 직전 상태와 부족함 | 링크와 배포 상태 레코드는 임의 문자열 유니언 및 단언문에만 의존했습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 허용 링크 타입, 배포 상태, 프로젝트 이미지, 선택적 환경·노출 위치 메타데이터를 엄격한 객체로 정의합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 스키마가 링크 레코드의 허용 값 집합과 중첩된 객체 형식을 소유합니다. |
+| 실패·누락·대체 처리 | href가 실제 라우트나 활성화된 대상을 가리키는지는 확인하지 않고, 노출 위치 누락도 허용합니다. |
+| 보장하는 것과 보장하지 않는 것 | 개별 링크·배포 상태·이미지 레코드의 실행 시점 형식을 보장합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `f1163dc120bc`이 프로젝트 묶음과 지표 스키마를 추가합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `857fa82a2030`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `857fa82a2030`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 5. `f1163dc120bc` — feat(content): 프로젝트 분류와 지표 schema 추가
 
 - **Importance:** B
 - **Tags:** CONTENT, VALIDATION
-- **Thread 역할:** project group/metric vocabulary
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 프로젝트 그룹·지표 허용 값 집합
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `projectGroupSchema`, `projectMetricFilterSchema`, `projectMetricSchema`를 확인합니다.
-- non-negative order, optional project/group/tag/featured/deployment filters, aggregate enum을 기록합니다.
+- 0 이상 순서, 선택적 프로젝트·그룹·태그·대표·배포 상태 필터, 집계 객체 열거형을 기록합니다.
 
 확인 원칙:
 
-- 먼저 `f1163dc120bc^`와 `f1163dc120bc`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `f1163dc120bc^`와 `f1163dc120bc`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | group과 metric definition이 JSON convention에만 의존해 잘못된 aggregate나 음수 order를 허용할 수 있었습니다. |
-| 실제 변경 file/symbol/call path | project group과 metric filter/aggregate를 strict schema로 정의합니다. |
-| Data/state/resource owner와 lifetime | metric source가 선언을 소유하고 schema는 허용된 filter key와 aggregate를 제한합니다. |
-| Failure·absence·fallback 처리 | 참조하는 group/project/tag가 실제 존재하는지와 여러 filter의 계산 의미는 검사하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | metric 정의의 단일 파일 shape를 보장합니다. |
-| 다음 commit 또는 관련 test 연결 | `a944c73f0557`이 전체 project catalog schema를 닫습니다. |
+| 직전 상태와 부족함 | 그룹과 지표 정의가 JSON 관례에만 의존해 잘못된 집계 객체나 음수 순서를 허용할 수 있었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 프로젝트 그룹과 지표 필터·집계 객체를 엄격한 스키마로 정의합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 지표 원본이 선언을 소유하고 스키마는 허용된 필터 키와 집계 객체를 제한합니다. |
+| 실패·누락·대체 처리 | 참조하는 그룹·프로젝트·태그가 실제 존재하는지와 여러 필터의 계산 의미는 검사하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 지표 정의의 단일 파일 형식을 보장합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `a944c73f0557`이 전체 프로젝트 카탈로그 스키마를 닫습니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `f1163dc120bc`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `f1163dc120bc`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 6. `a944c73f0557` — feat(content): 프로젝트 사례 schema 추가
 
 - **Importance:** A
 - **Tags:** CONTENT, VALIDATION
-- **Thread 역할:** 완전한 project catalog schema
-- **조사 깊이:** 주요 subsystem의 결정 경로, owner, failure/non-guarantee와 integration evidence를 구체적으로 복원합니다.
+- **개발 흐름에서의 역할:** 완전한 프로젝트 카탈로그 스키마
+- **조사 깊이:** 주요 하위 기능의 결정 경로, 소유 주체, 실패와 보장하지 않는 범위와 통합 근거를 구체적으로 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `portfolioProjectSourceSchema`의 ID/order/group/tags/deployment/images/stack/links/narrative fields를 전부 확인합니다.
-- `projectsContentSchema`의 groups/items `min(1)`, metrics 배열, root `strict()`를 확인합니다.
-- nested architecture/deployment objects와 arrays가 허용하는 empty state를 구분합니다.
+- `portfolioProjectSourceSchema`의 ID·순서·그룹·태그·배포 상태·이미지·기술 스택·링크·설명 필드를 전부 확인합니다.
+- `projectsContentSchema`의 그룹·항목 `min(1)`, 지표 배열, 최상위 `strict()`를 확인합니다.
+- 중첩된 설계·배포 상태 objects와 배열이 허용하는 빈 상태를 구분합니다.
 
 확인 원칙:
 
-- 먼저 `a944c73f0557^`와 `a944c73f0557`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `a944c73f0557^`와 `a944c73f0557`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | group/metric schema는 있었지만 실제 project item과 `{groups, metrics, items}` catalog 전체를 runtime에서 검증할 계약이 없었습니다. |
-| 실제 변경 file/symbol/call path | 한 project의 identity, classification, deployment, media, stack, links, problem/solution/architecture/decisions/tradeoffs/results를 strict schema로 정의하고 groups/items가 최소 한 개 있는 catalog를 만듭니다. |
-| Data/state/resource owner와 lifetime | `projectsContentSchema`가 project source document의 구조를 소유하며 item 내부 예상 밖 key를 거부합니다. |
-| Failure·absence·fallback 처리 | arrays 중 tags/stack/screenshots/highlights 등은 빈 배열이 허용될 수 있고, ID uniqueness·group/stack/link 참조·asset 존재는 아직 검사하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | project catalog가 비어 있지 않고 각 item이 완전한 known shape를 갖는다는 runtime 계약을 제공합니다. |
-| 다음 commit 또는 관련 test 연결 | `d93ec9730edd` 이후 나머지 domain file schema가 확장되고 T9가 참조 무결성을 추가합니다. |
+| 직전 상태와 부족함 | 그룹·지표 스키마는 있었지만 실제 프로젝트 항목과 `{groups, metrics, items}` 카탈로그 전체를 실행 시점에서 검증할 계약이 없었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 한 프로젝트의 식별 정보, 분류, 배포 상태, 미디어, 기술 스택, 링크, 문제·해결책·설계·결정·절충안·결과를 엄격한 스키마로 정의하고 그룹·항목이 최소 한 개 있는 카탈로그를 만듭니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | `projectsContentSchema`가 프로젝트 원본 문서의 구조를 소유하며 항목 내부 예상 밖 키를 거부합니다. |
+| 실패·누락·대체 처리 | 배열 중 태그·기술 스택·화면 캡처·주요 내용 등은 빈 배열이 허용될 수 있고, ID 고유성·그룹·기술 스택·링크 참조·자산 존재는 아직 검사하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 프로젝트 카탈로그가 비어 있지 않고 각 항목이 완전한 알려진 형식을 갖는다는 실행 시점 계약을 제공합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `d93ec9730edd` 이후 나머지 데이터 영역 파일 스키마가 확장되고 T9가 참조 무결성을 추가합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `a944c73f0557`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다. 중요도 A 근거: 단일 project record가 아닌 catalog 전체의 필수 필드와 최소 cardinality를 고정해 이후 loader/facade의 핵심 입력 계약이 됩니다.
+정적 근거: `a944c73f0557`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다. 중요도 A 근거: 단일 프로젝트 레코드가 아닌 카탈로그 전체의 필수 필드와 최소 개수를 고정해 이후 로더·공개 모듈의 핵심 입력 계약이 됩니다.
 
 ### 7. `d93ec9730edd` — feat(content): 기술과 경력 schema 추가
 
 - **Importance:** B
 - **Tags:** CONTENT, VALIDATION
-- **Thread 역할:** technology/skills/experience schemas
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 기술·기술 목록·경력 스키마
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- technology item icon/color, skills group, experience item schema를 확인합니다.
-- 각 record의 strictness와 array cardinality를 기록합니다.
+- 기술 항목 아이콘·색상, 기술 목록 그룹, 경력 항목 스키마를 확인합니다.
+- 각 레코드의 strictness와 배열 개수를 기록합니다.
 
 확인 원칙:
 
-- 먼저 `d93ec9730edd^`와 `d93ec9730edd`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `d93ec9730edd^`와 `d93ec9730edd`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | 기술·skills·experience source가 assertion만 사용했습니다. |
-| 실제 변경 file/symbol/call path | technology metadata, grouped skills, experience timeline을 공용 primitive 기반 schema로 정의합니다. |
-| Data/state/resource owner와 lifetime | 각 source file의 record shape는 schema가 소유합니다. |
-| Failure·absence·fallback 처리 | technology ID의 project stack 참조 여부와 날짜 의미/정렬은 검사하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | 세 domain source의 개별 구조를 runtime에서 고정합니다. |
-| 다음 commit 또는 관련 test 연결 | `6fc79f058744`가 journey/links/contact를 추가합니다. |
+| 직전 상태와 부족함 | 기술·기술 목록·경력 원본이 단언문만 사용했습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 기술 메타데이터, 그룹화된 기술 목록, 경력 타임라인을 공용 컴포넌트 기반 스키마로 정의합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 각 원본 파일의 레코드 형식은 스키마가 소유합니다. |
+| 실패·누락·대체 처리 | 기술 ID의 프로젝트 기술 스택 참조 여부와 날짜 의미·정렬은 검사하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 세 데이터 영역 원본의 개별 구조를 실행 시점에서 고정합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `6fc79f058744`가 여정·링크·연락처를 추가합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `d93ec9730edd`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `d93ec9730edd`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 8. `6fc79f058744` — feat(content): 여정과 연락 schema 추가
 
 - **Importance:** B
 - **Tags:** CONTENT, VALIDATION
-- **Thread 역할:** journey/link-list/contact schemas
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 여정·링크 목록·연락처 스키마
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- journey item의 nullable `projectId`, links collection, contact preferred ID 배열을 확인합니다.
-- nullable과 optional을 혼동하지 않고 기록합니다.
+- 여정 항목의 nullable `projectId`, 링크 목록, 연락처 우선 ID 배열을 확인합니다.
+- nullable과 선택적을 혼동하지 않고 기록합니다.
 
 확인 원칙:
 
-- 먼저 `6fc79f058744^`와 `6fc79f058744`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `6fc79f058744^`와 `6fc79f058744`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | 여정과 연락 source는 project/link ID를 임의 문자열로 보유하고 shape 오류를 거부하지 못했습니다. |
-| 실제 변경 file/symbol/call path | journey item, top-level links collection, contact availability/notes/preferred IDs를 schema로 정의합니다. |
-| Data/state/resource owner와 lifetime | schema가 null 허용과 field shape를 소유합니다. |
-| Failure·absence·fallback 처리 | nullable project ID가 non-null일 때 실제 project를 가리키는지, preferred ID가 enabled link인지 확인하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | 각 파일의 runtime 형식을 보장합니다. |
-| 다음 commit 또는 관련 test 연결 | `03aacfddc364`가 résumé 구조를 추가합니다. |
+| 직전 상태와 부족함 | 여정과 연락 원본은 프로젝트·링크 ID를 임의 문자열로 보유하고 형식 오류를 거부하지 못했습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 여정 항목, 최상위 링크 목록, 연락처 사용 가능 여부·안내·우선 ID를 스키마로 정의합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 스키마가 null 허용과 필드 형식을 소유합니다. |
+| 실패·누락·대체 처리 | nullable 프로젝트 ID가 null이 아닐 때 실제 프로젝트를 가리키는지, 우선 ID가 활성화된 링크인지 확인하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 각 파일의 실행 시점 형식을 보장합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `03aacfddc364`가 résumé 구조를 추가합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `6fc79f058744`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `6fc79f058744`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 9. `03aacfddc364` — feat(content): Resume 콘텐츠 schema 추가
 
 - **Importance:** B
 - **Tags:** CONTENT, VALIDATION, RENDERER
-- **Thread 역할:** résumé schema
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** résumé 스키마
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- summary, projectIds, education/training/experience/notes, nullable `downloadUrl` schema를 확인합니다.
-- asset path nullable 의미와 projectIds 배열의 허용 상태를 기록합니다.
+- 요약, 프로젝트 ID, 학력·교육·경력·안내, nullable `downloadUrl` 스키마를 확인합니다.
+- 자산 경로 nullable 의미와 프로젝트 ID 배열의 허용 상태를 기록합니다.
 
 확인 원칙:
 
-- 먼저 `03aacfddc364^`와 `03aacfddc364`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `03aacfddc364^`와 `03aacfddc364`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | résumé source는 route가 기대하는 section shape와 download URL 경계를 runtime에서 보장하지 못했습니다. |
-| 실제 변경 file/symbol/call path | résumé summary와 참조 project IDs, 여러 이력 section, nullable download asset을 schema로 정의합니다. |
-| Data/state/resource owner와 lifetime | résumé document shape는 schema가 소유합니다. |
-| Failure·absence·fallback 처리 | `downloadUrl`이 null이면 허용되며 non-null asset 파일 존재와 project reference는 검사하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | résumé source의 known field 형식을 보장합니다. |
-| 다음 commit 또는 관련 test 연결 | `80152dae761f`이 narrative journey schema를 추가합니다. |
+| 직전 상태와 부족함 | résumé 원본은 라우트가 기대하는 섹션 형식과 다운로드 URL 경계를 실행 시점에서 보장하지 못했습니다. |
+| 실제 변경 파일·심볼·호출 경로 | résumé 요약과 참조 프로젝트 ID, 여러 이력 섹션, nullable 다운로드 자산을 스키마로 정의합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | résumé 문서 형식은 스키마가 소유합니다. |
+| 실패·누락·대체 처리 | `downloadUrl`이 null이면 허용되며 null이 아닌 자산 파일 존재와 프로젝트 참조는 검사하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | résumé 원본의 알려진 필드 형식을 보장합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `80152dae761f`이 설명 여정 스키마를 추가합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `03aacfddc364`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `03aacfddc364`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 10. `80152dae761f` — feat(content): 여정 narrative schema 추가
 
 - **Importance:** B
 - **Tags:** CONTENT, VALIDATION
-- **Thread 역할:** journey narrative schema
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 여정 설명 스키마
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- intro, milestones, state/reason/result, anchorProjectIds, currentPosition schema를 확인합니다.
-- milestone ID uniqueness와 date 의미가 아직 없는지 확인합니다.
+- 도입부, 주요 시점, 상태·이유·결과, anchorProjectIds, `currentPosition` 스키마를 확인합니다.
+- 주요 시점 ID 고유성과 날짜 의미가 아직 없는지 확인합니다.
 
 확인 원칙:
 
-- 먼저 `80152dae761f^`와 `80152dae761f`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `80152dae761f^`와 `80152dae761f`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | 간단한 journey list와 별도로 설명형 milestone source를 검증할 계약이 없었습니다. |
-| 실제 변경 file/symbol/call path | narrative intro, milestone identity/date/state/reason/result/project anchors, current position을 schema로 정의합니다. |
-| Data/state/resource owner와 lifetime | journey narrative file의 구조는 schema가 소유합니다. |
-| Failure·absence·fallback 처리 | milestone ID uniqueness, chronology, anchor project 존재는 확인하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | narrative 문서의 단일 파일 shape를 보장합니다. |
-| 다음 commit 또는 관련 test 연결 | `51ce1c15a0e5`가 interview evidence schema를 추가합니다. |
+| 직전 상태와 부족함 | 간단한 여정 목록과 별도로 설명형 주요 시점 원본을 검증할 계약이 없었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 설명 도입부, 주요 시점 식별 정보·날짜·상태·이유·결과·프로젝트 기준 프로젝트, 현재 위치을 스키마로 정의합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 여정 설명 파일의 구조는 스키마가 소유합니다. |
+| 실패·누락·대체 처리 | 주요 시점 ID 고유성, 시간순 기록, 기준 프로젝트 존재는 확인하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 설명 문서의 단일 파일 형식을 보장합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `51ce1c15a0e5`가 인터뷰 근거 스키마를 추가합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `80152dae761f`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `80152dae761f`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 11. `51ce1c15a0e5` — feat(content): Interview Map 콘텐츠 schema 추가
 
 - **Importance:** B
 - **Tags:** CONTENT, VALIDATION, RENDERER
-- **Thread 역할:** interview evidence schema
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 인터뷰 근거 스키마
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- reference repo, tracks/items/answers/gaps schema를 확인합니다.
-- answer의 `projectId`와 depth field, track ID가 어떤 primitive를 사용하는지 기록합니다.
+- 참조 저장소, 트랙·항목·답변·부족한 부분 스키마를 확인합니다.
+- 답변의 `projectId`와 깊이 필드, 트랙 ID가 어떤 공용 컴포넌트를 사용하는지 기록합니다.
 
 확인 원칙:
 
-- 먼저 `51ce1c15a0e5^`와 `51ce1c15a0e5`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `51ce1c15a0e5^`와 `51ce1c15a0e5`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | Interview Map source가 nested evidence 구조를 runtime에서 검증하지 못했습니다. |
-| 실제 변경 file/symbol/call path | reference, tracks, topics, project answers, gaps를 strict nested schema로 정의합니다. |
-| Data/state/resource owner와 lifetime | evidence document의 구조는 schema가 소유합니다. |
-| Failure·absence·fallback 처리 | answer가 enabled project를 가리키는지와 track ID uniqueness는 아직 검사하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | Interview Map 단일 파일의 known shape를 보장합니다. |
-| 다음 commit 또는 관련 test 연결 | `d0a62a7da4bd`가 curation과 schema-derived type export를 추가합니다. |
+| 직전 상태와 부족함 | 인터뷰 맵 원본이 중첩된 근거 구조를 실행 시점에서 검증하지 못했습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 참조, 트랙, 주제, 프로젝트 답변, 부족한 부분을 엄격한 중첩 스키마로 정의합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 근거 문서의 구조는 스키마가 소유합니다. |
+| 실패·누락·대체 처리 | 답변이 활성화된 프로젝트를 가리키는지와 트랙 ID 고유성은 아직 검사하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 인터뷰 맵 단일 파일의 알려진 형식을 보장합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `d0a62a7da4bd`가 선별 기록과 스키마에서 파생된 타입 공개를 추가합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `51ce1c15a0e5`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `51ce1c15a0e5`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 12. `d0a62a7da4bd` — feat(content): 큐레이션 schema와 타입 export 추가
 
 - **Importance:** A
 - **Tags:** CONTENT, VALIDATION
-- **Thread 역할:** curation schema 및 schema-derived source types
-- **조사 깊이:** 주요 subsystem의 결정 경로, owner, failure/non-guarantee와 integration evidence를 구체적으로 복원합니다.
+- **개발 흐름에서의 역할:** 선별 기록 스키마 및 스키마에서 파생된 원본 타입
+- **조사 깊이:** 주요 하위 기능의 결정 경로, 소유 주체, 실패와 보장하지 않는 범위와 통합 근거를 구체적으로 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- curation intro/criteria/categories/omissions/nextReview schema를 확인합니다.
-- `z.infer` 또는 schema output 기반으로 export되는 source types를 확인하고 수동 type 중복이 줄어드는 범위를 기록합니다.
+- 선별 기록 도입부·기준·분류·제외 항목·nextReview 스키마를 확인합니다.
+- `z.infer` 또는 스키마 검증 결과 기반으로 공개되는 원본 타입을 확인하고 수동 타입 중복이 줄어드는 범위를 기록합니다.
 
 확인 원칙:
 
-- 먼저 `d0a62a7da4bd^`와 `d0a62a7da4bd`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `d0a62a7da4bd^`와 `d0a62a7da4bd`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | curation source의 runtime 계약이 없고 schema와 별도 수동 source type이 쉽게 어긋날 수 있었습니다. |
-| 실제 변경 file/symbol/call path | curation 문서의 strict nested schema를 추가하고 주요 domain source type을 schema에서 추론해 export합니다. |
-| Data/state/resource owner와 lifetime | runtime schema가 source type의 canonical owner가 되기 시작합니다. |
-| Failure·absence·fallback 처리 | 모든 renderer-facing type이 즉시 schema-derived 되는 것은 아니며 category/project references와 source parsing은 여전히 후속 책임입니다. |
-| 보장하는 것과 보장하지 않는 것 | curation shape와 주요 source schema/type의 동기화를 보장합니다. |
-| 다음 commit 또는 관련 test 연결 | T6가 presentation schema를 별도로 확장하고 T8이 실제 JSON parsing을 연결합니다. |
+| 직전 상태와 부족함 | 선별 기록 원본의 실행 시점 계약이 없고 스키마와 별도 수동 원본 타입이 쉽게 어긋날 수 있었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 선별 기록 문서의 엄격한 중첩 스키마를 추가하고 주요 데이터 영역 원본 타입을 스키마에서 추론해 공개합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 실행 시점 스키마가 원본 타입의 기준 소유 주체가 되기 시작합니다. |
+| 실패·누락·대체 처리 | 모든 렌더러에 전달할 타입이 즉시 스키마에서 파생된 되는 것은 아니며 분류·프로젝트 참조와 원본 파싱은 여전히 후속 책임입니다. |
+| 보장하는 것과 보장하지 않는 것 | 선별 기록 형식과 주요 원본 스키마·타입의 동기화를 보장합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | T6가 화면 구성 스키마를 별도로 확장하고 T8이 실제 JSON 파싱을 연결합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `d0a62a7da4bd`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다. 중요도 A 근거: schema가 runtime 검증과 정적 source type을 함께 소유하는 방향으로 전환되어 후속 facade의 중복 type 제거 기반이 됩니다.
+정적 근거: `d0a62a7da4bd`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다. 중요도 A 근거: 스키마가 실행 시점 검증과 정적 원본 타입을 함께 소유하는 방향으로 전환되어 후속 공개 모듈의 중복 타입 제거 기반이 됩니다.
 
-## 6. Invariant evolution ledger
+## 6. 불변 조건 변화 기록
 
-| 추적할 invariant | 도입·변화 SHA | 실제 owner/evidence | 제한·후속 보호 |
+| 추적할 불변 조건 | 도입·변화 SHA | 실제 소유 주체·근거 | 제한·후속 보호 |
 | --- | --- | --- | --- |
-| 공용 primitive가 공백 문자열, ID, URL/asset path 형식을 제한한다. | `51ceb76ad88a` | `src/lib/content-schema.ts` primitives | endpoint/asset 존재는 검사하지 않음 |
-| domain object는 알려진 shape와 optional/nullability를 schema로 표현한다. | `c2f3d376e96b` → `51ce1c15a0e5` | 개별 source schemas | 일부 최상위 확장 지점은 passthrough |
-| project catalog는 groups/items 최소 한 개와 strict project shape를 요구한다. | `a944c73f0557` | `projectsContentSchema` | ID uniqueness/reference는 T9 |
-| source type은 schema에서 추론하기 시작한다. | `d0a62a7da4bd` | schema-derived exports | renderer-facing 수동 type 일부는 남음 |
+| 공용 컴포넌트가 공백 문자열, ID, URL·자산 경로 형식을 제한합니다. | `51ceb76ad88a` | `src/lib/content-schema.ts` 공용 컴포넌트 | 진입점·자산 존재는 검사하지 않음 |
+| 데이터 영역 객체는 알려진 형식과 선택적·nullability를 스키마로 표현합니다. | `c2f3d376e96b` → `51ce1c15a0e5` | 개별 원본 스키마 | 일부 최상위 확장 지점은 추가 필드 허용 |
+| 프로젝트 카탈로그는 그룹·항목 최소 한 개와 엄격한 프로젝트 형식을 요구합니다. | `a944c73f0557` | `projectsContentSchema` | ID 고유성·참조는 T9 |
+| 원본 타입은 스키마에서 추론하기 시작합니다. | `d0a62a7da4bd` | 스키마에서 파생된 공개 항목 | 렌더러에 전달할 수동 타입 일부는 남음 |
 
-## 7. Failure → Fix → Test 관계
+## 7. 실패 → 수정 → 테스트 관계
 
-| Failure 또는 risk | Fix/전환 SHA | 교정된 결정 | Regression·검증 관계 |
+| 실패 또는 위험 | 수정·전환 SHA | 교정된 결정 | 회귀·검증 관계 |
 | --- | --- | --- | --- |
-| TypeScript assertion이 malformed JSON을 통과시킴 | `51ceb76ad88a` 이후 schema sequence | runtime Zod vocabulary 구축 | `d50870c8b8c4`/`03d2c9be0a43`에서 실제 parse |
-| project record가 부분 shape로 들어올 위험 | `a944c73f0557` | strict full project schema + catalog cardinality | 후속 invalid-source tests가 regression 보호 |
-| schema와 source type이 어긋날 위험 | `d0a62a7da4bd` | schema-derived source type export | `85df59454b46`에서 facade type 연결 확대 |
+| TypeScript 타입 단언이 잘못된 형식의 JSON을 통과시킴 | `51ceb76ad88a` 이후 스키마 순서 | 실행 시점 Zod 허용 값 집합 구축 | `d50870c8b8c4`/`03d2c9be0a43`에서 실제 파싱 |
+| 프로젝트 레코드가 부분 형식으로 들어올 위험 | `a944c73f0557` | 엄격한 전체 프로젝트 스키마 + 카탈로그 개수 | 후속 유효하지 않은 원본 테스트가 회귀 보호 |
+| 스키마와 원본 타입이 어긋날 위험 | `d0a62a7da4bd` | 스키마에서 파생된 원본 타입 공개 | `85df59454b46`에서 공개 모듈 타입 연결 확대 |
 
-## 8. Ownership·state·responsibility 변화
+## 8. 소유 주체·상태·담당 작업 변화
 
-| 대상 | 이전 owner/state | 최종 owner/state | 근거 |
+| 대상 | 이전 소유 주체·상태 | 최종 소유 주체·상태 | 근거 |
 | --- | --- | --- | --- |
-| 문자열/ID/path 규칙 | 각 type/consumer | schema primitives | `content-schema.ts` |
-| domain file shape | 수동 TypeScript type | Zod schemas | 각 source schema |
-| source type | 수동 선언 | 일부 `z.infer` export | schema가 canonical source 계약 |
-| cross-file semantics | 없음 | 여전히 없음 | T9 loader integrity가 인수 |
+| 문자열·ID·경로 규칙 | 각 타입·소비자 | 스키마 공용 컴포넌트 | `content-schema.ts` |
+| 데이터 영역 파일 형식 | 수동 TypeScript 타입 | Zod 스키마 | 각 원본 스키마 |
+| 원본 타입 | 수동 선언 | 일부 `z.infer` 공개 | 스키마가 기준 원본 계약 |
+| 파일 간 의미 구조 | 없음 | 여전히 없음 | T9 로더 무결성이 인수 |
 
-## 9. Thread 최종 상태
+## 9. 개발 흐름 최종 상태
 
-Thread 종료 시점에는 모든 주요 domain JSON file의 known shape가 Zod schema로 표현되고 project catalog의 최소 cardinality까지 고정됩니다. 그러나 schema는 아직 source import에 연결되지 않았고, ID uniqueness·cross-file reference·internal route·asset 존재는 보장하지 않습니다.
+개발 흐름 종료 시점에는 모든 주요 데이터 영역 JSON 파일의 알려진 형식이 Zod 스키마로 표현되고 프로젝트 카탈로그의 최소 개수까지 고정됩니다. 그러나 스키마는 아직 원본 가져오기에 연결되지 않았고, ID 고유성·파일 간 참조·내부 라우트·자산 존재는 보장하지 않습니다.
 
 ### 최종 설명
 
-- Zod/tsx 기반을 추가하고 공통 문자열·ID·경로 vocabulary를 만들었습니다.
-- site/profile에서 project, résumé, journey, interview map, curation까지 domain file schema를 확장했습니다.
-- 전체 project catalog의 strict shape와 최소 항목 수를 고정했습니다.
-- Schema 정의와 실제 parsing/integrity 검증을 의도적으로 분리했습니다.
+- Zod/tsx 기반을 추가하고 공통 문자열·ID·경로 허용 값 집합을 만들었습니다.
+- 사이트·프로필에서 프로젝트, résumé, 여정, 인터뷰 맵, 선별 기록까지 데이터 영역 파일 스키마를 확장했습니다.
+- 전체 프로젝트 카탈로그의 엄격한 형식과 최소 항목 수를 고정했습니다.
+- 스키마 정의와 실제 파싱·무결성 검증을 의도적으로 분리했습니다.
 
 ## 10. 최종 실행·데이터 흐름
 
-| 단계 | Owner/call path | 입력·출력 | Failure/non-guarantee |
+| 단계 | 담당 위치·호출 경로 | 입력·출력 | 실패·보장하지 않는 범위 |
 | --- | --- | --- | --- |
-| 원시 JSON 값을 schema에 입력할 준비를 합니다. | `content-schema.ts` exports | Zod schema objects | 이 Thread에서는 아직 호출되지 않음 |
-| 공용 primitive를 먼저 적용합니다. | non-empty/ID/path schema | 정규화되거나 거부되는 scalar | 실제 endpoint/asset은 미검사 |
-| nested domain object를 검사합니다. | site/project/etc. schemas | known-shape output | cross-file reference는 미검사 |
-| schema-derived type을 export합니다. | `z.infer` source types | 정적 source contract | 모든 facade type 대체는 후속 |
+| 원시 JSON 값을 스키마에 입력할 준비를 합니다. | `content-schema.ts` 공개 항목 | Zod 스키마 objects | 이 개발 흐름에서는 아직 호출되지 않음 |
+| 공용 컴포넌트를 먼저 적용합니다. | 비어 있지 않은·ID·경로 스키마 | 정규화되거나 거부되는 scalar | 실제 진입점·자산은 미검사 |
+| 중첩된 데이터 영역 객체를 검사합니다. | 사이트·프로젝트·etc. 스키마 | 알려진 형식 출력 | 파일 간 참조는 미검사 |
+| 스키마에서 파생된 타입을 공개합니다. | `z.infer` 원본 타입 | 정적 원본 규칙 | 모든 공개 모듈 타입 대체는 후속 |
 
 ## 11. 학습 완료 확인
 
-완료했습니다. 모든 commit은 exact SHA의 parent diff/resulting tree를 기준으로 기록했고, direct execution evidence와 static inspection을 구분했습니다. `3353032ba23b` 이후 invalid schema, duplicate/reference, asset cases가 테스트됩니다. 이 작업에서는 repository test command를 실행하지 않았습니다.
+완료했습니다. 모든 커밋은 해당 SHA의 부모 커밋과의 차이·변경 후 파일 트리를 기준으로 기록했고, 직접 실행 근거와 정적 검토를 구분했습니다. `3353032ba23b` 이후 유효하지 않은 스키마, 중복된·참조, 자산 경우가 테스트됩니다. 이 작업에서는 저장소 테스트 명령을 실행하지 않았습니다.
 ===== END FILE: 05-runtime-schema-vocabulary.md =====
 
 ===== BEGIN FILE: 06-runtime-presentation-schema-contracts.md =====
-# Thread: Runtime presentation schema contracts
+# 개발 흐름: 화면 문구 스키마의 실행 시점 검증 규칙
 
-> Repository: `https://github.com/seungwoo7050/42-archive`  
-> Branch: `web/portfolio`  
-> Category: `01-application-foundation-and-content-systems`
+> 저장소: `https://github.com/seungwoo7050/42-archive`
+> 브랜치: `web/portfolio`
+> 분류: `01-application-foundation-and-content-systems`
 
 ## 0. 분류 출처와 변경 가능 범위
 
-- Commit SHA, subject, importance, tags는 target branch의 `commit/commit-importance.md` 분류와 exact commit metadata를 사용합니다.
-- 이 문서의 Thread grouping, 목표, 역할, 조사 지점은 Phase 1 category audit에서 repository evidence를 기준으로 확정했습니다.
-- Phase 2에서는 이 fixed information을 바꾸지 않고 learner-facing 기록만 채웠습니다.
-- 다른 branch나 final HEAD 구현을 과거 SHA 설명에 소급하지 않습니다.
+- 커밋 SHA·제목·중요도·태그는 대상 브랜치의 `commit/commit-importance.md` 분류와 해당 커밋의 정확한 메타데이터를 사용합니다.
+- 이 문서의 개발 흐름 묶음·목표·역할·확인 지점은 1단계 분류 검토에서 저장소 근거를 바탕으로 확정했습니다.
+- 2단계에서는 이 고정 정보를 바꾸지 않고 학습자용 기록만 작성했습니다.
+- 다른 브랜치나 최종 HEAD의 구현을 과거 SHA의 설명으로 소급하지 않습니다.
 
-## 1. Thread 목표
+## 1. 개발 흐름 목표
 
-다섯 design과 home/projects/detail/About/Contact/Interview Map/Journey/Resume route의 presentation source를 공용 ID vocabulary, strict nested object, 의도된 passthrough 확장점으로 runtime schema에 단계적으로 연결하는 과정을 복원합니다.
+다섯 디자인과 홈·프로젝트·상세·소개·연락처·인터뷰 맵·여정·이력서 라우트의 화면 구성 원본을 공용 ID 허용 값 집합, 엄격한 중첩된 객체, 의도된 추가 필드 허용 확장점으로 실행 시점 스키마에 단계적으로 연결하는 과정을 복원합니다.
 
-### 계획된 핵심 invariant
+### 계획된 핵심 불변 조건
 
-- Design/route별 알려진 필드는 schema가 검증하고 section order 배열은 비어 있지 않으며 중복될 수 없습니다.
-- Nested design contract는 주로 `strict()`이지만 presentation root, home/pages의 선택된 확장 지점은 `passthrough()`를 유지합니다.
-- Presentation schema는 copy/ordering 형식을 검증할 뿐 cross-file project/link/route 존재를 검증하지 않습니다.
+- Design·라우트별 알려진 필드는 스키마가 검증하고 섹션 순서 배열은 비어 있지 않으며 중복될 수 없습니다.
+- 중첩된 디자인 규칙은 주로 `strict()`이지만 화면 구성 최상위, 홈·페이지의 선택된 확장 지점은 `passthrough()`를 유지합니다.
+- 화면 구성 스키마는 복사·순서 결정 형식을 검증할 뿐 파일 간 프로젝트·링크·라우트 존재를 검증하지 않습니다.
 
-## 2. 이 Thread를 이해하기 위한 핵심 질문
+## 2. 이 개발 흐름을 이해하기 위한 핵심 질문
 
-- section ID·count key·design ID는 어떤 enum/refine 조합으로 제한되는가?
+- 섹션 ID·개수 키·디자인 ID는 어떤 열거형·refine 조합으로 제한되는가?
 - `strict()`와 `passthrough()`가 공존하는 정확한 계층은 어디인가?
-- route별 schema가 추가되어도 default template·supported design completeness는 왜 후속 loader 책임인가?
+- 라우트별 스키마가 추가되어도 기본값 템플릿·지원하는 디자인 완전성은 왜 후속 로더 책임인가?
 
 ## 3. 완료 기준
 
-- 각 SHA의 parent diff와 resulting tree에서 실제 file/symbol을 확인합니다.
-- 이전 상태, implementation decision, owner/lifetime, absence/failure/fallback, guarantee/non-guarantee를 분리합니다.
-- Fix·refactor·integration은 바로 앞의 assumption이나 duplicated responsibility와 연결합니다.
-- 테스트나 command는 실제 실행 여부를 정적 검토와 명확히 구분합니다.
-- Thread 종료 시 invariant evolution과 최종 flow를 코드 없이 설명합니다.
+- 각 SHA의 부모 커밋과의 차이와 변경 후 파일 트리에서 실제 파일과 심볼을 확인합니다.
+- 이전 상태, 구현 결정, 소유 주체와 수명, 누락·실패·대체 처리, 보장 범위와 보장하지 않는 범위를 나눠 기록합니다.
+- 수정·리팩터링·통합은 바로 앞선 가정이나 중복 구현과 연결합니다.
+- 테스트와 명령은 실제 실행 여부를 정적 검토와 명확히 구분합니다.
+- 개발 흐름 마지막에는 불변 조건의 변화와 최종 실행 순서를 코드 없이 설명합니다.
 
-## 4. Commit map
+## 4. 커밋 목록
 
-| 순서 | Commit | Subject | Importance | Tags | 이 Thread에서의 역할 |
-| ---: | --- | --- | :---: | --- | --- |
-| 1 | `807214624c87` | feat(content): 홈 표현 식별자 schema 추가 | B | CONTENT, VALIDATION | presentation primitive와 section uniqueness |
-| 2 | `97ff48de55b8` | feat(content): 프로젝트 목록 표현 schema 추가 | B | CONTENT, VALIDATION | five-design projects page schema |
-| 3 | `42a81197af82` | feat(content): 표현 공용 UI schema 추가 | B | CONTENT, VALIDATION | presentation root/UI schema |
-| 4 | `a3825a49a055` | feat(content): Design과 Classic 홈 표현 schema 추가 | B | CONTENT, VALIDATION, RENDERER | initial home design schemas |
-| 5 | `2a02781859b8` | feat(content): Editorial 홈 표현 schema 추가 | B | CONTENT, VALIDATION, RENDERER | Editorial schema |
-| 6 | `23d5297b42bd` | feat(content): Brutalist 홈 표현 schema 추가 | B | CONTENT, VALIDATION, RENDERER | Brutalist schema |
-| 7 | `ad07ab4b31a9` | feat(content): Cinematic 홈 표현 schema 추가 | B | CONTENT, VALIDATION, RENDERER | Cinematic schema |
-| 8 | `3c873e373bbb` | feat(content): 공용 홈 섹션 schema 추가 | B | CONTENT, VALIDATION | shared home schema |
-| 9 | `edcf1eaa6f71` | feat(content): About과 Contact 표현 schema 추가 | B | CONTENT, VALIDATION, RENDERER | About/Contact schemas |
-| 10 | `4eb0db7b9656` | feat(content): Interview Map 표현 schema 추가 | B | CONTENT, VALIDATION, RENDERER | Interview Map schema |
-| 11 | `7f3c16b50990` | feat(content): Journey 표현 schema 추가 | B | CONTENT, VALIDATION, RENDERER | Journey schema |
-| 12 | `50b78a557344` | feat(content): 프로젝트 상세 표현 schema 추가 | B | CONTENT, VALIDATION | project detail and projects route schema closure |
-| 13 | `4e2454cfc9c4` | feat(content): Resume 표현 schema 추가 | B | CONTENT, VALIDATION, RENDERER | Resume presentation schema closure |
+| 순서 | 커밋 | 제목 | 중요도 | 태그 | 이 개발 흐름에서의 역할 |
+| ---: | --- | --- |:---: | --- | --- |
+| 1 | `807214624c87` | feat(content): 홈 표현 식별자 schema 추가 | B | CONTENT, VALIDATION | 화면 구성 공용 컴포넌트와 섹션 고유성 |
+| 2 | `97ff48de55b8` | feat(content): 프로젝트 목록 표현 schema 추가 | B | CONTENT, VALIDATION | 다섯 디자인 프로젝트 페이지 스키마 |
+| 3 | `42a81197af82` | feat(content): 표현 공용 UI schema 추가 | B | CONTENT, VALIDATION | 화면 구성 최상위·UI 스키마 |
+| 4 | `a3825a49a055` | feat(content): Design과 Classic 홈 표현 schema 추가 | B | CONTENT, VALIDATION, RENDERER | 초기 홈 디자인 스키마 |
+| 5 | `2a02781859b8` | feat(content): Editorial 홈 표현 schema 추가 | B | CONTENT, VALIDATION, RENDERER | Editorial 스키마 |
+| 6 | `23d5297b42bd` | feat(content): Brutalist 홈 표현 schema 추가 | B | CONTENT, VALIDATION, RENDERER | Brutalist 스키마 |
+| 7 | `ad07ab4b31a9` | feat(content): Cinematic 홈 표현 schema 추가 | B | CONTENT, VALIDATION, RENDERER | Cinematic 스키마 |
+| 8 | `3c873e373bbb` | feat(content): 공용 홈 섹션 schema 추가 | B | CONTENT, VALIDATION | 공용 홈 스키마 |
+| 9 | `edcf1eaa6f71` | feat(content): About과 Contact 표현 schema 추가 | B | CONTENT, VALIDATION, RENDERER | 소개·연락처 스키마 |
+| 10 | `4eb0db7b9656` | feat(content): Interview Map 표현 schema 추가 | B | CONTENT, VALIDATION, RENDERER | 인터뷰 맵 스키마 |
+| 11 | `7f3c16b50990` | feat(content): Journey 표현 schema 추가 | B | CONTENT, VALIDATION, RENDERER | 여정 스키마 |
+| 12 | `50b78a557344` | feat(content): 프로젝트 상세 표현 schema 추가 | B | CONTENT, VALIDATION | 프로젝트 상세 및 프로젝트 라우트 스키마 완성 |
+| 13 | `4e2454cfc9c4` | feat(content): Resume 표현 schema 추가 | B | CONTENT, VALIDATION, RENDERER | 이력서 화면 구성 스키마 완성 |
 
-## 5. Commit별 학습 기록
+## 5. 커밋별 학습 기록
 
 ### 1. `807214624c87` — feat(content): 홈 표현 식별자 schema 추가
 
 - **Importance:** B
 - **Tags:** CONTENT, VALIDATION
-- **Thread 역할:** presentation primitive와 section uniqueness
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 화면 구성 공용 컴포넌트와 섹션 고유성
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `sectionCopySchema`, home section ID enums, five design IDs, work-map/project count key enums를 확인합니다.
-- Editorial/Brutalist/Cinematic section 배열의 `min(1)`과 Set-size `refine`을 확인합니다.
+- `sectionCopySchema`, 홈 섹션 ID enums, 다섯 디자인 ID, 작업 지표·프로젝트 개수 키 enums를 확인합니다.
+- Editorial/Brutalist/Cinematic 섹션 배열의 `min(1)`과 Set 크기 `refine`을 확인합니다.
 
 확인 원칙:
 
-- 먼저 `807214624c87^`와 `807214624c87`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `807214624c87^`와 `807214624c87`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | presentation source의 section/order/count key는 임의 문자열 배열이어서 중복·지원하지 않는 값이 들어갈 수 있었습니다. |
-| 실제 변경 file/symbol/call path | 공용 section copy와 design별 section ID, site design ID, count key를 enum으로 제한하고 추가 design section order의 비어 있음/중복을 거부합니다. |
-| Data/state/resource owner와 lifetime | `content-schema.ts`가 presentation vocabulary와 순서 배열 invariant를 소유합니다. |
-| Failure·absence·fallback 처리 | 배열의 업무상 최적 순서나 모든 supported design의 실제 구성 여부는 검사하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | 허용 ID와 section 배열의 최소·유일성을 runtime에서 보장합니다. |
-| 다음 commit 또는 관련 test 연결 | `97ff48de55b8`이 projects route 구조를 추가합니다. |
+| 직전 상태와 부족함 | 화면 구성 원본의 섹션·순서·개수 키는 임의 문자열 배열이어서 중복·지원하지 지원하지 않는 값이 들어갈 수 있었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 공용 섹션 복사와 디자인별 섹션 ID, 사이트 디자인 ID, 개수 키를 열거형으로 제한하고 추가 디자인 섹션 순서의 비어 있음·중복을 거부합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | `content-schema.ts`가 화면 구성 허용 값 집합과 순서 배열 불변 조건을 소유합니다. |
+| 실패·누락·대체 처리 | 배열의 업무상 최적 순서나 모든 지원하는 디자인의 실제 구성 여부는 검사하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 허용 ID와 섹션 배열의 최소·유일성을 실행 시점에서 보장합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `97ff48de55b8`이 프로젝트 라우트 구조를 추가합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `807214624c87`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `807214624c87`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 2. `97ff48de55b8` — feat(content): 프로젝트 목록 표현 schema 추가
 
 - **Importance:** B
 - **Tags:** CONTENT, VALIDATION
-- **Thread 역할:** five-design projects page schema
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 다섯 디자인 프로젝트 페이지 스키마
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `projectPageContentSchema`의 groups와 Design/Classic/Editorial/Brutalist/Cinematic nested fields를 확인합니다.
-- Classic `maxGroups` positive integer, count key enum, nested `strict()`와 root `passthrough()`를 기록합니다.
+- `projectPageContentSchema`의 그룹과 Design/Classic/Editorial/Brutalist/Cinematic 중첩된 필드를 확인합니다.
+- Classic `maxGroups` 필수 integer, 개수 키 열거형, 중첩된 `strict()`와 최상위 `passthrough()`를 기록합니다.
 
 확인 원칙:
 
-- 먼저 `97ff48de55b8^`와 `97ff48de55b8`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `97ff48de55b8^`와 `97ff48de55b8`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | projects route presentation 값은 type/JSON에 있었지만 runtime shape를 확인하지 못했습니다. |
-| 실제 변경 file/symbol/call path | 다섯 design의 hero/stats/terminal/group copy와 group descriptions를 schema로 정의합니다. |
-| Data/state/resource owner와 lifetime | route-specific nested object는 schema가 소유하고 outer project page는 확장 key를 허용합니다. |
-| Failure·absence·fallback 처리 | `passthrough()` 때문에 unknown outer key를 거부하지 않으며 group category가 실제 project group과 대응하는지 검사하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | known projects presentation field의 runtime 형식을 보장합니다. |
-| 다음 commit 또는 관련 test 연결 | `42a81197af82`가 presentation root와 공용 UI를 연결합니다. |
+| 직전 상태와 부족함 | 프로젝트 라우트 화면 구성 값은 타입·JSON에 있었지만 실행 시점 형식을 확인하지 못했습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 다섯 디자인의 히어로·통계·터미널·그룹 복사와 그룹 설명를 스키마로 정의합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 라우트 전용 중첩된 객체는 스키마가 소유하고 outer 프로젝트 페이지는 확장 키를 허용합니다. |
+| 실패·누락·대체 처리 | `passthrough()` 때문에 알 수 없는 outer 키를 거부하지 않으며 그룹 분류가 실제 프로젝트 그룹과 대응하는지 검사하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 알려진 프로젝트 화면 구성 필드의 실행 시점 형식을 보장합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `42a81197af82`가 화면 구성 최상위와 공용 UI를 연결합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `97ff48de55b8`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `97ff48de55b8`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 3. `42a81197af82` — feat(content): 표현 공용 UI schema 추가
 
 - **Importance:** B
 - **Tags:** CONTENT, VALIDATION
-- **Thread 역할:** presentation root/UI schema
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 화면 구성 최상위·UI 스키마
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `presentationContentSchema`의 default/template/ui/emptyStates를 확인합니다.
-- template/root `passthrough()`와 UI/emptyStates `strict()`를 구분합니다.
+- `presentationContentSchema`의 기본값·템플릿·ui·빈 상태를 확인합니다.
+- 템플릿·최상위 `passthrough()`와 UI·빈 상태 `strict()`를 구분합니다.
 
 확인 원칙:
 
-- 먼저 `42a81197af82^`와 `42a81197af82`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `42a81197af82^`와 `42a81197af82`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | 개별 projects schema는 있었지만 `presentation.json` root와 공용 UI copy를 한 문서로 검사할 schema가 없었습니다. |
-| 실제 변경 file/symbol/call path | default design, templates, 공용 UI/ARIA/empty-state 필드를 root schema에 추가합니다. |
-| Data/state/resource owner와 lifetime | presentation root가 전체 문서 entry contract를 소유합니다. |
-| Failure·absence·fallback 처리 | root와 template는 확장 key를 허용하고 default design이 templates에 실제 포함되는지 아직 검사하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | 공용 UI known fields와 design ID 형식을 보장합니다. |
-| 다음 commit 또는 관련 test 연결 | `a3825a49a055`부터 home design subtree를 채웁니다. |
+| 직전 상태와 부족함 | 개별 프로젝트 스키마는 있었지만 `presentation.json` 최상위와 공용 UI 문구를 한 문서로 검사할 스키마가 없었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 기본 디자인, 템플릿, 공용 UI/ARIA·빈 상태 필드를 최상위 스키마에 추가합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 화면 구성 최상위가 전체 문서 진입점 규칙을 소유합니다. |
+| 실패·누락·대체 처리 | 최상위와 템플릿은 확장 키를 허용하고 기본 디자인이 템플릿에 실제 포함되는지 아직 검사하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 공용 UI 알려진 필드와 디자인 ID 형식을 보장합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `a3825a49a055`부터 홈 디자인 하위 구조를 채웁니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `42a81197af82`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `42a81197af82`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 4. `a3825a49a055` — feat(content): Design과 Classic 홈 표현 schema 추가
 
 - **Importance:** B
 - **Tags:** CONTENT, VALIDATION, RENDERER
-- **Thread 역할:** initial home design schemas
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 초기 홈 디자인 스키마
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- Design/Classic shell, hero, sections, featured, terminal command/output schema를 확인합니다.
-- nested strictness와 `home` outer passthrough를 확인합니다.
+- Design/Classic 셸, 히어로, 섹션, 대표, 터미널 명령·출력 스키마를 확인합니다.
+- 중첩된 strictness와 `home` outer 추가 필드 허용을 확인합니다.
 
 확인 원칙:
 
-- 먼저 `a3825a49a055^`와 `a3825a49a055`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `a3825a49a055^`와 `a3825a49a055`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | presentation root는 존재했지만 초기 두 home design subtree가 runtime 검증되지 않았습니다. |
-| 실제 변경 file/symbol/call path | Design/Classic의 shell/home copy, stats/count keys, section order, terminal structure를 strict nested schema로 추가합니다. |
-| Data/state/resource owner와 lifetime | 각 design contract가 known field shape를 소유합니다. |
-| Failure·absence·fallback 처리 | home outer node는 passthrough이고 terminal placeholder token의 의미나 renderer 지원은 검사하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | 초기 두 design의 known presentation shape를 보장합니다. |
-| 다음 commit 또는 관련 test 연결 | `2a02781859b8`부터 세 추가 design을 확장합니다. |
+| 직전 상태와 부족함 | 화면 구성 최상위는 존재했지만 초기 두 홈 디자인 하위 구조가 실행 시점 검증되지 않았습니다. |
+| 실제 변경 파일·심볼·호출 경로 | Design/Classic의 셸·홈 문구, 통계·개수 키, 섹션 순서, 터미널 구성을 엄격한 중첩 스키마로 추가합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 각 디자인 규칙이 알려진 필드 형식을 소유합니다. |
+| 실패·누락·대체 처리 | 홈 outer 노드는 추가 필드 허용이고 터미널 자리표시자 토큰의 의미나 렌더러 지원은 검사하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 초기 두 디자인의 알려진 화면 구성 형식을 보장합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `2a02781859b8`부터 세 추가 디자인을 확장합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `a3825a49a055`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `a3825a49a055`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 5. `2a02781859b8` — feat(content): Editorial 홈 표현 schema 추가
 
 - **Importance:** B
 - **Tags:** CONTENT, VALIDATION, RENDERER
-- **Thread 역할:** Editorial schema
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** Editorial 스키마
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- Editorial shell/home hero/lead/featured/principles/contact fields와 section uniqueness schema 연결을 확인합니다.
+- Editorial 셸·홈 히어로·대표·대표·원칙·연락처 필드와 섹션 고유성 스키마 연결을 확인합니다.
 
 확인 원칙:
 
-- 먼저 `2a02781859b8^`와 `2a02781859b8`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `2a02781859b8^`와 `2a02781859b8`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | Editorial JSON contract가 root passthrough 아래 무검증으로 남았습니다. |
-| 실제 변경 file/symbol/call path | Editorial 전용 shell 및 home presentation fields를 strict nested schema로 추가합니다. |
-| Data/state/resource owner와 lifetime | Editorial known vocabulary는 schema가 소유합니다. |
-| Failure·absence·fallback 처리 | 실제 Editorial renderer가 모든 field를 사용하거나 의미 있는 copy인지 검증하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | Editorial source shape를 보장합니다. |
-| 다음 commit 또는 관련 test 연결 | `23d5297b42bd`가 Brutalist를 추가합니다. |
+| 직전 상태와 부족함 | Editorial JSON 규칙이 최상위 추가 필드 허용 아래 무검증으로 남았습니다. |
+| 실제 변경 파일·심볼·호출 경로 | Editorial 전용 셸 및 홈 화면 구성 필드를 엄격한 중첩 스키마로 추가합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | Editorial 알려진 허용 값 집합은 스키마가 소유합니다. |
+| 실패·누락·대체 처리 | 실제 Editorial 렌더러가 모든 필드를 사용하거나 의미 있는 복사인지 검증하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | Editorial 원본 형식을 보장합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `23d5297b42bd`가 Brutalist를 추가합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `2a02781859b8`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `2a02781859b8`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 6. `23d5297b42bd` — feat(content): Brutalist 홈 표현 schema 추가
 
 - **Importance:** B
 - **Tags:** CONTENT, VALIDATION, RENDERER
-- **Thread 역할:** Brutalist schema
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** Brutalist 스키마
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- Brutalist shell/home signal/system/journey/contact fields와 section array schema를 확인합니다.
+- Brutalist 셸·홈 신호·시스템·여정·연락처 필드와 섹션 배열 스키마를 확인합니다.
 
 확인 원칙:
 
-- 먼저 `23d5297b42bd^`와 `23d5297b42bd`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `23d5297b42bd^`와 `23d5297b42bd`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | Brutalist subtree가 runtime 검증되지 않았습니다. |
-| 실제 변경 file/symbol/call path | Brutalist 전용 표현 fields를 strict nested schema로 추가합니다. |
-| Data/state/resource owner와 lifetime | Brutalist contract는 schema가 소유합니다. |
-| Failure·absence·fallback 처리 | renderer behavior와 visual contract는 보장하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | Brutalist source shape를 보장합니다. |
-| 다음 commit 또는 관련 test 연결 | `ad07ab4b31a9`가 Cinematic을 추가합니다. |
+| 직전 상태와 부족함 | Brutalist 하위 구조가 실행 시점 검증되지 않았습니다. |
+| 실제 변경 파일·심볼·호출 경로 | Brutalist 전용 표현 필드를 엄격한 중첩 스키마로 추가합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | Brutalist 규칙은 스키마가 소유합니다. |
+| 실패·누락·대체 처리 | 렌더러 동작과 시각 규칙은 보장하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | Brutalist 원본 형식을 보장합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `ad07ab4b31a9`가 Cinematic을 추가합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `23d5297b42bd`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `23d5297b42bd`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 7. `ad07ab4b31a9` — feat(content): Cinematic 홈 표현 schema 추가
 
 - **Importance:** B
 - **Tags:** CONTENT, VALIDATION, RENDERER
-- **Thread 역할:** Cinematic schema
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** Cinematic 스키마
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- Cinematic shell subtitle, home sections/hero/statement/focus/contact/case-study labels를 확인합니다.
-- home outer passthrough 안의 Cinematic node가 strict인지 확인합니다.
+- Cinematic 셸 subtitle, 홈 섹션·히어로·statement·포커스·연락처·프로젝트 사례 문구를 확인합니다.
+- 홈 outer 추가 필드 허용 안의 Cinematic 노드가 엄격한인지 확인합니다.
 
 확인 원칙:
 
-- 먼저 `ad07ab4b31a9^`와 `ad07ab4b31a9`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `ad07ab4b31a9^`와 `ad07ab4b31a9`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | Cinematic subtree가 runtime 검증되지 않았습니다. |
-| 실제 변경 file/symbol/call path | Cinematic shell/home presentation fields를 strict nested schema로 추가합니다. |
-| Data/state/resource owner와 lifetime | Cinematic known contract는 schema가 소유합니다. |
-| Failure·absence·fallback 처리 | 알려지지 않은 sibling home key는 outer passthrough로 허용됩니다. |
-| 보장하는 것과 보장하지 않는 것 | Cinematic source shape를 보장합니다. |
-| 다음 commit 또는 관련 test 연결 | `3c873e373bbb`이 공용 home sections를 추가합니다. |
+| 직전 상태와 부족함 | Cinematic 하위 구조가 실행 시점 검증되지 않았습니다. |
+| 실제 변경 파일·심볼·호출 경로 | Cinematic 셸·홈 화면 구성 필드를 엄격한 중첩 스키마로 추가합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | Cinematic 알려진 규칙은 스키마가 소유합니다. |
+| 실패·누락·대체 처리 | 알려지지 않은 sibling 홈 키는 바깥 객체의 추가 필드 허용으로 허용됩니다. |
+| 보장하는 것과 보장하지 않는 것 | Cinematic 원본 형식을 보장합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `3c873e373bbb`이 공용 홈 섹션을 추가합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `ad07ab4b31a9`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `ad07ab4b31a9`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 8. `3c873e373bbb` — feat(content): 공용 홈 섹션 schema 추가
 
 - **Importance:** B
 - **Tags:** CONTENT, VALIDATION
-- **Thread 역할:** shared home schema
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 공용 홈 스키마
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- shared workMap cards의 ID/label/body/countKey와 technicalFocus/stack/journey/contact schema를 확인합니다.
-- shared node strictness를 확인합니다.
+- 공용 작업 지표 카드의 ID·문구·본문/`countKey`와 technicalFocus·기술 스택·여정·연락처 스키마를 확인합니다.
+- 공용 노드 strictness를 확인합니다.
 
 확인 원칙:
 
-- 먼저 `3c873e373bbb^`와 `3c873e373bbb`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `3c873e373bbb^`와 `3c873e373bbb`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | 다섯 design이 공유하는 home copy가 root passthrough 아래 무검증으로 남았습니다. |
-| 실제 변경 file/symbol/call path | work map과 공용 home sections를 strict shared object로 정의합니다. |
-| Data/state/resource owner와 lifetime | 공유 copy contract는 하나의 schema node가 소유합니다. |
-| Failure·absence·fallback 처리 | count key로 계산되는 metric 값과 card ID 의미는 검사하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | cross-design shared copy의 known shape를 보장합니다. |
-| 다음 commit 또는 관련 test 연결 | `edcf1eaa6f71`부터 auxiliary routes를 추가합니다. |
+| 직전 상태와 부족함 | 다섯 디자인이 공유하는 홈 문구가 최상위 추가 필드 허용 아래 무검증으로 남았습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 작업 지표와 공용 홈 섹션을 엄격한 공용 객체로 정의합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 공유 복사 규칙은 하나의 스키마 노드가 소유합니다. |
+| 실패·누락·대체 처리 | 개수 키로 계산되는 지표 값과 카드 ID 의미는 검사하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 디자인 공통 공용 문구의 알려진 형식을 보장합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `edcf1eaa6f71`부터 auxiliary 라우트를 추가합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `3c873e373bbb`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `3c873e373bbb`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 9. `edcf1eaa6f71` — feat(content): About과 Contact 표현 schema 추가
 
 - **Importance:** B
 - **Tags:** CONTENT, VALIDATION, RENDERER
-- **Thread 역할:** About/Contact schemas
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 소개·연락처 스키마
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- About hero/principles/journey/skills/curation/editorial/brutalist와 Contact availability/notes design fields를 확인합니다.
-- About/Contact/pages outer `passthrough()`를 기록합니다.
+- 소개 히어로·원칙·여정·기술 목록·선별 기록·editorial/brutalist와 연락처 사용 가능 여부·안내 디자인 필드를 확인합니다.
+- 소개·연락처·페이지 outer `passthrough()`를 기록합니다.
 
 확인 원칙:
 
-- 먼저 `edcf1eaa6f71^`와 `edcf1eaa6f71`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `edcf1eaa6f71^`와 `edcf1eaa6f71`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | About과 Contact route copy가 runtime schema에 포함되지 않았습니다. |
-| 실제 변경 file/symbol/call path | 두 route의 known presentation fields를 추가합니다. |
-| Data/state/resource owner와 lifetime | route subtree의 known fields는 schema가 소유하되 page nodes는 확장 가능성을 위해 passthrough를 유지합니다. |
-| Failure·absence·fallback 처리 | unknown page key를 모두 거부하지 않고 실제 page enablement/route 존재를 검사하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | About/Contact known copy 형식을 보장합니다. |
-| 다음 commit 또는 관련 test 연결 | `4eb0db7b9656`이 Interview Map을 추가합니다. |
+| 직전 상태와 부족함 | 소개과 연락처 라우트 복사가 실행 시점 스키마에 포함되지 않았습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 두 라우트의 알려진 화면 구성 필드를 추가합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 라우트 하위 구조의 알려진 필드는 스키마가 소유하되 페이지 노드는 확장 가능성을 위해 추가 필드 허용을 유지합니다. |
+| 실패·누락·대체 처리 | 알 수 없는 페이지 키를 모두 거부하지 않고 실제 페이지 활성화 여부·라우트 존재를 검사하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 소개·연락처 알려진 복사 형식을 보장합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `4eb0db7b9656`이 인터뷰 맵을 추가합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `edcf1eaa6f71`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `edcf1eaa6f71`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 10. `4eb0db7b9656` — feat(content): Interview Map 표현 schema 추가
 
 - **Importance:** B
 - **Tags:** CONTENT, VALIDATION, RENDERER
-- **Thread 역할:** Interview Map schema
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 인터뷰 맵 스키마
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- hero, tracks labels/templates, gaps ARIA/eyebrow schema를 확인합니다.
-- nested strict와 route passthrough를 구분합니다.
+- 히어로, 트랙 문구·템플릿, 부족한 부분 ARIA/eyebrow 스키마를 확인합니다.
+- 중첩된 엄격한와 라우트 추가 필드 허용을 구분합니다.
 
 확인 원칙:
 
-- 먼저 `4eb0db7b9656^`와 `4eb0db7b9656`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `4eb0db7b9656^`와 `4eb0db7b9656`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | Interview Map presentation copy가 root passthrough로만 통과했습니다. |
-| 실제 변경 file/symbol/call path | Interview Map의 evidence index/empty/gaps vocabulary를 schema에 추가합니다. |
-| Data/state/resource owner와 lifetime | known labels/templates는 schema가 소유합니다. |
-| Failure·absence·fallback 처리 | template placeholder의 실제 치환과 evidence reference 존재는 검사하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | Interview Map known presentation shape를 보장합니다. |
-| 다음 commit 또는 관련 test 연결 | `7f3c16b50990`이 Journey를 추가합니다. |
+| 직전 상태와 부족함 | 인터뷰 맵 화면 문구가 최상위 추가 필드 허용으로만 통과했습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 인터뷰 맵의 근거 목록·빈·부족한 부분 허용 값 집합을 스키마에 추가합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 알려진 문구·템플릿는 스키마가 소유합니다. |
+| 실패·누락·대체 처리 | 템플릿 자리표시자의 실제 치환과 근거 참조 존재는 검사하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 인터뷰 맵 알려진 화면 구성 형식을 보장합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `7f3c16b50990`이 여정을 추가합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `4eb0db7b9656`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `4eb0db7b9656`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 11. `7f3c16b50990` — feat(content): Journey 표현 schema 추가
 
 - **Importance:** B
 - **Tags:** CONTENT, VALIDATION, RENDERER
-- **Thread 역할:** Journey schema
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 여정 스키마
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- hero/narrative labels/timeline/now schema와 nested strictness를 확인합니다.
+- 히어로·설명 문구·타임라인·now 스키마와 중첩된 strictness를 확인합니다.
 
 확인 원칙:
 
-- 먼저 `7f3c16b50990^`와 `7f3c16b50990`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `7f3c16b50990^`와 `7f3c16b50990`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | Journey presentation copy가 runtime 검증되지 않았습니다. |
-| 실제 변경 file/symbol/call path | Journey narrative state/reason/result labels와 timeline/current-position fields를 schema에 추가합니다. |
-| Data/state/resource owner와 lifetime | Journey route copy contract는 schema가 소유합니다. |
-| Failure·absence·fallback 처리 | milestone chronology나 anchor project 참조는 검사하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | Journey known presentation shape를 보장합니다. |
-| 다음 commit 또는 관련 test 연결 | `50b78a557344`가 project detail/projects page linkage를 추가합니다. |
+| 직전 상태와 부족함 | 여정 화면 문구가 실행 시점 검증되지 않았습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 여정 설명 상태·이유·결과 문구와 타임라인·현재 위치 필드를 스키마에 추가합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 여정 라우트 복사 규칙은 스키마가 소유합니다. |
+| 실패·누락·대체 처리 | 주요 시점 시간순 기록나 기준 프로젝트 참조는 검사하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 여정 알려진 화면 구성 형식을 보장합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `50b78a557344`가 프로젝트 상세·프로젝트 페이지 linkage를 추가합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `7f3c16b50990`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `7f3c16b50990`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 12. `50b78a557344` — feat(content): 프로젝트 상세 표현 schema 추가
 
 - **Importance:** B
 - **Tags:** CONTENT, VALIDATION
-- **Thread 역할:** project detail and projects route schema closure
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 프로젝트 상세 및 프로젝트 라우트 스키마 완성
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- projectDetail back/case/missing/facts/outro/frame/editorial/sections schema를 확인합니다.
+- projectDetail back·경우·누락된·핵심 정보·outro·프레임·editorial·섹션 스키마를 확인합니다.
 - `pages.projects: projectPageContentSchema` 연결을 확인합니다.
 
 확인 원칙:
 
-- 먼저 `50b78a557344^`와 `50b78a557344`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `50b78a557344^`와 `50b78a557344`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | project detail route와 이미 정의한 projects page schema가 `presentationContentSchema.pages`에 완전히 연결되지 않았습니다. |
-| 실제 변경 file/symbol/call path | project detail known fields와 section key 집합을 추가하고 projects route schema를 pages node에 연결합니다. |
-| Data/state/resource owner와 lifetime | 두 project route contract를 presentation schema가 소유합니다. |
-| Failure·absence·fallback 처리 | project ID 존재, 404 status, section content 존재는 검사하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | project index/detail known presentation shape를 보장합니다. |
-| 다음 commit 또는 관련 test 연결 | `4e2454cfc9c4`가 Resume route를 추가합니다. |
+| 직전 상태와 부족함 | 프로젝트 상세 라우트와 이미 정의한 프로젝트 페이지 스키마가 `presentationContentSchema.pages`에 완전히 연결되지 않았습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 프로젝트 상세 알려진 필드와 섹션 키 집합을 추가하고 프로젝트 라우트 스키마를 페이지 노드에 연결합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 두 프로젝트 라우트 규칙을 화면 구성 스키마가 소유합니다. |
+| 실패·누락·대체 처리 | 프로젝트 ID 존재, 404 상태, 섹션 콘텐츠 존재는 검사하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 프로젝트 목록·상세 알려진 화면 구성 형식을 보장합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `4e2454cfc9c4`가 이력서 라우트를 추가합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `50b78a557344`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `50b78a557344`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 13. `4e2454cfc9c4` — feat(content): Resume 표현 schema 추가
 
 - **Importance:** B
 - **Tags:** CONTENT, VALIDATION, RENDERER
-- **Thread 역할:** Resume presentation schema closure
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 이력서 화면 구성 스키마 완성
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- Resume hero/summary/projects/training/experience/education/notes/identity/editorial/brutalist fields를 확인합니다.
-- route node passthrough와 nested strictness를 기록합니다.
+- 이력서 히어로·요약·프로젝트·교육·경력·학력·안내·식별 정보·editorial/brutalist 필드를 확인합니다.
+- 라우트 노드 추가 필드 허용와 중첩된 strictness를 기록합니다.
 
 확인 원칙:
 
-- 먼저 `4e2454cfc9c4^`와 `4e2454cfc9c4`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `4e2454cfc9c4^`와 `4e2454cfc9c4`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | Resume presentation route가 schema coverage에서 빠져 있었습니다. |
-| 실제 변경 file/symbol/call path | Resume의 known section/title/identity/design-specific fields를 schema에 추가합니다. |
-| Data/state/resource owner와 lifetime | Resume copy contract는 schema가 소유합니다. |
-| Failure·absence·fallback 처리 | download asset, project refs, 실제 section rendering은 검사하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | 주요 presentation routes와 다섯 design의 known field coverage를 완성합니다. |
-| 다음 commit 또는 관련 test 연결 | T8 parser가 이 schema를 실제 `presentation.json`에 적용하고 T9가 design completeness를 검사합니다. |
+| 직전 상태와 부족함 | 이력서 화면 구성 라우트가 스키마 검증 범위에서 빠져 있었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 이력서의 알려진 섹션·제목·식별 정보·디자인별 필드를 스키마에 추가합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 이력서 복사 규칙은 스키마가 소유합니다. |
+| 실패·누락·대체 처리 | 다운로드 자산, 프로젝트 참조, 실제 섹션 렌더링은 검사하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 주요 화면 구성 라우트와 다섯 디자인의 알려진 필드 검증 범위를 완성합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | T8 파서가 이 스키마를 실제 `presentation.json`에 적용하고 T9가 디자인 완전성을 검사합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `4e2454cfc9c4`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `4e2454cfc9c4`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
-## 6. Invariant evolution ledger
+## 6. 불변 조건 변화 기록
 
-| 추적할 invariant | 도입·변화 SHA | 실제 owner/evidence | 제한·후속 보호 |
+| 추적할 불변 조건 | 도입·변화 SHA | 실제 소유 주체·근거 | 제한·후속 보호 |
 | --- | --- | --- | --- |
-| section/design/count key vocabulary는 enum으로 제한한다. | `807214624c87` | presentation primitives | 업무상 순서의 타당성은 미검사 |
-| section order는 최소 한 개이며 중복될 수 없다. | `807214624c87` | design-specific arrays + refine | 지원 design completeness는 T9 |
-| known nested fields는 주로 strict하게 검사한다. | `97ff48de55b8` → `4e2454cfc9c4` | design/route schemas | 선택된 outer nodes는 passthrough |
-| presentation root는 확장 가능성을 유지한다. | `42a81197af82` 이후 | `presentationContentSchema` | unknown top-level/page key를 모두 거부하지 않음 |
+| 섹션·디자인·개수 키 허용 값 집합은 열거형으로 제한합니다. | `807214624c87` | 화면 구성 공용 컴포넌트 | 업무상 순서의 타당성은 미검사 |
+| 섹션 순서는 최소 한 개이며 중복될 수 없습니다. | `807214624c87` | 디자인별 배열 + refine | 지원 디자인 완전성은 T9 |
+| 알려진 중첩된 필드는 주로 엄격한하게 검사합니다. | `97ff48de55b8` → `4e2454cfc9c4` | 디자인·라우트 스키마 | 선택된 outer 노드는 추가 필드 허용 |
+| 화면 구성 최상위는 확장 가능성을 유지합니다. | `42a81197af82` 이후 | `presentationContentSchema` | 알 수 없는 최상위·페이지 키를 모두 거부하지 않음 |
 
-## 7. Failure → Fix → Test 관계
+## 7. 실패 → 수정 → 테스트 관계
 
-| Failure 또는 risk | Fix/전환 SHA | 교정된 결정 | Regression·검증 관계 |
+| 실패 또는 위험 | 수정·전환 SHA | 교정된 결정 | 회귀·검증 관계 |
 | --- | --- | --- | --- |
-| presentation JSON이 임의 section/count key를 수용 | `807214624c87` | enum + unique section arrays | 후속 invalid-presentation tests |
-| route/design known field가 runtime 검증 밖에 있음 | T6 sequence | 각 subtree schema를 점진 연결 | `03d2c9be0a43`에서 실제 source parse |
-| strictness를 전체 문서에 과장할 위험 | 의도된 `passthrough()` 유지 | known nested contract만 strict | unknown extension key 허용을 비보장으로 기록 |
+| 화면 구성 JSON이 임의 섹션·개수 키를 수용 | `807214624c87` | 열거형 + 고유한 섹션 배열 | 후속 유효하지 유효하지 않은 화면 구성 테스트 |
+| 라우트·디자인 알려진 필드가 실행 시점 검증 밖에 있음 | T6 순서 | 각 하위 구조 스키마를 점진 연결 | `03d2c9be0a43`에서 실제 원본 파싱 |
+| strictness를 전체 문서에 과장할 위험 | 의도된 `passthrough()` 유지 | 알려진 중첩된 규칙만 엄격한 | 알 수 없는 extension 키 허용을 비보장으로 기록 |
 
-## 8. Ownership·state·responsibility 변화
+## 8. 소유 주체·상태·담당 작업 변화
 
-| 대상 | 이전 owner/state | 최종 owner/state | 근거 |
+| 대상 | 이전 소유 주체·상태 | 최종 소유 주체·상태 | 근거 |
 | --- | --- | --- | --- |
-| presentation ID vocabulary | 수동 union | Zod enums/refine | `content-schema.ts` |
-| design/route known fields | TypeScript/JSON convention | nested schemas | 각 design/page node |
-| extension keys | 암묵적 허용 | 명시적 passthrough 지점 | root/home/pages/선택 route |
-| cross-file design/reference integrity | 없음 | 여전히 없음 | T9 loader가 인수 |
+| 화면 구성 ID 허용 값 집합 | 수동 유니언 | Zod enums/refine | `content-schema.ts` |
+| 디자인·라우트 알려진 필드 | TypeScript/JSON 관례 | 중첩된 스키마 | 각 디자인·페이지 노드 |
+| extension 키 | 암묵적 허용 | 명시적 추가 필드 허용 지점 | 최상위·홈·페이지·선택 라우트 |
+| 파일 간 디자인·참조 무결성 | 없음 | 여전히 없음 | T9 로더가 인수 |
 
-## 9. Thread 최종 상태
+## 9. 개발 흐름 최종 상태
 
-Thread 종료 시점에는 다섯 design과 주요 route의 known presentation fields, 공용 UI/empty-state vocabulary, section ID·count key·ordering cardinality가 runtime schema로 표현됩니다. 다만 root와 선택된 outer page nodes는 확장 key를 허용하며 default design completeness, route/project reference, renderer behavior는 보장하지 않습니다.
+개발 흐름 종료 시점에는 다섯 디자인과 주요 라우트의 알려진 화면 구성 필드, 공용 UI·빈 상태 허용 값 집합, 섹션 ID·개수 키·순서 결정 개수가 실행 시점 스키마로 표현됩니다. 다만 최상위와 선택된 outer 페이지 노드는 확장 키를 허용하며 기본 디자인 완전성, 라우트·프로젝트 참조, 렌더러 동작은 보장하지 않습니다.
 
 ### 최종 설명
 
-- 공용 design/section/count-key vocabulary와 section 유일성 invariant를 정의했습니다.
-- 다섯 home design과 shared sections를 strict nested contract로 확장했습니다.
-- projects/detail/About/Contact/Interview Map/Journey/Resume route를 schema에 연결했습니다.
-- 문서 전체 strictness를 과장하지 않고 의도된 passthrough 지점을 남겼습니다.
+- 공용 디자인·섹션·개수 키 허용 값 집합과 섹션 유일성 불변 조건을 정의했습니다.
+- 다섯 홈 디자인과 공용 섹션을 엄격한 중첩된 규칙으로 확장했습니다.
+- 프로젝트·상세·소개·연락처·인터뷰 맵·여정·이력서 라우트를 스키마에 연결했습니다.
+- 문서 전체 strictness를 과장하지 않고 의도된 추가 필드 허용 지점을 남겼습니다.
 
 ## 10. 최종 실행·데이터 흐름
 
-| 단계 | Owner/call path | 입력·출력 | Failure/non-guarantee |
+| 단계 | 담당 위치·호출 경로 | 입력·출력 | 실패·보장하지 않는 범위 |
 | --- | --- | --- | --- |
-| presentation JSON을 입력합니다. | `presentationContentSchema` | root object | parser 연결 전에는 호출되지 않음 |
-| design/section IDs를 검사합니다. | enum/refine schemas | 허용·유일한 IDs | 순서 의미는 미검사 |
-| known nested route/design fields를 검사합니다. | strict child schemas | typed parsed subtrees | outer extension keys는 보존 |
-| 후속 integrity 검사로 넘깁니다. | T8/T9 loader | parsed presentation source | default/templates completeness는 후속 |
+| 화면 구성 JSON을 입력합니다. | `presentationContentSchema` | 최상위 객체 | 파서 연결 전에는 호출되지 않음 |
+| 디자인·섹션 ID를 검사합니다. | 열거형·refine 스키마 | 허용·유일한 ID | 순서 의미는 미검사 |
+| 알려진 중첩된 라우트·디자인 필드를 검사합니다. | 엄격한 하위 스키마 | 타입이 지정된 파싱된 하위 구조 | outer extension 키는 보존 |
+| 후속 무결성 검사로 넘깁니다. | T8/T9 로더 | 파싱된 화면 구성 원본 | 기본값·템플릿 완전성은 후속 |
 
 ## 11. 학습 완료 확인
 
-완료했습니다. 모든 commit은 exact SHA의 parent diff/resulting tree를 기준으로 기록했고, direct execution evidence와 static inspection을 구분했습니다. `3353032ba23b`은 다섯 design과 invalid/unsupported design cases를 후속 테스트합니다. 이 작업에서는 실행하지 않았습니다.
+완료했습니다. 모든 커밋은 해당 SHA의 부모 커밋과의 차이·변경 후 파일 트리를 기준으로 기록했고, 직접 실행 근거와 정적 검토를 구분했습니다. `3353032ba23b`은 다섯 디자인과 유효하지 않은·지원하지 않는 디자인 경우를 후속 테스트합니다. 이 작업에서는 실행하지 않았습니다.
 ===== END FILE: 06-runtime-presentation-schema-contracts.md =====
 
 ===== BEGIN FILE: 07-starter-catalog-migration.md =====
-# Thread: Starter catalog migration
+# 개발 흐름: 예제 카탈로그 전환
 
-> Repository: `https://github.com/seungwoo7050/42-archive`  
-> Branch: `web/portfolio`  
-> Category: `01-application-foundation-and-content-systems`
+> 저장소: `https://github.com/seungwoo7050/42-archive`
+> 브랜치: `web/portfolio`
+> 분류: `01-application-foundation-and-content-systems`
 
 ## 0. 분류 출처와 변경 가능 범위
 
-- Commit SHA, subject, importance, tags는 target branch의 `commit/commit-importance.md` 분류와 exact commit metadata를 사용합니다.
-- 이 문서의 Thread grouping, 목표, 역할, 조사 지점은 Phase 1 category audit에서 repository evidence를 기준으로 확정했습니다.
-- Phase 2에서는 이 fixed information을 바꾸지 않고 learner-facing 기록만 채웠습니다.
-- 다른 branch나 final HEAD 구현을 과거 SHA 설명에 소급하지 않습니다.
+- 커밋 SHA·제목·중요도·태그는 대상 브랜치의 `commit/commit-importance.md` 분류와 해당 커밋의 정확한 메타데이터를 사용합니다.
+- 이 문서의 개발 흐름 묶음·목표·역할·확인 지점은 1단계 분류 검토에서 저장소 근거를 바탕으로 확정했습니다.
+- 2단계에서는 이 고정 정보를 바꾸지 않고 학습자용 기록만 작성했습니다.
+- 다른 브랜치나 최종 HEAD의 구현을 과거 SHA의 설명으로 소급하지 않습니다.
 
-## 1. Thread 목표
+## 1. 개발 흐름 목표
 
-빈 collection과 generic placeholder를 실제 schema 전체를 행사하는 coherent starter catalog로 바꾸고, project source를 legacy 배열에서 `{groups, metrics, items}` document로 이행하는 과정을 복원합니다.
+빈 목록과 일반적인 자리표시자를 실제 스키마 전체를 행사하는 일관된 초기 예시 카탈로그로 바꾸고, 프로젝트 원본을 기존 배열에서 `{groups, metrics, items}` 문서로 이행하는 과정을 복원합니다.
 
-### 계획된 핵심 invariant
+### 계획된 핵심 불변 조건
 
-- Migration 중에는 legacy 배열과 새 catalog object를 모두 읽지만 이 compatibility branch는 runtime validation이 아닙니다.
-- Starter source의 cross-file IDs는 서로 맞물려야 하지만 이 Thread 시점에는 관례로만 유지됩니다.
-- 중간 commit의 일시적으로 불완전한 catalog와 최종 coherent starter 상태를 구분합니다.
+- 전환 중에는 기존 배열과 새 카탈로그 객체를 모두 읽지만 이 호환 브랜치는 실행 시점 검증이 아닙니다.
+- 초기 예시 원본의 파일 간 ID는 서로 맞물려야 하지만 이 개발 흐름 시점에는 관례로만 유지됩니다.
+- 중간 커밋의 일시적으로 불완전한 카탈로그와 최종 일관된 초기 예시 상태를 구분합니다.
 
-## 2. 이 Thread를 이해하기 위한 핵심 질문
+## 2. 이 개발 흐름을 이해하기 위한 핵심 질문
 
-- 호환 loader가 두 project source shape를 수용하는 방식과 한계는 무엇인가?
-- groups/metrics가 먼저 추가되고 items가 뒤따르는 중간 상태는 왜 그대로 기록해야 하는가?
-- starter content가 schema coverage를 넓혀도 runtime parse/reference validation을 대신하지 못하는 이유는 무엇인가?
+- 호환 로더가 두 프로젝트 원본 형식을 수용하는 방식과 한계는 무엇인가?
+- 그룹·지표가 먼저 추가되고 항목이 뒤따르는 중간 상태는 왜 그대로 기록해야 하는가?
+- 초기 예시 콘텐츠가 스키마 검증 범위를 넓혀도 실행 시점 파싱·참조 검증을 대신하지 못하는 이유는 무엇인가?
 
 ## 3. 완료 기준
 
-- 각 SHA의 parent diff와 resulting tree에서 실제 file/symbol을 확인합니다.
-- 이전 상태, implementation decision, owner/lifetime, absence/failure/fallback, guarantee/non-guarantee를 분리합니다.
-- Fix·refactor·integration은 바로 앞의 assumption이나 duplicated responsibility와 연결합니다.
-- 테스트나 command는 실제 실행 여부를 정적 검토와 명확히 구분합니다.
-- Thread 종료 시 invariant evolution과 최종 flow를 코드 없이 설명합니다.
+- 각 SHA의 부모 커밋과의 차이와 변경 후 파일 트리에서 실제 파일과 심볼을 확인합니다.
+- 이전 상태, 구현 결정, 소유 주체와 수명, 누락·실패·대체 처리, 보장 범위와 보장하지 않는 범위를 나눠 기록합니다.
+- 수정·리팩터링·통합은 바로 앞선 가정이나 중복 구현과 연결합니다.
+- 테스트와 명령은 실제 실행 여부를 정적 검토와 명확히 구분합니다.
+- 개발 흐름 마지막에는 불변 조건의 변화와 최종 실행 순서를 코드 없이 설명합니다.
 
-## 4. Commit map
+## 4. 커밋 목록
 
-| 순서 | Commit | Subject | Importance | Tags | 이 Thread에서의 역할 |
-| ---: | --- | --- | :---: | --- | --- |
-| 1 | `d717c35cf80c` | refactor(content): 프로젝트 컬렉션 migration 경계 추가 | B | CONTENT, REFACTOR | legacy/new project source 호환 경계 |
-| 2 | `6caa6debdb01` | feat(content): 사이트와 프로필 starter 콘텐츠 구성 | B | CONTENT | identity starter source |
-| 3 | `f8ea6376c65c` | feat(content): 링크와 기술 starter 콘텐츠 구성 | B | CONTENT | link/technology starter graph |
-| 4 | `247ad421101a` | feat(content): 프로젝트 starter 분류와 지표 구성 | B | CONTENT | catalog envelope와 metric starter |
-| 5 | `c58a1be43009` | feat(content): 프로젝트 starter 상세 구성 | B | CONTENT | full starter project case |
-| 6 | `83bd41a353ce` | feat(content): Resume와 여정 starter 콘텐츠 구성 | B | CONTENT, RENDERER | chronology/résumé starter references |
-| 7 | `7ba62b311776` | feat(content): Interview Map과 큐레이션 starter 콘텐츠 구성 | B | CONTENT, RENDERER | evidence/curation starter graph |
+| 순서 | 커밋 | 제목 | 중요도 | 태그 | 이 개발 흐름에서의 역할 |
+| ---: | --- | --- |:---: | --- | --- |
+| 1 | `d717c35cf80c` | refactor(content): 프로젝트 컬렉션 migration 경계 추가 | B | CONTENT, REFACTOR | 기존·새 프로젝트 원본 호환 경계 |
+| 2 | `6caa6debdb01` | feat(content): 사이트와 프로필 starter 콘텐츠 구성 | B | CONTENT | 식별 정보 초기 예시 원본 |
+| 3 | `f8ea6376c65c` | feat(content): 링크와 기술 starter 콘텐츠 구성 | B | CONTENT | 링크·기술 초기 예시 참조 관계 |
+| 4 | `247ad421101a` | feat(content): 프로젝트 starter 분류와 지표 구성 | B | CONTENT | 카탈로그 envelope와 지표 초기 예시 |
+| 5 | `c58a1be43009` | feat(content): 프로젝트 starter 상세 구성 | B | CONTENT | 전체 초기 예시 프로젝트 경우 |
+| 6 | `83bd41a353ce` | feat(content): Resume와 여정 starter 콘텐츠 구성 | B | CONTENT, RENDERER | 시간순 기록·résumé 초기 예시 참조 |
+| 7 | `7ba62b311776` | feat(content): Interview Map과 큐레이션 starter 콘텐츠 구성 | B | CONTENT, RENDERER | 근거·선별 기록 초기 예시 참조 관계 |
 
-## 5. Commit별 학습 기록
+## 5. 커밋별 학습 기록
 
 ### 1. `d717c35cf80c` — refactor(content): 프로젝트 컬렉션 migration 경계 추가
 
 - **Importance:** B
 - **Tags:** CONTENT, REFACTOR
-- **Thread 역할:** legacy/new project source 호환 경계
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 기존·새 프로젝트 원본 호환 경계
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `ProjectContentFile = PortfolioProject[] | { items: PortfolioProject[] }`와 `Array.isArray` branch를 확인합니다.
-- 두 branch 모두 `as unknown as` assertion을 사용하는지와 groups/metrics를 아직 소비하지 않는지 확인합니다.
+- `ProjectContentFile = PortfolioProject[] | { items: PortfolioProject[] }`와 `Array.isArray` 브랜치를 확인합니다.
+- 두 브랜치 모두 `as unknown as` 단언문을 사용하는지와 그룹·지표를 아직 소비하지 않는지 확인합니다.
 
 확인 원칙:
 
-- 먼저 `d717c35cf80c^`와 `d717c35cf80c`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `d717c35cf80c^`와 `d717c35cf80c`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | project source는 legacy 배열이었고 새 catalog object로 바꾸면 `content.ts` import가 즉시 깨질 수 있었습니다. |
-| 실제 변경 file/symbol/call path | 배열이면 그대로, object면 `.items`를 사용하도록 임시 compatibility branch를 추가합니다. |
-| Data/state/resource owner와 lifetime | `content.ts`가 migration 기간의 shape normalization을 소유합니다. |
-| Failure·absence·fallback 처리 | 이 코드는 parse가 아니라 assertion이므로 `{}` 같은 malformed object에서 `.items`가 `undefined`가 될 수 있고 groups/metrics를 보존하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | 배열→object 전환 중 기존 project consumers의 최소 호환만 보장합니다. |
-| 다음 commit 또는 관련 test 연결 | `247ad421101a`와 `c58a1be43009`에서 새 catalog source가 단계적으로 채워지고 `508e0b71024b`에서 이 임시 branch가 제거됩니다. |
+| 직전 상태와 부족함 | 프로젝트 원본은 기존 배열이었고 새 카탈로그 객체로 바꾸면 `content.ts` 가져오기가 즉시 깨질 수 있었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 배열이면 그대로, 객체면 `.items`를 사용하도록 임시 호환 브랜치를 추가합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | `content.ts`가 전환 기간의 형식 정규화을 소유합니다. |
+| 실패·누락·대체 처리 | 이 코드는 파싱이 아니라 단언문이므로 `{}` 같은 잘못된 형식의 객체에서 `.items`가 `undefined`가 될 수 있고 그룹·지표를 보존하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 배열→객체 전환 중 기존 프로젝트 소비자의 최소 호환만 보장합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `247ad421101a`와 `c58a1be43009`에서 새 카탈로그 원본이 단계적으로 채워지고 `508e0b71024b`에서 이 임시 브랜치가 제거됩니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `d717c35cf80c`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `d717c35cf80c`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 2. `6caa6debdb01` — feat(content): 사이트와 프로필 starter 콘텐츠 구성
 
 - **Importance:** B
 - **Tags:** CONTENT
-- **Thread 역할:** identity starter source
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 식별 정보 초기 예시 원본
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- site title/brand/navigation/footer/pages/socialImage와 profile identity/photo/principles를 확인합니다.
-- contact/experience starter additions가 같은 commit에 포함되는지 확인합니다.
+- 사이트 제목·브랜드·탐색·푸터·페이지·소셜 이미지와 프로필 식별 정보·사진·원칙을 확인합니다.
+- 연락처·경력 초기 예시 additions가 같은 커밋에 포함되는지 확인합니다.
 
 확인 원칙:
 
-- 먼저 `6caa6debdb01^`와 `6caa6debdb01`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `6caa6debdb01^`와 `6caa6debdb01`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | site/profile/contact/experience source가 빈 값 또는 generic placeholder여서 실제 route와 schema field를 충분히 행사하지 못했습니다. |
-| 실제 변경 file/symbol/call path | portfolio template에 맞는 identity, navigation, page toggles, profile principles, contact availability, example experience를 채웁니다. |
-| Data/state/resource owner와 lifetime | starter defaults는 각 JSON file이 소유합니다. |
-| Failure·absence·fallback 처리 | 실제 사용자 정보가 아니며 navigation target/asset 존재는 아직 검증하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | site/profile 기반 route가 사용할 coherent starter vocabulary를 제공합니다. |
-| 다음 commit 또는 관련 test 연결 | `f8ea6376c65c`가 link/technology ID 집합을 구성합니다. |
+| 직전 상태와 부족함 | 사이트·프로필·연락처·경력 원본이 빈 값 또는 일반적인 자리표시자여서 실제 라우트와 스키마 필드를 충분히 행사하지 못했습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 포트폴리오 템플릿에 맞는 식별 정보, 탐색, 페이지 toggles, 프로필 원칙, 연락처 사용 가능 여부, example 경력을 채웁니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 초기 예시 defaults는 각 JSON 파일이 소유합니다. |
+| 실패·누락·대체 처리 | 실사용자 정보가 아니며 탐색 대상·자산 존재는 아직 검증하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 사이트·프로필 기반 라우트가 사용할 일관된 초기 예시 허용 값 집합을 제공합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `f8ea6376c65c`가 링크·기술 ID 집합을 구성합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `6caa6debdb01`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `6caa6debdb01`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 3. `f8ea6376c65c` — feat(content): 링크와 기술 starter 콘텐츠 구성
 
 - **Importance:** B
 - **Tags:** CONTENT
-- **Thread 역할:** link/technology starter graph
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 링크·기술 초기 예시 참조 관계
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `links.json`의 IDs, enabled flag, placements, href를 확인합니다.
-- `skills.json`, `tech-stack.json`의 IDs와 project stack에서 사용할 vocabulary를 확인합니다.
+- `links.json`의 ID, 활성화된 설정값, 노출 위치, href를 확인합니다.
+- `skills.json`, `tech-stack.json`의 ID와 프로젝트 기술 스택에서 사용할 허용 값 집합을 확인합니다.
 
 확인 원칙:
 
-- 먼저 `f8ea6376c65c^`와 `f8ea6376c65c`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `f8ea6376c65c^`와 `f8ea6376c65c`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | link/skills/technology collection이 비어 있어 selector·schema·renderer가 실제 ID/placement를 행사하지 못했습니다. |
-| 실제 변경 file/symbol/call path | source/repository/contact link와 technology/skill examples를 추가하고 email link는 disabled 상태로 남깁니다. |
-| Data/state/resource owner와 lifetime | content author가 link placement와 technology ID vocabulary를 소유합니다. |
-| Failure·absence·fallback 처리 | ID uniqueness, enabled preferred link, 실제 URL 응답은 아직 보장하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | 후속 project/contact source가 참조할 starter IDs를 제공합니다. |
-| 다음 commit 또는 관련 test 연결 | `247ad421101a`가 project groups/metrics를 먼저 추가합니다. |
+| 직전 상태와 부족함 | 링크·기술 목록·기술 목록이 비어 있어 선택자·스키마·렌더러가 실제 ID·노출 위치를 행사하지 못했습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 원본·저장소·연락처 링크와 기술과 사용 예시를 추가하고 email 링크는 비활성화된 상태로 남깁니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 콘텐츠 작성자가 링크 노출 위치와 기술 ID 허용 값 집합을 소유합니다. |
+| 실패·누락·대체 처리 | ID 고유성, 활성화된 우선 링크, 실제 URL 응답은 아직 보장하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 후속 프로젝트·연락처 원본이 참조할 초기 ID를 제공합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `247ad421101a`가 프로젝트 그룹·지표를 먼저 추가합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `f8ea6376c65c`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `f8ea6376c65c`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 4. `247ad421101a` — feat(content): 프로젝트 starter 분류와 지표 구성
 
 - **Importance:** B
 - **Tags:** CONTENT
-- **Thread 역할:** catalog envelope와 metric starter
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 카탈로그 envelope와 지표 초기 예시
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `projects.json`이 배열에서 `{groups, metrics, items}` object로 바뀌는 diff를 확인합니다.
-- groups/metrics가 실제 값을 갖지만 `items`가 빈 중간 상태인지 확인합니다.
+- `projects.json`이 배열에서 `{groups, metrics, items}` 객체로 바뀌는 변경 내용을 확인합니다.
+- 그룹·지표가 실제 값을 갖지만 `items`가 빈 중간 상태인지 확인합니다.
 
 확인 원칙:
 
-- 먼저 `247ad421101a^`와 `247ad421101a`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `247ad421101a^`와 `247ad421101a`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | project source는 분류/metric vocabulary 없이 legacy item 배열만 표현했습니다. |
-| 실제 변경 file/symbol/call path | starter group descriptions와 declarative metrics를 추가하고 새 catalog envelope를 도입합니다. |
-| Data/state/resource owner와 lifetime | project catalog document가 grouping/metric definitions를 소유합니다. |
-| Failure·absence·fallback 처리 | 이 exact SHA에서는 `items`가 비어 있어 훗날의 `projectsContentSchema.min(1)`을 만족하지 않는 중간 상태입니다. 당시 compatibility loader는 `.items`만 읽습니다. |
-| 보장하는 것과 보장하지 않는 것 | 새 document shape와 분류/metric vocabulary를 도입하지만 usable starter catalog 완성은 보장하지 않습니다. |
-| 다음 commit 또는 관련 test 연결 | `c58a1be43009`가 실제 project item을 추가해 중간 공백을 닫습니다. |
+| 직전 상태와 부족함 | 프로젝트 원본은 분류·지표 허용 값 집합 없이 기존 항목 배열만 표현했습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 초기 예시 그룹 설명와 선언형 지표를 추가하고 새 카탈로그 envelope를 도입합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 프로젝트 카탈로그 문서가 그룹화·지표 정의를 소유합니다. |
+| 실패·누락·대체 처리 | 이 해당 SHA에서는 `items`가 비어 있어 훗날의 `projectsContentSchema.min(1)`을 만족하지 않는 중간 상태입니다. 당시 호환 로더는 `.items`만 읽습니다. |
+| 보장하는 것과 보장하지 않는 것 | 새 문서 형식과 분류·지표 허용 값 집합을 도입하지만 사용 가능한 초기 예시 카탈로그 완성은 보장하지 않습니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `c58a1be43009`가 실제 프로젝트 항목을 추가해 중간 공백을 닫습니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `247ad421101a`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `247ad421101a`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 5. `c58a1be43009` — feat(content): 프로젝트 starter 상세 구성
 
 - **Importance:** B
 - **Tags:** CONTENT
-- **Thread 역할:** full starter project case
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 전체 초기 예시 프로젝트 경우
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- example project의 groupId/tags/deployment/screenshots/stack/links/highlights/problem/solution/architecture/decisions/tradeoffs/results를 확인합니다.
-- 이 IDs가 앞선 groups/tech/link vocabulary와 맞물리는지 정적으로 추적합니다.
+- example 프로젝트의 groupId·태그·배포 상태·화면 캡처·기술 스택·링크·주요 내용·문제·해결책·설계·결정·절충안·결과를 확인합니다.
+- 이 ID가 앞선 그룹·기술·링크 허용 값 집합과 맞물리는지 정적으로 추적합니다.
 
 확인 원칙:
 
-- 먼저 `c58a1be43009^`와 `c58a1be43009`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `c58a1be43009^`와 `c58a1be43009`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | 새 catalog envelope에는 project item이 없어 route와 selector가 실제 상세 사례를 렌더링할 수 없었습니다. |
-| 실제 변경 file/symbol/call path | schema 전체를 행사하는 example project item을 추가합니다. |
-| Data/state/resource owner와 lifetime | project source가 starter case study의 완전한 narrative와 references를 소유합니다. |
-| Failure·absence·fallback 처리 | 참조가 코드상 맞아 보여도 loader integrity가 아직 실행되지 않아 typo를 fail-closed 하지 않습니다. asset 파일 존재도 별도입니다. |
-| 보장하는 것과 보장하지 않는 것 | starter catalog가 최소 한 개의 완전한 project를 갖습니다. |
-| 다음 commit 또는 관련 test 연결 | `83bd41a353ce`가 résumé/journey에서 이 project를 참조합니다. |
+| 직전 상태와 부족함 | 새 카탈로그 envelope에는 프로젝트 항목이 없어 라우트와 선택자가 실제 상세 사례를 렌더링할 수 없었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 스키마 전체를 행사하는 example 프로젝트 항목을 추가합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 프로젝트 원본이 초기 예시 프로젝트 사례의 완전한 설명과 참조를 소유합니다. |
+| 실패·누락·대체 처리 | 참조가 코드상 맞아 보여도 로더 무결성이 아직 실행되지 않아 오타를 오류를 차단하지 않습니다. 자산 파일 존재도 별도입니다. |
+| 보장하는 것과 보장하지 않는 것 | 초기 예시 카탈로그가 최소 한 개의 완전한 프로젝트를 갖습니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `83bd41a353ce`가 résumé/여정에서 이 프로젝트를 참조합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `c58a1be43009`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `c58a1be43009`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 6. `83bd41a353ce` — feat(content): Resume와 여정 starter 콘텐츠 구성
 
 - **Importance:** B
 - **Tags:** CONTENT, RENDERER
-- **Thread 역할:** chronology/résumé starter references
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 시간순 기록·résumé 초기 예시 참조
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `journey.json`, `journey-narrative.json`, `resume.json`의 project IDs와 narrative fields를 확인합니다.
-- nullable journey item과 non-null project references를 구분합니다.
+- `journey.json`, `journey-narrative.json`, `resume.json`의 프로젝트 ID와 설명 필드를 확인합니다.
+- nullable 여정 항목과 null이 아닌 프로젝트 참조를 구분합니다.
 
 확인 원칙:
 
-- 먼저 `83bd41a353ce^`와 `83bd41a353ce`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `83bd41a353ce^`와 `83bd41a353ce`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | starter project가 résumé와 chronology에 연결되지 않아 cross-route narrative가 비어 있었습니다. |
-| 실제 변경 file/symbol/call path | journey items, narrative milestones/current position, résumé summary/training/education/notes/projectIds를 채웁니다. |
-| Data/state/resource owner와 lifetime | 각 document가 자신의 narrative와 project references를 소유합니다. |
-| Failure·absence·fallback 처리 | project ID 존재, chronology order, resume asset 존재는 아직 runtime에서 검사하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | starter project가 résumé와 journey route에서 재사용될 source graph를 제공합니다. |
-| 다음 commit 또는 관련 test 연결 | `7ba62b311776`가 interview evidence와 curation references를 완성합니다. |
+| 직전 상태와 부족함 | 초기 예시 프로젝트가 résumé와 시간순 기록에 연결되지 않아 라우트 공통 설명이 비어 있었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 여정 항목, 설명 주요 시점·현재 위치, résumé 요약·교육·학력·안내·프로젝트 ID를 채웁니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 각 문서가 자신의 설명과 프로젝트 참조를 소유합니다. |
+| 실패·누락·대체 처리 | 프로젝트 ID 존재, 시간순 기록 순서, 이력서 자산 존재는 아직 실행 시점에서 검사하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 초기 예시 프로젝트가 résumé와 여정 라우트에서 재사용될 원본 참조 관계를 제공합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `7ba62b311776`가 인터뷰 근거와 선별 기록 참조를 완성합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `83bd41a353ce`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `83bd41a353ce`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 7. `7ba62b311776` — feat(content): Interview Map과 큐레이션 starter 콘텐츠 구성
 
 - **Importance:** B
 - **Tags:** CONTENT, RENDERER
-- **Thread 역할:** evidence/curation starter graph
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 근거·선별 기록 초기 예시 참조 관계
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- Interview Map tracks/items/answers와 curation categories/projectIds를 확인합니다.
-- reference repo, gaps, omissions, nextReview 값을 확인합니다.
+- 인터뷰 맵 트랙·항목·답변과 선별 기록 분류·프로젝트 ID를 확인합니다.
+- 참조 저장소, 부족한 부분, 제외 항목, nextReview 값을 확인합니다.
 
 확인 원칙:
 
-- 먼저 `7ba62b311776^`와 `7ba62b311776`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `7ba62b311776^`와 `7ba62b311776`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | Interview Map과 curation source가 비어 있어 project evidence의 선택 이유와 부족한 영역을 표현하지 못했습니다. |
-| 실제 변경 file/symbol/call path | starter project를 evidence answer와 curation category에 연결하고 gaps/criteria/omissions를 채웁니다. |
-| Data/state/resource owner와 lifetime | evidence/curation documents가 project selection narrative를 소유합니다. |
-| Failure·absence·fallback 처리 | answer/category project ID가 enabled project인지와 track/category ID uniqueness는 아직 loader가 검사하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | 주요 domain source가 하나의 coherent starter project graph를 공유합니다. |
-| 다음 commit 또는 관련 test 연결 | T8/T9가 이 starter graph를 실제 parse하고 reference integrity로 검증합니다. |
+| 직전 상태와 부족함 | 인터뷰 맵과 선별 기록 원본이 비어 있어 프로젝트 근거의 선택 이유와 부족한 영역을 표현하지 못했습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 초기 예시 프로젝트를 근거 답변과 선별 기록 분류에 연결하고 부족한 부분·기준·제외 항목을 채웁니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 근거·선별 기록 documents가 프로젝트 선택 설명을 소유합니다. |
+| 실패·누락·대체 처리 | 답변·분류 프로젝트 ID가 활성화된 프로젝트인지와 트랙·분류 ID 고유성은 아직 로더가 검사하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 주요 데이터 영역 원본이 하나의 일관된 초기 예시 프로젝트 참조 관계를 공유합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | T8/T9가 이 초기 예시 참조 관계를 실제 파싱하고 참조 무결성으로 검증합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `7ba62b311776`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `7ba62b311776`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
-## 6. Invariant evolution ledger
+## 6. 불변 조건 변화 기록
 
-| 추적할 invariant | 도입·변화 SHA | 실제 owner/evidence | 제한·후속 보호 |
+| 추적할 불변 조건 | 도입·변화 SHA | 실제 소유 주체·근거 | 제한·후속 보호 |
 | --- | --- | --- | --- |
-| legacy 배열과 새 object를 migration 중 함께 읽는다. | `d717c35cf80c` | `content.ts` compatibility branch | assertion 기반이고 groups/metrics 손실 |
-| 새 project catalog는 groups/metrics/items를 분리한다. | `247ad421101a` → `c58a1be43009` | `projects.json` | 첫 commit은 items가 빈 중간 상태 |
-| starter IDs는 여러 source가 같은 project graph를 참조한다. | `f8ea6376c65c` → `7ba62b311776` | content JSON files | runtime integrity는 T9 |
+| 기존 배열과 새 객체를 전환 중 함께 읽습니다. | `d717c35cf80c` | `content.ts` 호환 브랜치 | 단언문 기반이고 그룹·지표 손실 |
+| 새 프로젝트 카탈로그는 그룹·지표·항목을 분리합니다. | `247ad421101a` → `c58a1be43009` | `projects.json` | 첫 커밋은 항목이 빈 중간 상태 |
+| 초기 ID는 여러 원본이 같은 프로젝트 참조 관계를 참조합니다. | `f8ea6376c65c` → `7ba62b311776` | 콘텐츠 JSON 파일 | 실행 시점 무결성은 T9 |
 
-## 7. Failure → Fix → Test 관계
+## 7. 실패 → 수정 → 테스트 관계
 
-| Failure 또는 risk | Fix/전환 SHA | 교정된 결정 | Regression·검증 관계 |
+| 실패 또는 위험 | 수정·전환 SHA | 교정된 결정 | 회귀·검증 관계 |
 | --- | --- | --- | --- |
-| source shape 전환이 기존 import를 깨뜨림 | `d717c35cf80c` | dual-shape compatibility branch | `508e0b71024b` validated facade에서 제거 |
-| catalog envelope만 있고 item이 없음 | `c58a1be43009` | full starter project 추가 | 후속 schema parse가 min(1) 보호 |
-| cross-file starter references에 typo가 생길 위험 | T9 loader sequence | enabled ID sets와 missing-reference issues | `3353032ba23b` invalid source tests |
+| 원본 형식 전환이 기존 가져오기를 깨뜨림 | `d717c35cf80c` | 두 두 형식 호환 브랜치 | `508e0b71024b` 검증된 공개 모듈에서 제거 |
+| 카탈로그 envelope만 있고 항목이 없음 | `c58a1be43009` | 전체 초기 예시 프로젝트 추가 | 후속 스키마 파싱이 min(1) 보호 |
+| 파일 간 초기 예시 참조에 typo가 생길 위험 | T9 로더 순서 | 활성화된 ID 집합과 누락된 참조 문제 | `3353032ba23b` 유효하지 않은 원본 테스트 |
 
-## 8. Ownership·state·responsibility 변화
+## 8. 소유 주체·상태·담당 작업 변화
 
-| 대상 | 이전 owner/state | 최종 owner/state | 근거 |
+| 대상 | 이전 소유 주체·상태 | 최종 소유 주체·상태 | 근거 |
 | --- | --- | --- | --- |
-| project source normalization | legacy array assumption | `content.ts` dual branch | 임시 migration owner |
-| catalog grouping/metrics | 없음 | `projects.json` root | content author |
-| starter narrative graph | 분산 placeholder | 각 content JSON | shared IDs로 연결 |
-| runtime trust | 없음 | 여전히 없음 | T8/T9가 인수 |
+| 프로젝트 원본 정규화 | 기존 배열 가정 | `content.ts` 두 갈래 브랜치 | 임시 전환 소유 주체 |
+| 카탈로그 그룹화·지표 | 없음 | `projects.json` 최상위 | 콘텐츠 작성자 |
+| 초기 예시 설명 참조 관계 | 분산 자리표시자 | 각 콘텐츠 JSON | 공용 ID로 연결 |
+| 실행 시점 신뢰 | 없음 | 여전히 없음 | T8/T9가 인수 |
 
-## 9. Thread 최종 상태
+## 9. 개발 흐름 최종 상태
 
-Thread 종료 시점에는 project source가 `{groups, metrics, items}` document로 전환되고 하나의 full starter case가 technology, résumé, journey, interview map, curation, contact/link source와 coherent ID graph를 이룹니다. 그러나 migration branch는 assertion 기반이고 runtime parse/reference/asset validation은 아직 없습니다.
+개발 흐름 종료 시점에는 프로젝트 원본이 `{groups, metrics, items}` 문서로 전환되고 하나의 전체 초기 예시 경우가 기술, résumé, 여정, 인터뷰 맵, 선별 기록, 연락처·링크 원본과 일관된 ID 참조 관계를 이룹니다. 그러나 전환 브랜치는 단언문 기반이고 실행 시점 파싱·참조·자산 검증은 아직 없습니다.
 
 ### 최종 설명
 
-- 배열→catalog object 전환을 임시 dual-shape reader로 분리했습니다.
-- groups/metrics를 먼저 추가한 불완전 중간 SHA와 item을 추가한 완료 SHA를 구분했습니다.
-- starter source가 대부분의 domain schema field와 cross-route reference를 실제 값으로 행사하도록 확장했습니다.
-- coherent-looking fixture와 fail-closed validation을 동일시하지 않았습니다.
+- 배열→카탈로그 객체 전환을 임시 두 두 형식 reader로 분리했습니다.
+- 그룹·지표를 먼저 추가한 불완전 중간 SHA와 항목을 추가한 완료 SHA를 구분했습니다.
+- 초기 예시 원본이 대부분의 데이터 영역 스키마 필드와 라우트 공통 참조를 실제 값으로 행사하도록 확장했습니다.
+- 겉보기에는 일관된 테스트 입력과 실패 시 차단하는 검증을 동일시하지 않았습니다.
 
 ## 10. 최종 실행·데이터 흐름
 
-| 단계 | Owner/call path | 입력·출력 | Failure/non-guarantee |
+| 단계 | 담당 위치·호출 경로 | 입력·출력 | 실패·보장하지 않는 범위 |
 | --- | --- | --- | --- |
-| legacy/new project JSON을 import합니다. | `content.ts` compatibility branch | items array | malformed object는 assertion으로 통과 가능 |
-| starter identity/link/technology vocabulary를 읽습니다. | content JSON files | shared IDs/values | uniqueness 미검사 |
-| catalog group/metric/item을 구성합니다. | `projects.json` | starter project document | 중간 SHA에는 items가 비어 있음 |
-| résumé/journey/evidence/curation에서 참조합니다. | 각 source projectIds | cross-route narrative graph | T9 이전에는 dangling ref 미거부 |
+| 기존·새 프로젝트 JSON을 불러옵니다. | `content.ts` 호환 브랜치 | 항목 배열 | 잘못된 형식의 객체는 단언문으로 통과 가능 |
+| 초기 예시 식별 정보·링크·기술 허용 값 집합을 읽습니다. | 콘텐츠 JSON 파일 | 공용 ID·값 | 고유성 미검사 |
+| 카탈로그 그룹·지표·항목을 구성합니다. | `projects.json` | 초기 예시 프로젝트 문서 | 중간 SHA에는 항목이 비어 있음 |
+| résumé/여정·근거·선별 기록에서 참조합니다. | 각 원본 프로젝트 ID | 라우트 공통 설명 참조 관계 | T9 이전에는 대상이 없는 참조 미거부 |
 
 ## 11. 학습 완료 확인
 
-완료했습니다. 모든 commit은 exact SHA의 parent diff/resulting tree를 기준으로 기록했고, direct execution evidence와 static inspection을 구분했습니다. 후속 `03d2c9be0a43`와 T9 integrity commits가 이 starter source를 fail-closed boundary에 연결합니다. 이 작업에서는 source 실행 검증을 수행하지 않았습니다.
+완료했습니다. 모든 커밋은 해당 SHA의 부모 커밋과의 차이·변경 후 파일 트리를 기준으로 기록했고, 직접 실행 근거와 정적 검토를 구분했습니다. 후속 `03d2c9be0a43`와 T9 무결성 커밋이 이 초기 예시 원본을 실패 시 차단하는 검증 지점에 연결합니다. 이 작업에서는 원본 실행 검증을 수행하지 않았습니다.
 ===== END FILE: 07-starter-catalog-migration.md =====
 
 ===== BEGIN FILE: 08-source-aware-schema-parsing-boundary.md =====
-# Thread: Source-aware schema parsing boundary
+# 개발 흐름: 원본 위치를 보존하는 스키마 파싱 지점
 
-> Repository: `https://github.com/seungwoo7050/42-archive`  
-> Branch: `web/portfolio`  
-> Category: `01-application-foundation-and-content-systems`
+> 저장소: `https://github.com/seungwoo7050/42-archive`
+> 브랜치: `web/portfolio`
+> 분류: `01-application-foundation-and-content-systems`
 
 ## 0. 분류 출처와 변경 가능 범위
 
-- Commit SHA, subject, importance, tags는 target branch의 `commit/commit-importance.md` 분류와 exact commit metadata를 사용합니다.
-- 이 문서의 Thread grouping, 목표, 역할, 조사 지점은 Phase 1 category audit에서 repository evidence를 기준으로 확정했습니다.
-- Phase 2에서는 이 fixed information을 바꾸지 않고 learner-facing 기록만 채웠습니다.
-- 다른 branch나 final HEAD 구현을 과거 SHA 설명에 소급하지 않습니다.
+- 커밋 SHA·제목·중요도·태그는 대상 브랜치의 `commit/commit-importance.md` 분류와 해당 커밋의 정확한 메타데이터를 사용합니다.
+- 이 문서의 개발 흐름 묶음·목표·역할·확인 지점은 1단계 분류 검토에서 저장소 근거를 바탕으로 확정했습니다.
+- 2단계에서는 이 고정 정보를 바꾸지 않고 학습자용 기록만 작성했습니다.
+- 다른 브랜치나 최종 HEAD의 구현을 과거 SHA의 설명으로 소급하지 않습니다.
 
-## 1. Thread 목표
+## 1. 개발 흐름 목표
 
-14개 JSON source를 단순 assertion에서 파일명·JSON path가 포함된 structured validation error와 단일 `loadPortfolioSource()` parsing 경계로 전환하는 과정을 복원합니다.
+14개 JSON 원본을 단순 단언문에서 파일명·JSON 경로가 포함된 구조화된 검증 오류와 단일 `loadPortfolioSource()` 파싱 경계로 전환하는 과정을 복원합니다.
 
-### 계획된 핵심 invariant
+### 계획된 핵심 불변 조건
 
-- 각 file은 대응 schema로 `safeParse`되고 성공한 `parsed.data`만 반환됩니다.
-- Validation failure는 source filename, JSON-style path, message를 보존한 `PortfolioContentError`로 노출됩니다.
-- 기본 `portfolioSource`는 module import 시 load되어 malformed source를 consumer 전에 fail-closed 합니다.
+- 각 파일은 대응 스키마로 `safeParse`되고 성공한 `parsed.data`만 반환됩니다.
+- 검증 실패는 원본 파일 이름, JSON 형식 경로, 메시지를 보존한 `PortfolioContentError`로 노출됩니다.
+- 기본 `portfolioSource`는 모듈 가져오기 시 로딩되어 잘못된 형식의 원본을 소비자 전에 검증에 실패하면 차단합니다.
 
-## 2. 이 Thread를 이해하기 위한 핵심 질문
+## 2. 이 개발 흐름을 이해하기 위한 핵심 질문
 
-- Zod issue path를 사용자 편집 가능한 JSON path로 바꾸는 규칙은 무엇인가?
-- Schema parse failure와 cross-file integrity issue는 같은 error model을 어떻게 공유하는가?
-- `overrides`가 테스트 가능성을 만들지만 production source ownership을 흐리지 않는 이유는 무엇인가?
+- Zod 문제 경로를 사용자 편집 가능한 JSON 경로로 바꾸는 규칙은 무엇인가?
+- 스키마 파싱 실패와 파일 간 무결성 문제는 같은 오류 형식을 어떻게 공유하는가?
+- `overrides`가 테스트 가능성을 만들지만 배포 원본 소유 주체를 흐리지 않는 이유는 무엇인가?
 
 ## 3. 완료 기준
 
-- 각 SHA의 parent diff와 resulting tree에서 실제 file/symbol을 확인합니다.
-- 이전 상태, implementation decision, owner/lifetime, absence/failure/fallback, guarantee/non-guarantee를 분리합니다.
-- Fix·refactor·integration은 바로 앞의 assumption이나 duplicated responsibility와 연결합니다.
-- 테스트나 command는 실제 실행 여부를 정적 검토와 명확히 구분합니다.
-- Thread 종료 시 invariant evolution과 최종 flow를 코드 없이 설명합니다.
+- 각 SHA의 부모 커밋과의 차이와 변경 후 파일 트리에서 실제 파일과 심볼을 확인합니다.
+- 이전 상태, 구현 결정, 소유 주체와 수명, 누락·실패·대체 처리, 보장 범위와 보장하지 않는 범위를 나눠 기록합니다.
+- 수정·리팩터링·통합은 바로 앞선 가정이나 중복 구현과 연결합니다.
+- 테스트와 명령은 실제 실행 여부를 정적 검토와 명확히 구분합니다.
+- 개발 흐름 마지막에는 불변 조건의 변화와 최종 실행 순서를 코드 없이 설명합니다.
 
-## 4. Commit map
+## 4. 커밋 목록
 
-| 순서 | Commit | Subject | Importance | Tags | 이 Thread에서의 역할 |
-| ---: | --- | --- | :---: | --- | --- |
-| 1 | `70e49ea34194` | feat(content): 콘텐츠 validation 오류 모델 추가 | A | CONTENT, VALIDATION | loader module과 structured error model |
-| 2 | `830f02688d63` | feat(content): JSON 경로 진단 추가 | B | CONTENT, VALIDATION | deterministic JSON path formatter |
-| 3 | `d50870c8b8c4` | feat(content): JSON schema 파싱 경계 추가 | A | CONTENT, VALIDATION | generic per-file parser |
-| 4 | `03d2c9be0a43` | feat(content): 콘텐츠 파일 schema 파싱 연결 | S | ARCH, CONTENT, VALIDATION | 14-source fail-closed loader |
+| 순서 | 커밋 | 제목 | 중요도 | 태그 | 이 개발 흐름에서의 역할 |
+| ---: | --- | --- |:---: | --- | --- |
+| 1 | `70e49ea34194` | feat(content): 콘텐츠 validation 오류 모델 추가 | A | CONTENT, VALIDATION | 로더 모듈과 구조화된 오류 형식 |
+| 2 | `830f02688d63` | feat(content): JSON 경로 진단 추가 | B | CONTENT, VALIDATION | 결정적인 JSON 경로 형식화 함수 |
+| 3 | `d50870c8b8c4` | feat(content): JSON schema 파싱 경계 추가 | A | CONTENT, VALIDATION | 일반적인 파일별 파서 |
+| 4 | `03d2c9be0a43` | feat(content): 콘텐츠 파일 schema 파싱 연결 | S | ARCH, CONTENT, VALIDATION | 14개 원본을 검증하고 실패 시 중단하는 로더 |
 
-## 5. Commit별 학습 기록
+## 5. 커밋별 학습 기록
 
 ### 1. `70e49ea34194` — feat(content): 콘텐츠 validation 오류 모델 추가
 
 - **Importance:** A
 - **Tags:** CONTENT, VALIDATION
-- **Thread 역할:** loader module과 structured error model
-- **조사 깊이:** 주요 subsystem의 결정 경로, owner, failure/non-guarantee와 integration evidence를 구체적으로 복원합니다.
+- **개발 흐름에서의 역할:** 로더 모듈과 구조화된 오류 형식
+- **조사 깊이:** 주요 하위 기능의 결정 경로, 소유 주체, 실패와 보장하지 않는 범위와 통합 근거를 구체적으로 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `src/lib/content-loader.ts`가 import하는 14 JSON/schema 목록을 확인합니다.
-- `ContentValidationIssue`, `PortfolioSourceOverrides`, `PortfolioContentError`의 fields/message assembly를 확인합니다.
-- supported design IDs와 internal route map이 아직 사용되기 전 scaffold 상태를 기록합니다.
+- `src/lib/content-loader.ts`가 불러오는 14 JSON·스키마 목록을 확인합니다.
+- `ContentValidationIssue`, `PortfolioSourceOverrides`, `PortfolioContentError`의 필드·메시지 조립을 확인합니다.
+- 지원하는 디자인 ID와 내부 라우트 맵이 아직 사용되기 전 문서 틀 상태를 기록합니다.
 
 확인 원칙:
 
-- 먼저 `70e49ea34194^`와 `70e49ea34194`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `70e49ea34194^`와 `70e49ea34194`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | Schema는 정의되어 있었지만 source imports와 연결되지 않았고 오류가 어느 JSON file/path에서 발생했는지 표현할 공통 모델이 없었습니다. |
-| 실제 변경 file/symbol/call path | 모든 source/schema imports와 override key 집합을 한 module에 모으고 `{file, path, message}` issue와 aggregated error class를 추가합니다. |
-| Data/state/resource owner와 lifetime | `content-loader.ts`가 validation boundary 및 diagnostic model의 owner가 됩니다. |
-| Failure·absence·fallback 처리 | 아직 parse function이나 `loadPortfolioSource()`가 없어 source가 실제로 거부되지는 않습니다. supported design/internal route 상수도 후속 integrity를 위한 준비 상태입니다. |
-| 보장하는 것과 보장하지 않는 것 | 후속 schema/integrity failure가 공유할 source-aware error contract를 보장합니다. |
-| 다음 commit 또는 관련 test 연결 | `830f02688d63`이 Zod path를 JSON-style path로 변환합니다. |
+| 직전 상태와 부족함 | 스키마는 정의되어 있었지만 원본 가져오기와 연결되지 않았고 오류가 어느 JSON 파일·경로에서 발생했는지 표현할 공통 모델이 없었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 모든 원본·스키마 가져오기와 덮어쓰기 키 집합을 한 모듈에 모으고 `{file, path, message}` 문제와 집계된 오류 클래스를 추가합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | `content-loader.ts`가 검증 지점 및 진단 모델의 소유 주체가 됩니다. |
+| 실패·누락·대체 처리 | 아직 파싱 함수나 `loadPortfolioSource()`가 없어 원본이 실제로 거부되지는 않습니다. 지원하는 디자인·내부 라우트 상수도 후속 무결성을 위한 준비 상태입니다. |
+| 보장하는 것과 보장하지 않는 것 | 후속 스키마·무결성 실패가 공유할 원본 위치를 포함한 오류 규칙을 보장합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `830f02688d63`이 Zod 경로를 JSON 형식 경로로 변환합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `70e49ea34194`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다. 중요도 A 근거: 이후 모든 validation 경로와 테스트가 의존하는 public failure type과 source override seam을 정의합니다.
+정적 근거: `70e49ea34194`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다. 중요도 A 근거: 이후 모든 검증 경로와 테스트가 의존하는 공개 오류 타입과 원본을 교체할 테스트 지점을 정의합니다.
 
 ### 2. `830f02688d63` — feat(content): JSON 경로 진단 추가
 
 - **Importance:** B
 - **Tags:** CONTENT, VALIDATION
-- **Thread 역할:** deterministic JSON path formatter
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 결정적인 JSON 경로 형식화 함수
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `jsonPath(PropertyKey[])`의 empty path `$`, number `[index]`, identifier `.key`, unusual key bracket+JSON.stringify branch를 확인합니다.
-- 실제 source file path는 이 helper가 아니라 caller가 붙인다는 점을 기록합니다.
+- `jsonPath(PropertyKey[])`의 빈 경로 `$`, 숫자 `[index]`, 식별자 `.key`, 일반적이지 않은 키 대괄호와 `JSON.stringify` 브랜치를 확인합니다.
+- 실제 원본 파일 경로는 이 도우미 함수가 아니라 호출자가 붙인다는 점을 기록합니다.
 
 확인 원칙:
 
-- 먼저 `830f02688d63^`와 `830f02688d63`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `830f02688d63^`와 `830f02688d63`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | Zod path segment 배열을 그대로 노출하면 편집자가 어느 JSON 위치를 고쳐야 하는지 일관되게 읽기 어렵습니다. |
-| 실제 변경 file/symbol/call path | root, array index, 일반 property, 특수 property를 JSON-style 문자열로 변환하는 helper를 추가합니다. |
-| Data/state/resource owner와 lifetime | diagnostic path formatting은 loader helper가 소유합니다. |
-| Failure·absence·fallback 처리 | path가 source line number를 제공하지 않고 JSON parser syntax error를 다루는 것도 아닙니다. |
-| 보장하는 것과 보장하지 않는 것 | Zod issue path의 결정적이고 읽을 수 있는 표현을 보장합니다. |
-| 다음 commit 또는 관련 test 연결 | `d50870c8b8c4`가 이 formatter를 parse failure mapping에 사용합니다. |
+| 직전 상태와 부족함 | Zod 경로 조각 배열을 그대로 노출하면 편집자가 어느 JSON 위치를 고쳐야 하는지 일관되게 읽기 어렵습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 최상위, 배열 인덱스, 일반 속성, 특수 속성을 JSON 형식 문자열로 변환하는 도우미 함수를 추가합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 진단 경로 형식 변환은 로더 도우미 함수가 소유합니다. |
+| 실패·누락·대체 처리 | 경로가 원본 줄 숫자를 제공하지 않고 JSON 파서 문법 오류를 다루는 것도 아닙니다. |
+| 보장하는 것과 보장하지 않는 것 | Zod 문제 경로의 결정적이고 읽을 수 있는 표현을 보장합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `d50870c8b8c4`가 이 형식화 함수를 파싱 실패 대응에 사용합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `830f02688d63`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `830f02688d63`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 3. `d50870c8b8c4` — feat(content): JSON schema 파싱 경계 추가
 
 - **Importance:** A
 - **Tags:** CONTENT, VALIDATION
-- **Thread 역할:** generic per-file parser
-- **조사 깊이:** 주요 subsystem의 결정 경로, owner, failure/non-guarantee와 integration evidence를 구체적으로 복원합니다.
+- **개발 흐름에서의 역할:** 일반적인 파일별 파서
+- **조사 깊이:** 주요 하위 기능의 결정 경로, 소유 주체, 실패와 보장하지 않는 범위와 통합 근거를 구체적으로 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `parseContentFile<Schema extends z.ZodType>`의 `safeParse`, failure mapping, `parsed.data` 반환을 확인합니다.
-- throw가 첫 issue만이 아니라 해당 file의 모든 Zod issues를 보존하는지 확인합니다.
+- `parseContentFile<Schema extends z.ZodType>`의 `safeParse`, 실패 대응, `parsed.data` 반환을 확인합니다.
+- 예외 발생이 첫 문제만이 아니라 해당 파일의 모든 Zod 문제를 보존하는지 확인합니다.
 
 확인 원칙:
 
-- 먼저 `d50870c8b8c4^`와 `d50870c8b8c4`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `d50870c8b8c4^`와 `d50870c8b8c4`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | Error model과 path formatter는 있었지만 각 schema call이 반복되거나 assertion으로 우회될 수 있었습니다. |
-| 실제 변경 file/symbol/call path | file label, schema, unknown input을 받는 generic parser를 만들고 Zod issues를 source-aware issues로 변환해 `PortfolioContentError`를 던집니다. |
-| Data/state/resource owner와 lifetime | per-file shape validation과 output typing은 `parseContentFile`이 소유합니다. |
-| Failure·absence·fallback 처리 | 한 file parse가 실패하면 다음 file이나 cross-file integrity 단계로 진행하지 않으며 JSON text syntax는 bundler import 단계의 책임입니다. |
-| 보장하는 것과 보장하지 않는 것 | 성공한 schema output만 caller에 반환하고 실패 시 file/path/message를 보존합니다. |
-| 다음 commit 또는 관련 test 연결 | 여러 integrity helper commits 뒤 `03d2c9be0a43`가 모든 source에 parser를 연결합니다. |
+| 직전 상태와 부족함 | 오류 모델과 경로 형식화 함수는 있었지만 각 스키마 호출이 반복되거나 단언문으로 우회될 수 있었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 파일 이름, 스키마, 알 수 없는 입력을 받는 일반적인 파서를 만들고 Zod 문제를 원본 위치가 포함된 검증 문제로 변환해 `PortfolioContentError`를 던집니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 파일별 형식 검증과 출력 타입 지정은 `parseContentFile`이 소유합니다. |
+| 실패·누락·대체 처리 | 한 파일의 파싱이 실패하면 다음 파일이나 파일 간 무결성 단계로 진행하지 않으며 JSON 문법은 번들러 가져오기 단계의 책임입니다. |
+| 보장하는 것과 보장하지 않는 것 | 성공한 스키마 검증 결과만 호출자에 반환하고 실패 시 파일·경로·메시지를 보존합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | 여러 무결성 도우미 함수 커밋 뒤 `03d2c9be0a43`가 모든 원본에 파서를 연결합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `d50870c8b8c4`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다. 중요도 A 근거: assertion과 runtime trust 사이의 실제 변환 함수이며 downstream loader invariant의 핵심입니다.
+정적 근거: `d50870c8b8c4`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다. 중요도 A 근거: 단언문과 실행 시점 신뢰 사이의 실제 변환 함수가며 후속 로더 불변 조건의 핵심입니다.
 
 ### 4. `03d2c9be0a43` — feat(content): 콘텐츠 파일 schema 파싱 연결
 
 - **Importance:** S
 - **Tags:** ARCH, CONTENT, VALIDATION
-- **Thread 역할:** 14-source fail-closed loader
-- **조사 깊이:** Architecture 전환, 이전 trust/ownership 모델, failure path, lifecycle, downstream regression까지 깊게 복원합니다.
+- **개발 흐름에서의 역할:** 14개 원본을 검증하고 실패 시 중단하는 로더
+- **조사 깊이:** 설계 전환, 이전 신뢰·소유 주체 모델, 실패 경로, 실행 주기, 후속 회귀까지 깊게 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `loadPortfolioSource(overrides = {})`가 default imports와 overrides를 merge하는 순서를 확인합니다.
-- site/profile/projects/presentation/skills/techStack/experience/journey/links/contact/resume/journeyNarrative/interviewMap/curation 각각의 exact file label/schema call을 추적합니다.
-- 반환 object, `portfolioSource = loadPortfolioSource()`, `PortfolioSource = ReturnType<...>`를 확인합니다.
-- 이 SHA에 tests가 추가되지 않았음을 구분합니다.
+- `loadPortfolioSource(overrides = {})`가 기본값 가져오기와 덮어쓰기를 병합하는 순서를 확인합니다.
+- 사이트·프로필·프로젝트·화면 구성·기술 목록·techStack·경력·여정·링크·연락처·이력서·여정 설명/인터뷰 맵·선별 기록 각각의 정확한 파일 문구·스키마 호출을 추적합니다.
+- 반환 객체, `portfolioSource = loadPortfolioSource()`, `PortfolioSource = ReturnType<...>`를 확인합니다.
+- 이 SHA에 테스트가 추가되지 않았음을 구분합니다.
 
 확인 원칙:
 
-- 먼저 `03d2c9be0a43^`와 `03d2c9be0a43`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `03d2c9be0a43^`와 `03d2c9be0a43`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | 개별 parser는 있었지만 production imports는 여전히 직접 assertion path를 사용할 수 있었고 14개 source를 빠짐없이 검사하는 단일 entry가 없었습니다. |
-| 실제 변경 file/symbol/call path | default JSON inputs에 caller overrides를 덮어쓴 뒤 각 source를 exact schema와 source path로 `parseContentFile`에 통과시키고 parsed outputs만 aggregate합니다. module-level `portfolioSource`가 import 시 기본 source를 즉시 검증합니다. |
-| Data/state/resource owner와 lifetime | `loadPortfolioSource`가 raw source→validated source의 유일한 loader boundary를 소유하고 overrides는 특정 source만 deterministic하게 교체할 test seam이 됩니다. parsed values의 lifetime은 returned source object와 module singleton이 소유합니다. |
-| Failure·absence·fallback 처리 | Shape parse가 성공해도 duplicate ID, dangling reference, supported design completeness, internal route, asset 존재는 아직 모두 보장되지 않습니다. 한 file의 shape failure는 즉시 throw하므로 다른 files의 shape issue를 함께 누적하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | 모든 14 source가 consumer에 도달하기 전에 대응 runtime schema를 통과하고 malformed field는 source-aware error로 fail-closed 된다는 핵심 invariant를 도입합니다. |
-| 다음 commit 또는 관련 test 연결 | T9가 parsed outputs 사이의 repository-wide integrity를 누적 검사하고 T10이 기존 portfolio facade를 이 validated singleton으로 교체합니다. |
+| 직전 상태와 부족함 | 개별 파서는 있었지만 배포 환경 가져오기는 여전히 직접 단언문 경로를 사용할 수 있었고 14개 원본을 빠짐없이 검사하는 단일 진입점이 없었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 기본 JSON 입력에 호출자 덮어쓰기를 덮어쓴 뒤 각 원본을 정확한 스키마와 원본 경로로 `parseContentFile`에 통과시키고 파싱된 출력만 집계 객체로 구성합니다. 모듈 범위 `portfolioSource`가 가져오기 시 기본 원본을 즉시 검증합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | `loadPortfolioSource`가 원본을 검증된 값으로 바꾸는 단일 로더가 됩니다. 덮어쓰기 입력은 특정 원본만 결정적으로 교체하는 테스트 지점이며, 파싱된 값은 반환 객체와 모듈 단일 인스턴스가 유지합니다. |
+| 실패·누락·대체 처리 | 형식 파싱이 성공해도 중복된 ID, 대상이 없는 참조, 지원하는 디자인 완전성, 내부 라우트, 자산 존재는 아직 모두 보장되지 않습니다. 한 파일의 형식 실패는 즉시 예외 발생하므로 다른 파일의 형식 문제를 함께 누적하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 모든 14개 원본이 소비자에 도달하기 전에 대응 실행 시점 스키마를 통과하고 잘못된 형식의 필드는 원본 위치를 포함한 오류로 보고 차단한다는 핵심 불변 조건을 도입합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | T9가 파싱된 출력 사이의 저장소 전체 무결성을 누적 검사하고 T10이 기존 포트폴리오 공개 모듈을 이 검증된 단일 인스턴스으로 교체합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `03d2c9be0a43`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다. 중요도 S 근거: source 신뢰 모델이 “JSON import + `as`”에서 “unknown input + exact schema parse + structured failure + validated aggregate”로 바뀌며 이후 content architecture 전체의 입력 경계가 됩니다.
+정적 근거: `03d2c9be0a43`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다. 중요도 S 근거: 원본 신뢰 모델이 “JSON 가져오기 + `as`”에서 “알 수 없는 입력 + 정확한 스키마 파싱 + 구조화된 실패 + 검증된 집계 객체”로 바뀌며 이후 콘텐츠 설계 전체의 입력 경계가 됩니다.
 
-## 6. Invariant evolution ledger
+## 6. 불변 조건 변화 기록
 
-| 추적할 invariant | 도입·변화 SHA | 실제 owner/evidence | 제한·후속 보호 |
+| 추적할 불변 조건 | 도입·변화 SHA | 실제 소유 주체·근거 | 제한·후속 보호 |
 | --- | --- | --- | --- |
-| 모든 validation issue는 file/path/message를 갖는다. | `70e49ea34194` | `ContentValidationIssue`, `PortfolioContentError` | line/column 정보는 없음 |
-| Zod path는 결정적 JSON-style 경로로 변환된다. | `830f02688d63` | `jsonPath` | source syntax error는 별도 |
-| schema output만 loader를 통과한다. | `d50870c8b8c4` → `03d2c9be0a43` | `parseContentFile`, `loadPortfolioSource` | cross-file integrity는 T9 |
-| 기본 source는 import 시 fail-closed 된다. | `03d2c9be0a43` | `portfolioSource = loadPortfolioSource()` | 테스트 실행 증거는 후속 category 07 |
+| 모든 검증 문제는 파일·경로·메시지를 갖는다. | `70e49ea34194` | `ContentValidationIssue`, `PortfolioContentError` | 줄·열 정보는 없음 |
+| Zod 경로는 결정적 JSON 형식 경로로 변환됩니다. | `830f02688d63` | `jsonPath` | 원본 문법 오류는 별도 |
+| 스키마 검증 결과만 로더를 통과합니다. | `d50870c8b8c4` → `03d2c9be0a43` | `parseContentFile`, `loadPortfolioSource` | 파일 간 무결성은 T9 |
+| 기본 원본은 가져오기 시 검증에 실패하면 차단됩니다. | `03d2c9be0a43` | `portfolioSource = loadPortfolioSource()` | 테스트 실행 증거는 후속 분류 07 |
 
-## 7. Failure → Fix → Test 관계
+## 7. 실패 → 수정 → 테스트 관계
 
-| Failure 또는 risk | Fix/전환 SHA | 교정된 결정 | Regression·검증 관계 |
+| 실패 또는 위험 | 수정·전환 SHA | 교정된 결정 | 회귀·검증 관계 |
 | --- | --- | --- | --- |
-| JSON `as` assertion이 malformed source를 신뢰 | `d50870c8b8c4`, `03d2c9be0a43` | unknown input을 schema `safeParse` | `3353032ba23b` invalid-source regression |
-| 오류가 어느 file/path인지 알기 어려움 | `70e49ea34194`, `830f02688d63` | structured issue + JSON path | 후속 tests가 error issue shape를 확인 |
-| production source만 고정돼 failure case 주입이 어려움 | `PortfolioSourceOverrides` + loader merge | single-file deterministic overrides | 후속 tests가 malformed/duplicate/route cases 주입 |
+| JSON `as` 단언문이 잘못된 형식의 원본을 신뢰 | `d50870c8b8c4`, `03d2c9be0a43` | 알 수 없는 입력을 스키마 `safeParse` | `3353032ba23b` 유효하지 않은 원본 회귀 |
+| 오류가 어느 파일·경로인지 알기 어려움 | `70e49ea34194`, `830f02688d63` | 구조화된 문제 + JSON 경로 | 후속 테스트가 오류 문제 형식을 확인 |
+| 배포 원본만 고정돼 실패 경우 주입이 어려움 | `PortfolioSourceOverrides` + 로더 병합 | 단일 파일 결정적인 덮어쓰기 | 후속 테스트가 잘못된 형식의·중복된·라우트 경우 주입 |
 
-## 8. Ownership·state·responsibility 변화
+## 8. 소유 주체·상태·담당 작업 변화
 
-| 대상 | 이전 owner/state | 최종 owner/state | 근거 |
+| 대상 | 이전 소유 주체·상태 | 최종 소유 주체·상태 | 근거 |
 | --- | --- | --- | --- |
-| raw JSON imports | 여러 aggregate module | `content-loader.ts` | 14 default inputs |
-| per-file parse | 없음 | `parseContentFile` | schema output 또는 structured throw |
-| source aggregate | asserted `PortfolioContent` | `PortfolioSource` | validated raw-domain aggregate |
-| failure ownership | import/consumer별 | `PortfolioContentError` | loader가 source context를 보존 |
+| 원시 JSON 가져오기 | 여러 집계 객체 모듈 | `content-loader.ts` | 14 기본값 inputs |
+| 파일별 파싱 | 없음 | `parseContentFile` | 스키마 검증 결과 또는 구조화된 예외 발생 |
+| 원본 집계 객체 | asserted `PortfolioContent` | `PortfolioSource` | 검증된 원본 데이터 영역 집계 객체 |
+| 실패 소유 주체 | 가져오기·소비자별 | `PortfolioContentError` | 로더가 원본 맥락을 보존 |
 
-## 9. Thread 최종 상태
+## 9. 개발 흐름 최종 상태
 
-Thread 종료 시점에는 14개 JSON source가 각각 exact Zod schema를 통과한 `PortfolioSource`로만 반환되고, 기본 source는 module import 시 fail-closed 됩니다. 오류는 source file과 JSON-style path를 보존합니다. 그러나 duplicate/reference/route/design/asset integrity는 후속 Thread 책임입니다.
+개발 흐름 종료 시점에는 14개 JSON 원본이 각각 정확한 Zod 스키마를 통과한 `PortfolioSource`로만 반환되고, 기본 원본은 모듈 가져오기 시 검증에 실패하면 차단됩니다. 오류는 원본 파일과 JSON 형식 경로를 보존합니다. 그러나 중복된·참조·라우트·디자인·자산 무결성은 후속 개발 흐름 책임입니다.
 
 ### 최종 설명
 
-- 공통 issue/error 모델과 JSON path formatter를 만들었습니다.
-- Generic per-file parser가 unknown input을 schema output으로 전환하거나 structured error를 던집니다.
-- `loadPortfolioSource()`가 14개 source와 override seam을 한 경계에 모았습니다.
-- S-level 전환은 source 신뢰 모델의 변경이며 단순 helper 추가가 아닙니다.
+- 공통 문제·오류 모델과 JSON 경로 형식화 함수를 만들었습니다.
+- 범용 파일별 파서가 알 수 없는 입력을 스키마 검증 결과로 전환하거나 구조화된 오류를 던집니다.
+- `loadPortfolioSource()`가 14개 원본과 테스트용 덮어쓰기를 한 로더에 모았습니다.
+- 중요도 S 전환은 원본 신뢰 모델의 변경이며 단순 도우미 함수 추가 아닙니다.
 
 ## 10. 최종 실행·데이터 흐름
 
-| 단계 | Owner/call path | 입력·출력 | Failure/non-guarantee |
+| 단계 | 담당 위치·호출 경로 | 입력·출력 | 실패·보장하지 않는 범위 |
 | --- | --- | --- | --- |
-| Default JSON과 overrides를 합칩니다. | `loadPortfolioSource` input object | 14 unknown inputs | override는 지정 key만 대체 |
-| 각 file을 exact schema로 parse합니다. | `parseContentFile` | typed parsed output | 한 file 실패 시 즉시 `PortfolioContentError` |
-| parsed outputs를 aggregate합니다. | `loadPortfolioSource` return | `PortfolioSource` | cross-file issues는 아직 검사하지 않음 |
-| 기본 singleton을 초기화합니다. | `portfolioSource` | module-lifetime validated source | malformed source면 import 실패 |
+| Default JSON과 덮어쓰기를 합칩니다. | `loadPortfolioSource` 입력 객체 | 14 알 수 없는 inputs | 덮어쓰기는 지정 키만 대체 |
+| 각 파일을 정확한 스키마로 파싱합니다. | `parseContentFile` | 타입이 지정된 파싱된 출력 | 한 파일 실패 시 즉시 `PortfolioContentError` |
+| 파싱된 출력을 집계합니다. | `loadPortfolioSource` 반환 | `PortfolioSource` | 파일 간 문제는 아직 검사하지 않음 |
+| 기본 단일 인스턴스를 초기화합니다. | `portfolioSource` | 모듈 수명 동안 유지되는 검증된 원본 | 원본 형식이 잘못되면 가져오기 실패 |
 
 ## 11. 학습 완료 확인
 
-완료했습니다. 모든 commit은 exact SHA의 parent diff/resulting tree를 기준으로 기록했고, direct execution evidence와 static inspection을 구분했습니다. `3353032ba23b`이 override seam으로 malformed source와 structured issue를 후속 검증합니다. 이 작업에서는 Vitest나 content command를 실행하지 않았습니다.
+완료했습니다. 모든 커밋은 해당 SHA의 부모 커밋과의 차이·변경 후 파일 트리를 기준으로 기록했고, 직접 실행 근거와 정적 검토를 구분했습니다. `3353032ba23b`이 테스트용 덮어쓰기를 사용해 잘못된 형식의 원본과 구조화된 오류를 검증합니다. 이 작업에서는 Vitest나 콘텐츠 명령을 실행하지 않았습니다.
 ===== END FILE: 08-source-aware-schema-parsing-boundary.md =====
 
 ===== BEGIN FILE: 09-repository-wide-content-integrity.md =====
-# Thread: Repository-wide content integrity
+# 개발 흐름: 저장소 전체 콘텐츠 무결성
 
-> Repository: `https://github.com/seungwoo7050/42-archive`  
-> Branch: `web/portfolio`  
-> Category: `01-application-foundation-and-content-systems`
+> 저장소: `https://github.com/seungwoo7050/42-archive`
+> 브랜치: `web/portfolio`
+> 분류: `01-application-foundation-and-content-systems`
 
 ## 0. 분류 출처와 변경 가능 범위
 
-- Commit SHA, subject, importance, tags는 target branch의 `commit/commit-importance.md` 분류와 exact commit metadata를 사용합니다.
-- 이 문서의 Thread grouping, 목표, 역할, 조사 지점은 Phase 1 category audit에서 repository evidence를 기준으로 확정했습니다.
-- Phase 2에서는 이 fixed information을 바꾸지 않고 learner-facing 기록만 채웠습니다.
-- 다른 branch나 final HEAD 구현을 과거 SHA 설명에 소급하지 않습니다.
+- 커밋 SHA·제목·중요도·태그는 대상 브랜치의 `commit/commit-importance.md` 분류와 해당 커밋의 정확한 메타데이터를 사용합니다.
+- 이 문서의 개발 흐름 묶음·목표·역할·확인 지점은 1단계 분류 검토에서 저장소 근거를 바탕으로 확정했습니다.
+- 2단계에서는 이 고정 정보를 바꾸지 않고 학습자용 기록만 작성했습니다.
+- 다른 브랜치나 최종 HEAD의 구현을 과거 SHA의 설명으로 소급하지 않습니다.
 
-## 1. Thread 목표
+## 1. 개발 흐름 목표
 
-개별 JSON file이 schema를 통과한 뒤에도 남는 duplicate ID, unsupported/disabled internal route, design completeness, project/group/technology/link/project-reference 문제를 하나의 누적 integrity phase에서 fail-closed 하는 과정을 복원합니다.
+개별 JSON 파일이 스키마를 통과한 뒤에도 남는 중복된 ID, 지원하지 않는·비활성화된 내부 라우트, 디자인 완전성, 프로젝트·그룹·기술·링크·프로젝트 참조 문제를 하나의 누적 무결성 단계에서 실패 시 차단하는 과정을 복원합니다.
 
-### 계획된 핵심 invariant
+### 계획된 핵심 불변 조건
 
-- Shape parsing 뒤 cross-file issues를 별도 배열에 누적하고 가능한 한 여러 문제를 한 번에 보고합니다.
-- 참조 검증은 enabled target 집합을 사용하므로 존재하지만 disabled인 project/link도 유효한 공개 참조가 아닙니다.
-- 외부 URL은 internal route validator의 책임 밖이며 root-relative internal route만 route map과 page enablement에 대조합니다.
+- 형식 파싱 뒤 파일 간 문제를 별도 배열에 누적하고 가능한 한 여러 문제를 한 번에 보고합니다.
+- 참조 검증은 활성화된 대상 집합을 사용하므로 존재하지만 비활성화된 프로젝트·링크도 유효한 공개 참조가 아닙니다.
+- 외부 URL은 내부 라우트 검증 함수의 책임 밖이며 최상위 경로 기준 내부 라우트만 라우트 맵과 페이지 활성화 여부에 대조합니다.
 
-## 2. 이 Thread를 이해하기 위한 핵심 질문
+## 2. 이 개발 흐름을 이해하기 위한 핵심 질문
 
-- Schema-valid 문자열과 repository-valid reference 사이에는 어떤 차이가 있는가?
-- Duplicate/reference issues는 어느 시점에 누적되고 언제 하나의 error로 던져지는가?
-- Internal route와 enabled project/page policy가 어떻게 결합되는가?
+- 스키마 검증을 통과한 문자열과 저장소에서 유효한 참조 사이에는 어떤 차이가 있는가?
+- Duplicate·참조 문제는 어느 시점에 누적되고 언제 하나의 오류로 던져지는가?
+- 내부 라우트와 활성화된 프로젝트·페이지 규칙이 어떻게 결합되는가?
 
 ## 3. 완료 기준
 
-- 각 SHA의 parent diff와 resulting tree에서 실제 file/symbol을 확인합니다.
-- 이전 상태, implementation decision, owner/lifetime, absence/failure/fallback, guarantee/non-guarantee를 분리합니다.
-- Fix·refactor·integration은 바로 앞의 assumption이나 duplicated responsibility와 연결합니다.
-- 테스트나 command는 실제 실행 여부를 정적 검토와 명확히 구분합니다.
-- Thread 종료 시 invariant evolution과 최종 flow를 코드 없이 설명합니다.
+- 각 SHA의 부모 커밋과의 차이와 변경 후 파일 트리에서 실제 파일과 심볼을 확인합니다.
+- 이전 상태, 구현 결정, 소유 주체와 수명, 누락·실패·대체 처리, 보장 범위와 보장하지 않는 범위를 나눠 기록합니다.
+- 수정·리팩터링·통합은 바로 앞선 가정이나 중복 구현과 연결합니다.
+- 테스트와 명령은 실제 실행 여부를 정적 검토와 명확히 구분합니다.
+- 개발 흐름 마지막에는 불변 조건의 변화와 최종 실행 순서를 코드 없이 설명합니다.
 
-## 4. Commit map
+## 4. 커밋 목록
 
-| 순서 | Commit | Subject | Importance | Tags | 이 Thread에서의 역할 |
-| ---: | --- | --- | :---: | --- | --- |
-| 1 | `f8a4aa2109e8` | feat(content): 중복과 참조 진단 helper 추가 | B | CONTENT, VALIDATION | integrity issue primitives |
-| 2 | `b380f56f5d90` | feat(content): 내부 route 참조 검증 추가 | A | ARCH, CONTENT, VALIDATION | internal route policy helper |
-| 3 | `b9d74d8ccf08` | feat(content): 콘텐츠 식별자 중복 검증 추가 | A | CONTENT, VALIDATION | global identifier/order uniqueness |
-| 4 | `b87da7ca505c` | feat(content): 지원 디자인 구성 검증 추가 | A | CONTENT, VALIDATION | design registry completeness |
-| 5 | `6b9e10289b64` | feat(content): 사이트와 링크 route 참조 검증 추가 | A | ARCH, CONTENT, VALIDATION | navigation/top-level link route integration |
-| 6 | `08b4ac81739f` | feat(content): 프로젝트 내부 참조 검증 추가 | A | CONTENT, VALIDATION | project group/stack/link integrity |
-| 7 | `6514b4e0bcff` | feat(content): 지표와 Resume 참조 검증 추가 | B | CONTENT, VALIDATION, RENDERER | metric/resume project references |
-| 8 | `805072d7b610` | feat(content): 여정과 Interview 참조 검증 추가 | B | CONTENT, VALIDATION, RENDERER | journey/evidence project references |
-| 9 | `d5afc69ae9da` | feat(content): 큐레이션과 연락 참조 검증 추가 | B | CONTENT, VALIDATION | curation/contact reference closure |
+| 순서 | 커밋 | 제목 | 중요도 | 태그 | 이 개발 흐름에서의 역할 |
+| ---: | --- | --- |:---: | --- | --- |
+| 1 | `f8a4aa2109e8` | feat(content): 중복과 참조 진단 helper 추가 | B | CONTENT, VALIDATION | 무결성 문제 공용 컴포넌트 |
+| 2 | `b380f56f5d90` | feat(content): 내부 route 참조 검증 추가 | A | ARCH, CONTENT, VALIDATION | 내부 라우트 규칙 도우미 함수 |
+| 3 | `b9d74d8ccf08` | feat(content): 콘텐츠 식별자 중복 검증 추가 | A | CONTENT, VALIDATION | 전역 식별자·순서 고유성 |
+| 4 | `b87da7ca505c` | feat(content): 지원 디자인 구성 검증 추가 | A | CONTENT, VALIDATION | 디자인 등록부 완전성 |
+| 5 | `6b9e10289b64` | feat(content): 사이트와 링크 route 참조 검증 추가 | A | ARCH, CONTENT, VALIDATION | 탐색·최상위 링크 라우트 통합 |
+| 6 | `08b4ac81739f` | feat(content): 프로젝트 내부 참조 검증 추가 | A | CONTENT, VALIDATION | 프로젝트 그룹·기술 스택·링크 무결성 |
+| 7 | `6514b4e0bcff` | feat(content): 지표와 Resume 참조 검증 추가 | B | CONTENT, VALIDATION, RENDERER | 지표·이력서 프로젝트 참조 |
+| 8 | `805072d7b610` | feat(content): 여정과 Interview 참조 검증 추가 | B | CONTENT, VALIDATION, RENDERER | 여정·근거 프로젝트 참조 |
+| 9 | `d5afc69ae9da` | feat(content): 큐레이션과 연락 참조 검증 추가 | B | CONTENT, VALIDATION | 선별 기록·연락처 참조 완성 |
 
-## 5. Commit별 학습 기록
+## 5. 커밋별 학습 기록
 
 ### 1. `f8a4aa2109e8` — feat(content): 중복과 참조 진단 helper 추가
 
 - **Importance:** B
 - **Tags:** CONTENT, VALIDATION
-- **Thread 역할:** integrity issue primitives
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 무결성 문제 공용 컴포넌트
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
 - `findDuplicates`, `addDuplicateIssues`, `addMissingReferenceIssue`를 확인합니다.
-- Set을 이용해 duplicate value를 한 번만 issue로 추가하는지와 caller가 file/path/label을 공급하는지 확인합니다.
+- Set을 이용해 중복된 값을 한 번만 문제로 추가하는지와 호출자가 파일·경로·문구를 공급하는지 확인합니다.
 
 확인 원칙:
 
-- 먼저 `f8a4aa2109e8^`와 `f8a4aa2109e8`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `f8a4aa2109e8^`와 `f8a4aa2109e8`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | Schema는 record shape만 확인하므로 중복 ID와 존재하지 않는 reference를 표현할 공통 integrity helper가 없었습니다. |
-| 실제 변경 file/symbol/call path | 중복 값을 찾는 Set 기반 helper와 duplicate/missing-reference issue accumulator를 추가합니다. |
-| Data/state/resource owner와 lifetime | loader의 shared `issues` 배열이 integrity diagnostic lifetime을 소유하고 helper는 throw하지 않고 issue를 추가합니다. |
-| Failure·absence·fallback 처리 | 아직 실제 source collection에 호출되지 않으며 duplicate occurrence의 각 index가 아니라 collection-level path를 기록하는 경우가 있습니다. |
-| 보장하는 것과 보장하지 않는 것 | 후속 integrity rules가 같은 source-aware issue 형식을 재사용할 수 있게 합니다. |
-| 다음 commit 또는 관련 test 연결 | `b380f56f5d90`이 internal route 판단 helper를 추가합니다. |
+| 직전 상태와 부족함 | 스키마는 레코드 형식만 확인하므로 중복 ID와 존재하지 않는 참조를 표현할 공통 무결성 도우미 함수가 없었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 중복 값을 찾는 Set 기반 도우미 함수와 중복된·누락된 참조 문제 accumulator를 추가합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 로더의 공용 `issues` 배열이 무결성 진단 수명을 소유하고 도우미 함수는 예외 발생하지 않고 문제를 추가합니다. |
+| 실패·누락·대체 처리 | 아직 실제 원본 목록에 호출되지 않으며 중복된 occurrence의 각 목록이 아니라 목록 수준 경로를 기록하는 경우가 있습니다. |
+| 보장하는 것과 보장하지 않는 것 | 후속 무결성 규칙이 같은 원본 위치가 포함된 검증 문제 형식을 재사용할 수 있게 합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `b380f56f5d90`이 내부 라우트 판단 도우미 함수를 추가합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `f8a4aa2109e8`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `f8a4aa2109e8`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 2. `b380f56f5d90` — feat(content): 내부 route 참조 검증 추가
 
 - **Importance:** A
 - **Tags:** ARCH, CONTENT, VALIDATION
-- **Thread 역할:** internal route policy helper
-- **조사 깊이:** 주요 subsystem의 결정 경로, owner, failure/non-guarantee와 integration evidence를 구체적으로 복원합니다.
+- **개발 흐름에서의 역할:** 내부 라우트 규칙 도우미 함수
+- **조사 깊이:** 주요 하위 기능의 결정 경로, 소유 주체, 실패와 보장하지 않는 범위와 통합 근거를 구체적으로 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `addInternalRouteIssue`의 root-relative/`//` early return, `new URL` pathname extraction, `/` special case를 확인합니다.
-- `/projects/:id` match, internal page map, disabled page, unknown/disabled project issue branches를 추적합니다.
-- query/hash가 pathname 검사에서 어떻게 처리되는지 확인합니다.
+- `addInternalRouteIssue`의 최상위 경로 기준/`//` 즉시 반환, `new URL` pathname 분리, `/` special 경우를 확인합니다.
+- `/projects/:id` match, 내부 페이지 맵, 비활성화된 페이지, 알 수 없는·비활성화된 프로젝트 문제 분기를 추적합니다.
+- 쿼리와 해시가 pathname 검사에서 어떻게 처리되는지 확인합니다.
 
 확인 원칙:
 
-- 먼저 `b380f56f5d90^`와 `b380f56f5d90`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `b380f56f5d90^`와 `b380f56f5d90`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | Link schema가 href 문자열 형식은 확인해도 portfolio 내부 route가 실제 지원·활성 page/project를 가리키는지는 알 수 없었습니다. |
-| 실제 변경 file/symbol/call path | root-relative internal href만 route policy 대상으로 삼고 pathname을 canonicalize한 뒤 home, known pages, project detail route를 site config와 enabled project ID set에 대조하는 helper를 추가합니다. |
-| Data/state/resource owner와 lifetime | loader가 internal routing integrity를 소유하고 caller는 source file/path 및 route kind를 전달합니다. |
-| Failure·absence·fallback 처리 | 외부 URL과 protocol-relative URL은 이 helper가 검사하지 않습니다. 동적 route는 `/projects/<single-segment>`만 지원하며 route handler 실제 존재를 filesystem에서 탐색하지 않고 고정 map에 의존합니다. |
-| 보장하는 것과 보장하지 않는 것 | 지원하지 않는 내부 route, disabled page, unknown/disabled project detail link를 일관된 issue로 만들 수 있습니다. |
-| 다음 commit 또는 관련 test 연결 | `6b9e10289b64`와 `08b4ac81739f`가 site/link/project consumers에 helper를 적용합니다. |
+| 직전 상태와 부족함 | Link 스키마가 href 문자열 형식은 확인해도 포트폴리오 내부 라우트가 실제 지원·활성 페이지·프로젝트를 가리키는지는 알 수 없었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 최상위 경로 기준 내부 href만 라우트 규칙 대상으로 삼고 pathname을 canonicalize한 뒤 홈, 알려진 페이지, 프로젝트 상세 라우트를 사이트 설정과 활성화된 프로젝트 ID 집합에 대조하는 도우미 함수를 추가합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 로더가 내부 라우팅 무결성을 소유하고 호출자는 원본 파일·경로 및 라우트 kind를 전달합니다. |
+| 실패·누락·대체 처리 | 외부 URL과 프로토콜 상대 URL은 이 도우미 함수가 검사하지 않습니다. 동적 라우트는 `/projects/<single-segment>`만 지원하며 라우트 처리기 실제 존재를 파일 시스템에서 탐색하지 않고 고정 맵에 의존합니다. |
+| 보장하는 것과 보장하지 않는 것 | 지원하지 않는 내부 라우트, 비활성화된 페이지, 알 수 없는·비활성화된 프로젝트 상세 링크를 일관된 문제로 만들 수 있습니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `6b9e10289b64`와 `08b4ac81739f`가 사이트·링크·프로젝트 소비자에 도우미 함수를 적용합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `b380f56f5d90`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다. 중요도 A 근거: content authoring과 routing/page enablement를 연결하는 architecture-level policy이며 여러 source의 href가 이 한 helper를 공유합니다.
+정적 근거: `b380f56f5d90`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다. 중요도 A 근거: 콘텐츠 authoring과 라우팅·페이지 활성화 여부를 연결하는 설계 수준 규칙이며 여러 원본의 href가 이 한 도우미 함수를 공유합니다.
 
 ### 3. `b9d74d8ccf08` — feat(content): 콘텐츠 식별자 중복 검증 추가
 
 - **Importance:** A
 - **Tags:** CONTENT, VALIDATION
-- **Thread 역할:** global identifier/order uniqueness
-- **조사 깊이:** 주요 subsystem의 결정 경로, owner, failure/non-guarantee와 integration evidence를 구체적으로 복원합니다.
+- **개발 흐름에서의 역할:** 전역 식별자·순서 고유성
+- **조사 깊이:** 주요 하위 기능의 결정 경로, 소유 주체, 실패와 보장하지 않는 범위와 통합 근거를 구체적으로 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `loadPortfolioSource`의 `issues` 배열과 group/enabled project/stack/tag/enabled link ID Sets를 확인합니다.
-- group ID/order, metric ID, project ID/order, technology ID, link ID, milestone ID, track ID, category ID, template ID, navigation href duplicate checks를 모두 열거합니다.
-- issue가 끝에서 한 번 throw되는 위치를 확인합니다.
+- `loadPortfolioSource`의 `issues` 배열과 그룹·활성화된 프로젝트·기술 스택·태그·활성화된 링크 ID Sets를 확인합니다.
+- 그룹 ID·순서, 지표 ID, 프로젝트 ID·순서, 기술 ID, 링크 ID, 주요 시점 ID, 트랙 ID, 분류 ID, 템플릿 ID, 탐색 href 중복된 검사를 모두 열거합니다.
+- 문제가 끝에서 한 번 예외 발생되는 위치를 확인합니다.
 
 확인 원칙:
 
-- 먼저 `b9d74d8ccf08^`와 `b9d74d8ccf08`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `b9d74d8ccf08^`와 `b9d74d8ccf08`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | 각 file의 ID/order가 schema 형식은 만족해도 duplicate이면 lookup Map, ordering, route/view-model 결과가 비결정적이거나 덮어써질 수 있었습니다. |
-| 실제 변경 file/symbol/call path | parsed source에서 reference Sets를 만들고 repository 전반의 주요 identifiers/order/navigation href 중복을 한 `issues` 배열에 누적한 뒤 validation phase 끝에서 `PortfolioContentError`로 던집니다. |
-| Data/state/resource owner와 lifetime | `loadPortfolioSource`가 repository-wide uniqueness와 enabled reference universe를 소유합니다. |
-| Failure·absence·fallback 처리 | 현재 duplicate message는 동일 값당 한 issue이며 모든 array item index를 지목하지 않을 수 있습니다. Tag vocabulary 자체는 projects에서 관찰된 enabled tags 집합으로 파생됩니다. |
-| 보장하는 것과 보장하지 않는 것 | 주요 lookup/order keys의 uniqueness와 여러 issue의 batch reporting을 보장합니다. |
-| 다음 commit 또는 관련 test 연결 | `b87da7ca505c`가 design registry completeness를 같은 phase에 추가합니다. |
+| 직전 상태와 부족함 | 각 파일의 ID·순서가 스키마 형식은 만족해도 중복된이면 조회 맵, 순서 결정, 라우트·뷰 모델 결과가 비결정적이거나 덮어써질 수 있었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 파싱된 원본에서 참조 Sets를 만들고 저장소 전반의 주요 식별자·순서·탐색 href 중복을 한 `issues` 배열에 누적한 뒤 검증 단계 끝에서 `PortfolioContentError`로 던집니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | `loadPortfolioSource`가 저장소 전체 고유성과 활성화된 참조 universe를 소유합니다. |
+| 실패·누락·대체 처리 | 현재 중복된 메시지는 동일 값당 한 문제이며 모든 배열 항목 목록을 지목하지 않을 수 있습니다. Tag 허용 값 집합 자체는 프로젝트에서 관찰된 활성화된 태그 집합으로 파생됩니다. |
+| 보장하는 것과 보장하지 않는 것 | 주요 조회·순서 키의 고유성과 여러 문제의 batch reporting을 보장합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `b87da7ca505c`가 디자인 등록부 완전성을 같은 단계에 추가합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `b9d74d8ccf08`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다. 중요도 A 근거: source별 shape 검증을 repository-wide namespace invariant로 확장하고 모든 후속 reference checks의 기준 Sets를 만듭니다.
+정적 근거: `b9d74d8ccf08`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다. 중요도 A 근거: 원본별 형식 검증을 저장소 전체 namespace 불변 조건으로 확장하고 모든 후속 참조 검사의 기준 Sets를 만듭니다.
 
 ### 4. `b87da7ca505c` — feat(content): 지원 디자인 구성 검증 추가
 
 - **Importance:** A
 - **Tags:** CONTENT, VALIDATION
-- **Thread 역할:** design registry completeness
-- **조사 깊이:** 주요 subsystem의 결정 경로, owner, failure/non-guarantee와 integration evidence를 구체적으로 복원합니다.
+- **개발 흐름에서의 역할:** 디자인 등록부 완전성
+- **조사 깊이:** 주요 하위 기능의 결정 경로, 소유 주체, 실패와 보장하지 않는 범위와 통합 근거를 구체적으로 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- defaultHomeTemplate가 templates에 있는지, 모든 configured ID가 supported인지, supported five IDs가 모두 configured인지 세 방향 검사를 확인합니다.
-- issue file/path가 `presentation.json`의 default/templates 위치를 가리키는지 확인합니다.
+- defaultHomeTemplate가 템플릿에 있는지, 모든 설정된 ID가 지원 대상인지, 지원 대상 five ID가 모두 설정되었는지 세 방향 검사를 확인합니다.
+- 문제 파일·경로가 `presentation.json`의 기본값·템플릿 위치를 가리키는지 확인합니다.
 
 확인 원칙:
 
-- 먼저 `b87da7ca505c^`와 `b87da7ca505c`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `b87da7ca505c^`와 `b87da7ca505c`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | Presentation schema는 design ID enum을 제한하지만 default가 templates에 포함되는지, 지원하는 다섯 design이 빠짐없이 등록됐는지 전체 문서 관계를 보장하지 못했습니다. |
-| 실제 변경 file/symbol/call path | default membership, configured⊆supported, supported⊆configured를 각각 issue로 검사합니다. |
-| Data/state/resource owner와 lifetime | loader가 renderer-supported design registry와 content configuration의 완전성을 소유합니다. |
-| Failure·absence·fallback 처리 | Template ID uniqueness는 앞 commit이, 실제 renderer module 존재·lazy import 성공은 다른 architecture/tests가 책임집니다. |
-| 보장하는 것과 보장하지 않는 것 | default design과 templates registry가 지원 design 집합과 정확히 대응하도록 fail-closed 합니다. |
-| 다음 commit 또는 관련 test 연결 | `6b9e10289b64`가 실제 href collections를 route policy에 연결합니다. |
+| 직전 상태와 부족함 | 화면 구성 스키마는 디자인 ID 열거형을 제한하지만 기본값이 템플릿에 포함되는지, 지원하는 다섯 디자인이 빠짐없이 등록됐는지 전체 문서 관계를 보장하지 못했습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 기본값 포함 관계, 설정된⊆지원 대상, 지원 대상⊆설정된를 각각 문제로 검사합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 로더가 렌더러가 지원하는 디자인 등록부와 콘텐츠 설정의 완전성을 소유합니다. |
+| 실패·누락·대체 처리 | Template ID 고유성은 앞 커밋이, 실제 렌더러 모듈 존재·지연 로딩 가져오기 성공은 다른 설계·테스트가 책임집니다. |
+| 보장하는 것과 보장하지 않는 것 | 기본 디자인과 템플릿 등록부가 지원 디자인 집합과 정확히 대응하도록 검증에 실패하면 차단합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `6b9e10289b64`가 실제 href 목록을 라우트 규칙에 연결합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `b87da7ca505c`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다. 중요도 A 근거: 다섯 renderer의 content registry가 부분 구성이나 unsupported entry로 배포되는 것을 source boundary에서 차단합니다.
+정적 근거: `b87da7ca505c`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다. 중요도 A 근거: 다섯 렌더러의 콘텐츠 등록부가 부분 구성이나 지원하지 않는 진입점으로 배포되는 것을 원본 구분 지점에서 차단합니다.
 
 ### 5. `6b9e10289b64` — feat(content): 사이트와 링크 route 참조 검증 추가
 
 - **Importance:** A
 - **Tags:** ARCH, CONTENT, VALIDATION
-- **Thread 역할:** navigation/top-level link route integration
-- **조사 깊이:** 주요 subsystem의 결정 경로, owner, failure/non-guarantee와 integration evidence를 구체적으로 복원합니다.
+- **개발 흐름에서의 역할:** 탐색·최상위 링크 라우트 통합
+- **조사 깊이:** 주요 하위 기능의 결정 경로, 소유 주체, 실패와 보장하지 않는 범위와 통합 근거를 구체적으로 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `site.navigation.forEach`와 `links.forEach`가 `addInternalRouteIssue`에 전달하는 file/path/routeKind/site/enabledProjectIds를 확인합니다.
-- external href가 helper early return으로 통과하는지 확인합니다.
+- `site.navigation.forEach`와 `links.forEach`가 `addInternalRouteIssue`에 전달하는 파일·경로·라우트 종류·사이트·enabledProjectIds를 확인합니다.
+- 외부 href가 도우미 함수 즉시 반환으로 통과하는지 확인합니다.
 
 확인 원칙:
 
-- 먼저 `6b9e10289b64^`와 `6b9e10289b64`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `6b9e10289b64^`와 `6b9e10289b64`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | Internal route helper는 존재했지만 실제 navigation과 top-level links에 적용되지 않아 dangling route가 loader를 통과했습니다. |
-| 실제 변경 file/symbol/call path | site navigation과 top-level link href를 source index별 path로 route validator에 연결합니다. |
-| Data/state/resource owner와 lifetime | loader가 두 public navigation source의 internal route consistency를 소유합니다. |
-| Failure·absence·fallback 처리 | 외부 destination의 접근 가능성·보안 헤더는 검사하지 않고, page route map은 코드 상수에 의존합니다. |
-| 보장하는 것과 보장하지 않는 것 | navigation/link가 unsupported route, disabled page, unknown/disabled project를 가리키면 source load가 실패합니다. |
-| 다음 commit 또는 관련 test 연결 | `08b4ac81739f`가 project record 내부 links와 group/stack refs를 추가합니다. |
+| 직전 상태와 부족함 | 내부 라우트 도우미 함수는 존재했지만 실제 탐색과 최상위 링크에 적용되지 않아 대상이 없는 라우트가 로더를 통과했습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 사이트 탐색과 최상위 링크 href를 원본 목록별 경로로 라우트 검증 함수에 연결합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 로더가 두 공개 탐색 원본의 내부 라우트 일관성를 소유합니다. |
+| 실패·누락·대체 처리 | 외부 목적지의 접근 가능성·보안 헤더는 검사하지 않고, 페이지 라우트 맵은 코드 상수에 의존합니다. |
+| 보장하는 것과 보장하지 않는 것 | 탐색·링크가 지원하지 않는 라우트, 비활성화된 페이지, 알 수 없는·비활성화된 프로젝트를 가리키면 원본 로딩이 실패합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `08b4ac81739f`가 프로젝트 레코드 내부 링크와 그룹·기술 스택 참조를 추가합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `6b9e10289b64`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다. 중요도 A 근거: site shell과 global links의 공개 routing surface를 content integrity boundary에 연결합니다.
+정적 근거: `6b9e10289b64`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다. 중요도 A 근거: 사이트 셸과 전역 링크의 공개 라우팅 표시 영역을 콘텐츠 무결성 구분 지점에 연결합니다.
 
 ### 6. `08b4ac81739f` — feat(content): 프로젝트 내부 참조 검증 추가
 
 - **Importance:** A
 - **Tags:** CONTENT, VALIDATION
-- **Thread 역할:** project group/stack/link integrity
-- **조사 깊이:** 주요 subsystem의 결정 경로, owner, failure/non-guarantee와 integration evidence를 구체적으로 복원합니다.
+- **개발 흐름에서의 역할:** 프로젝트 그룹·기술 스택·링크 무결성
+- **조사 깊이:** 주요 하위 기능의 결정 경로, 소유 주체, 실패와 보장하지 않는 범위와 통합 근거를 구체적으로 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- 각 project의 groupId missing reference, duplicate tags/stack refs, stack ID existence, project internal links route validation을 확인합니다.
-- enabled 여부와 무관하게 items 전체를 검사하는지, target project set은 enabled만인지 구분합니다.
+- 각 프로젝트의 groupId 누락된 참조, 중복된 태그·기술 스택 참조, 기술 스택 ID 존재 여부, 프로젝트 내부 링크 라우트 검증을 확인합니다.
+- 활성화된 여부와 무관하게 항목 전체를 검사하는지, 대상 프로젝트 집합은 활성화된만인지 구분합니다.
 
 확인 원칙:
 
-- 먼저 `08b4ac81739f^`와 `08b4ac81739f`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `08b4ac81739f^`와 `08b4ac81739f`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | 완전한 project schema가 있어도 존재하지 않는 group/technology를 참조하거나 같은 tag/stack을 중복하고 dangling internal link를 가질 수 있었습니다. |
-| 실제 변경 file/symbol/call path | 각 project item을 순회해 group/stack references와 per-project duplicates를 검사하고 nested links를 route validator에 연결합니다. |
-| Data/state/resource owner와 lifetime | project catalog 내부 관계는 loader integrity phase가 소유합니다. |
-| Failure·absence·fallback 처리 | Project 자체가 disabled이어도 source record의 refs를 검사하는 반면 다른 source가 참조할 수 있는 target set은 enabled projects만입니다. External project links의 원격 상태는 검사하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | project group/technology/internal-route graph의 기본 integrity를 보장합니다. |
-| 다음 commit 또는 관련 test 연결 | `6514b4e0bcff` 이후 project IDs를 사용하는 다른 documents를 검증합니다. |
+| 직전 상태와 부족함 | 완전한 프로젝트 스키마가 있어도 존재하지 않는 그룹·기술을 참조하거나 같은 태그·기술 스택을 중복하고 대상이 없는 내부 링크를 가질 수 있었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 각 프로젝트 항목을 순회해 그룹·기술 스택 참조와 프로젝트별 duplicates를 검사하고 중첩된 링크를 라우트 검증 함수에 연결합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 프로젝트 카탈로그 내부 관계는 로더 무결성 단계가 소유합니다. |
+| 실패·누락·대체 처리 | 프로젝트 자체가 비활성화된이어도 원본 레코드의 참조를 검사하는 반면 다른 원본이 참조할 수 있는 대상 집합은 활성화된 프로젝트만입니다. 외부 프로젝트 링크의 원격 상태는 검사하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 프로젝트 그룹·기술·내부 라우트 참조 관계의 기본 무결성을 보장합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `6514b4e0bcff` 이후 프로젝트 ID를 사용하는 다른 documents를 검증합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `08b4ac81739f`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다. 중요도 A 근거: 가장 큰 domain record의 internal graph와 public links를 한 번에 fail-closed 합니다.
+정적 근거: `08b4ac81739f`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다. 중요도 A 근거: 가장 큰 데이터 영역 레코드의 내부 참조 관계와 공개 링크를 한 번에 검증에 실패하면 차단합니다.
 
 ### 7. `6514b4e0bcff` — feat(content): 지표와 Resume 참조 검증 추가
 
 - **Importance:** B
 - **Tags:** CONTENT, VALIDATION, RENDERER
-- **Thread 역할:** metric/resume project references
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 지표·이력서 프로젝트 참조
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- metrics의 projectIds/groupIds/tags filter refs와 résumé projectIds 검사를 확인합니다.
-- project/tag target이 enabled project universe에서 파생되는지 기록합니다.
+- 지표의 프로젝트 ID/그룹 ID·태그 필터 참조와 résumé 프로젝트 ID 검사를 확인합니다.
+- 프로젝트·태그 대상이 활성화된 프로젝트 universe에서 파생되는지 기록합니다.
 
 확인 원칙:
 
-- 먼저 `6514b4e0bcff^`와 `6514b4e0bcff`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `6514b4e0bcff^`와 `6514b4e0bcff`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | Metric filter나 résumé가 schema-valid하지만 존재하지 않거나 disabled인 project/group/tag를 가리키면 selector가 0/omission으로 조용히 실패할 수 있었습니다. |
-| 실제 변경 file/symbol/call path | Metric filter references와 résumé project list를 known enabled project/group/tag Sets에 대조합니다. |
-| Data/state/resource owner와 lifetime | loader가 declarative metric 및 résumé evidence references의 validity를 소유합니다. |
-| Failure·absence·fallback 처리 | Metric 계산의 논리/숫자 타당성과 résumé의 원하는 순서/중복은 별도 규칙이 없는 범위에서 보장하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | 이 source들이 selector fallback에 의존하기 전에 dangling refs를 fail-closed 합니다. |
-| 다음 commit 또는 관련 test 연결 | `805072d7b610`이 journey/interview references를 추가합니다. |
+| 직전 상태와 부족함 | 지표 필터나 résumé가 스키마에 맞는하지만 존재하지 않거나 비활성화된 프로젝트·그룹·태그를 가리키면 선택자가 0/제외으로 조용히 실패할 수 있었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 지표 필터 참조와 résumé 프로젝트 목록을 알려진 활성화된 프로젝트·그룹·태그 Sets에 대조합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 로더가 선언형 지표 및 résumé 근거 참조의 유효성을 소유합니다. |
+| 실패·누락·대체 처리 | 지표 계산의 논리·숫자 타당성과 résumé의 원하는 순서·중복은 별도 규칙이 없는 범위에서 보장하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 이 원본들이 선택자 대체 처리에 의존하기 전에 대상이 없는 참조를 검증에 실패하면 차단합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `805072d7b610`이 여정·인터뷰 참조를 추가합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `6514b4e0bcff`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `6514b4e0bcff`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 8. `805072d7b610` — feat(content): 여정과 Interview 참조 검증 추가
 
 - **Importance:** B
 - **Tags:** CONTENT, VALIDATION, RENDERER
-- **Thread 역할:** journey/evidence project references
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 여정·근거 프로젝트 참조
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- journey nullable projectId, narrative milestone anchorProjectIds, interview answers projectId loops와 exact JSON paths를 확인합니다.
+- 여정의 null 허용 `projectId`, 설명 주요 시점의 `anchorProjectIds`, 인터뷰 답변의 `projectId` 반복과 정확한 JSON 경로를 확인합니다.
 
 확인 원칙:
 
-- 먼저 `805072d7b610^`와 `805072d7b610`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `805072d7b610^`와 `805072d7b610`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | Journey와 Interview Map에서 잘못된 project reference가 route view model에서 omission/undefined로 나타날 수 있었습니다. |
-| 실제 변경 file/symbol/call path | non-null journey project, milestone anchors, nested interview answers를 enabled project set에 대조합니다. |
-| Data/state/resource owner와 lifetime | loader가 chronology/evidence documents의 project references를 소유합니다. |
-| Failure·absence·fallback 처리 | Chronology date ordering, duplicate anchors/answers, evidence depth의 의미는 검사하지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | Journey와 Interview Map이 공개 가능한 enabled project만 참조하도록 보장합니다. |
-| 다음 commit 또는 관련 test 연결 | `d5afc69ae9da`가 curation/contact references로 integrity 범위를 닫습니다. |
+| 직전 상태와 부족함 | 여정과 인터뷰 맵에서 잘못된 프로젝트 참조가 라우트 뷰 모델에서 제외·undefined로 나타날 수 있었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | null이 아닌 여정 프로젝트, 주요 시점 기준 프로젝트, 중첩된 인터뷰 답변을 활성화된 프로젝트 집합에 대조합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 로더가 시간순 기록·근거 documents의 프로젝트 참조를 소유합니다. |
+| 실패·누락·대체 처리 | Chronology 날짜 순서 결정, 중복된 기준 프로젝트·답변, 근거 깊이의 의미는 검사하지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 여정과 인터뷰 맵이 공개 가능한 활성화된 프로젝트만 참조하도록 보장합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `d5afc69ae9da`가 선별 기록·연락처 참조로 무결성 범위를 닫습니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `805072d7b610`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `805072d7b610`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 9. `d5afc69ae9da` — feat(content): 큐레이션과 연락 참조 검증 추가
 
 - **Importance:** B
 - **Tags:** CONTENT, VALIDATION
-- **Thread 역할:** curation/contact reference closure
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 선별 기록·연락처 참조 완성
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- curation categories projectIds와 contact preferred linkIds 검사를 확인합니다.
-- contact target set이 ID가 있고 `enabled !== false`인 links만 포함하는지 확인합니다.
+- 선별 기록 분류 프로젝트 ID와 연락처 우선 linkIds 검사를 확인합니다.
+- 연락처 대상 집합이 ID가 있고 `enabled !== false`인 링크만 포함하는지 확인합니다.
 
 확인 원칙:
 
-- 먼저 `d5afc69ae9da^`와 `d5afc69ae9da`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `d5afc69ae9da^`와 `d5afc69ae9da`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | Curation과 contact preferred 목록이 dangling/disabled project·link를 가리켜 selector가 조용히 생략할 수 있었습니다. |
-| 실제 변경 file/symbol/call path | Curation project references를 enabled project set에, preferred contact IDs를 enabled link ID set에 대조합니다. |
-| Data/state/resource owner와 lifetime | loader가 마지막 cross-file public references의 validity를 소유합니다. |
-| Failure·absence·fallback 처리 | Category/project ID 중복은 앞 단계가 다루지만 per-category projectIds 중복이나 contact order의 업무 의미는 별도 검사가 없습니다. |
-| 보장하는 것과 보장하지 않는 것 | 주요 content documents의 cross-file public reference graph가 load 전에 fail-closed 됩니다. |
-| 다음 commit 또는 관련 test 연결 | T10 validated facade가 이 integrity-checked `portfolioSource`만 소비합니다. |
+| 직전 상태와 부족함 | Curation과 연락처 우선 목록이 대상이 없거나 비활성화된 프로젝트·링크를 가리켜 선택자가 조용히 생략할 수 있었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | Curation 프로젝트 참조를 활성화된 프로젝트 집합에, 우선 연락처 ID를 활성화된 링크 ID 집합에 대조합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 로더가 마지막 파일 간 공개 참조의 유효성을 소유합니다. |
+| 실패·누락·대체 처리 | 분류·프로젝트 ID 중복은 앞 단계가 다루지만 분류별 프로젝트 ID 중복이나 연락처 순서의 업무 의미는 별도 검사가 없습니다. |
+| 보장하는 것과 보장하지 않는 것 | 주요 콘텐츠 documents의 파일 간 공개 참조 관계가 로딩 전에 검증에 실패하면 차단됩니다. |
+| 다음 커밋 또는 관련 테스트 연결 | T10 검증된 공개 모듈이 이 무결성을 검증한 `portfolioSource`만 소비합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `d5afc69ae9da`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `d5afc69ae9da`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
-## 6. Invariant evolution ledger
+## 6. 불변 조건 변화 기록
 
-| 추적할 invariant | 도입·변화 SHA | 실제 owner/evidence | 제한·후속 보호 |
+| 추적할 불변 조건 | 도입·변화 SHA | 실제 소유 주체·근거 | 제한·후속 보호 |
 | --- | --- | --- | --- |
-| Integrity issues는 shape parse 뒤 하나의 배열에 누적된다. | `b9d74d8ccf08` 이후 | `loadPortfolioSource` issues | per-file schema failure는 그 이전에 즉시 throw |
-| 주요 identifiers/order/navigation href는 unique하다. | `b9d74d8ccf08` | duplicate helpers + repository collections | 모든 possible array 중복을 포괄하지는 않음 |
-| Design registry는 default/list/supported 집합이 일치한다. | `b87da7ca505c` | presentation integrity rules | renderer module 존재는 별도 |
-| Internal route는 enabled page/project만 가리킨다. | `b380f56f5d90` → `6b9e10289b64`/`08b4ac81739f` | route helper and consumers | 외부 URL reachability 미검사 |
-| Cross-file public references는 enabled target universe에 존재한다. | `08b4ac81739f` → `d5afc69ae9da` | Sets + missing-reference issues | 일부 per-array duplicates/semantic order 미검사 |
+| 무결성 문제는 형식 파싱 뒤 하나의 배열에 누적됩니다. | `b9d74d8ccf08` 이후 | `loadPortfolioSource` 문제 | 파일별 스키마 실패는 그 이전에 즉시 예외 발생 |
+| 주요 식별자·순서·탐색 href는 고유한하다. | `b9d74d8ccf08` | 중복된 도우미 함수 + 저장소 목록 | 모든 possible 배열 중복을 포괄하지는 않음 |
+| Design 등록부는 기본값·목록·지원 목록이 일치합니다. | `b87da7ca505c` | 화면 구성 무결성 규칙 | 렌더러 모듈 존재는 별도 |
+| 내부 라우트는 활성화된 페이지·프로젝트만 가리킨다. | `b380f56f5d90` → `6b9e10289b64`/`08b4ac81739f` | 라우트 도우미 함수 및 소비자 | 외부 URL 접근 가능 여부 미검사 |
+| 파일 간 공개 참조는 활성화된 대상 universe에 존재합니다. | `08b4ac81739f` → `d5afc69ae9da` | Sets + 누락된 참조 문제 | 일부 배열별 duplicates·의미상 순서 미검사 |
 
-## 7. Failure → Fix → Test 관계
+## 7. 실패 → 수정 → 테스트 관계
 
-| Failure 또는 risk | Fix/전환 SHA | 교정된 결정 | Regression·검증 관계 |
+| 실패 또는 위험 | 수정·전환 SHA | 교정된 결정 | 회귀·검증 관계 |
 | --- | --- | --- | --- |
-| schema-valid ID가 duplicate/dangling일 수 있음 | `b9d74d8ccf08`과 reference sequence | repository-wide Sets와 batch issues | `3353032ba23b` duplicate/missing-reference tests |
-| internal href가 unsupported/disabled target을 가리킴 | `b380f56f5d90`, `6b9e10289b64`, `08b4ac81739f` | route policy + source loops | 후속 unsupported/disabled route tests |
-| presentation registry가 partial/unsupported일 수 있음 | `b87da7ca505c` | bidirectional supported design completeness | 후속 missing/unsupported design tests |
-| selector omission/0이 authoring error를 숨김 | reference checks before facade | dangling refs를 load error로 승격 | selector fallback은 runtime query semantics로만 남음 |
+| 스키마에 맞는 ID가 중복되거나 대상이 없을 수 있음 | `b9d74d8ccf08`과 참조 순서 | 저장소 전체 ID 집합과 누적 문제 | `3353032ba23b` 중복된·누락된 참조 테스트 |
+| 내부 href가 지원하지 않거나 비활성화된 대상을 가리킴 | `b380f56f5d90`, `6b9e10289b64`, `08b4ac81739f` | 라우트 규칙 + 원본 순회 | 후속 지원하지 않거나 비활성화된 라우트 테스트 |
+| 화면 구성 등록부가 일부·지원하지 않는일 수 있음 | `b87da7ca505c` | bidirectional 지원하는 디자인 완전성 | 후속 누락된·지원하지 않는 디자인 테스트 |
+| 선택자 제외/0이 authoring 오류를 숨김 | 참조 검사 이전 공개 모듈 | 대상이 없는 참조를 로딩 오류로 승격 | 선택자 대체 처리는 실행 시점 쿼리 의미 구조로만 남음 |
 
-## 8. Ownership·state·responsibility 변화
+## 8. 소유 주체·상태·담당 작업 변화
 
-| 대상 | 이전 owner/state | 최종 owner/state | 근거 |
+| 대상 | 이전 소유 주체·상태 | 최종 소유 주체·상태 | 근거 |
 | --- | --- | --- | --- |
-| per-file shape | schema/parser | T8 parser | 즉시 failure |
-| repository namespaces | 없음 | T9 loader issues/Sets | duplicate IDs/order/hrefs |
-| routing integrity | renderer/route fallback | `addInternalRouteIssue` | enabled page/project policy |
-| cross-file references | selector omission/undefined | loader missing-reference rules | enabled target sets |
-| batch failure | 첫 consumer failure | `PortfolioContentError(issues)` | 가능한 integrity issues를 함께 보고 |
+| 파일별 형식 | 스키마·파서 | T8 파서 | 즉시 실패 |
+| 저장소 namespaces | 없음 | T9 로더 문제·Sets | 중복된 ID·순서·hrefs |
+| 라우팅 무결성 | 렌더러·라우트 대체 처리 | `addInternalRouteIssue` | 활성화된 페이지·프로젝트 규칙 |
+| 파일 간 참조 | 선택자 제외·un정의된 | 로더 누락된 참조 규칙 | 활성화된 대상 집합 |
+| batch 실패 | 첫 소비자 실패 | `PortfolioContentError(issues)` | 가능한 무결성 문제를 함께 보고 |
 
-## 9. Thread 최종 상태
+## 9. 개발 흐름 최종 상태
 
-Thread 종료 시점에는 schema-parsed source가 duplicate identifiers/order, supported design registry, internal routes, project group/stack/link, metric/résumé/journey/interview/curation/contact references를 통과해야만 반환됩니다. 가능한 integrity 문제는 한 배열에 누적되지만 per-file schema parse failure는 앞 단계에서 즉시 중단됩니다. 외부 URL, asset 존재, 모든 semantic ordering/duplicate case는 범위 밖입니다.
+개발 흐름 종료 시점에는 스키마 파싱된 원본이 중복된 식별자·순서, 지원하는 디자인 등록부, 내부 라우트, 프로젝트 그룹·기술 스택·링크, 지표·résumé/여정·인터뷰·선별 기록·연락처 참조를 통과해야만 반환됩니다. 가능한 무결성 문제는 한 배열에 누적되지만 파일별 스키마 파싱 실패는 앞 단계에서 즉시 중단됩니다. 외부 URL, 자산 존재, 모든 의미상 순서 결정·중복된 경우는 범위 밖입니다.
 
 ### 최종 설명
 
-- Shape-valid와 repository-valid를 분리하고 두 번째 integrity phase를 추가했습니다.
-- 중복/참조 helper를 공유해 source file과 JSON path를 보존한 batch diagnostic을 만들었습니다.
-- Internal route를 page enablement와 enabled project universe에 연결했습니다.
-- Selector의 의도된 fallback/omission이 authoring error를 숨기지 않도록 주요 cross-file references를 loader에서 차단했습니다.
+- 형식이 유효한 상태와 저장소에서 유효한 상태를 분리하고 두 번째 무결성 단계를 추가했습니다.
+- 중복·참조 도우미 함수를 공유해 원본 파일과 JSON 경로를 보존한 batch 진단을 만들었습니다.
+- 내부 라우트를 페이지 활성화 여부와 활성화된 프로젝트 universe에 연결했습니다.
+- 선택자의 의도된 대체 처리·제외이 authoring 오류를 숨기지 않도록 주요 파일 간 참조를 로더에서 차단했습니다.
 
 ## 10. 최종 실행·데이터 흐름
 
-| 단계 | Owner/call path | 입력·출력 | Failure/non-guarantee |
+| 단계 | 담당 위치·호출 경로 | 입력·출력 | 실패·보장하지 않는 범위 |
 | --- | --- | --- | --- |
-| Parsed source에서 namespace Sets를 구성합니다. | `loadPortfolioSource` | group/project/stack/tag/link ID sets | enabled target과 all records를 구분 |
-| Duplicate/design registry를 검사합니다. | duplicate helpers + supported design sets | issues 배열 | 한 값당 collection-level issue 가능 |
-| Internal routes를 검사합니다. | `addInternalRouteIssue` | navigation/link route issues | 외부 URL은 건너뜀 |
-| Cross-file references를 검사합니다. | missing-reference helper loops | project/group/stack/link issues | enabled target만 유효 |
-| Issues가 있으면 한 번에 실패합니다. | `PortfolioContentError(issues)` | structured batch error | 없으면 parsed source 반환 |
+| Parsed 원본에서 namespace Sets를 구성합니다. | `loadPortfolioSource` | 그룹·프로젝트·기술 스택·태그·링크 ID 집합 | 활성화된 대상과 모든 레코드를 구분 |
+| Duplicate·디자인 등록부를 검사합니다. | 중복된 도우미 함수 + 지원하는 디자인 집합 | 문제 배열 | 한 값당 목록 수준 문제 가능 |
+| 내부 라우트를 검사합니다. | `addInternalRouteIssue` | 탐색·링크 라우트 문제 | 외부 URL은 건너뜀 |
+| 파일 간 참조를 검사합니다. | 누락된 참조 도우미 함수 loops | 프로젝트·그룹·기술 스택·링크 문제 | 활성화된 대상만 유효 |
+| Issues가 있으면 한 번에 실패합니다. | `PortfolioContentError(issues)` | 구조화된 batch 오류 | 없으면 파싱된 원본 반환 |
 
 ## 11. 학습 완료 확인
 
-완료했습니다. 모든 commit은 exact SHA의 parent diff/resulting tree를 기준으로 기록했고, direct execution evidence와 static inspection을 구분했습니다. `3353032ba23b`은 duplicate, missing design, unsupported/disabled route, disabled reference 등의 deterministic override cases를 후속 테스트합니다. 이 작업에서는 해당 tests를 실행하지 않았습니다.
+완료했습니다. 모든 커밋은 해당 SHA의 부모 커밋과의 차이·변경 후 파일 트리를 기준으로 기록했고, 직접 실행 근거와 정적 검토를 구분했습니다. `3353032ba23b`은 중복된, 누락된 디자인, 지원하지 않는·비활성화된 라우트, 비활성화된 참조 등의 결정적인 덮어쓰기 경우를 후속 테스트합니다. 이 작업에서는 해당 테스트를 실행하지 않았습니다.
 ===== END FILE: 09-repository-wide-content-integrity.md =====
 
 ===== BEGIN FILE: 10-validated-facade-assets-and-build-gate.md =====
-# Thread: Validated facade, assets, and build gate
+# 개발 흐름: 검증된 공개 모듈·자산·빌드 차단 단계
 
-> Repository: `https://github.com/seungwoo7050/42-archive`  
-> Branch: `web/portfolio`  
-> Category: `01-application-foundation-and-content-systems`
+> 저장소: `https://github.com/seungwoo7050/42-archive`
+> 브랜치: `web/portfolio`
+> 분류: `01-application-foundation-and-content-systems`
 
 ## 0. 분류 출처와 변경 가능 범위
 
-- Commit SHA, subject, importance, tags는 target branch의 `commit/commit-importance.md` 분류와 exact commit metadata를 사용합니다.
-- 이 문서의 Thread grouping, 목표, 역할, 조사 지점은 Phase 1 category audit에서 repository evidence를 기준으로 확정했습니다.
-- Phase 2에서는 이 fixed information을 바꾸지 않고 learner-facing 기록만 채웠습니다.
-- 다른 branch나 final HEAD 구현을 과거 SHA 설명에 소급하지 않습니다.
+- 커밋 SHA·제목·중요도·태그는 대상 브랜치의 `commit/commit-importance.md` 분류와 해당 커밋의 정확한 메타데이터를 사용합니다.
+- 이 문서의 개발 흐름 묶음·목표·역할·확인 지점은 1단계 분류 검토에서 저장소 근거를 바탕으로 확정했습니다.
+- 2단계에서는 이 고정 정보를 바꾸지 않고 학습자용 기록만 작성했습니다.
+- 다른 브랜치나 최종 HEAD의 구현을 과거 SHA의 설명으로 소급하지 않습니다.
 
-## 1. Thread 목표
+## 1. 개발 흐름 목표
 
-기존 JSON-direct portfolio facade를 validated `portfolioSource`로 교체하고 schema-derived type 연결을 확대한 뒤, repository-local asset 존재 검증과 `content:check`/`prebuild` gate로 source trust를 build lifecycle까지 확장하는 과정을 복원합니다.
+기존 JSON 직접 포트폴리오 공개 모듈을 검증된 `portfolioSource`로 교체하고 스키마에서 파생된 타입 연결을 확대한 뒤, 저장소 로컬 자산 존재 검증과 `content:check`/`prebuild` 검사 단계로 원본 신뢰를 빌드 실행 주기까지 확장하는 과정을 복원합니다.
 
-### 계획된 핵심 invariant
+### 계획된 핵심 불변 조건
 
-- Portfolio facade는 raw JSON을 직접 import하지 않고 validated source만 소비합니다.
-- Facade는 group label 파생, journey 정렬, enabled filtering처럼 renderer-facing transformation만 소유합니다.
-- Content build gate는 schema/integrity와 public asset 존재를 모두 통과해야 성공합니다.
+- Portfolio 공개 모듈은 원시 JSON을 직접 불러오지 않고 검증된 원본만 소비합니다.
+- 공개 모듈은 그룹 문구 파생, 여정 정렬, 활성 항목 필터링처럼 렌더러에 전달할 값 변환만 소유합니다.
+- 콘텐츠 빌드 차단 단계는 스키마·무결성과 공개 자산 존재를 모두 통과해야 성공합니다.
 
-## 2. 이 Thread를 이해하기 위한 핵심 질문
+## 2. 이 개발 흐름을 이해하기 위한 핵심 질문
 
-- Schema-derived source types와 기존 renderer-facing types의 경계는 어떻게 줄어드는가?
-- Validated source로 전환하면서 environment href behavior와 migration branch는 어떻게 제거되는가?
-- Asset path traversal/absence 검사와 build lifecycle 연결이 무엇을 보장하고 무엇을 보장하지 않는가?
+- 스키마에서 파생된 원본 타입과 기존 렌더러에 전달할 타입의 경계는 어떻게 줄어드는가?
+- 검증된 원본으로 전환하면서 환경 href 동작과 전환 브랜치는 어떻게 제거되는가?
+- 자산 경로 순회·누락 검사와 빌드 실행 주기 연결이 무엇을 보장하고 무엇을 보장하지 않는가?
 
 ## 3. 완료 기준
 
-- 각 SHA의 parent diff와 resulting tree에서 실제 file/symbol을 확인합니다.
-- 이전 상태, implementation decision, owner/lifetime, absence/failure/fallback, guarantee/non-guarantee를 분리합니다.
-- Fix·refactor·integration은 바로 앞의 assumption이나 duplicated responsibility와 연결합니다.
-- 테스트나 command는 실제 실행 여부를 정적 검토와 명확히 구분합니다.
-- Thread 종료 시 invariant evolution과 최종 flow를 코드 없이 설명합니다.
+- 각 SHA의 부모 커밋과의 차이와 변경 후 파일 트리에서 실제 파일과 심볼을 확인합니다.
+- 이전 상태, 구현 결정, 소유 주체와 수명, 누락·실패·대체 처리, 보장 범위와 보장하지 않는 범위를 나눠 기록합니다.
+- 수정·리팩터링·통합은 바로 앞선 가정이나 중복 구현과 연결합니다.
+- 테스트와 명령은 실제 실행 여부를 정적 검토와 명확히 구분합니다.
+- 개발 흐름 마지막에는 불변 조건의 변화와 최종 실행 순서를 코드 없이 설명합니다.
 
-## 4. Commit map
+## 4. 커밋 목록
 
-| 순서 | Commit | Subject | Importance | Tags | 이 Thread에서의 역할 |
-| ---: | --- | --- | :---: | --- | --- |
-| 1 | `85df59454b46` | refactor(content): schema 기반 핵심 콘텐츠 타입 연결 | A | ARCH, CONTENT, VALIDATION | schema-derived facade type bridge |
-| 2 | `16bdf03ce979` | feat(content): 여정과 큐레이션 콘텐츠 타입 추가 | B | CONTENT | new narrative facade types |
-| 3 | `508e0b71024b` | refactor(content): 검증된 콘텐츠를 portfolio facade에 연결 | S | ARCH, CONTENT, VALIDATION | raw imports 제거와 validated facade cutover |
-| 4 | `ff2ecadf3489` | feat(content): 저장소 자산 참조 경계 검증 | A | CONTENT, VALIDATION | public asset filesystem integrity |
-| 5 | `0e0ed9e50323` | build(content): 콘텐츠 검사 명령 추가 | B | CONTENT, DEPLOY | explicit content validation command |
-| 6 | `28b0db56190f` | build(content): 콘텐츠 검사를 prebuild에 연결 | A | CONTENT, DEPLOY | build fail-closed gate |
+| 순서 | 커밋 | 제목 | 중요도 | 태그 | 이 개발 흐름에서의 역할 |
+| ---: | --- | --- |:---: | --- | --- |
+| 1 | `85df59454b46` | refactor(content): schema 기반 핵심 콘텐츠 타입 연결 | A | ARCH, CONTENT, VALIDATION | 스키마에서 파생된 공개 모듈 타입 연결부 |
+| 2 | `16bdf03ce979` | feat(content): 여정과 큐레이션 콘텐츠 타입 추가 | B | CONTENT | new 설명 공개 모듈 타입 |
+| 3 | `508e0b71024b` | refactor(content): 검증된 콘텐츠를 portfolio facade에 연결 | S | ARCH, CONTENT, VALIDATION | 원본 가져오기 제거와 검증된 공개 모듈 전환 |
+| 4 | `ff2ecadf3489` | feat(content): 저장소 자산 참조 경계 검증 | A | CONTENT, VALIDATION | 공개 자산 파일 시스템 무결성 |
+| 5 | `0e0ed9e50323` | build(content): 콘텐츠 검사 명령 추가 | B | CONTENT, DEPLOY | 명시적인 콘텐츠 검증 명령 |
+| 6 | `28b0db56190f` | build(content): 콘텐츠 검사를 prebuild에 연결 | A | CONTENT, DEPLOY | 빌드 차단 검사 단계 |
 
-## 5. Commit별 학습 기록
+## 5. 커밋별 학습 기록
 
 ### 1. `85df59454b46` — refactor(content): schema 기반 핵심 콘텐츠 타입 연결
 
 - **Importance:** A
 - **Tags:** ARCH, CONTENT, VALIDATION
-- **Thread 역할:** schema-derived facade type bridge
-- **조사 깊이:** 주요 subsystem의 결정 경로, owner, failure/non-guarantee와 integration evidence를 구체적으로 복원합니다.
+- **개발 흐름에서의 역할:** 스키마에서 파생된 공개 모듈 타입 연결부
+- **조사 깊이:** 주요 하위 기능의 결정 경로, 소유 주체, 실패와 보장하지 않는 범위와 통합 근거를 구체적으로 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `src/lib/portfolio/types.ts`에서 `PresentationContentSource`, project group/metric/source types import/export를 확인합니다.
-- Home/ProjectPage/Detail/About/Journey/InterviewMap/Resume/Contact/Presentation types가 indexed schema source types로 바뀌는 범위를 확인합니다.
-- 여전히 수동으로 남는 Site/Profile/ContentLink/PortfolioContent types를 기록합니다.
+- `src/lib/portfolio/types.ts`에서 `PresentationContentSource`, 프로젝트 그룹·지표·원본 타입 가져오기·공개를 확인합니다.
+- 홈·ProjectPage/Detail·소개·여정·InterviewMap·이력서·연락처·화면 구성 타입이 인덱스로 참조한 스키마 원본 타입으로 바뀌는 범위를 확인합니다.
+- 여전히 수동으로 남는 Site/Profile/ContentLink/PortfolioContent 타입을 기록합니다.
 
 확인 원칙:
 
-- 먼저 `85df59454b46^`와 `85df59454b46`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `85df59454b46^`와 `85df59454b46`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | Schema가 source shape와 inferred types를 제공해도 portfolio facade는 다수의 수동 presentation/project type을 별도로 유지해 drift 위험이 있었습니다. |
-| 실제 변경 file/symbol/call path | 핵심 project source types를 schema module에서 재export하고 presentation route types를 `PresentationContentSource[...]` indexed types로 연결합니다. 다섯 `SiteDesignId`와 새 project fields도 facade type에 반영합니다. |
-| Data/state/resource owner와 lifetime | Runtime schema가 source/presentation type의 canonical owner가 되고 facade types는 consumer용 aliases를 제공합니다. |
-| Failure·absence·fallback 처리 | 모든 type이 schema-derived 되는 것은 아니며 일부 manual type과 assertion이 남습니다. Runtime behavior도 이 refactor 하나로 바뀌지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | 주요 schema/presentation source와 facade 정적 계약의 drift를 줄입니다. |
-| 다음 commit 또는 관련 test 연결 | `16bdf03ce979`가 새 narrative domain types를 채우고 `508e0b71024b`가 production facade source를 교체합니다. |
+| 직전 상태와 부족함 | 스키마가 원본 형식과 inferred 타입을 제공해도 포트폴리오 공개 모듈은 다수의 수동 화면 구성·프로젝트 타입을 별도로 유지해 불일치 위험이 있었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 핵심 프로젝트 원본 타입을 스키마 모듈에서 재공개하고 화면 구성 라우트 타입을 `PresentationContentSource[...]` 인덱스로 참조한 타입으로 연결합니다. 다섯 `SiteDesignId`와 새 프로젝트 필드도 공개 모듈 타입에 반영합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 실행 시점 스키마가 원본·화면 구성 타입의 기준 소유 주체가 되고 공개 모듈 타입은 소비자용 별칭을 제공합니다. |
+| 실패·누락·대체 처리 | 모든 타입이 스키마에서 파생된 되는 것은 아니며 일부 수동 타입과 단언문이 남습니다. 실행 시점 동작도 이 리팩터링 하나로 바뀌지 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 주요 스키마·화면 구성 원본과 공개 모듈 정적 계약의 불일치를 줄입니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `16bdf03ce979`가 새 설명 데이터 영역 타입을 채우고 `508e0b71024b`가 배포 환경 공개 모듈 원본을 교체합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `85df59454b46`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다. 중요도 A 근거: schema module과 public portfolio type surface 사이의 ownership을 재정렬하는 architecture-level refactor입니다.
+정적 근거: `85df59454b46`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다. 중요도 A 근거: 스키마 모듈과 공개 포트폴리오 타입 표시 영역 사이의 소유 주체를 재정렬하는 설계 수준 리팩터링입니다.
 
 ### 2. `16bdf03ce979` — feat(content): 여정과 큐레이션 콘텐츠 타입 추가
 
 - **Importance:** B
 - **Tags:** CONTENT
-- **Thread 역할:** new narrative facade types
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** new 설명 공개 모듈 타입
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- JourneyMilestone/Narrative, InterviewMap reference/answer/item/track/content, Curation category/criteria/omission/content types를 확인합니다.
-- 이 types가 아직 schema inferred aliases가 아니라 manual declarations인지 기록합니다.
+- JourneyMilestone/Narrative, InterviewMap 참조·답변·항목·트랙·콘텐츠, Curation 분류·기준·제외·콘텐츠 타입을 확인합니다.
+- 이 타입이 아직 스키마에서 추론한 별칭이 아니라 수동 선언인지 기록합니다.
 
 확인 원칙:
 
-- 먼저 `16bdf03ce979^`와 `16bdf03ce979`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `16bdf03ce979^`와 `16bdf03ce979`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | Validated source에 journey narrative, interview map, curation이 있어도 portfolio aggregate가 노출할 renderer-facing types가 없었습니다. |
-| 실제 변경 file/symbol/call path | 세 문서의 consumer-facing nested types를 `types.ts`에 추가합니다. |
-| Data/state/resource owner와 lifetime | Portfolio facade type module이 renderer-facing aliases를 소유합니다. |
-| Failure·absence·fallback 처리 | 수동 declarations이므로 schema와 완전히 자동 동기화되지는 않으며 production aggregate 연결은 다음 commit까지 없습니다. |
-| 보장하는 것과 보장하지 않는 것 | 새 routes/view models가 사용할 정적 contracts를 제공합니다. |
-| 다음 commit 또는 관련 test 연결 | `508e0b71024b`가 실제 aggregate fields와 validated source를 연결합니다. |
+| 직전 상태와 부족함 | 검증된 원본에 여정 설명, 인터뷰 맵, 선별 기록이 있어도 포트폴리오 집계 객체가 노출할 렌더러에 전달할 타입이 없었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 세 문서의 소비자가 사용하는 중첩된 타입을 `types.ts`에 추가합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | Portfolio 공개 모듈 타입 모듈이 렌더러에 전달할 별칭을 소유합니다. |
+| 실패·누락·대체 처리 | 수동 선언이므로 스키마와 완전히 자동 동기화되지는 않으며 애플리케이션 집계 객체 연결은 다음 커밋까지 없습니다. |
+| 보장하는 것과 보장하지 않는 것 | 새 라우트·뷰 모델이 사용할 정적 규칙을 제공합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `508e0b71024b`가 실제 집계 객체 필드와 검증된 원본을 연결합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `16bdf03ce979`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `16bdf03ce979`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 3. `508e0b71024b` — refactor(content): 검증된 콘텐츠를 portfolio facade에 연결
 
 - **Importance:** S
 - **Tags:** ARCH, CONTENT, VALIDATION
-- **Thread 역할:** raw imports 제거와 validated facade cutover
-- **조사 깊이:** Architecture 전환, 이전 trust/ownership 모델, failure path, lifecycle, downstream regression까지 깊게 복원합니다.
+- **개발 흐름에서의 역할:** 원본 가져오기 제거와 검증된 공개 모듈 전환
+- **조사 깊이:** 설계 전환, 이전 신뢰·소유 주체 모델, 실패 경로, 실행 주기, 후속 회귀까지 깊게 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `src/lib/portfolio/content.ts`에서 11개 direct JSON imports와 legacy project union이 제거되고 `portfolioSource` import 하나로 바뀌는지 확인합니다.
-- projectGroups sort, groupId→category label mapping, projectMetrics, presentation project groups derivation, journey sort를 추적합니다.
+- `src/lib/portfolio/content.ts`에서 11개 JSON 직접 가져오기와 기존 프로젝트 유니언이 제거되고 `portfolioSource` 가져오기 하나로 바뀌는지 확인합니다.
+- projectGroups 정렬, groupId→분류 문구 대응, projectMetrics, 화면 구성 프로젝트 그룹 파생값 계산, 여정 정렬을 추적합니다.
 - `withEnvHref`, `PortfolioEnv`/`EnvKey` 제거와 `_legacyEnvironment` 무시를 확인합니다.
-- `PortfolioContent`에 groups/metrics/journeyNarrative/interviewMap/curation이 추가되는지 확인합니다.
-- public exports와 call sites가 raw source를 우회하지 않는지 resulting tree에서 확인합니다.
+- `PortfolioContent`에 그룹·지표·여정 설명/인터뷰 맵·선별 기록이 추가되는지 확인합니다.
+- 공개 항목과 호출 위치가 원본을 우회하지 않는지 변경 후 파일 트리에서 확인합니다.
 
 확인 원칙:
 
-- 먼저 `508e0b71024b^`와 `508e0b71024b`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `508e0b71024b^`와 `508e0b71024b`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | 기존 facade는 JSON을 직접 import해 `as` assertion과 임시 dual-shape branch를 사용했으므로 T8/T9 loader가 있어도 production consumer가 이를 우회했습니다. Environment href override도 unvalidated runtime mutation을 추가했습니다. |
-| 실제 변경 file/symbol/call path | 모든 raw imports를 `portfolioSource`로 교체하고 validated projects/groups/metrics/presentation/narrative source를 renderer aggregate로 변환합니다. Group order를 copy-sort하고 group label을 project category로 파생하며 project groups를 presentation page에 투영합니다. Disabled project/link filtering은 유지하되 environment href mutation은 제거하고 legacy parameter는 무시합니다. |
-| Data/state/resource owner와 lifetime | `content-loader.ts`가 source trust와 integrity를 소유하고 `portfolio/content.ts`는 validated data의 renderer-facing transformation/selection만 소유합니다. Module singleton source는 공유되고 `getPortfolioContent()`는 project/link arrays를 새로 구성하는 경계를 유지합니다. |
-| Failure·absence·fallback 처리 | 여러 `as` casts가 consumer aliases 때문에 일부 남고 asset 존재는 아직 검사하지 않습니다. `_legacyEnvironment` 인자는 호환을 위해 존재하지만 behavior는 없습니다. Return object의 모든 nested value를 deep clone하지도 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | Production portfolio facade가 raw JSON 경로를 우회하지 않고 schema+integrity-validated source만 소비한다는 핵심 invariant를 확립합니다. |
-| 다음 commit 또는 관련 test 연결 | `ff2ecadf3489`가 schema로 확인할 수 없는 public asset filesystem boundary를 추가하고 category 07 tests가 public export/clone/view-model behavior를 고정합니다. |
+| 직전 상태와 부족함 | 기존 공개 모듈은 JSON을 직접 가져오기해 `as` 단언문과 임시 두 두 형식 브랜치를 사용했으므로 T8/T9 로더가 있어도 배포 환경 소비자가 이를 우회했습니다. Environment href 덮어쓰기도 unvalidated 실행 시점 변경을 추가했습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 모든 원본 가져오기를 `portfolioSource`로 교체하고 검증된 프로젝트·그룹·지표·화면 구성·설명 원본을 렌더러 집계 객체로 변환합니다. 그룹 순서를 복사해 정렬하고 그룹 문구를 프로젝트 분류로 파생하며 프로젝트 그룹을 화면 구성 페이지에 투영합니다. 비활성 프로젝트·링크 필터링은 유지하되 환경 href 변경은 제거하고 기존 매개변수는 무시합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | `content-loader.ts`가 원본 신뢰와 무결성을 소유하고 `portfolio/content.ts`는 검증된 데이터의 렌더러에 전달할 값 변환·선택만 소유합니다. 모듈 단일 객체 원본은 공유되고 `getPortfolioContent()`는 프로젝트·링크 배열을 새로 구성하는 경계를 유지합니다. |
+| 실패·누락·대체 처리 | 여러 `as` casts가 소비자 별칭 때문에 일부 남고 자산 존재는 아직 검사하지 않습니다. `_legacyEnvironment` 인자는 호환을 위해 존재하지만 동작은 없습니다. Return 객체의 모든 중첩된 값을 깊은 복사하지도 않습니다. |
+| 보장하는 것과 보장하지 않는 것 | 배포 환경 포트폴리오 공개 모듈이 원시 JSON 경로를 우회하지 않고 스키마와 무결성까지 검증한 원본만 소비한다는 핵심 불변 조건을 확립합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `ff2ecadf3489`가 스키마로 확인할 수 없는 공개 자산 파일 시스템 구분 지점을 추가하고 분류 07 테스트가 공개 항목·복제본·뷰 모델 동작을 고정합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `508e0b71024b`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다. 중요도 S 근거: 실제 consumer architecture의 trust path를 raw assertions에서 validated loader로 교체하고 migration/env mutation까지 제거하는 ownership cutover입니다.
+정적 근거: `508e0b71024b`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다. 중요도 S 근거: 실제 소비자 설계의 신뢰 경로를 원본 단언문에서 검증된 로더로 교체하고 전환·env 변경까지 제거하는 소유 주체 전환입니다.
 
 ### 4. `ff2ecadf3489` — feat(content): 저장소 자산 참조 경계 검증
 
 - **Importance:** A
 - **Tags:** CONTENT, VALIDATION
-- **Thread 역할:** public asset filesystem integrity
-- **조사 깊이:** 주요 subsystem의 결정 경로, owner, failure/non-guarantee와 integration evidence를 구체적으로 복원합니다.
+- **개발 흐름에서의 역할:** 공개 자산 파일 시스템 무결성
+- **조사 깊이:** 주요 하위 기능의 결정 경로, 소유 주체, 실패와 보장하지 않는 범위와 통합 근거를 구체적으로 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `src/lib/content-assets.ts`의 `collectAssetReferences`가 site socialImage, profile photo, résumé download, primary/additional project screenshots를 수집하는지 확인합니다.
-- `validatePortfolioAssets`의 `resolve(publicRoot, "." + assetPath)`, `relative`, `startsWith("..")`, `isAbsolute`, `existsSync` branches를 확인합니다.
-- issues가 source file/path를 보존하고 content object를 그대로 반환하는지 확인합니다.
-- 추가된 portrait placeholder SVG가 어떤 starter reference를 만족하는지 확인합니다.
+- `src/lib/content-assets.ts`의 `collectAssetReferences`가 사이트 소셜 이미지, 프로필 사진, résumé 다운로드, 주요·additional 프로젝트 화면 캡처를 수집하는지 확인합니다.
+- `validatePortfolioAssets`의 `resolve(publicRoot, "." + assetPath)`, `relative`, `startsWith("..")`, `isAbsolute`, `existsSync` 분기를 확인합니다.
+- 문제가 원본 파일·경로를 보존하고 콘텐츠 객체를 그대로 반환하는지 확인합니다.
+- 추가된 portrait 자리표시자 SVG가 어떤 초기 예시 참조를 만족하는지 확인합니다.
 
 확인 원칙:
 
-- 먼저 `ff2ecadf3489^`와 `ff2ecadf3489`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `ff2ecadf3489^`와 `ff2ecadf3489`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | Schema는 asset path prefix/형식만 검사하므로 `public/` 밖으로 탈출하거나 repository에 없는 파일을 참조해도 source parse가 성공할 수 있었습니다. |
-| 실제 변경 file/symbol/call path | 모든 repository-local asset references를 수집해 `publicRoot` 아래 absolute path로 resolve하고 traversal/absolute escape/absence를 하나의 structured issue 배열로 검사합니다. 성공 시 같은 validated source object를 반환합니다. |
-| Data/state/resource owner와 lifetime | Filesystem-aware asset integrity는 `content-assets.ts`가 소유하고 schema/loader는 순수 data integrity를 유지합니다. |
-| Failure·absence·fallback 처리 | 파일 내용·MIME·image decode·case sensitivity across platforms·remote URL reachability는 검사하지 않습니다. Symlink escape에 대한 명시적 `realpath` 검사는 보이지 않습니다. |
-| 보장하는 것과 보장하지 않는 것 | 수집된 asset references가 지정 public root 아래 존재한다는 build-time invariant를 제공합니다. |
-| 다음 commit 또는 관련 test 연결 | `0e0ed9e50323`이 loader+asset validation을 한 command에 연결합니다. |
+| 직전 상태와 부족함 | 스키마는 자산 경로 접두사·형식만 검사하므로 `public/` 밖으로 탈출하거나 저장소에 없는 파일을 참조해도 원본 파싱이 성공할 수 있었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | 모든 저장소 로컬 자산 참조를 수집해 `publicRoot` 아래 절대 경로로 해석하고 공개 디렉터리 밖으로 벗어나는 경로와 누락 파일을 하나의 구조화된 문제 배열로 검사합니다. 성공 시 같은 검증된 원본 객체를 반환합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | Filesystem-aware 자산 무결성은 `content-assets.ts`가 소유하고 스키마·로더는 순수 데이터 무결성을 유지합니다. |
+| 실패·누락·대체 처리 | 파일 내용, MIME, 이미지 디코딩, 운영체제별 대소문자 구분과 원격 URL 접근 가능 여부는 검사하지 않습니다. 심볼릭 링크가 실제로 최상위 밖을 가리키는지 확인하는 명시적 `realpath` 검사도 없습니다. |
+| 보장하는 것과 보장하지 않는 것 | 수집된 자산 참조가 지정 `public` 최상위 디렉터리 아래 존재한다는 빌드 시점 불변 조건을 제공합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `0e0ed9e50323`이 로더+자산 검증을 한 명령에 연결합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `ff2ecadf3489`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다. 중요도 A 근거: data schema로 표현할 수 없는 repository filesystem 상태를 content validation contract에 통합합니다.
+정적 근거: `ff2ecadf3489`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다. 중요도 A 근거: 데이터 스키마로 표현할 수 없는 저장소 파일 시스템 상태를 콘텐츠 검증 규칙에 통합합니다.
 
 ### 5. `0e0ed9e50323` — build(content): 콘텐츠 검사 명령 추가
 
 - **Importance:** B
 - **Tags:** CONTENT, DEPLOY
-- **Thread 역할:** explicit content validation command
-- **조사 깊이:** 이 commit이 맡은 실제 구현 역할, changed symbol, state/absence 처리와 다음 연결을 복원합니다.
+- **개발 흐름에서의 역할:** 명시적인 콘텐츠 검증 명령
+- **조사 깊이:** 이 커밋이 맡은 실제 구현 역할, 변경된 심볼, 상태·누락 처리와 다음 연결을 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `package.json`의 `content:check` script와 `scripts/validate-content.ts`를 확인합니다.
-- script가 `loadPortfolioSource()` 뒤 `validatePortfolioAssets(..., resolve(process.cwd(), "public"))`를 호출하고 project/design count를 출력하는지 확인합니다.
+- `package.json`의 `content:check` 스크립트와 `scripts/validate-content.ts`를 확인합니다.
+- 스크립트가 `loadPortfolioSource()` 뒤 `validatePortfolioAssets(..., resolve(process.cwd(), "public"))`를 호출하고 프로젝트·디자인 개수를 출력하는지 확인합니다.
 
 확인 원칙:
 
-- 먼저 `0e0ed9e50323^`와 `0e0ed9e50323`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `0e0ed9e50323^`와 `0e0ed9e50323`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | Loader와 asset validator는 code path로 존재했지만 개발자/CI가 독립적으로 실행할 stable command가 없었습니다. |
-| 실제 변경 file/symbol/call path | `node --import tsx scripts/validate-content.ts` command를 추가해 schema/integrity와 public assets를 연속 실행하고 성공 summary를 출력합니다. |
-| Data/state/resource owner와 lifetime | package script가 manual/automation entry를, validation modules가 실제 rules를 소유합니다. |
-| Failure·absence·fallback 처리 | Command가 아직 build lifecycle에 자동 연결되지 않았고 출력 count는 correctness proof가 아니라 성공 summary입니다. |
-| 보장하는 것과 보장하지 않는 것 | 명시적으로 실행 가능한 content validation command를 제공합니다. |
-| 다음 commit 또는 관련 test 연결 | `28b0db56190f`가 이를 `prebuild`에 연결합니다. |
+| 직전 상태와 부족함 | 로더와 자산 검증 함수는 코드 경로로 존재했지만 개발자·CI가 독립적으로 실행할 안정적인 명령이 없었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | `node --import tsx scripts/validate-content.ts` 명령을 추가해 스키마·무결성과 공개 자산을 연속 실행하고 성공 요약을 출력합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | 패키지 스크립트가 수동 실행과 자동화 진입점을, 검증 모듈이 실제 규칙을 소유합니다. |
+| 실패·누락·대체 처리 | 해당 명령은 아직 빌드 실행 주기에 자동 연결되지 않았으며, 출력 개수는 정확성을 증명하는 값이 아니라 성공 결과를 요약한 값입니다. |
+| 보장하는 것과 보장하지 않는 것 | 명시적으로 실행 가능한 콘텐츠 검증 명령을 제공합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | `28b0db56190f`가 이를 `prebuild`에 연결합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `0e0ed9e50323`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
+정적 근거: `0e0ed9e50323`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다.
 
 ### 6. `28b0db56190f` — build(content): 콘텐츠 검사를 prebuild에 연결
 
 - **Importance:** A
 - **Tags:** CONTENT, DEPLOY
-- **Thread 역할:** build fail-closed gate
-- **조사 깊이:** 주요 subsystem의 결정 경로, owner, failure/non-guarantee와 integration evidence를 구체적으로 복원합니다.
+- **개발 흐름에서의 역할:** 빌드 차단 검사 단계
+- **조사 깊이:** 주요 하위 기능의 결정 경로, 소유 주체, 실패와 보장하지 않는 범위와 통합 근거를 구체적으로 복원합니다.
 
 #### 해당 SHA에서 확인할 실제 코드
 
-- `package.json`의 `prebuild: npm run content:check`와 npm lifecycle 순서를 확인합니다.
-- `npm run build`가 content check failure 시 Next build 전에 중단되는 결과를 command semantics로 설명하되 실행하지 않은 결과를 주장하지 않습니다.
+- `package.json`의 `prebuild: npm run content:check`와 npm 실행 주기 순서를 확인합니다.
+- `npm run build`가 콘텐츠 검사 실패 시 Next 빌드 전에 중단되는 결과를 명령 의미 구조로 설명하되 실행하지 않은 결과를 주장하지 않습니다.
 
 확인 원칙:
 
-- 먼저 `28b0db56190f^`와 `28b0db56190f`의 first-parent diff를 비교합니다. Root commit이면 parent 부재를 명시합니다.
-- Resulting tree의 file/symbol만 이 SHA의 사실로 사용합니다.
-- 실행하지 않은 command 결과와 후속 test evidence를 직접 실행한 결과처럼 쓰지 않습니다.
+- 먼저 `28b0db56190f^`와 `28b0db56190f`의 첫 번째 부모 커밋과의 차이를 비교합니다. 최상위 커밋이면 부모 커밋 부재를 명시합니다.
+- 변경 후 파일 트리에 실제로 존재하는 파일과 심볼만 이 SHA의 사실로 사용합니다.
+- 실행하지 않은 명령과 후속 테스트 결과를 직접 확인한 것처럼 기록하지 않습니다.
 
 #### 학습자가 남길 증거
 
 | 확인·기록 항목 | 학습자 기록 |
 | --- | --- |
-| 직전 상태와 부족함 | Content validation command는 선택적이어서 개발자나 release process가 건너뛴 채 `next build`를 수행할 수 있었습니다. |
-| 실제 변경 file/symbol/call path | npm `prebuild` lifecycle에 `content:check`를 연결해 standard build path에서 schema, cross-file integrity, asset 존재를 먼저 검사합니다. |
-| Data/state/resource owner와 lifetime | `package.json` lifecycle이 build gate ordering을 소유합니다. |
-| Failure·absence·fallback 처리 | `next build` 외의 직접 framework invocation이나 `--ignore-scripts` 같은 우회는 차단하지 않으며 이 작업에서는 command를 실제 실행하지 않았습니다. |
-| 보장하는 것과 보장하지 않는 것 | 정상적인 `npm run build`가 content validation success 없이는 build phase에 진입하지 않는 구조를 제공합니다. |
-| 다음 commit 또는 관련 test 연결 | Category 08이 production toolchain/server verification을, category 07이 regression tests를 후속 보호합니다. |
+| 직전 상태와 부족함 | 콘텐츠 검증 명령은 선택적이어서 개발자나 배포 프로세스가 건너뛴 채 `next build`를 수행할 수 있었습니다. |
+| 실제 변경 파일·심볼·호출 경로 | npm `prebuild` 실행 주기에 `content:check`를 연결해 표준 빌드 경로에서 스키마, 파일 간 무결성, 자산 존재를 먼저 검사합니다. |
+| 데이터·상태·자원의 소유 주체와 수명 | `package.json` 실행 주기가 빌드 차단 단계 순서 결정을 소유합니다. |
+| 실패·누락·대체 처리 | `next build` 외의 직접 프레임워크 호출이나 `--ignore-scripts` 같은 우회는 차단하지 않으며 이 작업에서는 명령을 실제 실행하지 않았습니다. |
+| 보장하는 것과 보장하지 않는 것 | 정상적인 `npm run build`가 콘텐츠 검증 성공 없이는 빌드 단계에 진입하지 않는 구조를 제공합니다. |
+| 다음 커밋 또는 관련 테스트 연결 | 분류 08이 배포 환경 개발 도구 버전·서버 검증을, 분류 07이 회귀 테스트를 후속 보호합니다. |
 
 #### 코드·실행 증거
 
-정적 근거: `28b0db56190f`의 parent diff와 resulting tree에서 위 file/symbol을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 target branch checkout과 repository command 실행을 수행하지 못했고, GitHub commit/file 조회로만 검토했습니다. 코드 발췌 판단: 별도 code block은 넣지 않았습니다. 함수·field·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다. 중요도 A 근거: validation을 선택적 도구에서 standard release build의 선행 조건으로 승격합니다.
+정적 근거: `28b0db56190f`의 부모 커밋과의 차이와 변경 후 파일 트리에서 위 파일·심볼을 확인했습니다. 실행 근거: 없음. 로컬 환경에서 GitHub 도메인 DNS가 차단되어 대상 브랜치 체크아웃과 저장소 명령 실행을 수행하지 못했고, GitHub 커밋·파일 조회로만 검토했습니다. 코드 발췌 판단: 별도 코드 블록은 넣지 않았습니다. 함수·필드·분기 관계를 위 기록에 최소 단위로 직접 명시했습니다. 중요도 A 근거: 검증을 선택적 도구에서 표준 배포 빌드의 선행 조건으로 승격합니다.
 
-## 6. Invariant evolution ledger
+## 6. 불변 조건 변화 기록
 
-| 추적할 invariant | 도입·변화 SHA | 실제 owner/evidence | 제한·후속 보호 |
+| 추적할 불변 조건 | 도입·변화 SHA | 실제 소유 주체·근거 | 제한·후속 보호 |
 | --- | --- | --- | --- |
-| 주요 facade source/presentation types는 schema와 연결된다. | `85df59454b46` | `portfolio/types.ts` schema aliases | 일부 manual types는 남음 |
-| Production facade는 raw JSON을 직접 import하지 않는다. | `508e0b71024b` | `portfolioSource` single input | asset check는 별도 command |
-| Facade는 validation이 아니라 renderer transformation만 소유한다. | `508e0b71024b` | group sort/label, presentation groups, journey sort, enabled filter | deep clone은 아님 |
-| Repository-local assets는 public root 아래 존재해야 한다. | `ff2ecadf3489` | `validatePortfolioAssets` | content/MIME/symlink semantics 미검사 |
-| Standard build 전에 content gate를 통과한다. | `0e0ed9e50323` → `28b0db56190f` | `content:check`, `prebuild` | 직접/ignore-scripts 우회 가능 |
+| 주요 공개 모듈 원본·화면 구성 타입은 스키마와 연결됩니다. | `85df59454b46` | `portfolio/types.ts` 스키마 별칭 | 일부 수동 타입은 남음 |
+| 배포 환경 공개 모듈은 원시 JSON을 직접 불러오지 않습니다. | `508e0b71024b` | `portfolioSource` 단일 입력 | 자산 검사는 별도 명령 |
+| 공개 모듈은 검증이 아니라 렌더러 변환만 소유합니다. | `508e0b71024b` | 그룹 정렬·문구, 화면 구성 그룹, 여정 정렬, 활성화된 필터 | 깊은 복사는 아님 |
+| 저장소 로컬 자산은 `public` 최상위 디렉터리 아래 존재해야 합니다. | `ff2ecadf3489` | `validatePortfolioAssets` | 콘텐츠·MIME/symlink 의미 구조 미검사 |
+| 표준 빌드 전에 콘텐츠 검사 단계를 통과합니다. | `0e0ed9e50323` → `28b0db56190f` | `content:check`, `prebuild` | 직접·스크립트 미실행 우회 가능 |
 
-## 7. Failure → Fix → Test 관계
+## 7. 실패 → 수정 → 테스트 관계
 
-| Failure 또는 risk | Fix/전환 SHA | 교정된 결정 | Regression·검증 관계 |
+| 실패 또는 위험 | 수정·전환 SHA | 교정된 결정 | 회귀·검증 관계 |
 | --- | --- | --- | --- |
-| Validated loader가 있어도 facade가 raw JSON을 우회 | `508e0b71024b` | direct imports/assertions 제거, `portfolioSource` cutover | `3353032ba23b`/`dc07871c4d24` regression |
-| Legacy array/env href mutation이 trust boundary 밖에 남음 | `508e0b71024b` | migration branch/`withEnvHref` 제거 | public API compatibility는 ignored parameter로 유지 |
-| Schema-valid asset path가 repository에 없음/탈출 | `ff2ecadf3489` | public-root resolve/relative/exists checks | 후속 missing-asset tests |
-| Validation command를 release가 누락 | `28b0db56190f` | `prebuild` gate | category 08 CI/container/release verification |
+| 검증된 로더가 있어도 공개 모듈이 원시 JSON을 우회 | `508e0b71024b` | 직접 가져오기·단언문 제거, `portfolioSource` 전환 | `3353032ba23b`/`dc07871c4d24` 회귀 |
+| 이전 배열·환경 변수 href 변경이 검증을 통과해야 하는 지점 밖에 남음 | `508e0b71024b` | 전환 브랜치/`withEnvHref` 제거 | 공개 API 호환성은 무시하는 매개변수로 유지 |
+| 스키마 검증을 통과한 자산 경로가 저장소에 없음·탈출 | `ff2ecadf3489` | 공개 최상위 해석·상대·exists 검사 | 후속 누락 자산 테스트 |
+| 검증 명령을 배포가 누락 | `28b0db56190f` | `prebuild` 검사 단계 | 분류 08 CI·컨테이너·배포 검증 |
 
-## 8. Ownership·state·responsibility 변화
+## 8. 소유 주체·상태·담당 작업 변화
 
-| 대상 | 이전 owner/state | 최종 owner/state | 근거 |
+| 대상 | 이전 소유 주체·상태 | 최종 소유 주체·상태 | 근거 |
 | --- | --- | --- | --- |
-| source trust | raw imports + assertions | `content-loader.ts`/`portfolioSource` | schema+integrity parsed singleton |
-| renderer aggregate | source import와 validation 혼합 | `portfolio/content.ts` | validated data transformation only |
-| asset integrity | 없음 | `content-assets.ts` | filesystem-aware public asset checks |
-| manual validation entry | 없음 | `content:check` | package script |
-| build ordering | Next build directly | `prebuild` → `content:check` → `build` | npm lifecycle |
+| 원본 신뢰 | 원본 직접 불러오기와 타입 단언 | `content-loader.ts`/`portfolioSource` | 스키마와 무결성을 검증한 단일 인스턴스 |
+| 렌더러 집계 객체 | 원본 가져오기와 검증 혼합 | `portfolio/content.ts` | 검증된 데이터 변환만 수행 |
+| 자산 무결성 | 없음 | `content-assets.ts` | 파일 시스템을 고려하는 공개 자산 검사 |
+| 수동 검증 진입점 | 없음 | `content:check` | 패키지 스크립트 |
+| 빌드 순서 결정 | Next 빌드 직접 실행 | `prebuild` → `content:check` → `build` | npm 실행 주기 |
 
-## 9. Thread 최종 상태
+## 9. 개발 흐름 최종 상태
 
-Thread 종료 시점에는 portfolio facade가 validated `portfolioSource`만 소비하고 renderer-facing group/category/presentation/journey/enablement 변환을 수행합니다. Repository-local assets는 별도 validator로 public root 안의 존재를 검사하며 standard `npm run build`는 `content:check`를 선행합니다. 다만 deep clone, remote URL/MIME/image decoding, symlink realpath, 모든 build 우회, 실제 runtime command 성공은 보장하지 않습니다.
+개발 흐름이 끝나면 포트폴리오 공개 모듈은 검증된 `portfolioSource`만 사용하고 렌더러에 전달할 그룹·분류·화면 구성·여정·활성화 상태를 계산합니다. 저장소 로컬 자산은 별도 검증 함수가 `public` 최상위 디렉터리 안에 실제로 존재하는지 확인하며, 표준 `npm run build`는 `content:check`를 먼저 실행합니다. 깊은 복사, 원격 URL·MIME·이미지 디코딩, 심볼릭 링크의 실제 경로 검사, 모든 빌드 우회와 실제 명령 성공은 보장하지 않습니다.
 
 ### 최종 설명
 
-- Schema-derived types를 public facade type surface에 연결해 중복 계약을 줄였습니다.
-- S-level cutover에서 raw JSON imports, assertion-based project migration, env href mutation을 production facade에서 제거했습니다.
-- Data integrity와 filesystem asset integrity를 분리한 뒤 하나의 command로 조합했습니다.
-- 선택적 content check를 standard npm build gate로 승격했습니다.
+- 스키마에서 파생된 타입을 공개 항목 모듈 타입 표시 영역에 연결해 중복 계약을 줄였습니다.
+- 중요도 S 전환에서 원시 JSON 가져오기, 단언문 기반 프로젝트 전환, 환경 변수 href 변경을 배포 환경 공개 모듈에서 제거했습니다.
+- 데이터 무결성과 파일 시스템 자산 무결성을 분리한 뒤 하나의 명령으로 조합했습니다.
+- 선택적 콘텐츠 검사를 표준 npm 빌드 차단 단계로 승격했습니다.
 
 ## 10. 최종 실행·데이터 흐름
 
-| 단계 | Owner/call path | 입력·출력 | Failure/non-guarantee |
+| 단계 | 담당 위치·호출 경로 | 입력·출력 | 실패·보장하지 않는 범위 |
 | --- | --- | --- | --- |
-| Module import 시 validated source를 획득합니다. | `portfolioSource` | schema+integrity checked raw-domain object | malformed source면 import 실패 |
-| Facade transformation을 수행합니다. | `portfolio/content.ts` | sorted groups/journey, derived category/presentation groups, enabled items | deep clone 아님; env override 무시 |
-| Content command에서 asset을 검사합니다. | `validate-content.ts` → `validatePortfolioAssets` | same source or structured error | remote/MIME/decode 미검사 |
-| Standard build lifecycle을 시작합니다. | `npm run build` | `prebuild`가 `content:check` 선행 | 실제 command는 이번 작업에서 미실행 |
-| Next build로 진행합니다. | `build: next build` | production bundle attempt | category 08의 toolchain/server verification 범위 |
+| 모듈을 불러올 때 검증된 원본을 획득합니다. | `portfolioSource` | 스키마와 무결성을 검증한 원본 데이터 영역 객체 | 원본 형식이 잘못되면 가져오기 실패 |
+| 공개 모듈 변환을 수행합니다. | `portfolio/content.ts` | 정렬된 그룹·여정, 파생된 분류·화면 구성 그룹, 활성화된 항목 | 깊은 복사는 아님; 환경 변수 덮어쓰기 무시 |
+| 콘텐츠 명령에서 자산을 검사합니다. | `validate-content.ts` → `validatePortfolioAssets` | 같은 원본 또는 구조화된 오류 | 원격·MIME/decode 미검사 |
+| 표준 빌드 실행 주기를 시작합니다. | `npm run build` | `prebuild`가 `content:check` 선행 | 실제 명령은 이번 작업에서 미실행 |
+| Next 빌드로 진행합니다. | `build: next build` | 배포용 번들 생성 시도 | 분류 08의 개발 도구 버전·서버 검증 범위 |
 
 ## 11. 학습 완료 확인
 
-완료했습니다. 모든 commit은 exact SHA의 parent diff/resulting tree를 기준으로 기록했고, direct execution evidence와 static inspection을 구분했습니다. `3353032ba23b`은 source/assets/model validation, `dc07871c4d24`는 public export와 clone boundary, `b77b386b344e`/`527b9f872333`은 route view models/scoped payload를 후속 테스트합니다. 이번 환경에서는 repository checkout이 없어 테스트·build를 실행하지 않았습니다.
+완료했습니다. 모든 커밋은 해당 SHA의 부모 커밋과의 차이·변경 후 파일 트리를 기준으로 기록했고, 직접 실행 근거와 정적 검토를 구분했습니다. `3353032ba23b`은 원본·자산·모델 검증, `dc07871c4d24`는 공개 항목과 복제 범위, `b77b386b344e`/`527b9f872333`은 라우트 뷰 모델·범위가 제한된 페이로드를 후속 테스트합니다. 이번 환경에서는 저장소 체크아웃이 없어 테스트·빌드를 실행하지 않았습니다.
 ===== END FILE: 10-validated-facade-assets-and-build-gate.md =====
 
 ===== BEGIN FILE: README.md =====
-# 01-application-foundation-and-content-systems
+# 01 — 애플리케이션 기반과 콘텐츠 체계
 
-> Repository: `https://github.com/seungwoo7050/42-archive`  
-> Branch: `web/portfolio`
+> 저장소: `https://github.com/seungwoo7050/42-archive`
+> 브랜치: `web/portfolio`
 
-이 category는 실행 가능한 Next application boundary와 portfolio content system의 source → schema → parser → integrity → validated facade → build gate 이력을 복원합니다.
+이 분류는 실행 가능한 Next 애플리케이션의 시작점부터 포트폴리오 콘텐츠가 원본 → 스키마 → 파서 → 무결성 검사 → 검증된 공개 모듈 → 빌드 차단 단계로 발전한 이력을 복원합니다.
 
-## Category boundary
+## 분류 범위
 
 포함 범위:
 
-- Next/App Router의 최초 실행 경계와 content aggregate를 소비하는 첫 route
-- Domain JSON/type/aggregate, presentation contract, selector policy
-- Runtime domain/presentation schema, starter catalog migration
-- Source-aware parsing, cross-file integrity, validated facade, local asset validation과 content build gate
+- Next/App Router의 최초 실행 경계와 콘텐츠 집계 객체를 소비하는 첫 라우트
+- 데이터 원본 JSON·타입·집계 객체와 화면 표시 규칙·선택자 규칙
+- 실행 시점 데이터·화면 구성 스키마와 초기 카탈로그 전환
+- 원본 위치를 포함한 파싱, 파일 간 무결성, 검증된 공개 모듈, 로컬 자산 검증과 콘텐츠 빌드 차단 단계
 
 제외 범위:
 
-- Node/npm pinning, container/production server smoke, release delivery는 category 08에서 다룹니다.
-- Content·selector·view-model·asset regression test 구현과 실행은 category 07에서 다룹니다.
-- Visual system, responsive behavior, route renderer 구현 자체는 해당 UI/visual category에서 다룹니다.
+- Node/npm 버전 고정, 컨테이너·배포용 서버 기본 동작 확인, 배포 전달은 분류 08에서 다룹니다.
+- 콘텐츠·선택자·뷰 모델·자산 회귀 테스트 구현과 실행은 분류 07에서 다룹니다.
+- 시각 체계, 반응형 동작과 라우트 렌더러 구현은 해당 UI·시각 분류에서 다룹니다.
 
-## Phase 1 audit 결과
+## 1단계 검토 결과
 
-- 기존 6개 draft Thread의 범위는 핵심 trust transition을 누락했습니다. Domain schema와 presentation schema를 분리하고 parsing, repository-wide integrity, validated facade/build gate Thread를 추가해 총 10개로 보강했습니다.
-- `f66b880a8f97`은 category 08의 reproducible toolchain/production verification story에 이미 속하므로 T1에서 제거했습니다.
-- `0a28cb050bc8`은 `globals.css`를 만들고 다음 application integration이 이를 import하므로 T1에 추가했습니다.
-- Presentation-only commits `61d1976cde0d`, `a6c72a6b3b34`, `20dfc298375c`는 starter catalog에서 presentation Thread로 이동했습니다. `d55a2017e725`, `9a7d41edfad0`, `8886459d1b0d`, `13c8c52c54d9`도 누락된 중간 계약/완성 단계로 추가했습니다.
-- Selector consumers `daa6815a6dfa`, `383a3b86e119`를 추가해 policy 정의와 실제 renderer/route migration을 연결했습니다.
-- 모든 commit SHA·subject·importance·tags는 target branch source classification과 exact commit metadata에 대조했습니다. 선택된 SHA는 모두 `web/portfolio` history에 속합니다.
+- 기존 개발 흐름 초안 6개는 핵심 신뢰 검증 전환을 빠뜨렸습니다. 데이터 스키마와 화면 구성 스키마를 분리하고, 파싱·저장소 전체 무결성·검증된 공개 모듈·빌드 차단 단계에 관한 개발 흐름을 추가해 총 10개로 보강했습니다.
+- `f66b880a8f97`은 분류 08의 재현 가능한 개발 도구 버전·배포 검증 변경 과정에 이미 속하므로 T1에서 제거했습니다.
+- `0a28cb050bc8`은 `globals.css`를 만들고 다음 애플리케이션 통합이 이를 가져오기하므로 T1에 추가했습니다.
+- 화면 구성만 변경한 커밋 `61d1976cde0d`, `a6c72a6b3b34`, `20dfc298375c`는 초기 카탈로그 개발 흐름에서 화면 구성 개발 흐름으로 옮겼습니다. `d55a2017e725`, `9a7d41edfad0`, `8886459d1b0d`, `13c8c52c54d9`도 빠진 중간 규칙과 완성 단계로 추가했습니다.
+- 선택자를 실제로 사용하는 `daa6815a6dfa`, `383a3b86e119`를 추가해 규칙 정의와 렌더러·라우트의 실제 전환을 연결했습니다.
+- 모든 커밋 SHA·제목·중요도·태그는 대상 브랜치 원본 분류와 해당 커밋의 정확한 메타데이터에 대조했습니다. 선택된 SHA는 모두 `web/portfolio` 이력에 속합니다.
 
-## Thread index
+## 개발 흐름 목록
 
-| 순서 | Thread | Commit 수 |
+| 순서 | 개발 흐름 | 커밋 수 |
 | ---: | --- | ---: |
-| 1 | [Runnable Next application boundary](./01-runnable-next-application-boundary.md) | 4 |
-| 2 | [Portfolio domain and aggregate model](./02-portfolio-domain-and-aggregate-model.md) | 7 |
-| 3 | [Presentation contracts for multi-route UI](./03-presentation-contracts-for-multi-route-ui.md) | 15 |
-| 4 | [Selectors, links, and derived content policy](./04-selectors-links-and-derived-content-policy.md) | 9 |
-| 5 | [Runtime schema vocabulary](./05-runtime-schema-vocabulary.md) | 12 |
-| 6 | [Runtime presentation schema contracts](./06-runtime-presentation-schema-contracts.md) | 13 |
-| 7 | [Starter catalog migration](./07-starter-catalog-migration.md) | 7 |
-| 8 | [Source-aware schema parsing boundary](./08-source-aware-schema-parsing-boundary.md) | 4 |
-| 9 | [Repository-wide content integrity](./09-repository-wide-content-integrity.md) | 9 |
-| 10 | [Validated facade, assets, and build gate](./10-validated-facade-assets-and-build-gate.md) | 6 |
+| 1 | [실행 가능한 Next 애플리케이션 시작점](./01-runnable-next-application-boundary.md) | 4 |
+| 2 | [포트폴리오 데이터 영역과 집계 모델](./02-portfolio-domain-and-aggregate-model.md) | 7 |
+| 3 | [여러 라우트 UI의 화면 구성 규칙](./03-presentation-contracts-for-multi-route-ui.md) | 15 |
+| 4 | [선택자·링크·파생 콘텐츠 규칙](./04-selectors-links-and-derived-content-policy.md) | 9 |
+| 5 | [실행 시점 스키마 값 집합](./05-runtime-schema-vocabulary.md) | 12 |
+| 6 | [실행 시점 화면 구성 스키마 규칙](./06-runtime-presentation-schema-contracts.md) | 13 |
+| 7 | [초기 프로젝트 목록 전환](./07-starter-catalog-migration.md) | 7 |
+| 8 | [원본 위치를 포함한 스키마 파싱 지점](./08-source-aware-schema-parsing-boundary.md) | 4 |
+| 9 | [저장소 전체 콘텐츠 무결성](./09-repository-wide-content-integrity.md) | 9 |
+| 10 | [검증된 공개 모듈·자산·빌드 차단 단계](./10-validated-facade-assets-and-build-gate.md) | 6 |
 
-## Historical inspection discipline
+## 변경 이력 정적 검토 원칙
 
-- 각 commit은 exact SHA의 diff와 resulting tree를 기준으로 설명합니다.
-- Later code는 earlier commit의 사실로 소급하지 않습니다.
-- Shape validation, cross-file integrity, asset filesystem validation, selector fallback을 서로 다른 failure domain으로 구분합니다.
-- 이번 환경에서는 GitHub 도메인 DNS 차단으로 local checkout과 repository test/build command를 실행하지 못했습니다. 실행 결과를 만들지 않았으며, GitHub connector를 통한 branch/commit/file 정적 검토만 기록했습니다.
+- 각 커밋은 해당 SHA의 변경 내용과 변경 후 파일 트리를 기준으로 설명합니다.
+- 후속 코드를 이전 커밋의 사실로 소급하지 않습니다.
+- 값의 형태 검증, 파일 간 무결성 검사, 자산 파일 검사와 선택자의 대체 처리를 서로 다른 실패 유형으로 구분합니다.
+- 이번 환경에서는 GitHub 도메인 DNS 차단으로 로컬 체크아웃과 저장소 테스트·빌드 명령을 실행하지 못했습니다. 실행 결과를 만들지 않았으며, GitHub 연결 도구를 통한 브랜치·커밋·파일 정적 검토만 기록했습니다.
 
-## Workbook 상태
+## 문서 상태
 
-- `scaffold/`는 Phase 1 종료 시 동결한 authoritative investigation structure입니다.
-- `completed/`는 fixed scaffold information을 그대로 보존하고 learner-facing section만 채운 counterpart입니다.
-- 두 directory의 filename과 relative path는 정확히 일치합니다.
+- `scaffold/`는 1단계 종료 시 고정한 검토용 문서 틀입니다.
+- `completed/`는 고정된 문서 틀을 그대로 보존하고 학습자용 영역만 채운 완료본입니다.
+- 두 디렉터리의 파일 이름과 상대 경로는 정확히 일치합니다.
 ===== END FILE: README.md =====
 

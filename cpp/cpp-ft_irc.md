@@ -74,7 +74,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | Importance | A |
 | Tags | ARCH, EVENT_IO |
 | 원문 확정 역할 | Defines the common readiness vocabulary and backend contract. |
-| 학습 깊이 | 주요 subsystem·boundary·failure path·integration point를 path와 symbol 기준으로 복원합니다. |
+| 학습 깊이 | 주요 subsystem·boundary·실패 처리·integration point를 path와 symbol 기준으로 복원합니다. |
 
 #### Source에서 확정된 역할
 
@@ -264,7 +264,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | Importance | A |
 | Tags | ARCH, EVENT_IO, LIFECYCLE |
 | 원문 확정 역할 | Defines the move-only Connection and its I/O outcome model. |
-| 학습 깊이 | 주요 subsystem·boundary·failure path·integration point를 path와 symbol 기준으로 복원합니다. |
+| 학습 깊이 | 주요 subsystem·boundary·실패 처리·integration point를 path와 symbol 기준으로 복원합니다. |
 
 #### Source에서 확정된 역할
 
@@ -303,7 +303,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | Importance | A |
 | Tags | LIFECYCLE, RISK |
 | 원문 확정 역할 | Implements exactly-once descriptor ownership and move transfer. |
-| 학습 깊이 | 주요 subsystem·boundary·failure path·integration point를 path와 symbol 기준으로 복원합니다. |
+| 학습 깊이 | 주요 subsystem·boundary·실패 처리·integration point를 path와 symbol 기준으로 복원합니다. |
 
 #### Source에서 확정된 역할
 
@@ -342,7 +342,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | Importance | A |
 | Tags | EVENT_IO, IRC_PROTOCOL, RISK |
 | 원문 확정 역할 | Establishes incremental IRC framing and the line-size boundary. |
-| 학습 깊이 | 주요 subsystem·boundary·failure path·integration point를 path와 symbol 기준으로 복원합니다. |
+| 학습 깊이 | 주요 subsystem·boundary·실패 처리·integration point를 path와 symbol 기준으로 복원합니다. |
 
 #### Source에서 확정된 역할
 
@@ -380,7 +380,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | Importance | A |
 | Tags | EVENT_IO, RISK |
 | 원문 확정 역할 | Implements the non-blocking receive state machine. |
-| 학습 깊이 | 주요 subsystem·boundary·failure path·integration point를 path와 symbol 기준으로 복원합니다. |
+| 학습 깊이 | 주요 subsystem·boundary·실패 처리·integration point를 path와 symbol 기준으로 복원합니다. |
 
 #### Source에서 확정된 역할
 
@@ -470,7 +470,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | Importance | A |
 | Tags | ARCH, EVENT_IO, LIFECYCLE |
 | 원문 확정 역할 | Defines Server ownership and the transport callback boundary. |
-| 학습 깊이 | 주요 subsystem·boundary·failure path·integration point를 path와 symbol 기준으로 복원합니다. |
+| 학습 깊이 | 주요 subsystem·boundary·실패 처리·integration point를 path와 symbol 기준으로 복원합니다. |
 
 #### Source에서 확정된 역할
 
@@ -509,7 +509,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | Importance | A |
 | Tags | EVENT_IO, LIFECYCLE |
 | 원문 확정 역할 | Integrates accepted descriptors into connection and event ownership. |
-| 학습 깊이 | 주요 subsystem·boundary·failure path·integration point를 path와 symbol 기준으로 복원합니다. |
+| 학습 깊이 | 주요 subsystem·boundary·실패 처리·integration point를 path와 symbol 기준으로 복원합니다. |
 
 #### Source에서 확정된 역할
 
@@ -523,7 +523,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | 주요 문제와 설계 판단 | accept를 would-block까지 반복하고 socket을 설정한 뒤 Connection을 만들고 event backend에 Read 관심을 등록하고 map에 이동시킨 다음 connect callback을 호출했습니다. |
 | 변경 파일·symbol | `src/Server.cpp — acceptReadyClients, socket configuration helpers` |
 | state / ownership 변화 | accept된 raw fd는 Connection 생성 이후 그 객체로, map 삽입 이후 Server로 ownership이 이전됩니다. |
-| failure 또는 boundary | accept EINTR은 재시도하고 EAGAIN/EWOULDBLOCK은 drain 종료입니다. 설정/등록/삽입/callback 예외는 catch 경로로 전달되지만 이 버전은 event add와 map 삽입의 완전한 rollback 및 callback self-removal 안전성이 부족합니다. |
+| failure 또는 boundary | accept EINTR은 재시도하고 EAGAIN/EWOULDBLOCK은 drain 종료입니다. 설정/등록/삽입/callback 예외는 catch 경로로 전달되지만이 버전은 event add와 map 삽입의 완전한 rollback 및 callback self-removal 안전성이 부족합니다. |
 | 보장 / 비보장 | 보장: listener readiness 하나에서 accept queue를 drain하고 live fd를 event loop에 등록합니다.<br>비보장: 등록 성공 뒤 raw pointer를 callback 이후 재사용할 수 있어 후속 reentrancy fix 대상입니다. |
 | 다음 관련 변화 | 5dcd882f0763가 map-first insertion, add rollback, fd relookup으로 수명 결함을 수정합니다. |
 
@@ -598,7 +598,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | Importance | A |
 | Tags | EVENT_IO, LIFECYCLE, INTEGRATION |
 | 원문 확정 역할 | Couples pending output to write readiness and close completion. |
-| 학습 깊이 | 주요 subsystem·boundary·failure path·integration point를 path와 symbol 기준으로 복원합니다. |
+| 학습 깊이 | 주요 subsystem·boundary·실패 처리·integration point를 path와 symbol 기준으로 복원합니다. |
 
 #### Source에서 확정된 역할
 
@@ -637,7 +637,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | Importance | A |
 | Tags | LIFECYCLE, RISK |
 | 원문 확정 역할 | Centralizes transport removal and disconnect notification. |
-| 학습 깊이 | 주요 subsystem·boundary·failure path·integration point를 path와 symbol 기준으로 복원합니다. |
+| 학습 깊이 | 주요 subsystem·boundary·실패 처리·integration point를 path와 symbol 기준으로 복원합니다. |
 
 #### Source에서 확정된 역할
 
@@ -667,7 +667,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 
 #### 다음 연결
 
-- 이 commit은 이 Thread의 마지막 항목입니다. 아래 Invariant ledger와 Thread 최종 상태에서 전체 변화를 연결합니다.
+- 이 commit은이 Thread의 마지막 항목입니다. 아래 Invariant ledger와 Thread 최종 상태에서 전체 변화를 연결합니다.
 
 ## 6. Invariant ledger
 
@@ -722,12 +722,12 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 - [x] 모든 commit의 exact SHA diff와 변경 파일·symbol을 확인했습니다.
 - [x] final HEAD의 함수나 field를 과거 commit 설명에 소급하지 않았습니다.
 - [x] S commit은 architecture/invariant, failure, ownership/lifecycle, 후속 fix/test까지 기록했습니다.
-- [x] A commit은 주요 subsystem/boundary/failure path와 설계 판단을 기록했습니다.
+- [x] A commit은 주요 subsystem/boundary/실패 처리와 설계 판단을 기록했습니다.
 - [x] B commit은 Thread 흐름에서 맡는 구현 역할과 state 변화를 기록했습니다.
 - [x] fix commit의 기존 가정, root cause, 수정 invariant, regression test를 연결했습니다.
 - [x] test commit의 production path, technique, 증명/비증명 범위를 구분했습니다.
 - [x] Invariant ledger와 responsibility 표를 path/symbol 증거에 연결했습니다.
-- [ ] production build/test command를 이 작업 환경에서 직접 실행했습니다. local checkout을 만들 수 없어 code/test inspection과 실행 결과를 분리했으며 pass 결과를 기록하지 않았습니다.
+- [ ] production build/test command를이 작업 환경에서 직접 실행했습니다. local checkout을 만들 수 없어 code/test inspection과 실행 결과를 분리했으며 pass 결과를 기록하지 않았습니다.
 ===== END FILE: 01-portable-readiness-and-nonblocking-transport.md =====
 
 ===== BEGIN FILE: 02-protocol-boundary-identity-and-registration.md =====
@@ -841,7 +841,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | Importance | A |
 | Tags | IRC_PROTOCOL, RISK |
 | 원문 확정 역할 | Defines the line grammar and parameter parsing boundary. |
-| 학습 깊이 | 주요 subsystem·boundary·failure path·integration point를 path와 symbol 기준으로 복원합니다. |
+| 학습 깊이 | 주요 subsystem·boundary·실패 처리·integration point를 path와 symbol 기준으로 복원합니다. |
 
 #### Source에서 확정된 역할
 
@@ -893,8 +893,8 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | 확인한 변경 파일·symbol | `include/Replies.hpp`<br>`src/Replies.cpp — numeric, formatMessage, error, hostmask` |
 | 핵심 state / branch | server response formatting의 authoritative 위치가 reply helper로 이동합니다. |
 | failure handling | 마지막 parameter만 trailing 처리해 중간 parameter의 공백이 wire grammar를 깨뜨리지 않도록 호출자가 구조화 값을 넘기게 합니다. |
-| 보장과 다음 연결 | numeric width와 prefix/target/CRLF 형태가 handler마다 달라지지 않습니다. IrcApplication handlers가 이 helper를 통해 Connection output queue로 응답합니다. |
-| 이 시점의 한계 | 실제 send 실패와 lifecycle invalidation은 이 helper가 다루지 않습니다. |
+| 보장과 다음 연결 | numeric width와 prefix/target/CRLF 형태가 handler마다 달라지지 않습니다. IrcApplication handlers가이 helper를 통해 Connection output queue로 응답합니다. |
+| 이 시점의 한계 | 실제 send 실패와 lifecycle invalidation은이 helper가 다루지 않습니다. |
 
 #### 코드 증거
 
@@ -953,7 +953,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | Importance | A |
 | Tags | IDENTITY, RISK |
 | 원문 확정 역할 | Establishes the case-insensitive nickname index invariant. |
-| 학습 깊이 | 주요 subsystem·boundary·failure path·integration point를 path와 symbol 기준으로 복원합니다. |
+| 학습 깊이 | 주요 subsystem·boundary·실패 처리·integration point를 path와 symbol 기준으로 복원합니다. |
 
 #### Source에서 확정된 역할
 
@@ -1043,7 +1043,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | Importance | A |
 | Tags | LIFECYCLE, IRC_PROTOCOL, INTEGRATION |
 | 원문 확정 역할 | Connects transport lifecycle callbacks to client state, parsing, and cleanup. |
-| 학습 깊이 | 주요 subsystem·boundary·failure path·integration point를 path와 symbol 기준으로 복원합니다. |
+| 학습 깊이 | 주요 subsystem·boundary·실패 처리·integration point를 path와 symbol 기준으로 복원합니다. |
 
 #### Source에서 확정된 역할
 
@@ -1081,7 +1081,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | Importance | A |
 | Tags | IRC_PROTOCOL, IDENTITY, RISK |
 | 원문 확정 역할 | Centralizes the pre-registration command gate. |
-| 학습 깊이 | 주요 subsystem·boundary·failure path·integration point를 path와 symbol 기준으로 복원합니다. |
+| 학습 깊이 | 주요 subsystem·boundary·실패 처리·integration point를 path와 symbol 기준으로 복원합니다. |
 
 #### Source에서 확정된 역할
 
@@ -1206,7 +1206,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | Thread 내 구현 역할 | USER fields를 저장하고 `maybeRegister()`가 `passOk && hasNick && hasUser`일 때만 `registered=true`로 만든 뒤 001, 002, 003을 순서대로 queue했습니다. |
 | 확인한 변경 파일·symbol | `src/RegistrationCommands.cpp — handleUser, maybeRegister` |
 | 핵심 state / branch | 등록은 세 prerequisite의 conjunction에서 false→true로 한 번 전이하며 welcome send 전에 flag를 먼저 세워 재진입 중 중복 등록을 막습니다. |
-| failure handling | parameter 부족/이미 등록은 numeric으로 거부합니다. 다만 welcome enqueue가 connection을 제거해도 이 버전은 이후 send/log를 계속할 수 있습니다. |
+| failure handling | parameter 부족/이미 등록은 numeric으로 거부합니다. 다만 welcome enqueue가 connection을 제거해도이 버전은 이후 send/log를 계속할 수 있습니다. |
 | 보장과 다음 연결 | PASS/NICK/USER가 모두 충족된 client만 registered가 되고 welcome 순서가 정해집니다. 6b4a7738a285가 실제 TCP에서 정상 등록을 통합 검증하고 08 thread가 failure semantics를 보강합니다. |
 | 이 시점의 한계 | response failure 후 application state revalidation은 728aaabc4012/5edcafda8a4d 이전에 없습니다. |
 
@@ -1230,7 +1230,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | Importance | A |
 | Tags | VERIFICATION, INTEGRATION, RISK |
 | 원문 확정 역할 | Proves the integrated registration and command path over real TCP. |
-| 학습 깊이 | 주요 subsystem·boundary·failure path·integration point를 path와 symbol 기준으로 복원합니다. |
+| 학습 깊이 | 주요 subsystem·boundary·실패 처리·integration point를 path와 symbol 기준으로 복원합니다. |
 
 #### Source에서 확정된 역할
 
@@ -1281,7 +1281,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 
 #### 다음 연결
 
-- 이 commit은 이 Thread의 마지막 항목입니다. 아래 Invariant ledger와 Thread 최종 상태에서 전체 변화를 연결합니다.
+- 이 commit은이 Thread의 마지막 항목입니다. 아래 Invariant ledger와 Thread 최종 상태에서 전체 변화를 연결합니다.
 
 ## 6. Invariant ledger
 
@@ -1337,12 +1337,12 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 - [x] 모든 commit의 exact SHA diff와 변경 파일·symbol을 확인했습니다.
 - [x] final HEAD의 함수나 field를 과거 commit 설명에 소급하지 않았습니다.
 - [x] S commit은 architecture/invariant, failure, ownership/lifecycle, 후속 fix/test까지 기록했습니다.
-- [x] A commit은 주요 subsystem/boundary/failure path와 설계 판단을 기록했습니다.
+- [x] A commit은 주요 subsystem/boundary/실패 처리와 설계 판단을 기록했습니다.
 - [x] B commit은 Thread 흐름에서 맡는 구현 역할과 state 변화를 기록했습니다.
 - [x] fix commit의 기존 가정, root cause, 수정 invariant, regression test를 연결했습니다.
 - [x] test commit의 production path, technique, 증명/비증명 범위를 구분했습니다.
 - [x] Invariant ledger와 responsibility 표를 path/symbol 증거에 연결했습니다.
-- [ ] production build/test command를 이 작업 환경에서 직접 실행했습니다. local checkout을 만들 수 없어 code/test inspection과 실행 결과를 분리했으며 pass 결과를 기록하지 않았습니다.
+- [ ] production build/test command를이 작업 환경에서 직접 실행했습니다. local checkout을 만들 수 없어 code/test inspection과 실행 결과를 분리했으며 pass 결과를 기록하지 않았습니다.
 ===== END FILE: 02-protocol-boundary-identity-and-registration.md =====
 
 ===== BEGIN FILE: 03-channel-authority-fanout-and-cleanup.md =====
@@ -1416,7 +1416,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | Importance | A |
 | Tags | ARCH, CHANNEL_STATE |
 | 원문 확정 역할 | Defines the authoritative Channel aggregate. |
-| 학습 깊이 | 주요 subsystem·boundary·failure path·integration point를 path와 symbol 기준으로 복원합니다. |
+| 학습 깊이 | 주요 subsystem·boundary·실패 처리·integration point를 path와 symbol 기준으로 복원합니다. |
 
 #### Source에서 확정된 역할
 
@@ -1569,7 +1569,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | Importance | A |
 | Tags | CHANNEL_STATE, INTEGRATION |
 | 원문 확정 역할 | Introduces reusable, deduplicated channel and common-peer fan-out. |
-| 학습 깊이 | 주요 subsystem·boundary·failure path·integration point를 path와 symbol 기준으로 복원합니다. |
+| 학습 깊이 | 주요 subsystem·boundary·실패 처리·integration point를 path와 symbol 기준으로 복원합니다. |
 
 #### Source에서 확정된 역할
 
@@ -1675,7 +1675,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | 핵심 state / branch | message text는 channel aggregate를 변경하지 않고 현재 membership snapshot만 읽습니다. |
 | failure handling | 없는 channel은 403, 비회원 발신은 404로 끝나며 fan-out side effect가 없습니다. |
 | 보장과 다음 연결 | channel 메시지는 authorized member에서 현재 member들로만 전달되고 sender echo는 제외됩니다. de1dd0fc30d0가 실제 slow receiver 아래 unrelated connection progress를 검증합니다. |
-| 이 시점의 한계 | slow receiver와 send failure 격리는 output/server layer에 맡기며 이 commit 자체는 fairness를 보장하지 않습니다. |
+| 이 시점의 한계 | slow receiver와 send failure 격리는 output/server layer에 맡기며이 commit 자체는 fairness를 보장하지 않습니다. |
 
 #### 코드 증거
 
@@ -1697,7 +1697,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | Importance | A |
 | Tags | CHANNEL_STATE, IRC_PROTOCOL, RISK |
 | 원문 확정 역할 | Implements the central JOIN transition, invite-only admission, and first-member operator assignment. |
-| 학습 깊이 | 주요 subsystem·boundary·failure path·integration point를 path와 symbol 기준으로 복원합니다. |
+| 학습 깊이 | 주요 subsystem·boundary·실패 처리·integration point를 path와 symbol 기준으로 복원합니다. |
 
 #### Source에서 확정된 역할
 
@@ -1800,7 +1800,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 
 #### 다음 연결
 
-- 이 commit은 이 Thread의 마지막 항목입니다. 아래 Invariant ledger와 Thread 최종 상태에서 전체 변화를 연결합니다.
+- 이 commit은이 Thread의 마지막 항목입니다. 아래 Invariant ledger와 Thread 최종 상태에서 전체 변화를 연결합니다.
 
 ## 6. Invariant ledger
 
@@ -1856,12 +1856,12 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 - [x] 모든 commit의 exact SHA diff와 변경 파일·symbol을 확인했습니다.
 - [x] final HEAD의 함수나 field를 과거 commit 설명에 소급하지 않았습니다.
 - [x] S commit은 architecture/invariant, failure, ownership/lifecycle, 후속 fix/test까지 기록했습니다.
-- [x] A commit은 주요 subsystem/boundary/failure path와 설계 판단을 기록했습니다.
+- [x] A commit은 주요 subsystem/boundary/실패 처리와 설계 판단을 기록했습니다.
 - [x] B commit은 Thread 흐름에서 맡는 구현 역할과 state 변화를 기록했습니다.
 - [x] fix commit의 기존 가정, root cause, 수정 invariant, regression test를 연결했습니다.
 - [x] test commit의 production path, technique, 증명/비증명 범위를 구분했습니다.
 - [x] Invariant ledger와 responsibility 표를 path/symbol 증거에 연결했습니다.
-- [ ] production build/test command를 이 작업 환경에서 직접 실행했습니다. local checkout을 만들 수 없어 code/test inspection과 실행 결과를 분리했으며 pass 결과를 기록하지 않았습니다.
+- [ ] production build/test command를이 작업 환경에서 직접 실행했습니다. local checkout을 만들 수 없어 code/test inspection과 실행 결과를 분리했으며 pass 결과를 기록하지 않았습니다.
 ===== END FILE: 03-channel-authority-fanout-and-cleanup.md =====
 
 ===== BEGIN FILE: 04-operational-protections-and-controlled-shutdown.md =====
@@ -1884,7 +1884,7 @@ Source에서 확정된 significance:
 - 각 timeout/limit은 어떤 authoritative state와 transition에서 적용되는가?
 - 보호 정책 위반은 server 전체가 아니라 한 connection의 queued response와 close로 어떻게 수렴하는가?
 - pending-output failure가 왜 이후 reentrant cleanup defect를 드러내는 signal이 되는가?
-- counter와 gauge는 어느 계층이 기록하며 live container와 중복 source of truth를 만들지 않는가?
+- counter와 gauge는 어느 계층이 기록하며 live container와 중복 판단 기준를 만들지 않는가?
 - signal handler와 normal control flow의 책임은 어떻게 분리되는가?
 - exact executable contract가 CLI, wire, log, shutdown 순서를 어디까지 고정하는가?
 
@@ -1973,7 +1973,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | Importance | A |
 | Tags | RESILIENCE, LIFECYCLE, RISK |
 | 원문 확정 역할 | Adds idle heartbeat and ping-timeout state. |
-| 학습 깊이 | 주요 subsystem·boundary·failure path·integration point를 path와 symbol 기준으로 복원합니다. |
+| 학습 깊이 | 주요 subsystem·boundary·실패 처리·integration point를 path와 symbol 기준으로 복원합니다. |
 
 #### Source에서 확정된 역할
 
@@ -2050,7 +2050,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | Importance | A |
 | Tags | EVENT_IO, RESILIENCE, RISK |
 | 원문 확정 역할 | Bounds each connection's unsent output and propagates queue failure. |
-| 학습 깊이 | 주요 subsystem·boundary·failure path·integration point를 path와 symbol 기준으로 복원합니다. |
+| 학습 깊이 | 주요 subsystem·boundary·실패 처리·integration point를 path와 symbol 기준으로 복원합니다. |
 
 #### Source에서 확정된 역할
 
@@ -2138,7 +2138,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | --- | --- |
 | Thread 내 구현 역할 | Server transport metrics와 IrcApplication metrics를 각각 authoritative transition에서 누적하고 `METRICS` command가 fixed-order `key=value` 값을 반환하도록 했습니다. |
 | 확인한 변경 파일·symbol | `include/Server.hpp — Metrics`<br>`src/IrcApplication.hpp — AppMetrics`<br>`src/IrcApplication.cpp/ApplicationSupport.cpp — counters and METRICS` |
-| 핵심 state / branch | live connection 같은 gauge는 server container에서 읽고 event count는 실제 transition 직후 증가해 별도 mutable source of truth를 만들지 않습니다. |
+| 핵심 state / branch | live connection 같은 gauge는 server container에서 읽고 event count는 실제 transition 직후 증가해 별도 mutable 판단 기준를 만들지 않습니다. |
 | failure handling | queue rejection/rate limit/idle timeout도 성공 경로와 분리된 counter로 기록됩니다. |
 | 보장과 다음 연결 | 운영 보호 결과와 command/message activity를 query 가능한 stable field set으로 노출합니다. c34aa18f89af가 같은 authoritative transitions를 structured log로 남기고 e5e6c57db80d가 ordering/shape를 고정합니다. |
 | 이 시점의 한계 | 지표는 in-process 누적값이며 persistent monitoring/storage나 latency 분포를 제공하지 않습니다. |
@@ -2179,7 +2179,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | 핵심 state / branch | 로그는 state를 소유하지 않고 authoritative mutation 직후 그 결과를 직렬화합니다. |
 | failure handling | 사용자 제공 reason/nick의 공백은 한 field를 깨지 않도록 escape/normalize되고 missing state에서는 추측한 identity를 기록하지 않습니다. |
 | 보장과 다음 연결 | lifecycle 및 protection event의 machine-readable ordering을 관찰할 수 있습니다. dd04279c47fd의 shutdown ordering과 e5e6c57db80d contract test가 final log sequence를 검증합니다. |
-| 이 시점의 한계 | logger failure 격리나 durability/rotation은 이 프로젝트 범위에서 보장하지 않습니다. |
+| 이 시점의 한계 | logger failure 격리나 durability/rotation은이 프로젝트 범위에서 보장하지 않습니다. |
 
 #### 코드 증거
 
@@ -2202,7 +2202,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | Importance | A |
 | Tags | LIFECYCLE, RESILIENCE, RISK |
 | 원문 확정 역할 | Replaces immediate signal-time stop with application shutdown and output draining. |
-| 학습 깊이 | 주요 subsystem·boundary·failure path·integration point를 path와 symbol 기준으로 복원합니다. |
+| 학습 깊이 | 주요 subsystem·boundary·실패 처리·integration point를 path와 symbol 기준으로 복원합니다. |
 
 #### Source에서 확정된 역할
 
@@ -2241,7 +2241,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | Importance | A |
 | Tags | VERIFICATION, IRC_PROTOCOL, RISK |
 | 원문 확정 역할 | Locks the resulting CLI, wire, timeout, rate, metric, shutdown, and log-order contracts. |
-| 학습 깊이 | 주요 subsystem·boundary·failure path·integration point를 path와 symbol 기준으로 복원합니다. |
+| 학습 깊이 | 주요 subsystem·boundary·실패 처리·integration point를 path와 symbol 기준으로 복원합니다. |
 
 #### Source에서 확정된 역할
 
@@ -2292,7 +2292,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 
 #### 다음 연결
 
-- 이 commit은 이 Thread의 마지막 항목입니다. 아래 Invariant ledger와 Thread 최종 상태에서 전체 변화를 연결합니다.
+- 이 commit은이 Thread의 마지막 항목입니다. 아래 Invariant ledger와 Thread 최종 상태에서 전체 변화를 연결합니다.
 
 ## 6. Invariant ledger
 
@@ -2348,12 +2348,12 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 - [x] 모든 commit의 exact SHA diff와 변경 파일·symbol을 확인했습니다.
 - [x] final HEAD의 함수나 field를 과거 commit 설명에 소급하지 않았습니다.
 - [x] S commit은 architecture/invariant, failure, ownership/lifecycle, 후속 fix/test까지 기록했습니다.
-- [x] A commit은 주요 subsystem/boundary/failure path와 설계 판단을 기록했습니다.
+- [x] A commit은 주요 subsystem/boundary/실패 처리와 설계 판단을 기록했습니다.
 - [x] B commit은 Thread 흐름에서 맡는 구현 역할과 state 변화를 기록했습니다.
 - [x] fix commit의 기존 가정, root cause, 수정 invariant, regression test를 연결했습니다.
 - [x] test commit의 production path, technique, 증명/비증명 범위를 구분했습니다.
 - [x] Invariant ledger와 responsibility 표를 path/symbol 증거에 연결했습니다.
-- [ ] production build/test command를 이 작업 환경에서 직접 실행했습니다. local checkout을 만들 수 없어 code/test inspection과 실행 결과를 분리했으며 pass 결과를 기록하지 않았습니다.
+- [ ] production build/test command를이 작업 환경에서 직접 실행했습니다. local checkout을 만들 수 없어 code/test inspection과 실행 결과를 분리했으며 pass 결과를 기록하지 않았습니다.
 ===== END FILE: 04-operational-protections-and-controlled-shutdown.md =====
 
 ===== BEGIN FILE: 05-strict-runtime-configuration-boundaries.md =====
@@ -2433,7 +2433,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | 핵심 state / branch | application policy는 RuntimeConfig가, bind address/port와 transport limit은 Server::Config가 소유하도록 책임을 분리합니다. |
 | failure handling | empty/trailing garbage, zero/negative/out-of-port-range와 잘못된 argument count는 server 시작 전에 diagnostic과 실패 return으로 끝납니다. |
 | 보장과 다음 연결 | public argv를 typed runtime state로 바꾸는 단일 parsing boundary와 최소 CLI contract가 생깁니다. e5e6c57db80d가 exact CLI behavior를 기록하고 b6c10bc51937가 destination-width decimal parser로 교체합니다. |
-| 이 시점의 한계 | `strtol`은 leading whitespace와 sign을 허용하는 C lexical semantics를 가지며 optional flags는 이 scaffold 단계에서 아직 실제 config를 모두 변경하지 않습니다. |
+| 이 시점의 한계 | `strtol`은 leading whitespace와 sign을 허용하는 C lexical semantics를 가지며 optional flags는이 scaffold 단계에서 아직 실제 config를 모두 변경하지 않습니다. |
 
 #### 코드 증거
 
@@ -2456,7 +2456,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | Importance | A |
 | Tags | VERIFICATION, IRC_PROTOCOL, RISK |
 | 원문 확정 역할 | Records exact CLI success and failure behavior as an executable contract. |
-| 학습 깊이 | 주요 subsystem·boundary·failure path·integration point를 path와 symbol 기준으로 복원합니다. |
+| 학습 깊이 | 주요 subsystem·boundary·실패 처리·integration point를 path와 symbol 기준으로 복원합니다. |
 
 #### Source에서 확정된 역할
 
@@ -2516,7 +2516,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | Importance | A |
 | Tags | DEBUG, RESILIENCE, RISK |
 | 원문 확정 역할 | Replaces permissive C conversion with overflow-safe, target-width decimal parsing. |
-| 학습 깊이 | 주요 subsystem·boundary·failure path·integration point를 path와 symbol 기준으로 복원합니다. |
+| 학습 깊이 | 주요 subsystem·boundary·실패 처리·integration point를 path와 symbol 기준으로 복원합니다. |
 
 #### Source에서 확정된 역할
 
@@ -2531,7 +2531,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | 변경 파일·symbol | `src/RuntimeConfig.cpp — parseUnsignedDecimal and option parsers` |
 | state / ownership 변화 | 외부 문자열은 intermediate signed/unsigned long이 아니라 최종 target-width에서 직접 representability를 검증받습니다. |
 | failure 또는 boundary | empty, `+/-`, whitespace, non-digit, exact maximum 초과, 매우 긴 decimal은 곱셈·덧셈 전에 거부되어 wrap이나 narrowing이 일어나지 않습니다. |
-| 보장 / 비보장 | 보장: accepted option은 non-empty ASCII decimal이고 실제 port/timeout/size_t/rate-count destination에 표현 가능합니다.<br>비보장: semantic relation인 idle/ping 조합 등은 별도 policy 검증이며 이 helper는 decimal representability만 보장합니다. |
+| 보장 / 비보장 | 보장: accepted option은 non-empty ASCII decimal이고 실제 port/timeout/size_t/rate-count destination에 표현 가능합니다.<br>비보장: semantic relation인 idle/ping 조합 등은 별도 policy 검증이며이 helper는 decimal representability만 보장합니다. |
 | 다음 관련 변화 | 5d1286620994가 플랫폼 width를 계산한 first-unrepresentable values와 lexical 오류를 regression으로 고정합니다. |
 
 #### 코드 증거
@@ -2614,7 +2614,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 
 #### 다음 연결
 
-- 이 commit은 이 Thread의 마지막 항목입니다. 아래 Invariant ledger와 Thread 최종 상태에서 전체 변화를 연결합니다.
+- 이 commit은이 Thread의 마지막 항목입니다. 아래 Invariant ledger와 Thread 최종 상태에서 전체 변화를 연결합니다.
 
 ## 6. Invariant ledger
 
@@ -2664,12 +2664,12 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 - [x] 모든 commit의 exact SHA diff와 변경 파일·symbol을 확인했습니다.
 - [x] final HEAD의 함수나 field를 과거 commit 설명에 소급하지 않았습니다.
 - [x] S commit은 architecture/invariant, failure, ownership/lifecycle, 후속 fix/test까지 기록했습니다.
-- [x] A commit은 주요 subsystem/boundary/failure path와 설계 판단을 기록했습니다.
+- [x] A commit은 주요 subsystem/boundary/실패 처리와 설계 판단을 기록했습니다.
 - [x] B commit은 Thread 흐름에서 맡는 구현 역할과 state 변화를 기록했습니다.
 - [x] fix commit의 기존 가정, root cause, 수정 invariant, regression test를 연결했습니다.
 - [x] test commit의 production path, technique, 증명/비증명 범위를 구분했습니다.
 - [x] Invariant ledger와 responsibility 표를 path/symbol 증거에 연결했습니다.
-- [ ] production build/test command를 이 작업 환경에서 직접 실행했습니다. local checkout을 만들 수 없어 code/test inspection과 실행 결과를 분리했으며 pass 결과를 기록하지 않았습니다.
+- [ ] production build/test command를이 작업 환경에서 직접 실행했습니다. local checkout을 만들 수 없어 code/test inspection과 실행 결과를 분리했으며 pass 결과를 기록하지 않았습니다.
 ===== END FILE: 05-strict-runtime-configuration-boundaries.md =====
 
 ===== BEGIN FILE: 06-heartbeat-liveness-correctness.md =====
@@ -2736,7 +2736,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | Importance | A |
 | Tags | RESILIENCE, LIFECYCLE, RISK |
 | 원문 확정 역할 | Introduces heartbeat PING, PONG waiting, and timeout state. |
-| 학습 깊이 | 주요 subsystem·boundary·failure path·integration point를 path와 symbol 기준으로 복원합니다. |
+| 학습 깊이 | 주요 subsystem·boundary·실패 처리·integration point를 path와 symbol 기준으로 복원합니다. |
 
 #### Source에서 확정된 역할
 
@@ -2848,7 +2848,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | 핵심 state / branch | real monotonic test deadline과 socket timeout이 scenario lifetime을 제한하고 peer connection은 PONG 뒤에도 유지됩니다. |
 | failure handling | expected server PING 또는 후속 response가 deadline 안에 없거나 connection이 닫히면 test가 실패합니다. |
 | 보장과 다음 연결 | 초기 heartbeat의 positive integration path가 listener/event loop/parser/application/output queue를 거쳐 동작합니다. 3f2b3ae1d3f9가 실제 liveness invariant를 고치고 0c76aad19579가 matching/forged response를 분리합니다. |
-| 이 시점의 한계 | 초기 implementation의 wall-clock 사용과 any-PONG acceptance는 이 양성 test로 드러나지 않습니다. |
+| 이 시점의 한계 | 초기 implementation의 wall-clock 사용과 any-PONG acceptance는이 양성 test로 드러나지 않습니다. |
 
 #### 코드 증거
 
@@ -2891,7 +2891,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | Importance | A |
 | Tags | DEBUG, RESILIENCE, RISK |
 | 원문 확정 역할 | Moves timing to steady_clock and correlates PONG with the exact outstanding token. |
-| 학습 깊이 | 주요 subsystem·boundary·failure path·integration point를 path와 symbol 기준으로 복원합니다. |
+| 학습 깊이 | 주요 subsystem·boundary·실패 처리·integration point를 path와 symbol 기준으로 복원합니다. |
 
 #### Source에서 확정된 역할
 
@@ -2941,7 +2941,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | Importance | A |
 | Tags | VERIFICATION, RESILIENCE, RISK |
 | 원문 확정 역할 | Proves matching PONG clears the deadline and forged PONG does not. |
-| 학습 깊이 | 주요 subsystem·boundary·failure path·integration point를 path와 symbol 기준으로 복원합니다. |
+| 학습 깊이 | 주요 subsystem·boundary·실패 처리·integration point를 path와 symbol 기준으로 복원합니다. |
 
 #### Source에서 확정된 역할
 
@@ -2992,7 +2992,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 
 #### 다음 연결
 
-- 이 commit은 이 Thread의 마지막 항목입니다. 아래 Invariant ledger와 Thread 최종 상태에서 전체 변화를 연결합니다.
+- 이 commit은이 Thread의 마지막 항목입니다. 아래 Invariant ledger와 Thread 최종 상태에서 전체 변화를 연결합니다.
 
 ## 6. Invariant ledger
 
@@ -3045,12 +3045,12 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 - [x] 모든 commit의 exact SHA diff와 변경 파일·symbol을 확인했습니다.
 - [x] final HEAD의 함수나 field를 과거 commit 설명에 소급하지 않았습니다.
 - [x] S commit은 architecture/invariant, failure, ownership/lifecycle, 후속 fix/test까지 기록했습니다.
-- [x] A commit은 주요 subsystem/boundary/failure path와 설계 판단을 기록했습니다.
+- [x] A commit은 주요 subsystem/boundary/실패 처리와 설계 판단을 기록했습니다.
 - [x] B commit은 Thread 흐름에서 맡는 구현 역할과 state 변화를 기록했습니다.
 - [x] fix commit의 기존 가정, root cause, 수정 invariant, regression test를 연결했습니다.
 - [x] test commit의 production path, technique, 증명/비증명 범위를 구분했습니다.
 - [x] Invariant ledger와 responsibility 표를 path/symbol 증거에 연결했습니다.
-- [ ] production build/test command를 이 작업 환경에서 직접 실행했습니다. local checkout을 만들 수 없어 code/test inspection과 실행 결과를 분리했으며 pass 결과를 기록하지 않았습니다.
+- [ ] production build/test command를이 작업 환경에서 직접 실행했습니다. local checkout을 만들 수 없어 code/test inspection과 실행 결과를 분리했으며 pass 결과를 기록하지 않았습니다.
 ===== END FILE: 06-heartbeat-liveness-correctness.md =====
 
 ===== BEGIN FILE: 07-output-queue-correctness-under-partial-failure.md =====
@@ -3169,7 +3169,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | Importance | A |
 | Tags | EVENT_IO, RESILIENCE, RISK |
 | 원문 확정 역할 | Adds a hard pending-output boundary and a visible queue-failure result. |
-| 학습 깊이 | 주요 subsystem·boundary·failure path·integration point를 path와 symbol 기준으로 복원합니다. |
+| 학습 깊이 | 주요 subsystem·boundary·실패 처리·integration point를 path와 symbol 기준으로 복원합니다. |
 
 #### Source에서 확정된 역할
 
@@ -3271,7 +3271,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | Importance | A |
 | Tags | VERIFICATION, EVENT_IO, RISK |
 | 원문 확정 역할 | Scripts partial sends, interruptions, backpressure, zero sends, terminal errors, and invalid return counts. |
-| 학습 깊이 | 주요 subsystem·boundary·failure path·integration point를 path와 symbol 기준으로 복원합니다. |
+| 학습 깊이 | 주요 subsystem·boundary·실패 처리·integration point를 path와 symbol 기준으로 복원합니다. |
 
 #### Source에서 확정된 역할
 
@@ -3324,7 +3324,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 
 #### 다음 연결
 
-- 이 commit은 이 Thread의 마지막 항목입니다. 아래 Invariant ledger와 Thread 최종 상태에서 전체 변화를 연결합니다.
+- 이 commit은이 Thread의 마지막 항목입니다. 아래 Invariant ledger와 Thread 최종 상태에서 전체 변화를 연결합니다.
 
 ## 6. Invariant ledger
 
@@ -3377,12 +3377,12 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 - [x] 모든 commit의 exact SHA diff와 변경 파일·symbol을 확인했습니다.
 - [x] final HEAD의 함수나 field를 과거 commit 설명에 소급하지 않았습니다.
 - [x] S commit은 architecture/invariant, failure, ownership/lifecycle, 후속 fix/test까지 기록했습니다.
-- [x] A commit은 주요 subsystem/boundary/failure path와 설계 판단을 기록했습니다.
+- [x] A commit은 주요 subsystem/boundary/실패 처리와 설계 판단을 기록했습니다.
 - [x] B commit은 Thread 흐름에서 맡는 구현 역할과 state 변화를 기록했습니다.
 - [x] fix commit의 기존 가정, root cause, 수정 invariant, regression test를 연결했습니다.
 - [x] test commit의 production path, technique, 증명/비증명 범위를 구분했습니다.
 - [x] Invariant ledger와 responsibility 표를 path/symbol 증거에 연결했습니다.
-- [ ] production build/test command를 이 작업 환경에서 직접 실행했습니다. local checkout을 만들 수 없어 code/test inspection과 실행 결과를 분리했으며 pass 결과를 기록하지 않았습니다.
+- [ ] production build/test command를이 작업 환경에서 직접 실행했습니다. local checkout을 만들 수 없어 code/test inspection과 실행 결과를 분리했으며 pass 결과를 기록하지 않았습니다.
 ===== END FILE: 07-output-queue-correctness-under-partial-failure.md =====
 
 ===== BEGIN FILE: 08-reentrant-server-and-application-cleanup.md =====
@@ -3454,7 +3454,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | Importance | A |
 | Tags | LIFECYCLE, RISK |
 | 원문 확정 역할 | Establishes the original erase-before-disconnect-callback cleanup path. |
-| 학습 깊이 | 주요 subsystem·boundary·failure path·integration point를 path와 symbol 기준으로 복원합니다. |
+| 학습 깊이 | 주요 subsystem·boundary·실패 처리·integration point를 path와 symbol 기준으로 복원합니다. |
 
 #### Source에서 확정된 역할
 
@@ -3557,7 +3557,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | Importance | A |
 | Tags | VERIFICATION, LIFECYCLE, RISK |
 | 원문 확정 역할 | Injects add/update failures and callback-driven removal to verify server lifetime safety. |
-| 학습 깊이 | 주요 subsystem·boundary·failure path·integration point를 path와 symbol 기준으로 복원합니다. |
+| 학습 깊이 | 주요 subsystem·boundary·실패 처리·integration point를 path와 symbol 기준으로 복원합니다. |
 
 #### Source에서 확정된 역할
 
@@ -3681,7 +3681,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | Importance | A |
 | Tags | VERIFICATION, LIFECYCLE, RISK |
 | 원문 확정 역할 | Forces registration response failure and proves application cleanup and logging order. |
-| 학습 깊이 | 주요 subsystem·boundary·failure path·integration point를 path와 symbol 기준으로 복원합니다. |
+| 학습 깊이 | 주요 subsystem·boundary·실패 처리·integration point를 path와 symbol 기준으로 복원합니다. |
 
 #### Source에서 확정된 역할
 
@@ -3740,7 +3740,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | Importance | A |
 | Tags | DEBUG, LIFECYCLE, RISK |
 | 원문 확정 역할 | Stops LIST, NAMES, and compound MODE after response failure. |
-| 학습 깊이 | 주요 subsystem·boundary·failure path·integration point를 path와 symbol 기준으로 복원합니다. |
+| 학습 깊이 | 주요 subsystem·boundary·실패 처리·integration point를 path와 symbol 기준으로 복원합니다. |
 
 #### Source에서 확정된 역할
 
@@ -3789,7 +3789,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | Importance | A |
 | Tags | VERIFICATION, LIFECYCLE, CHANNEL_STATE |
 | 원문 확정 역할 | Proves a compound MODE retains completed work but performs no later transition after sender removal. |
-| 학습 깊이 | 주요 subsystem·boundary·failure path·integration point를 path와 symbol 기준으로 복원합니다. |
+| 학습 깊이 | 주요 subsystem·boundary·실패 처리·integration point를 path와 symbol 기준으로 복원합니다. |
 
 #### Source에서 확정된 역할
 
@@ -3840,7 +3840,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 
 #### 다음 연결
 
-- 이 commit은 이 Thread의 마지막 항목입니다. 아래 Invariant ledger와 Thread 최종 상태에서 전체 변화를 연결합니다.
+- 이 commit은이 Thread의 마지막 항목입니다. 아래 Invariant ledger와 Thread 최종 상태에서 전체 변화를 연결합니다.
 
 ## 6. Invariant ledger
 
@@ -3896,12 +3896,12 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 - [x] 모든 commit의 exact SHA diff와 변경 파일·symbol을 확인했습니다.
 - [x] final HEAD의 함수나 field를 과거 commit 설명에 소급하지 않았습니다.
 - [x] S commit은 architecture/invariant, failure, ownership/lifecycle, 후속 fix/test까지 기록했습니다.
-- [x] A commit은 주요 subsystem/boundary/failure path와 설계 판단을 기록했습니다.
+- [x] A commit은 주요 subsystem/boundary/실패 처리와 설계 판단을 기록했습니다.
 - [x] B commit은 Thread 흐름에서 맡는 구현 역할과 state 변화를 기록했습니다.
 - [x] fix commit의 기존 가정, root cause, 수정 invariant, regression test를 연결했습니다.
 - [x] test commit의 production path, technique, 증명/비증명 범위를 구분했습니다.
 - [x] Invariant ledger와 responsibility 표를 path/symbol 증거에 연결했습니다.
-- [ ] production build/test command를 이 작업 환경에서 직접 실행했습니다. local checkout을 만들 수 없어 code/test inspection과 실행 결과를 분리했으며 pass 결과를 기록하지 않았습니다.
+- [ ] production build/test command를이 작업 환경에서 직접 실행했습니다. local checkout을 만들 수 없어 code/test inspection과 실행 결과를 분리했으며 pass 결과를 기록하지 않았습니다.
 ===== END FILE: 08-reentrant-server-and-application-cleanup.md =====
 
 ===== BEGIN FILE: 09-verification-maturation-and-portability-enforcement.md =====
@@ -3972,7 +3972,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | Importance | A |
 | Tags | VERIFICATION, INTEGRATION, RISK |
 | 원문 확정 역할 | Adds the first full real-TCP smoke flow. |
-| 학습 깊이 | 주요 subsystem·boundary·failure path·integration point를 path와 symbol 기준으로 복원합니다. |
+| 학습 깊이 | 주요 subsystem·boundary·실패 처리·integration point를 path와 symbol 기준으로 복원합니다. |
 
 #### Source에서 확정된 역할
 
@@ -4032,7 +4032,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | Importance | A |
 | Tags | VERIFICATION, IRC_PROTOCOL, RISK |
 | 원문 확정 역할 | Replaces substring-oriented confidence with exact CLI, frame, and shutdown contracts. |
-| 학습 깊이 | 주요 subsystem·boundary·failure path·integration point를 path와 symbol 기준으로 복원합니다. |
+| 학습 깊이 | 주요 subsystem·boundary·실패 처리·integration point를 path와 symbol 기준으로 복원합니다. |
 
 #### Source에서 확정된 역할
 
@@ -4092,7 +4092,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | Importance | A |
 | Tags | VERIFICATION, EVENT_IO, RISK |
 | 원문 확정 역할 | Adds deterministic Connection failure-state tests. |
-| 학습 깊이 | 주요 subsystem·boundary·failure path·integration point를 path와 symbol 기준으로 복원합니다. |
+| 학습 깊이 | 주요 subsystem·boundary·실패 처리·integration point를 path와 symbol 기준으로 복원합니다. |
 
 #### Source에서 확정된 역할
 
@@ -4154,7 +4154,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | Importance | A |
 | Tags | VERIFICATION, LIFECYCLE, RISK |
 | 원문 확정 역할 | Adds deterministic Server ownership and rollback tests. |
-| 학습 깊이 | 주요 subsystem·boundary·failure path·integration point를 path와 symbol 기준으로 복원합니다. |
+| 학습 깊이 | 주요 subsystem·boundary·실패 처리·integration point를 path와 symbol 기준으로 복원합니다. |
 
 #### Source에서 확정된 역할
 
@@ -4216,7 +4216,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | Importance | A |
 | Tags | VERIFICATION, LIFECYCLE, RISK |
 | 원문 확정 역할 | Adds deterministic application cleanup verification. |
-| 학습 깊이 | 주요 subsystem·boundary·failure path·integration point를 path와 symbol 기준으로 복원합니다. |
+| 학습 깊이 | 주요 subsystem·boundary·실패 처리·integration point를 path와 symbol 기준으로 복원합니다. |
 
 #### Source에서 확정된 역할
 
@@ -4275,7 +4275,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | Importance | A |
 | Tags | VERIFICATION, EVENT_IO, RISK |
 | 원문 확정 역할 | Adds 160-peer readiness and slow-receiver isolation evidence. |
-| 학습 깊이 | 주요 subsystem·boundary·failure path·integration point를 path와 symbol 기준으로 복원합니다. |
+| 학습 깊이 | 주요 subsystem·boundary·실패 처리·integration point를 path와 symbol 기준으로 복원합니다. |
 
 #### Source에서 확정된 역할
 
@@ -4336,7 +4336,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 | Importance | A |
 | Tags | BUILD, VERIFICATION, RISK |
 | 원문 확정 역할 | Runs the complete suite on Linux and macOS and under ASan and UBSan. |
-| 학습 깊이 | 주요 subsystem·boundary·failure path·integration point를 path와 symbol 기준으로 복원합니다. |
+| 학습 깊이 | 주요 subsystem·boundary·실패 처리·integration point를 path와 symbol 기준으로 복원합니다. |
 
 #### Source에서 확정된 역할
 
@@ -4387,7 +4387,7 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 
 #### 다음 연결
 
-- 이 commit은 이 Thread의 마지막 항목입니다. 아래 Invariant ledger와 Thread 최종 상태에서 전체 변화를 연결합니다.
+- 이 commit은이 Thread의 마지막 항목입니다. 아래 Invariant ledger와 Thread 최종 상태에서 전체 변화를 연결합니다.
 
 ## 6. Invariant ledger
 
@@ -4444,12 +4444,12 @@ Commit 순서는 source에 정의된 순서이며 재정렬하지 않았습니�
 - [x] 모든 commit의 exact SHA diff와 변경 파일·symbol을 확인했습니다.
 - [x] final HEAD의 함수나 field를 과거 commit 설명에 소급하지 않았습니다.
 - [x] S commit은 architecture/invariant, failure, ownership/lifecycle, 후속 fix/test까지 기록했습니다.
-- [x] A commit은 주요 subsystem/boundary/failure path와 설계 판단을 기록했습니다.
+- [x] A commit은 주요 subsystem/boundary/실패 처리와 설계 판단을 기록했습니다.
 - [x] B commit은 Thread 흐름에서 맡는 구현 역할과 state 변화를 기록했습니다.
 - [x] fix commit의 기존 가정, root cause, 수정 invariant, regression test를 연결했습니다.
 - [x] test commit의 production path, technique, 증명/비증명 범위를 구분했습니다.
 - [x] Invariant ledger와 responsibility 표를 path/symbol 증거에 연결했습니다.
-- [ ] production build/test command를 이 작업 환경에서 직접 실행했습니다. local checkout을 만들 수 없어 code/test inspection과 실행 결과를 분리했으며 pass 결과를 기록하지 않았습니다.
+- [ ] production build/test command를이 작업 환경에서 직접 실행했습니다. local checkout을 만들 수 없어 code/test inspection과 실행 결과를 분리했으며 pass 결과를 기록하지 않았습니다.
 ===== END FILE: 09-verification-maturation-and-portability-enforcement.md =====
 
 ===== BEGIN FILE: README.md =====
@@ -4510,7 +4510,7 @@ git show <SHA>:<path>
 | Importance | 학습 깊이 |
 | --- | --- |
 | S | 프로젝트 핵심 architecture/invariant로 취급합니다. 직전 상태, failure 가능성, 핵심 결정, 실제 코드, ownership/lifecycle/state transition, 후속 fix/test까지 깊게 기록합니다. |
-| A | 주요 subsystem·boundary·failure path·integration point를 설명할 수 있도록 핵심 코드와 설계 판단을 기록합니다. |
+| A | 주요 subsystem·boundary·실패 처리·integration point를 설명할 수 있도록 핵심 코드와 설계 판단을 기록합니다. |
 | B | thread 흐름에서 맡는 구현 역할과 필요한 코드·상태 변화를 확인합니다. S/A와 같은 분량을 강제하지 않습니다. |
 | C | thread 이해에 필요한 맥락만 기록합니다. 이 프로젝트의 Development Threads에는 C commit이 포함되지 않습니다. |
 
