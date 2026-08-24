@@ -1,25 +1,24 @@
-===== BEGIN FILE: 01-whole-stream-to-bounded-line-parser.md =====
-# Thread: Whole-stream accumulation to a bounded streaming line parser
+# 전체 입력 누적에서 제한된 스트리밍 줄 파서까지
 
-## 1. Thread 목표
+## 1. 개발 흐름 목표
 
-전체 입력을 EOF까지 모으는 초기 reader가, 임의의 `read` 분할과 무관하게 한 번에 정확히 한 줄을 반환하고 남은 입력을 보존하는 bounded streaming parser로 발전하는 과정을 복원합니다. 이후 direct tail read와 구조적 성능 측정이 이 parser의 cursor·소유권 항상 유지해야 하는 조건을 약화시키지 않는지도 확인합니다.
+전체 입력을 EOF까지 모으는 초기 reader가, 임의의 `read` 분할과 무관하게 한 번에 정확히 한 줄을 반환하고 남은 입력을 보존하는 bounded streaming parser로 발전하는 과정을 복원합니다. 이후 direct tail read와 구조적 성능 측정이 이 parser의 cursor·소유권 불변 조건을 약화시키지 않는지도 확인합니다.
 
-### Source에서 연결된 프로젝트 항목
+### 원자료에서 확인된 프로젝트 항목
 
 - **Project profile:** POSIX C buffered record reading과 static-library API 설계 중, incremental line framing과 dynamic buffer-window representation을 담당하는 Thread입니다.
-- **Critical 항상 유지해야 하는 조건:** 한 번의 성공 결과는 정확히 한 logical record이며, newline이 있으면 포함하고 caller가 소유하는 독립 allocation이어야 합니다.
-- **Critical 항상 유지해야 하는 조건:** EOF의 unterminated suffix는 한 번만 반환되고 이후 EOF는 안정적으로 유지되어야 하며, empty stream은 empty line을 만들어서는 안 됩니다.
-- **Critical 항상 유지해야 하는 조건:** 최종 architecture의 buffer state는 `0 <= begin <= scan <= end < capacity`와 `bytes[end]`의 NUL sentinel을 유지하며 capacity arithmetic은 wrap되지 않아야 합니다.
+- **Critical 불변 조건:** 한 번의 성공 결과는 정확히 한 logical record이며, newline이 있으면 포함하고 caller가 소유하는 독립 allocation이어야 합니다.
+- **Critical 불변 조건:** EOF의 unterminated suffix는 한 번만 반환되고 이후 EOF는 안정적으로 유지되어야 하며, empty stream은 empty line을 만들어서는 안 됩니다.
+- **Critical 불변 조건:** 최종 architecture의 buffer state는 `0 <= begin <= scan <= end < capacity`와 `bytes[end]`의 NUL sentinel을 유지하며 capacity arithmetic은 wrap되지 않아야 합니다.
 - **Major engineering difficulty:** kernel이 입력을 어떤 크기로 나누어 반환하더라도 observable record가 달라지지 않는 parser를 설계하는 문제입니다.
 - **Major engineering difficulty:** append-only accumulator를 unread-window로 바꾸면서 allocation rollback과 caller 소유권을 유지하는 문제입니다.
 - **Major engineering difficulty:** wall-clock 대신 operation count로 반복 scan, linear growth, per-chunk copy 회귀를 재현 가능하게 검출하는 문제입니다.
 
-### Source가 확정한 significance
+### 원자료에서 확인된 중요성
 
-이 Thread는 세 가지 결정을 구분합니다. 첫째, bytes를 실패 시 손상 없이 누적하는 방법입니다. 둘째, logical record를 표현하고 소비하는 방법입니다. 셋째, parser 비용이 repeated append copy, repeated scan, linear-capacity growth로 되돌아가지 않도록 검증하는 방법입니다. 초기 구현은 소유권과 growth의 기반을 제공하고, unread interval과 line extractor가 durable architecture를 확립합니다.
+이 개발 흐름은 세 가지 결정을 구분합니다. 첫째, bytes를 실패 시 손상 없이 누적하는 방법입니다. 둘째, logical record를 표현하고 소비하는 방법입니다. 셋째, parser 비용이 repeated append copy, repeated scan, linear-capacity growth로 되돌아가지 않도록 검증하는 방법입니다. 초기 구현은 소유권과 growth의 기반을 제공하고, unread interval과 line extractor가 durable architecture를 확립합니다.
 
-## 2. 이 Thread를 이해하기 위한 핵심 질문
+## 2. 이 개발 흐름을 이해하기 위한 핵심 질문
 
 - EOF까지 누적하는 상태와 한 줄씩 소비하는 상태는 어떤 필드 차이로 표현됩니까?
 - `begin`, `scan`, `end`, `capacity`는 각각 어떤 byte 영역을 뜻하며 어느 함수가 변경하는가?
@@ -38,8 +37,8 @@
 - scratch-buffer 제거 전후의 read destination과 copy 횟수 차이를 비교했습니다.
 - 4 MiB test의 고정 수치가 어떤 regression을 검출하는지, wall-clock benchmark와 어떻게 다른지 설명할 수 있습니다.
 
-## 4. Commit map
-| 순서 | Commit | Subject | Importance | Tags | Source에서 확정된 Thread 역할 |
+## 4. 커밋 목록
+| 순서 | 커밋 | 제목 | 중요도 | 태그 | 원자료에서 확인된 Thread 역할 |
 | ---: | --- | --- |:---: | --- | --- |
 | 1 | `85e4c2a41a4c` | `feat(reader): 파일 끝의 마지막 줄 반환` | **A** | `CORE`, `LINE_STATE`, `RISK` | 기하급수적 누적, ownership rollback, EOF tail 규칙을 확립합니다. |
 | 2 | `7e64d3d79ad4` | `refactor(buffer): 읽지 않은 입력을 구간으로 표현` | **S** | `ARCH`, `LINE_STATE`, `HARD` | 소비한 prefix를 안전하게 제외하기 위한 unread-window 표현을 도입합니다. |
@@ -48,15 +47,15 @@
 | 5 | `dbf1abd21121` | `refactor(buffer): 남은 입력 버퍼를 읽기 공간으로 재사용` | **A** | `PERF`, `LINE_STATE`, `REFACTOR` | reserved tail로 직접 읽어 매 read마다 발생하던 scratch-buffer 복사를 제거합니다. |
 | 6 | `a0654d9de446` | `test(perf): 4 MiB 입력의 작업량 기준 고정` | **A** | `PERF`, `TEST`, `LINE_STATE` | 대용량 입력의 재현 가능한 작업량을 고정해 multiplicative work 회귀를 막습니다. |
 
-## 5. Commit별 학습 기록
+## 5. 커밋별 학습 기록
 ### 5.1 `85e4c2a41a4c` — `feat(reader): 파일 끝의 마지막 줄 반환`
 
 - **Commit:** `85e4c2a41a4c`
 - **Subject:** `feat(reader): 파일 끝의 마지막 줄 반환`
-- **Importance:** **A**
-- **Tags:** `CORE`, `LINE_STATE`, `RISK`
+- **중요도:** **A**
+- **태그:** `CORE`, `LINE_STATE`, `RISK`
 
-#### Source에서 확정된 역할
+#### 원자료에서 확인된 역할
 
 이 commit은 여러 `read`에 걸친 persistent accumulation, geometric buffer growth, descriptor probing, allocation/I/O failure cleanup을 도입합니다. EOF가 오면 누적한 bytes를 caller가 독립적으로 소유하는 result로 복사하고 internal state를 정리합니다. trailing newline이 없는 마지막 byte sequence도 data이며 버리면 안 된다는 규칙을 확립합니다.
 
@@ -102,7 +101,7 @@ return (line);
 
 이 코드는 result copy가 아니라 소유권 transfer입니다. 고정된 Source 역할은 변경하지 않았으며, 저장소에서 관찰된 차이를 이 학습 기록에 명시합니다.
 
-#### 학습자가 복원할 결정과 한계
+#### 설계 결정과 한계
 
 - **해결하려던 문제:** `read` 한 번으로 전체 입력이 오지 않더라도 bytes를 누적하고, EOF 직전의 newline 없는 suffix를 data로 반환해야 했습니다. `append_bytes`가 여러 positive read를 이어 붙이고 `length != 0`일 때 `release_final_line`으로 반환합니다.
 - **기존 설계가 충분하지 않았던 이유:** `466cfcbd3525`에는 header의 `get_next_line(int fd)` 선언과 `BUFFER_SIZE` 검증만 있고 persistent bytes, growth, failure rollback을 수행하는 구현이 없었습니다.
@@ -115,18 +114,18 @@ return (line);
 
 - **Commit:** `7e64d3d79ad4`
 - **Subject:** `refactor(buffer): 읽지 않은 입력을 구간으로 표현`
-- **Importance:** **S**
-- **Tags:** `ARCH`, `LINE_STATE`, `HARD`
+- **중요도:** **S**
+- **태그:** `ARCH`, `LINE_STATE`, `HARD`
 
-#### Source가 확정한 Problem
+#### 원자료에서 확인된 Problem
 
 하나의 active length만으로는 accumulated bytes, 이미 반환한 prefix, 아직 읽지 않은 bytes, scan progress, unused capacity를 구분하기 어렵습니다. Incremental line consumption은 이 영역들이 서로 다른 의미를 가져야 하며, allocation failure가 기존 data를 손상시키지 않아야 합니다.
 
-#### Source가 확정한 Decision
+#### 원자료에서 확인된 Decision
 
 buffer를 capacity-managed allocation 내부의 unread interval `[begin, end)`로 표현합니다. 소비한 prefix는 `begin`을 전진시켜 제외하고, remaining bytes는 필요할 때만 compact하며, geometric growth는 allocation과 copy가 성공한 뒤에만 기존 allocation을 교체합니다.
 
-#### Source가 확정한 중요성
+#### 원자료에서 확인된 중요성
 
 이 표현은 이후 newline scan, suffix preservation, explicit context, failure retry, direct tail read가 공유하는 기반입니다. 최종 reader는 repeated string concatenation이 아니라 bytes 위의 stateful window로 이해해야 합니다.
 
@@ -182,7 +181,7 @@ free(g_reader.bytes);
 - 기존 allocation은 함수 진입 시 `g_reader`가 소유합니다. 새 block을 받은 직후부터 교체 전까지는 지역 변수 `allocation`이 임시 owner이며, unread copy가 끝난 뒤 기존 block을 free하고 `g_reader.bytes = allocation`으로 소유권을 넘깁니다.
 - compaction은 allocation 소유권을 바꾸지 않습니다. `copy_bytes`가 작은 주소 방향으로 왼쪽 이동하며 index를 0부터 증가시키므로 source와 destination이 겹쳐도 아직 읽지 않은 source byte를 덮지 않습니다. 일반적인 양방향 overlap을 지원하는 함수는 아니지만 이 호출 방향에서는 안전합니다.
 - growth failure는 `malloc` 직후 반환하므로 state mutation이 없습니다. overflow도 allocation·index mutation 전에 반환합니다. 반면 compaction은 성공을 전제로 실제 위치를 바꾸며 별도 failure branch가 없습니다.
-- source가 최종 항상 유지해야 하는 조건으로 제시한 `0 <= begin <= scan <= end < capacity` 중 이 SHA에는 `scan`이 없습니다. 실제 항상 유지해야 하는 조건은 allocation이 있을 때 `0 <= begin <= end < capacity`, 그리고 `bytes[end] == '\0'`입니다.
+- source가 최종 불변 조건으로 제시한 `0 <= begin <= scan <= end < capacity` 중 이 SHA에는 `scan`이 없습니다. 실제 불변 조건은 allocation이 있을 때 `0 <= begin <= end < capacity`, 그리고 `bytes[end] == '\0'`입니다.
 
 #### 이 commit의 보장과 다음 연결
 
@@ -194,20 +193,20 @@ free(g_reader.bytes);
 
 - **Commit:** `39a2b9055728`
 - **Subject:** `feat(reader): 줄을 분리하고 남은 입력 보존`
-- **Importance:** **S**
-- **Tags:** `CORE`, `LINE_STATE`, `HARD`
+- **중요도:** **S**
+- **태그:** `CORE`, `LINE_STATE`, `HARD`
 
-#### Source가 확정한 Problem
+#### 원자료에서 확인된 Problem
 
 EOF까지 누적하는 구현은 library의 중심 계약을 만족하지 못합니다. caller는 delimiter가 read 경계를 가로지르거나 하나의 read에 여러 line이 들어 있어도 한 call에서 정확히 한 logical line을 받아야 합니다.
 
-#### Source가 확정한 Decision
+#### 원자료에서 확인된 Decision
 
 reader는 persistent scan cursor에서 newline을 찾고, newline까지의 prefix를 독립 allocation으로 반환하며, 해당 record만큼 unread start를 전진시킵니다. 뒤의 모든 bytes는 다음 call을 위해 보존합니다. EOF에서는 nonempty suffix를 한 번 반환한 뒤 completion으로 이동합니다.
 
-#### Source가 확정한 중요성
+#### 원자료에서 확인된 중요성
 
-이 commit이 whole-stream accumulator를 reusable streaming line reader로 바꿉니다. kernel read partitioning을 caller에게 보이지 않게 만들고, 한 성공 call이 정확히 한 record만 소비한다는 핵심 consumption 항상 유지해야 하는 조건을 확립합니다.
+이 commit이 whole-stream accumulator를 reusable streaming line reader로 바꿉니다. kernel read partitioning을 caller에게 보이지 않게 만들고, 한 성공 call이 정확히 한 record만 소비한다는 핵심 consumption 불변 조건을 확립합니다.
 
 #### 해당 SHA에서 확인할 실제 핵심 코드
 
@@ -278,10 +277,10 @@ reader->scan = reader->begin;
 
 - **Commit:** `656528529ade`
 - **Subject:** `test(reader): BUFFER_SIZE 경계값 검증`
-- **Importance:** **A**
-- **Tags:** `TEST`, `LINE_STATE`, `EDGE`
+- **중요도:** **A**
+- **태그:** `TEST`, `LINE_STATE`, `EDGE`
 
-#### Source에서 확정된 역할
+#### 원자료에서 확인된 역할
 
 동일한 reader 동작을 `BUFFER_SIZE` 1, 2, default, much larger value로 실행합니다. chunk boundary 주변 data, 큰 adjacent lines, pipe input, high-numbered descriptors, repeated EOF, 반환 buffer의 독립성, descriptor를 닫지 않는 borrowing 동작을 검증합니다.
 
@@ -295,11 +294,11 @@ reader->scan = reader->begin;
 6. 반환된 line을 보관한 뒤 reader를 계속 사용해 internal buffer와 alias하지 않음을 확인하는 assertion을 찾습니다.
 7. 호출 뒤 descriptor가 여전히 열려 있음을 어떤 system call 또는 assertion으로 확인하는지 찾습니다.
 
-#### Test commit 학습 기록
+#### 테스트 커밋 분석
 
 | 구분 | 해당 SHA에서 기록할 내용 |
 | --- | --- |
-| **Production 항상 유지해야 하는 조건** | `tests/test_boundaries.c`의 `check_single_line`, large adjacent line, storage independence case가 한 call당 한 line, suffix 보존, caller-owned result를 각각 확인합니다. |
+| **Production 불변 조건** | `tests/test_boundaries.c`의 `check_single_line`, large adjacent line, storage independence case가 한 call당 한 line, suffix 보존, caller-owned result를 각각 확인합니다. |
 | **Failure / boundary** | body 길이를 `BUFFER_SIZE-1`, `BUFFER_SIZE`, `BUFFER_SIZE+1`, `3*BUFFER_SIZE+7`로 배치하고, newline 유무·연속 line·empty input·pipe·high fd를 구분합니다. |
 | **Test technique** | Makefile의 `MATRIX_SIZES := 1 2 42 1024`와 size별 object/bin 경로를 사용하는 compile-time behavioral matrix입니다. 각 size는 별도 `build/obj/<size>`와 `tests/bin/test_reader_<size>`를 사용합니다. |
 | **Production path** | fixture 생성 → file/pipe/fd 준비 → `get_next_line` → selected descriptor state의 scan/read/extract → result 비교/free → descriptor close 순입니다. |
@@ -330,10 +329,10 @@ reader->scan = reader->begin;
 
 - **Commit:** `dbf1abd21121`
 - **Subject:** `refactor(buffer): 남은 입력 버퍼를 읽기 공간으로 재사용`
-- **Importance:** **A**
-- **Tags:** `PERF`, `LINE_STATE`, `REFACTOR`
+- **중요도:** **A**
+- **태그:** `PERF`, `LINE_STATE`, `REFACTOR`
 
-#### Source에서 확정된 역할
+#### 원자료에서 확인된 역할
 
 기존 stack scratch buffer에 `read`한 뒤 internal buffer로 append-copy하던 경로를 제거합니다. reserve가 확보한 internal unread buffer의 tail을 system call destination으로 직접 사용하고, positive read만큼 `end`를 늘린 뒤 NUL sentinel을 복구합니다.
 
@@ -381,7 +380,7 @@ read_size = read(fd, reader->bytes + reader->end,
 
 reserve가 compaction/growth로 pointer를 확정한 뒤 destination을 계산하므로 stale pre-reserve pointer를 사용하지 않습니다.
 
-#### 성능 결정과 항상 유지해야 하는 조건
+#### 성능 결정과 불변 조건
 
 - 변경 전에는 모든 successful read마다 `append_bytes`의 copy가 한 번 발생했습니다. 변경 후에는 kernel이 persistent tail에 직접 쓰므로 그 copy가 사라집니다.
 - zero-copy 전체 구현은 아닙니다. capacity growth 때 unread bytes를 새 allocation으로 복사하고, newline result는 caller-owned allocation으로 복사합니다. 이 SHA의 EOF tail은 내부 allocation을 직접 이전하지만 후속 authoritative context engine에서는 별도 result copy로 통일됩니다.
@@ -392,10 +391,10 @@ reserve가 compaction/growth로 pointer를 확정한 뒤 destination을 계산�
 
 - **Commit:** `a0654d9de446`
 - **Subject:** `test(perf): 4 MiB 입력의 작업량 기준 고정`
-- **Importance:** **A**
-- **Tags:** `PERF`, `TEST`, `LINE_STATE`
+- **중요도:** **A**
+- **태그:** `PERF`, `TEST`, `LINE_STATE`
 
-#### Source에서 확정된 역할
+#### 원자료에서 확인된 역할
 
 4 MiB newline 없는 입력을 `BUFFER_SIZE=4096`으로 읽고 system call, allocation, release, internal copy volume을 test hook으로 셉니다. manifest는 checksum과 함께 **1025 reads, 13 allocations, 11 copy operations, 12,533,760 copied bytes**를 고정하며 wall-clock은 정보로만 남기고 pass/fail 조건으로 사용하지 않습니다.
 
@@ -410,11 +409,11 @@ reserve가 compaction/growth로 pointer를 확정한 뒤 destination을 계산�
 7. wall-clock 결과가 assertion에 들어가지 않고 informational output에만 쓰이는지 확인합니다.
 8. manifest mismatch가 어떤 failure message와 종료 상태를 만드는지 확인합니다.
 
-#### Test commit 학습 기록
+#### 테스트 커밋 분석
 
 | 구분 | 해당 SHA에서 기록할 내용 |
 | --- | --- |
-| **Production 항상 유지해야 하는 조건** | geometric growth, direct tail read, persistent `scan`이 하나의 4 MiB EOF-tail에서 per-chunk append copy와 repeated full scan 없이 진행된다는 구조적 기준입니다. |
+| **Production 불변 조건** | geometric growth, direct tail read, persistent `scan`이 하나의 4 MiB EOF-tail에서 per-chunk append copy와 repeated full scan 없이 진행된다는 구조적 기준입니다. |
 | **Failure / boundary** | newline이 전혀 없는 매우 긴 record는 매 chunk마다 전체 buffer를 복사하거나 처음부터 재검색하는 회귀를 가장 크게 드러냅니다. |
 | **Test technique** | Makefile이 production을 `metric_malloc`, `metric_free`, `metric_read`, `BLR_COPY_OBSERVER=metric_copy_observer`로 다시 컴파일하고, output manifest를 `diff -u`로 비교하는 deterministic operation counting입니다. |
 | **Production path** | 4 MiB fixture → explicit context create → reserve/direct read/scan 반복 → EOF → final result allocation/copy → FNV-1a checksum → counters 출력 → manifest diff입니다. |
@@ -425,7 +424,7 @@ reserve가 compaction/growth로 pointer를 확정한 뒤 destination을 계산�
 
 #### 고정 수치 재구성
 
-| Metric | Source 기준 | 해당 SHA의 counter 증가 지점 | 직접 계산한 이유 |
+| Metric | 원자료 기준 | 해당 SHA의 counter 증가 지점 | 직접 계산한 이유 |
 | --- | ---: | --- | --- |
 | reads | 1025 | `metric_read`가 production의 data/EOF read마다 증가 | 4,194,304 / 4,096 = 1,024 data reads와 EOF 확인 1회입니다. zero-length descriptor probe의 계수 여부는 metric wrapper 구현에서 별도로 다루며 manifest의 data path 합계는 1025입니다. |
 | allocations | 13 | `metric_malloc`: context, buffer growth, final line | context 1회 + capacities 8,192부터 8,388,608까지 11회 + 4,194,305-byte caller line 1회입니다. |
@@ -441,9 +440,9 @@ allocation byte 합계 `20,963,393`은 buffer capacities 합, final line allocat
 - **미실행:** 이 작업 환경에서는 해당 SHA의 checkout을 로컬에 구성하지 못해 binary 실행 및 manifest diff를 수행하지 않았습니다.
 - 위 수치는 `Makefile`, `tests/metrics/*`, manifest, 해당 SHA의 production code를 대조해 재구성한 code-inspection 결과입니다.
 
-## 6. 항상 유지해야 하는 조건 ledger
+## 6. 불변 조건 ledger
 
-| 항상 유지해야 하는 조건 | 최초로 확인할 commit | 강화 또는 표현 변경 | 검증 commit | 학습자가 남길 코드 근거 |
+| 불변 조건 | 최초로 확인할 commit | 강화 또는 표현 변경 | 검증 commit | 학습자가 남길 코드 근거 |
 | --- | --- | --- | --- | --- |
 | trailing newline이 없는 nonempty EOF suffix도 data로 반환합니다. | `85e4c2a41a4c` | `39a2b9055728`에서 line sequence의 마지막 record로 통합됩니다. | `656528529ade` | `length != 0`/`unread_length()!=0` EOF branch와 unterminated boundary fixtures. |
 | caller-visible line은 internal mutable buffer와 독립된 allocation입니다. | `85e4c2a41a4c` | `39a2b9055728`에서 record 단위 copy-out으로 사용됩니다. | `656528529ade` | 초기 SHA는 buffer ownership transfer로 독립성을 얻고, 39a는 `malloc+copy`; test는 first result 유지와 pointer inequality를 확인합니다. |
@@ -453,11 +452,11 @@ allocation byte 합계 `20,963,393`은 buffer capacities 합, final line allocat
 | 이미 scan한 bytes를 반복해 전체 검색하지 않습니다. | `39a2b9055728` | direct tail read와 함께 대용량 operation count로 간접 고정됩니다. | `a0654d9de446` | `find_line_end`가 current `scan`부터 시작하고 no-delimiter 시 `scan=end`; metric은 대용량 구조 회귀를 감시합니다. |
 | per-read scratch append-copy가 없습니다. | `dbf1abd21121` | 구조적 copy count로 회귀를 감시합니다. | `a0654d9de446` | `read(..., bytes+end, ...)`와 11-copy manifest. |
 
-## 7. Failure → Fix → Test 연결
+## 7. 실패 → 수정 → 검증 연결
 
-이 Thread에는 subject가 `fix`인 commit이 없습니다. 대신 초기 위험을 representation·parser·performance refactor로 제거하고 test가 이를 고정하는 흐름을 기록합니다.
+이 개발 흐름에는 subject가 `fix`인 commit이 없습니다. 대신 초기 위험을 representation·parser·performance refactor로 제거하고 test가 이를 고정하는 흐름을 기록합니다.
 
-| 기존 상태 또는 위험 | Source에서 확정된 원인 | 설계/변경 commit | 검증 commit | 실제 실패 처리와 assertion |
+| 기존 상태 또는 위험 | 원자료에서 확인된 원인 | 설계/변경 commit | 검증 commit | 실제 실패 처리와 assertion |
 | --- | --- | --- | --- | --- |
 | newline 없는 마지막 bytes를 버릴 위험 | EOF를 record content와 구분하지 못함 | `85e4c2a41a4c` | `656528529ade` | EOF에서 nonempty length/unread를 result로 이전하며 tests는 newline 없는 body와 EOF `NULL` 순서를 확인합니다. |
 | 반환한 prefix와 남은 suffix를 한 length로 관리 | 소비 위치와 allocation capacity가 같은 개념으로 묶임 | `7e64d3d79ad4` | `656528529ade` | `[begin,end)`와 compaction/growth가 suffix를 보존하고 adjacent-line expected sequence가 손실을 검출합니다. |
@@ -475,9 +474,9 @@ allocation byte 합계 `20,963,393`은 buffer capacities 합, final line allocat
 | `dbf1abd21121` | descriptor node가 buffer 소유 | newline result 또는 EOF tail caller | 같은 window 유지 | reserved tail로 direct read | 기존 의미 유지 |
 | `a0654d9de446` | production 변화 없음; metric wrappers가 획득·해제를 관찰 | production 변화 없음 | operation hooks로 관찰 | `metric_read` call/byte count 측정 | `copy_bytes` observer와 final checksum 측정 |
 
-## 9. Thread 최종 상태
+## 9. 개발 흐름의 최종 상태
 
-Source 기준으로 이 Thread가 끝났을 때 다음이 확립되어 있습니다.
+원자료 기준으로 이 개발 흐름이 끝났을 때 다음이 확립되어 있습니다.
 
 - whole-stream accumulator가 unread-window 기반 one-line streaming parser로 바뀌었습니다.
 - newline이 있으면 result에 포함하며, 다음 record의 bytes는 internal suffix로 남습니다.
@@ -486,17 +485,17 @@ Source 기준으로 이 Thread가 끝났을 때 다음이 확립되어 있습니
 - read는 reserved internal tail로 직접 수행됩니다.
 - 4 MiB workload의 structural operation count가 manifest로 고정됩니다.
 
-### 학습자가 작성할 최종 상태 설명
+### 최종 상태 설명
 
 - **최종 state fields와 각 의미:** `fd`는 borrowed descriptor number, `bytes`는 context/node-owned allocation, `begin`은 unread 시작, `scan`은 다음 검사 위치, `end`는 valid byte exclusive end, `capacity`는 allocation 크기, 후속 context engine 시점의 `reached_eof`는 terminal EOF 기억, `next`는 legacy list link입니다.
 - **한 line을 반환할 때 commit되는 mutation:** `find_line_end`가 exclusive end를 찾고 result allocation/copy/NUL이 성공한 뒤 `begin=line_end`, `scan=begin`을 commit합니다. `[begin,end)`의 다음 bytes는 남습니다.
 - **EOF tail을 반환할 때 commit되는 mutation:** EOF flag를 세우고 unread nonempty이면 `extract_line(reader,end)`로 별도 caller allocation을 만든 뒤 `begin=scan=end`가 됩니다. 다음 call은 EOF입니다. 초기 SHA의 direct transfer와 최종 context copy를 구분했습니다.
 - **reserve/read/result allocation failure에서 유지되는 state:** reserve growth는 새 allocation 성공 전 old interval을 유지합니다. 최종 explicit engine에서는 read error와 result allocation failure도 logical unread를 유지하고 scan을 begin으로 복구합니다. 그러나 `39a2b9055728`와 `dbf1abd21121`의 legacy path는 실패 시 node를 폐기했으므로 시점별 차이가 있습니다.
-- **이 Thread가 다루지 않고 이후 Thread로 넘기는 범위:** descriptor별 hidden state isolation, caller-controlled context lifecycle, explicit result enum, `EINTR`/`EAGAIN` semantics와 retry는 다른 Thread에서 확립됩니다.
+- **이 개발 흐름이 다루지 않고 이후 Thread로 넘기는 범위:** descriptor별 hidden state isolation, caller-controlled context lifecycle, explicit result enum, `EINTR`/`EAGAIN` semantics와 retry는 다른 Thread에서 확립됩니다.
 
 ## 10. 최종 architecture 또는 실행 순서 정리
 
-해당 SHA의 실제 symbol로 아래 흐름을 완성합니다. final HEAD symbol을 대신 넣지 않습니다.
+해당 SHA의 실제 symbol로 아래 흐름을 완성합니다. 최종 HEAD symbol을 대신 넣지 않습니다.
 
 ```text
 public reader call
@@ -534,30 +533,30 @@ public reader call
 - [x] reserve failure 시 old allocation이 유지되는 mutation 순서를 확인했습니다.
 - [x] scratch-buffer 제거 전후의 copy path를 실제 diff로 비교했습니다.
 - [x] 1025/13/11/12,533,760 수치를 counter 위치로 재구성했습니다.
-- [x] 이 Thread의 동작을 final HEAD 없이 각 SHA 기준으로 설명할 수 있습니다.
-===== END FILE: 01-whole-stream-to-bounded-line-parser.md =====
+- [x] 이 개발 흐름의 동작을 최종 HEAD 없이 각 SHA 기준으로 설명할 수 있습니다.
 
-===== BEGIN FILE: 02-singleton-to-descriptor-scoped-state.md =====
-# Thread: Singleton state to descriptor-scoped compatibility state
+---
 
-## 1. Thread 목표
+# 단일 전역 상태에서 파일 디스크립터별 호환 상태까지
+
+## 1. 개발 흐름 목표
 
 한 개의 hidden singleton reader가 explicit state parameter를 거쳐 descriptor number별 linked state로 바뀌는 과정을 복원합니다. interleaved call, invalid descriptor, fd number reuse, allocation/read failure에서 lookup·mutation·cleanup이 정확히 한 node에만 적용되는지 실제 코드와 테스트로 확인합니다.
 
-### Source에서 연결된 프로젝트 항목
+### 원자료에서 확인된 프로젝트 항목
 
 - **Project profile:** compatibility API의 hidden descriptor-indexed state와 stream별 소유권/isolation을 담당하는 Thread입니다.
 - **Core architecture:** finished compatibility layer는 descriptor number를 key로 하는 file-scope 연결 리스트에 reader 문맥을 보관합니다.
-- **Critical 항상 유지해야 하는 조건:** state와 cleanup은 한 descriptor 또는 문맥에만 scoped되어야 하며, 한 stream의 failure가 다른 stream의 unread bytes를 지우면 안 됩니다.
-- **Critical 항상 유지해야 하는 조건:** failed/completed descriptor의 stale hidden state가 나중에 재사용된 같은 integer fd에 붙으면 안 됩니다.
+- **Critical 불변 조건:** state와 cleanup은 한 descriptor 또는 문맥에만 scoped되어야 하며, 한 stream의 failure가 다른 stream의 unread bytes를 지우면 안 됩니다.
+- **Critical 불변 조건:** failed/completed descriptor의 stale hidden state가 나중에 재사용된 같은 integer fd에 붙으면 안 됩니다.
 - **Major engineering difficulty:** interleaved descriptors를 지원하면서 broad cleanup, stale integer-fd state, shared scan/buffer를 방지하는 문제입니다.
 - **Practical engineering area:** deterministic replacement of allocation, release, read를 통해 partial construction과 cross-descriptor failure를 재현하는 문제입니다.
 
-### Source가 확정한 significance
+### 원자료에서 확인된 중요성
 
-helper에 state를 명시적으로 전달하는 변화는 준비 단계입니다. 결정적인 변화는 active descriptor마다 독립 buffer, cursor, disposal path를 소유하게 하는 것입니다. 이후 테스트는 global cursor, broad reset, retained failed node가 stream contamination 또는 fd reuse contamination을 일으킬 수 있음을 검증하며, fault harness는 이 isolation 항상 유지해야 하는 조건을 partial construction과 I/O failure까지 확장합니다.
+helper에 state를 명시적으로 전달하는 변화는 준비 단계입니다. 결정적인 변화는 active descriptor마다 독립 buffer, cursor, disposal path를 소유하게 하는 것입니다. 이후 테스트는 global cursor, broad reset, retained failed node가 stream contamination 또는 fd reuse contamination을 일으킬 수 있음을 검증하며, fault harness는 이 isolation 불변 조건을 partial construction과 I/O failure까지 확장합니다.
 
-## 2. 이 Thread를 이해하기 위한 핵심 질문
+## 2. 이 개발 흐름을 이해하기 위한 핵심 질문
 
 - singleton state는 어느 helper에서 암묵적으로 읽고 수정되었으며 explicit parameter가 이를 어떻게 드러내는가?
 - descriptor node는 어떤 필드를 소유하고, list와 node의 allocation/cleanup 책임은 어디에 있는가?
@@ -575,8 +574,8 @@ helper에 state를 명시적으로 전달하는 변화는 준비 단계입니다
 - fd reuse hazard가 단순 leak 문제가 아니라 correctness 문제인 이유를 테스트 준비 코드로 설명할 수 있습니다.
 - deterministic fault injection이 cross-node 소유권과 cleanup을 어떻게 검사하는지 확인했습니다.
 
-## 4. Commit map
-| 순서 | Commit | Subject | Importance | Tags | Source에서 확정된 Thread 역할 |
+## 4. 커밋 목록
+| 순서 | 커밋 | 제목 | 중요도 | 태그 | 원자료에서 확인된 Thread 역할 |
 | ---: | --- | --- |:---: | --- | --- |
 | 1 | `fc01012e8521` | `refactor(state): reader 상태를 helper 인자로 전달` | **B** | `REFACTOR`, `READER_LIFECYCLE` | helper mutation이 hidden singleton field가 아니라 explicit reader object를 대상으로 하게 합니다. |
 | 2 | `a4f41cbf2cf0` | `feat(state): 디스크립터별 읽기 상태 분리` | **S** | `ARCH`, `READER_LIFECYCLE`, `RISK` | file descriptor를 key로 하는 독립 linked reader node를 생성합니다. |
@@ -584,15 +583,15 @@ helper에 state를 명시적으로 전달하는 변화는 준비 단계입니다
 | 4 | `d3e2b37fca03` | `test(error): 오류 발생 시 디스크립터 상태 정리 검증` | **A** | `TEST`, `READER_LIFECYCLE`, `RISK` | unusable descriptor cleanup과 descriptor-number reuse hazard를 고정합니다. |
 | 5 | `fd03a831686b` | `test(failure): 메모리 할당과 읽기 실패 처리 검증` | **A** | `TEST`, `POSIX_IO`, `RISK` | 정확한 allocation/read transition에 fault를 주입하고 다른 reader node가 생존하는지 검증합니다. |
 
-## 5. Commit별 학습 기록
+## 5. 커밋별 학습 기록
 ### 5.1 `fc01012e8521` — `refactor(state): reader 상태를 helper 인자로 전달`
 
 - **Commit:** `fc01012e8521`
 - **Subject:** `refactor(state): reader 상태를 helper 인자로 전달`
-- **Importance:** **B**
-- **Tags:** `REFACTOR`, `READER_LIFECYCLE`
+- **중요도:** **B**
+- **태그:** `REFACTOR`, `READER_LIFECYCLE`
 
-#### Source에서 확정된 역할
+#### 원자료에서 확인된 역할
 
 buffering과 extraction helper가 hidden singleton storage를 직접 참조하지 않고 explicit reader-state object를 인자로 받도록 바꿉니다. observable 동작은 유지하지만 모든 mutation이 어느 state instance에 속하는지 signature에 드러납니다. reserve, scan, extraction, cleanup helper를 독립 state에 재사용할 준비 단계입니다.
 
@@ -623,18 +622,18 @@ buffering과 extraction helper가 hidden singleton storage를 직접 참조하�
 
 - **Commit:** `a4f41cbf2cf0`
 - **Subject:** `feat(state): 디스크립터별 읽기 상태 분리`
-- **Importance:** **S**
-- **Tags:** `ARCH`, `READER_LIFECYCLE`, `RISK`
+- **중요도:** **S**
+- **태그:** `ARCH`, `READER_LIFECYCLE`, `RISK`
 
-#### Source가 확정한 Problem
+#### 원자료에서 확인된 Problem
 
 persistent read-ahead state를 unrelated descriptor가 공유할 수 없습니다. interleaved calls에서는 각 stream이 자신의 unread bytes, cursor positions, cleanup state를 유지해야 하며, 한 descriptor의 EOF/error가 다른 descriptor를 reset하면 안 됩니다.
 
-#### Source가 확정한 Decision
+#### 원자료에서 확인된 Decision
 
 compatibility layer가 descriptor number를 key로 하는 linked collection of reader nodes를 보관합니다. lookup, creation, mutation, EOF disposal, error cleanup은 한 node를 대상으로 수행합니다.
 
-#### Source가 확정한 중요성
+#### 원자료에서 확인된 중요성
 
 이 commit은 hidden legacy state의 authoritative 소유권 boundary를 확립합니다. multi-descriptor 사용을 가능하게 하고 cross-stream data leakage를 막지만, integer fd reuse가 lifecycle hazard가 된다는 점도 함께 만듭니다.
 
@@ -711,10 +710,10 @@ free(reader);
 
 - **Commit:** `61f8b9858672`
 - **Subject:** `test(state): 교차 디스크립터 상태 격리 검증`
-- **Importance:** **A**
-- **Tags:** `TEST`, `READER_LIFECYCLE`, `RISK`
+- **중요도:** **A**
+- **태그:** `TEST`, `READER_LIFECYCLE`, `RISK`
 
-#### Source에서 확정된 역할
+#### 원자료에서 확인된 역할
 
 여러 descriptor를 각각 끝까지 읽은 뒤 비교하는 대신 call을 교차시킵니다. 각 descriptor가 자신의 unread suffix와 line order를 유지하는지, invalid descriptor call이 이미 buffered data를 가진 valid reader를 방해하지 않는지 검증합니다.
 
@@ -727,11 +726,11 @@ free(reader);
 5. shared buffer, global scan cursor, broad cleanup이 있었다면 어느 assertion이 처음 실패하는지 기록합니다.
 6. descriptor와 returned line의 cleanup이 test 자체에서 정확히 수행되는지 확인합니다.
 
-#### Test commit 학습 기록
+#### 테스트 커밋 분석
 
 | 구분 | 해당 SHA에서 기록할 내용 |
 | --- | --- |
-| **Production 항상 유지해야 하는 조건** | `find_reader`가 fd별 node를 선택하고 line success 뒤 selected node의 suffix만 유지하며, invalid call은 matching node가 없으면 다른 node를 건드리지 않아야 합니다. |
+| **Production 불변 조건** | `find_reader`가 fd별 node를 선택하고 line success 뒤 selected node의 suffix만 유지하며, invalid call은 matching node가 없으면 다른 node를 건드리지 않아야 합니다. |
 | **Failure / boundary** | `test_alternating_descriptors`의 서로 다른 길이·line 수를 가진 두 pipe와 `test_invalid_fd_preserves_other_state`의 `-1` call을 구분합니다. |
 | **Test technique** | real pipe descriptors를 A/B/A/B 순서로 호출하고 exact result 문자열을 비교하는 deterministic state-isolation regression입니다. |
 | **Production path** | 각 `get_next_line(fd)` → list lookup → selected node의 buffered scan/read/extract → result free; EOF에서 selected node removal 순입니다. |
@@ -760,10 +759,10 @@ free(reader);
 
 - **Commit:** `d3e2b37fca03`
 - **Subject:** `test(error): 오류 발생 시 디스크립터 상태 정리 검증`
-- **Importance:** **A**
-- **Tags:** `TEST`, `READER_LIFECYCLE`, `RISK`
+- **중요도:** **A**
+- **태그:** `TEST`, `READER_LIFECYCLE`, `RISK`
 
-#### Source에서 확정된 역할
+#### 원자료에서 확인된 역할
 
 write-only descriptor, closed descriptor, state creation 이후 발생한 failure가 affected buffer와 metadata를 제거하는지 검증합니다. 동시에 한 descriptor의 error가 다른 descriptor의 unread bytes를 보존하는지 확인합니다. stale node가 같은 integer fd에 붙는 위험을 cleanup correctness로 다룹니다.
 
@@ -776,11 +775,11 @@ write-only descriptor, closed descriptor, state creation 이후 발생한 failur
 5. affected fd number가 실제로 재사용되도록 새 descriptor를 여는 test가 있는지 확인하고 expected first line을 기록합니다.
 6. 다른 valid descriptor가 보유한 unread suffix를 error 전후로 확인하는 call sequence를 추적합니다.
 
-#### Test commit 학습 기록
+#### 테스트 커밋 분석
 
 | 구분 | 해당 SHA에서 기록할 내용 |
 | --- | --- |
-| **Production 항상 유지해야 하는 조건** | unusable descriptor의 matching hidden node만 제거하고 borrowed fd는 library가 닫지 않으며 unrelated node suffix는 남아야 합니다. |
+| **Production 불변 조건** | unusable descriptor의 matching hidden node만 제거하고 borrowed fd는 library가 닫지 않으며 unrelated node suffix는 남아야 합니다. |
 | **Failure / boundary** | write-only pipe end, 첫 line 뒤 외부에서 close된 fd, 동시에 read-ahead를 가진 다른 valid fd를 다룹니다. |
 | **Test technique** | 내부 hook 없이 실제 descriptor lifecycle과 result 동작만 관찰하는 focused regression입니다. |
 | **Production path** | write-only는 zero-length probe 실패 전에/중 matching lookup·cleanup, closed-state case는 기존 node lookup → probe failure → `discard_reader` → survivor node lookup/extract입니다. |
@@ -804,12 +803,12 @@ write-only descriptor, closed descriptor, state creation 이후 발생한 failur
 
 - **Commit:** `fd03a831686b`
 - **Subject:** `test(failure): 메모리 할당과 읽기 실패 처리 검증`
-- **Importance:** **A**
-- **Tags:** `TEST`, `POSIX_IO`, `RISK`
+- **중요도:** **A**
+- **태그:** `TEST`, `POSIX_IO`, `RISK`
 
-#### Source에서 확정된 역할
+#### 원자료에서 확인된 역할
 
-테스트 build에서 allocation, release, read를 deterministic replacement로 바꿉니다. 각 allocation point를 실패시키고, short read, partial input 전후 error, invalid/duplicate free를 제어·기록합니다. 이 Thread에서는 특히 한 descriptor의 partial construction 또는 read failure가 다른 descriptor node를 손상시키지 않는지 확인합니다.
+테스트 build에서 allocation, release, read를 deterministic replacement로 바꿉니다. 각 allocation point를 실패시키고, short read, partial input 전후 error, invalid/duplicate free를 제어·기록합니다. 이 개발 흐름에서는 특히 한 descriptor의 partial construction 또는 read failure가 다른 descriptor node를 손상시키지 않는지 확인합니다.
 
 #### 해당 SHA에서 확인할 harness 코드
 
@@ -821,11 +820,11 @@ write-only descriptor, closed descriptor, state creation 이후 발생한 failur
 6. fault 뒤 valid descriptor를 다시 호출해 기존 unread bytes가 남아 있음을 확인하는 assertion을 기록합니다.
 7. 각 scenario 종료 시 outstanding allocation, release count, node cleanup을 확인하는 공통 검사를 찾습니다.
 
-#### Test commit 학습 기록 — descriptor isolation 관점
+#### 테스트 커밋 분석 — descriptor isolation 관점
 
 | 구분 | 해당 SHA에서 기록할 내용 |
 | --- | --- |
-| **Production 항상 유지해야 하는 조건** | selected descriptor의 construction/read failure cleanup이 다른 node의 unread state에 영향을 주지 않고, 모든 allocation에 단일 owner가 있어야 합니다. |
+| **Production 불변 조건** | selected descriptor의 construction/read failure cleanup이 다른 node의 unread state에 영향을 주지 않고, 모든 allocation에 단일 owner가 있어야 합니다. |
 | **Failure / boundary** | exhaustive n번째 allocation 실패, `read_limit(3)` short reads, first read EIO, third read EIO after prior progress, right fd failure while left node has suffix를 구분합니다. |
 | **Test technique** | Makefile의 `-Dmalloc=test_malloc -Dfree=test_free -Dread=test_read`로 production object를 대체 runtime에 연결하고 allocation table·call-index failure·read limit/fail index를 사용합니다. |
 | **Production path** | control 설정 → replacement call → production node/buffer/result failure branch → selected node cleanup → `check_clean_runtime`; cross-fd case는 survivor node를 다시 호출합니다. |
@@ -854,9 +853,9 @@ write-only descriptor, closed descriptor, state creation 이후 발생한 failur
 
 실행 명령은 Makefile상 `make failure-test`이며 sizes 1, 2, 42, 1024를 순회합니다. 이 환경에서는 checkout을 만들지 못해 실행하지 않았고, 테스트 통과를 주장하지 않습니다.
 
-## 6. 항상 유지해야 하는 조건 ledger
+## 6. 불변 조건 ledger
 
-| 항상 유지해야 하는 조건 | 도입/준비 commit | 위험이 드러나는 commit | 검증/강화 commit | 학습자가 남길 코드 근거 |
+| 불변 조건 | 도입/준비 commit | 위험이 드러나는 commit | 검증/강화 commit | 학습자가 남길 코드 근거 |
 | --- | --- | --- | --- | --- |
 | helper mutation은 전달받은 reader state에만 적용됩니다. | `fc01012e8521` | singleton이 multi-fd를 지원하지 못하는 한계 | `a4f41cbf2cf0` | pointer-parameter helper signatures와 `get_next_line`의 selected node 전달. |
 | active descriptor마다 독립 unread buffer와 cursor를 소유합니다. | `a4f41cbf2cf0` | global buffer/cursor가 interleaving을 오염시킬 위험 | `61f8b9858672` | node fields, `find_reader(fd)`, alternating expected sequence. |
@@ -865,9 +864,9 @@ write-only descriptor, closed descriptor, state creation 이후 발생한 failur
 | allocation/read failure가 다른 node의 unread bytes를 지우지 않습니다. | node-local ownership model | exact fault transition | `fd03a831686b` | right fd read fault 뒤 left node의 `"left two"` 반환. |
 | acquired allocation마다 owner가 하나이며 invalid/duplicate free가 없습니다. | production ownership paths | partial construction/failure | `fd03a831686b` | live allocation table, `test_free` classification, scenario별 `check_clean_runtime`. |
 
-## 7. Failure → Fix → Test 연결
+## 7. 실패 → 수정 → 검증 연결
 
-이 Thread에는 subject가 `fix`인 commit이 없습니다. architecture change와 회귀 테스트가 failure risk를 닫는 구조입니다.
+이 개발 흐름에는 subject가 `fix`인 commit이 없습니다. architecture change와 회귀 테스트가 failure risk를 닫는 구조입니다.
 
 | 기존 가정 | 실제 failure 또는 위험 | root cause | 수정된 decision/architecture | 검증 commit | 학습자 근거 |
 | --- | --- | --- | --- | --- | --- |
@@ -895,11 +894,11 @@ write-only descriptor, closed descriptor, state creation 이후 발생한 failur
 - **Node/internal buffer release 책임 함수:** `discard_reader`가 `free(reader->bytes)` 뒤 `free(reader)`합니다. EOF tail 소유권 transfer에서는 먼저 `reader->bytes=NULL`로 분리합니다.
 - **Public compatibility adapter의 책임:** descriptor를 검증하고 node를 lookup/create하며 parser result를 `char *` 또는 `NULL`로 반환하고, 이 시점에는 EOF/error에서 hidden node cleanup policy를 적용합니다.
 
-## 9. Thread 최종 상태
+## 9. 개발 흐름의 최종 상태
 
-Source 기준으로 이 Thread가 끝났을 때 compatibility reader는 descriptor number로 persistent state를 분리하며, 각 node는 자신의 unread interval, scan cursor, allocation, 정리 과정을 가집니다. interleaving, invalid descriptor, fd reuse hazard, allocation/read fault에서 state와 cleanup의 범위가 검증됩니다.
+원자료 기준으로 이 개발 흐름이 끝났을 때 compatibility reader는 descriptor number로 persistent state를 분리하며, 각 node는 자신의 unread interval, scan cursor, allocation, 정리 과정을 가집니다. interleaving, invalid descriptor, fd reuse hazard, allocation/read fault에서 state와 cleanup의 범위가 검증됩니다.
 
-### 학습자가 작성할 최종 상태 설명
+### 최종 상태 설명
 
 - **list와 node의 실제 자료구조:** file-scope singly 연결 리스트가며 각 node는 `fd`, `bytes`, `begin`, `scan`, `end`, `capacity`, `next`를 갖습니다.
 - **lookup/create/remove의 정확한 call graph:** `get_next_line` → zero-read validation → `find_reader` → missing이면 `create_reader` → selected parser helpers; terminal/error 또는 buffer fully consumed policy에서 `discard_reader`.
@@ -944,32 +943,32 @@ get_next_line(fd)
 - [x] write-only/closed descriptor의 정리 과정을 확인했습니다.
 - [x] fault harness가 invalid/duplicate free를 검출하는 방법을 확인했습니다.
 - [x] `fd03a831686b`를 POSIX Thread와 중복 학습하되 여기서는 node isolation 관점으로 기록했습니다.
-- [x] final HEAD의 context object를 이 시점 node 구현에 소급하지 않았습니다.
-===== END FILE: 02-singleton-to-descriptor-scoped-state.md =====
+- [x] 최종 HEAD의 context object를 이 시점 node 구현에 소급하지 않았습니다.
 
-===== BEGIN FILE: 03-explicit-reader-수명-and-authoritative-engine.md =====
-# Thread: Explicit reader 수명 and one authoritative engine
+---
 
-## 1. Thread 목표
+# 명시적 리더 수명과 하나의 기준 처리 엔진
+
+## 1. 개발 흐름 목표
 
 EOF/error에 묶인 hidden 수명에서 벗어나 caller가 생성·reset·destroy하는 opaque reader 문맥과 명시적 result state를 도입하는 과정을 복원합니다. 이후 `get_next_line`이 별도 parser를 유지하지 않고 같은 engine을 사용하는지, line allocation failure가 input consumption을 commit하지 않는지, descriptor borrowing과 kernel offset coupling이 API 사용 규칙으로 어떻게 검증되는지 확인합니다.
 
-### Source에서 연결된 프로젝트 항목
+### 원자료에서 확인된 프로젝트 항목
 
 - **Core architecture:** `t_blr_reader`는 heap object와 internal buffer를 소유하고 supplied descriptor는 빌립니다.
 - **Core architecture:** `blr_reader_create`, `blr_reader_next`, `blr_reader_reset`, `blr_reader_destroy`가 explicit 수명/result semantics를 제공합니다.
 - **Core architecture:** `blr_reader_next`는 authoritative state-transition engine이고 `get_next_line(fd)`는 그 위의 compatibility adapter입니다.
-- **Critical 항상 유지해야 하는 조건:** successful line은 caller-owned independent allocation이며, non-line result는 valid output pointer를 `NULL`로 둡니다.
-- **Critical 항상 유지해야 하는 조건:** reset/destroy는 owned memory를 해제하지만 borrowed descriptor를 닫지 않습니다.
-- **Critical 항상 유지해야 하는 조건:** allocation/read failure가 explicit 문맥의 unread input을 부분 소비하면 안 되며, line extraction은 caller-visible allocation 성공 뒤에만 cursor movement를 commit합니다.
+- **Critical 불변 조건:** successful line은 caller-owned independent allocation이며, non-line result는 valid output pointer를 `NULL`로 둡니다.
+- **Critical 불변 조건:** reset/destroy는 owned memory를 해제하지만 borrowed descriptor를 닫지 않습니다.
+- **Critical 불변 조건:** allocation/read failure가 explicit 문맥의 unread input을 부분 소비하면 안 되며, line extraction은 caller-visible allocation 성공 뒤에만 cursor movement를 commit합니다.
 - **Major engineering difficulty:** explicit 문맥을 추가하면서 compatibility API와 parsing implementation이 중복되거나 diverge하지 않도록 하는 문제입니다.
 - **Practical engineering area:** descriptor borrowing, offset coupling, fd reuse, dup aliases, reset requirement를 테스트로 명시하는 문제입니다.
 
-### Source가 확정한 significance
+### 원자료에서 확인된 중요성
 
 프로젝트는 hidden 수명을 explicit state object로 바꾸고 caller가 cancel, reset, destroy할 수 있게 합니다. result enumeration은 data와 status를 분리하고, adapter는 compatibility function과 explicit API가 다른 parser로 갈라지는 것을 막습니다. 테스트는 borrowed descriptor의 read-ahead가 kernel offset에 결합되고, integer reuse에는 새 문맥이 필요하며, output allocation failure가 input consumption을 commit하면 안 된다는 비자명한 결과를 확립합니다.
 
-## 2. 이 Thread를 이해하기 위한 핵심 질문
+## 2. 이 개발 흐름을 이해하기 위한 핵심 질문
 
 - 문맥은 어떤 resource를 소유하고 descriptor는 왜 borrowed resource입니까?
 - create/reset/destroy는 buffer, indices, EOF flag, descriptor에 각각 어떤 mutation을 수행하는가?
@@ -989,8 +988,8 @@ EOF/error에 묶인 hidden 수명에서 벗어나 caller가 생성·reset·destr
 - newline result와 EOF-tail result의 allocation failure가 non-consuming이라는 근거가 있습니다.
 - seek/fd reuse/dup alias test의 의미와 API 사용자가 지켜야 할 lifecycle rule을 구분했습니다.
 
-## 4. Commit map
-| 순서 | Commit | Subject | Importance | Tags | Source에서 확정된 Thread 역할 |
+## 4. 커밋 목록
+| 순서 | 커밋 | 제목 | 중요도 | 태그 | 원자료에서 확인된 Thread 역할 |
 | ---: | --- | --- |:---: | --- | --- |
 | 1 | `903768a43bf4` | `feat(context): 명시적 reader 수명 API 추가` | **A** | `ARCH`, `READER_LIFECYCLE`, `API_CONTRACT` | opaque create/reset/destroy를 공개하고 descriptor ownership은 caller에게 남깁니다. |
 | 2 | `2e681112b304` | `feat(reader): 명시적 결과 상태 API 추가` | **S** | `ARCH`, `API_CONTRACT`, `CORE` | explicit line/EOF/error result-state API를 정의합니다. |
@@ -998,15 +997,15 @@ EOF/error에 묶인 hidden 수명에서 벗어나 caller가 생성·reset·destr
 | 4 | `249093ba477a` | `test(context): 결과 상태와 컨텍스트 수명 검증` | **A** | `TEST`, `READER_LIFECYCLE`, `API_CONTRACT` | descriptor borrowing, seek 후 reset, fd reuse, dup alias, stable result를 검증합니다. |
 | 5 | `a24ad4e49cc4` | `test(failure): 컨텍스트의 line 할당 재시도 검증` | **A** | `TEST`, `READER_LIFECYCLE`, `RISK` | newline-delimited line과 EOF-tail allocation failure가 input loss 없이 재시도됨을 증명합니다. |
 
-## 5. Commit별 학습 기록
+## 5. 커밋별 학습 기록
 ### 5.1 `903768a43bf4` — `feat(context): 명시적 reader 수명 API 추가`
 
 - **Commit:** `903768a43bf4`
 - **Subject:** `feat(context): 명시적 reader 수명 API 추가`
-- **Importance:** **A**
-- **Tags:** `ARCH`, `READER_LIFECYCLE`, `API_CONTRACT`
+- **중요도:** **A**
+- **태그:** `ARCH`, `READER_LIFECYCLE`, `API_CONTRACT`
 
-#### Source에서 확정된 역할
+#### 원자료에서 확인된 역할
 
 opaque `t_blr_reader`와 create, reset, destroy operation을 공개해 reader 수명을 caller가 관리하게 합니다. 문맥은 heap object와 internal buffer를 소유하지만 supplied descriptor는 빌립니다. reset/destroy는 buffered state를 버리지만 descriptor를 닫지 않으며, legacy descriptor list도 같은 lifecycle primitive를 사용하도록 적응합니다.
 
@@ -1062,7 +1061,7 @@ void blr_reader_reset(t_blr_reader *reader)
 #### 학습자가 복원할 API decision
 
 - hidden list 수명만으로는 caller가 EOF 전에 stream을 포기하거나 `lseek` 후 old read-ahead를 제거할 수 없습니다. explicit handle은 caller가 그 시점에 reset/destroy할 수 있게 합니다.
-- opacity는 buffer pointer, indices, linked-list link 같은 항상 유지해야 하는 조건-bearing fields를 caller가 임의 변경하지 못하게 합니다. public API는 대신 “context-owned memory, borrowed descriptor”라는 소유권만 노출합니다.
+- opacity는 buffer pointer, indices, linked-list link 같은 불변 조건-bearing fields를 caller가 임의 변경하지 못하게 합니다. public API는 대신 “context-owned memory, borrowed descriptor”라는 소유권만 노출합니다.
 - reset은 같은 context·same fd를 유지한 채 buffered bytes와 cursor를 폐기하는 operation이고, destroy는 context allocation까지 끝냅니다. 둘 다 OS descriptor lifecycle operation이 아닙니다.
 - 이 commit 시점에는 explicit result enum이 없고 read outcome을 richer status로 전달하는 `blr_reader_next`도 아직 없습니다. 다음 `2e681112b304`가 handle을 실제 state-machine API로 완성합니다.
 
@@ -1070,18 +1069,18 @@ void blr_reader_reset(t_blr_reader *reader)
 
 - **Commit:** `2e681112b304`
 - **Subject:** `feat(reader): 명시적 결과 상태 API 추가`
-- **Importance:** **S**
-- **Tags:** `ARCH`, `API_CONTRACT`, `CORE`
+- **중요도:** **S**
+- **태그:** `ARCH`, `API_CONTRACT`, `CORE`
 
-#### Source가 확정한 Problem
+#### 원자료에서 확인된 Problem
 
 historical `char *` interface는 clean EOF, allocation/I/O error, temporary incompleteness를 `NULL` 하나로 겹치며, persistent stream state와 repeated terminal result를 명시적으로 다룰 handle이 없습니다.
 
-#### Source가 확정한 Decision
+#### 원자료에서 확인된 Decision
 
 `blr_reader_next`가 explicit result enumeration을 반환하고 successful line은 output pointer를 통해 전달합니다. 문맥이 EOF state를 기록해 repeated call이 new read 없이 terminal로 유지되며, non-line result는 supplied output pointer를 null로 둡니다.
 
-#### Source가 확정한 중요성
+#### 원자료에서 확인된 중요성
 
 이 commit은 finished library의 richer state-machine contract를 만듭니다. caller는 data 소유권과 control status를 분리하고, null data pointer를 서로 다른 outcome으로 추측하지 않아도 됩니다. 이 engine은 이후 `get_next_line`의 authoritative implementation이 됩니다.
 
@@ -1142,10 +1141,10 @@ result data와 status가 분리되며 non-line result가 stale pointer를 남기
 
 - **Commit:** `9bd6ebf429e2`
 - **Subject:** `refactor(reader): legacy API를 context reader에 연결`
-- **Importance:** **A**
-- **Tags:** `REFACTOR`, `INTEGRATION`, `API_CONTRACT`
+- **중요도:** **A**
+- **태그:** `REFACTOR`, `INTEGRATION`, `API_CONTRACT`
 
-#### Source에서 확정된 역할
+#### 원자료에서 확인된 역할
 
 `get_next_line`을 context reader 위의 adapter로 줄입니다. descriptor lookup이 문맥을 제공하고, `blr_reader_next`가 buffering, extraction, EOF, failure 상태 전이를 수행하며, adapter는 richer result를 historical `char *`/`NULL`로 mapping합니다. line extraction은 allocation/copy가 성공하기 전까지 consuming하지 않도록 바뀝니다.
 
@@ -1205,7 +1204,7 @@ EOF tail도 `line_end=end`, `reached_eof=1`인 점만 다릅니다. allocation �
 - **기존 가정:** `2e681112b304` 직전 legacy path에서는 `extract_line` allocation 실패 시 selected hidden node를 폐기하고, EOF tail은 internal buffer를 직접 transfer했습니다. explicit path는 별도 inline code로 rollback했습니다.
 - **실제 failure:** 두 parser가 유지되면 explicit API는 retry 가능하지만 legacy API는 같은 allocation failure에서 line을 잃는 등 동작이 갈라질 수 있습니다.
 - **root cause:** 동일한 scan/read/extract 상태 전이를 두 public entry가 중복 구현하고, legacy extraction이 allocation 성공 전에 recovery 가능 state를 버립니다.
-- **수정된 항상 유지해야 하는 조건:** result allocation과 copy가 성공한 뒤에만 `begin`을 전진시키며, allocation 실패 시 `scan=begin`; 두 API가 `blr_reader_next` 하나를 호출합니다.
+- **수정된 불변 조건:** result allocation과 copy가 성공한 뒤에만 `begin`을 전진시키며, allocation 실패 시 `scan=begin`; 두 API가 `blr_reader_next` 하나를 호출합니다.
 - **후속 regression:** `a24ad4e49cc4`는 explicit context에서 newline과 EOF tail의 same-context retry를 deterministic하게 확인합니다.
 
 **관찰된 도입 시점 차이**
@@ -1216,10 +1215,10 @@ EOF tail도 `line_end=end`, `reached_eof=1`인 점만 다릅니다. allocation �
 
 - **Commit:** `249093ba477a`
 - **Subject:** `test(context): 결과 상태와 컨텍스트 수명 검증`
-- **Importance:** **A**
-- **Tags:** `TEST`, `READER_LIFECYCLE`, `API_CONTRACT`
+- **중요도:** **A**
+- **태그:** `TEST`, `READER_LIFECYCLE`, `API_CONTRACT`
 
-#### Source에서 확정된 역할
+#### 원자료에서 확인된 역할
 
 ordered `LINE`, repeated `EOF`, empty input, invalid arguments, descriptor reposition 뒤 reset, destroy without close를 검증합니다. descriptor-number reuse, 같은 open file description을 공유하는 duplicated descriptors, 문맥이 buffer한 read-ahead와 kernel offset의 결합도 다룹니다.
 
@@ -1234,11 +1233,11 @@ ordered `LINE`, repeated `EOF`, empty input, invalid arguments, descriptor repos
 7. `dup` 또는 equivalent로 같은 open file description을 공유하는 descriptors를 만들고 offset/read-ahead 관계를 어떻게 검증하는지 확인합니다.
 8. returned lines가 independent caller-owned allocations임을 release/수명 assertion으로 확인합니다.
 
-#### Test commit 학습 기록
+#### 테스트 커밋 분석
 
 | 구분 | 해당 SHA에서 기록할 내용 |
 | --- | --- |
-| **Production 항상 유지해야 하는 조건** | caller가 context state를 소유하고 fd는 borrow하며, `LINE`/`EOF`/`ERROR`, output NULL rule, reset/destroy semantics가 public contract와 일치해야 합니다. |
+| **Production 불변 조건** | caller가 context state를 소유하고 fd는 borrow하며, `LINE`/`EOF`/`ERROR`, output NULL rule, reset/destroy semantics가 public contract와 일치해야 합니다. |
 | **Failure / boundary** | ordered two-line/EOF, empty, invalid args, external `lseek`, destroy-before-EOF, close+`dup2` reuse, duplicated descriptor alias를 분리합니다. |
 | **Test technique** | real pipe/파일 디스크립터와 public context API만 사용하는 broad lifecycle/contract integration tests입니다. |
 | **Production path** | create → next 반복 → optional external fd operation → reset/destroy/new create → result/free/close 순이며, private fields를 직접 검사하지 않습니다. |
@@ -1270,10 +1269,10 @@ ordered `LINE`, repeated `EOF`, empty input, invalid arguments, descriptor repos
 
 - **Commit:** `a24ad4e49cc4`
 - **Subject:** `test(failure): 컨텍스트의 line 할당 재시도 검증`
-- **Importance:** **A**
-- **Tags:** `TEST`, `READER_LIFECYCLE`, `RISK`
+- **중요도:** **A**
+- **태그:** `TEST`, `READER_LIFECYCLE`, `RISK`
 
-#### Source에서 확정된 역할
+#### 원자료에서 확인된 역할
 
 caller-visible line allocation을 newline이 이미 buffered된 경우와 EOF가 unterminated tail을 남긴 경우에 각각 강제로 실패시킵니다. 같은 문맥을 다시 호출했을 때 original line이 skip, truncate, EOF 전환 없이 정확히 반환되어야 하며 temporary storage leak도 없어야 합니다.
 
@@ -1287,11 +1286,11 @@ caller-visible line allocation을 newline이 이미 buffered된 경우와 EOF가
 6. failed attempt 뒤 allocation/release ledger가 leak 또는 invalid free 없이 정리되는 assertion을 찾습니다.
 7. 두 scenario가 production extraction의 서로 다른 branch를 통과하는지 call path를 비교합니다.
 
-#### Test commit 학습 기록
+#### 테스트 커밋 분석
 
 | 구분 | 해당 SHA에서 기록할 내용 |
 | --- | --- |
-| **Production 항상 유지해야 하는 조건** | result allocation failure는 buffered input에 대해 non-consuming이며 allocation/copy success 뒤에만 `begin`을 commit해야 합니다. |
+| **Production 불변 조건** | result allocation failure는 buffered input에 대해 non-consuming이며 allocation/copy success 뒤에만 `begin`을 commit해야 합니다. |
 | **Failure / boundary** | already-buffered newline extraction과 reached-EOF unterminated tail extraction을 별도 scenario로 다룹니다. |
 | **Test technique** | `fault_allocation_fail_at(n)`로 exact allocation attempt를 `NULL`로 만들고 failure를 해제한 뒤 same 문맥을 재호출합니다. |
 | **Production path** | `find_line_end` 또는 EOF-tail branch → `extract_line` malloc failure → `scan=begin`, ERROR/NULL → same context retry → malloc/copy/commit → exact line입니다. |
@@ -1315,9 +1314,9 @@ caller-visible line allocation을 newline이 이미 buffered된 경우와 EOF가
 - scenario 종료 후 live allocation, invalid free, 이중 해제가 0인지 확인합니다.
 - 실행 명령은 Makefile의 `failure-test` 계열이지만 이 환경에서는 실행하지 않았습니다.
 
-## 6. 항상 유지해야 하는 조건 ledger
+## 6. 불변 조건 ledger
 
-| 항상 유지해야 하는 조건 | 최초/강화 commit | 부족함 또는 위험 | 고정한 test | 학습자가 남길 코드 근거 |
+| 불변 조건 | 최초/강화 commit | 부족함 또는 위험 | 고정한 test | 학습자가 남길 코드 근거 |
 | --- | --- | --- | --- | --- |
 | context는 own heap/buffer를 관리하고 descriptor는 borrow합니다. | `903768a43bf4` | destroy/reset이 fd를 close할 위험 | `249093ba477a` | lifecycle code에 close 없음; destroy 후 F_GETFD/lseek/new reader. |
 | caller가 reset/destroy로 reader lifetime을 제어할 수 있습니다. | `903768a43bf4` | external seek 또는 abandon 뒤 hidden state mismatch | `249093ba477a` | reset frees buffer/indices; seek+reset과 destroy-before-EOF tests. |
@@ -1328,9 +1327,9 @@ caller-visible line allocation을 newline이 이미 buffered된 경우와 EOF가
 | result allocation failure는 input을 소비하지 않습니다. | `9bd6ebf429e2` | cursor advance 후 allocation failure | `a24ad4e49cc4` | 실제 explicit inline origin은 2e; 9bd shared helper의 scan rollback과 same-context retry. |
 | read-ahead state는 descriptor의 current stream position과 결합됩니다. | context design의 consequence | external seek, close/reuse, dup alias | `249093ba477a` | lseek+reset, dup2 reuse+new context, surviving alias test. |
 
-## 7. Failure → Fix → Test 연결
+## 7. 실패 → 수정 → 검증 연결
 
-| 기존 가정 | 실제 failure 또는 위험 | root cause | 수정된 항상 유지해야 하는 조건/decision | 실제 수정 commit | 회귀 테스트 | 학습자 근거 |
+| 기존 가정 | 실제 failure 또는 위험 | root cause | 수정된 불변 조건/decision | 실제 수정 commit | 회귀 테스트 | 학습자 근거 |
 | --- | --- | --- | --- | --- | --- | --- |
 | hidden state는 EOF까지 두면 충분함 | caller가 stream을 abandon/reset하거나 fd position을 바꿀 수 없음 | lifetime control 부재 | opaque create/reset/destroy | `903768a43bf4` | `249093ba477a` | lifecycle functions와 seek/reset, destroy/reuse cases. |
 | `NULL` 하나면 모든 non-line outcome을 표현 가능 | EOF와 error를 구분할 수 없고 stale output 위험 | data와 status가 같은 return에 겹침 | enum result + output pointer rule + EOF state | `2e681112b304` | `249093ba477a` | enum/entry clear와 empty-vs-error assertions. |
@@ -1356,13 +1355,13 @@ caller-visible line allocation을 newline이 이미 buffered된 경우와 EOF가
 - **Destroy가 폐기하는 resource:** internal allocation과 context object입니다. fd는 남습니다.
 - **Adapter가 잃는 result information:** EOF와 ERROR를 모두 `NULL`로 축소합니다. 후속 AGAIN도 `NULL`로 축소되지만 hidden context retention policy로 일부 resumability를 보완합니다.
 
-## 9. Thread 최종 상태
+## 9. 개발 흐름의 최종 상태
 
-Source 기준으로 이 Thread가 끝났을 때 explicit 문맥은 caller-controlled 수명, borrowed descriptor, `LINE`/`EOF`/`ERROR` result contract와 stable EOF를 제공합니다. `get_next_line`은 같은 engine을 사용하는 compatibility adapter이며, result allocation failure는 buffered input을 소비하지 않아 same-context retry가 가능합니다.
+원자료 기준으로 이 개발 흐름이 끝났을 때 explicit 문맥은 caller-controlled 수명, borrowed descriptor, `LINE`/`EOF`/`ERROR` result contract와 stable EOF를 제공합니다. `get_next_line`은 같은 engine을 사용하는 compatibility adapter이며, result allocation failure는 buffered input을 소비하지 않아 same-context retry가 가능합니다.
 
 이 Thread 종료 시점에는 후속 `f0055ae5cf19`의 `BLR_AGAIN`을 아직 포함하지 않습니다.
 
-### 학습자가 작성할 최종 상태 설명
+### 최종 상태 설명
 
 - **context 내부 state와 public opacity:** private struct가 fd, owned bytes, unread/scan indices, capacity, EOF flag, optional legacy link를 보관하고 public header는 incomplete type만 노출합니다.
 - **create/reset/destroy의 정확한 소유권 변화:** create 성공 시 caller 또는 hidden list가 object owner, reserve 후 문맥이 buffer owner가 됩니다. reset은 buffer만 놓고 object/fd를 유지하며 destroy는 object까지 해제하되 fd는 caller 소유입니다.
@@ -1419,30 +1418,30 @@ get_next_line(fd)
 - [x] newline과 EOF tail의 allocation failure에서 cursor가 유지되는 근거가 있습니다.
 - [x] external seek, fd reuse, dup alias를 서로 다른 lifecycle 문제로 설명할 수 있습니다.
 - [x] broad context tests와 narrow allocation retry test의 증명 범위를 구분했습니다.
-===== END FILE: 03-explicit-reader-수명-and-authoritative-engine.md =====
 
-===== BEGIN FILE: 04-posix-transient-read-and-recovery.md =====
-# Thread: POSIX transient-read and recovery semantics
+---
 
-## 1. Thread 목표
+# POSIX 일시적 읽기 오류와 복구 규칙
+
+## 1. 개발 흐름 목표
 
 short read, `EINTR`, `EAGAIN`/`EWOULDBLOCK`, terminal I/O error, EOF를 서로 다른 상태 전이로 처리하는 최종 POSIX streaming semantics를 복원합니다. 이미 받아들인 partial bytes가 wait/error 뒤에도 보존되고, explicit API와 compatibility adapter가 각각 표현 가능한 범위 안에서 resume하는지 realistic nonblocking pipe와 scripted fault sequence로 검증합니다.
 
-### Source에서 연결된 프로젝트 항목
+### 원자료에서 확인된 프로젝트 항목
 
 - **Core technical area:** POSIX descriptor와 system-call semantics—short reads, EOF, invalid descriptors, `EINTR`, `EAGAIN`, `EWOULDBLOCK`, recoverable I/O failure를 담당합니다.
-- **Critical 항상 유지해야 하는 조건:** `BLR_LINE`, `BLR_EOF`, `BLR_AGAIN`, `BLR_ERROR`는 구분되어야 하며 non-line outcome은 output pointer를 `NULL`로 둡니다.
-- **Critical 항상 유지해야 하는 조건:** `EINTR`는 같은 logical operation으로 retry하고, `EAGAIN`/`EWOULDBLOCK`은 partial input을 보존한 채 temporary incompleteness를 노출합니다.
-- **Critical 항상 유지해야 하는 조건:** allocation/read failure가 explicit 문맥의 unread input을 부분 소비하면 안 됩니다.
+- **Critical 불변 조건:** `BLR_LINE`, `BLR_EOF`, `BLR_AGAIN`, `BLR_ERROR`는 구분되어야 하며 non-line outcome은 output pointer를 `NULL`로 둡니다.
+- **Critical 불변 조건:** `EINTR`는 같은 logical operation으로 retry하고, `EAGAIN`/`EWOULDBLOCK`은 partial input을 보존한 채 temporary incompleteness를 노출합니다.
+- **Critical 불변 조건:** allocation/read failure가 explicit 문맥의 unread input을 부분 소비하면 안 됩니다.
 - **Major engineering difficulty:** allocation failure, short reads, interruption, nonblocking wait, later retry 사이에서 이미 accepted bytes를 잃거나 중복하지 않는 문제입니다.
 - **Major engineering difficulty:** `NULL`로 EOF/error/wait를 구분하지 못하는 compatibility API에도 useful resumability를 제공하는 문제입니다.
 - **Practical engineering area:** deterministic read scripting과 actual nonblocking pipe를 결합해 OS scheduling에 의존하지 않는 검증을 만드는 문제입니다.
 
-### Source가 확정한 significance
+### 원자료에서 확인된 중요성
 
 중요한 progression은 단순 errno mapping이 아닙니다. implementation은 interruption, temporary lack of readiness, terminal failure, EOF를 record boundary로 오해하지 않고 이미 읽은 bytes를 유지해야 합니다. fault harness가 transition을 제어하고, fix가 state policy를 정의하며, 실제 nonblocking test와 ordered adversarial test가 각각 현실적인 동작과 정확한 cursor mutation을 검증합니다.
 
-## 2. 이 Thread를 이해하기 위한 핵심 질문
+## 2. 이 개발 흐름을 이해하기 위한 핵심 질문
 
 - positive short read, zero read, `-1/EINTR`, `-1/EAGAIN`, 다른 `-1/error`는 각각 `end`, `scan`, EOF flag에 어떤 영향을 주는가?
 - `EINTR` retry는 어떤 wrapper/loop에서 이루어지고 caller에게 왜 보이지 않는가?
@@ -1462,25 +1461,25 @@ short read, `EINTR`, `EAGAIN`/`EWOULDBLOCK`, terminal I/O error, EOF를 서로 �
 - scripted harness의 ordered entries와 production `end/scan` mutation을 연결했습니다.
 - realistic 통합 테스트와 deterministic regression의 증명 범위·비증명 범위를 구분했습니다.
 
-## 4. Commit map
-| 순서 | Commit | Subject | Importance | Tags | Source에서 확정된 Thread 역할 |
+## 4. 커밋 목록
+| 순서 | 커밋 | 제목 | 중요도 | 태그 | 원자료에서 확인된 Thread 역할 |
 | ---: | --- | --- |:---: | --- | --- |
 | 1 | `fd03a831686b` | `test(failure): 메모리 할당과 읽기 실패 처리 검증` | **A** | `TEST`, `POSIX_IO`, `RISK` | deterministic short-read/read-error injection과 allocation ownership tracking 기반을 제공합니다. |
 | 2 | `f0055ae5cf19` | `fix(reader): 중단된 읽기를 재시도하고 대기 상태를 보존` | **S** | `CORE`, `POSIX_IO`, `RISK` | `EINTR` 재시도, `BLR_AGAIN` 도입, transient/terminal failure에서 accepted bytes 보존을 확립합니다. |
 | 3 | `f3504f674c73` | `test(reader): 비차단 부분 입력 보존 검증` | **A** | `TEST`, `POSIX_IO`, `EDGE` | staged nonblocking input으로 wait, resume, suffix, EOF tail, legacy compatibility를 검증합니다. |
 | 4 | `11033bd85c59` | `test(failure): EINTR·EAGAIN·I/O 오류 순서 검증` | **A** | `TEST`, `POSIX_IO`, `RISK` | progress와 failure가 섞인 scripted sequence에서 cursor와 result taxonomy를 검증합니다. |
 
-## 5. Commit별 학습 기록
+## 5. 커밋별 학습 기록
 ### 5.1 `fd03a831686b` — `test(failure): 메모리 할당과 읽기 실패 처리 검증`
 
 - **Commit:** `fd03a831686b`
 - **Subject:** `test(failure): 메모리 할당과 읽기 실패 처리 검증`
-- **Importance:** **A**
-- **Tags:** `TEST`, `POSIX_IO`, `RISK`
+- **중요도:** **A**
+- **태그:** `TEST`, `POSIX_IO`, `RISK`
 
-#### Source에서 확정된 역할 — POSIX transition 관점
+#### 원자료에서 확인된 역할 — POSIX transition 관점
 
-allocation/release/read replacement를 통해 short read, partial input 전후 read error, exact allocation failure를 deterministic하게 만듭니다. 이 Thread에서는 node isolation보다 read script가 production loop에 어떤 outcome 순서를 공급하고, positive progress와 negative failure 사이 state를 어떻게 관찰하는지에 집중합니다.
+allocation/release/read replacement를 통해 short read, partial input 전후 read error, exact allocation failure를 deterministic하게 만듭니다. 이 개발 흐름에서는 node isolation보다 read script가 production loop에 어떤 outcome 순서를 공급하고, positive progress와 negative failure 사이 state를 어떻게 관찰하는지에 집중합니다.
 
 #### 해당 SHA에서 확인할 harness 코드
 
@@ -1492,11 +1491,11 @@ allocation/release/read replacement를 통해 short read, partial input 전후 r
 6. error 발생 전후 `end`, unread bytes, allocation 소유권을 test가 직접 또는 간접으로 어떻게 관찰하는지 찾습니다.
 7. short read를 EOF로 오해하지 않는 expected sequence와 assertion을 확인합니다.
 
-#### Test commit 학습 기록 — fault harness 기반
+#### 테스트 커밋 분석 — fault harness 기반
 
 | 구분 | 해당 SHA에서 기록할 내용 |
 | --- | --- |
-| **Production 항상 유지해야 하는 조건** | positive short read는 valid progress이며, exact failure transition에서도 selected node의 allocation 소유권과 cleanup이 일관되어야 합니다. |
+| **Production 불변 조건** | positive short read는 valid progress이며, exact failure transition에서도 selected node의 allocation 소유권과 cleanup이 일관되어야 합니다. |
 | **Failure / boundary** | global positive-read cap에 의한 short read, first positive-count read EIO, prior short progress 뒤 third read EIO, allocation failure를 구분합니다. |
 | **Test technique** | production object를 `test_read`/`test_malloc`/`test_free`로 macro-substitute하고 target fd, read-call index, maximum read size, allocation attempt index를 설정합니다. |
 | **Production path** | zero-length probe는 fault를 우회 → positive-count `test_read` → real read 또는 exact EIO → legacy parser append/scan/cleanup → 다음 call/assertion입니다. |
@@ -1531,18 +1530,18 @@ allocation/release/read replacement를 통해 short read, partial input 전후 r
 
 - **Commit:** `f0055ae5cf19`
 - **Subject:** `fix(reader): 중단된 읽기를 재시도하고 대기 상태를 보존`
-- **Importance:** **S**
-- **Tags:** `CORE`, `POSIX_IO`, `RISK`
+- **중요도:** **S**
+- **태그:** `CORE`, `POSIX_IO`, `RISK`
 
-#### Source가 확정한 Problem
+#### 원자료에서 확인된 Problem
 
 POSIX `read`는 interrupt되거나, future line의 일부를 이미 받은 뒤 temporary no-data를 보고할 수 있습니다. 이를 EOF, cleanup, destructive error로 처리하면 partial input을 잃고 nonblocking stream을 사용할 수 없습니다.
 
-#### Source가 확정한 Decision
+#### 원자료에서 확인된 Decision
 
 low-level read path가 `EINTR`를 내부에서 retry합니다. `EAGAIN`/`EWOULDBLOCK`은 explicit API의 `BLR_AGAIN`이 되며 accumulated bytes를 그대로 보존합니다. 다른 I/O error는 `BLR_ERROR`로 보고하지만 explicit 문맥이 이미 받아들인 unread bytes를 버리지 않습니다. compatibility adapter는 wait를 `NULL`로 축소하되 descriptor 문맥을 retain해 later call이 resume하게 합니다.
 
-#### Source가 확정한 중요성
+#### 원자료에서 확인된 중요성
 
 이 commit은 final POSIX streaming semantics를 확립합니다. scheduling/readiness는 record를 지연할 수 있지만 record boundary를 바꾸거나 partial bytes를 소비할 수 없습니다. result taxonomy가 EOF/error distinction을 넘어 complete POSIX state model이 되는 지점입니다.
 
@@ -1564,7 +1563,7 @@ low-level read path가 `EINTR`를 내부에서 retry합니다. `EAGAIN`/`EWOULDB
 - syscall negative result를 interruption, temporary readiness, permanent failure로 분류하지 않고 하나의 cleanup branch로 묶었습니다.
 - rich result enum에 temporary incompleteness가 없었고 compatibility `NULL`과 cleanup decision을 같은 것으로 취급했습니다.
 
-##### 수정된 항상 유지해야 하는 조건 / decision
+##### 수정된 불변 조건 / decision
 
 - `EINTR`는 동일 destination/count의 `read`를 내부 반복합니다.
 - `EAGAIN`/`EWOULDBLOCK`은 `BLR_AGAIN`이며 unread bytes와 EOF flag를 유지합니다.
@@ -1634,10 +1633,10 @@ return (NULL);
 
 - **Commit:** `f3504f674c73`
 - **Subject:** `test(reader): 비차단 부분 입력 보존 검증`
-- **Importance:** **A**
-- **Tags:** `TEST`, `POSIX_IO`, `EDGE`
+- **중요도:** **A**
+- **태그:** `TEST`, `POSIX_IO`, `EDGE`
 
-#### Source에서 확정된 역할
+#### 원자료에서 확인된 역할
 
 nonblocking pipe에 line을 여러 단계로 공급합니다. 첫 fragment는 `BLR_AGAIN`, 이후 bytes는 첫 line을 완성하고 다음 line의 prefix를 시작하며, 다음 wait는 두 번째 fragment를 보존합니다. writer close 후 remaining bytes가 unterminated tail이 되고 그 다음 stable EOF가 됩니다. compatibility function도 wait를 거쳐 prefix를 보존하는지 확인합니다.
 
@@ -1652,11 +1651,11 @@ nonblocking pipe에 line을 여러 단계로 공급합니다. 첫 fragment는 `B
 7. compatibility call이 wait에서 `NULL`을 반환한 뒤 later write에서 prefix를 포함한 line을 반환하는 sequence를 확인합니다.
 8. reader/pipe descriptor와 returned lines를 test가 정리하는 순서를 확인합니다.
 
-#### Test commit 학습 기록
+#### 테스트 커밋 분석
 
 | 구분 | 해당 SHA에서 기록할 내용 |
 | --- | --- |
-| **Production 항상 유지해야 하는 조건** | readiness boundary는 record boundary가 아니며 `AGAIN`은 `[begin,end)` fragment를 소비·반환·cleanup하지 않아야 합니다. |
+| **Production 불변 조건** | readiness boundary는 record boundary가 아니며 `AGAIN`은 `[begin,end)` fragment를 소비·반환·cleanup하지 않아야 합니다. |
 | **Failure / boundary** | actual EAGAIN, fragmented delimiter completion, same read의 following suffix, writer-close EOF tail, repeated EOF, legacy NULL wait를 구분합니다. |
 | **Test technique** | `pipe` 후 read end `fcntl(F_GETFL/F_SETFL, O_NONBLOCK)`, staged `write`, explicit/legacy calls를 사용하는 realistic POSIX integration/boundary test입니다. |
 | **Production path** | nonblocking setup → fragment write → `blr_reader_next`/adapter → `read_retrying` → AGAIN/scan/extract → writer close → read 0/EOF-tail path입니다. |
@@ -1687,10 +1686,10 @@ nonblocking pipe에 line을 여러 단계로 공급합니다. 첫 fragment는 `B
 
 - **Commit:** `11033bd85c59`
 - **Subject:** `test(failure): EINTR·EAGAIN·I/O 오류 순서 검증`
-- **Importance:** **A**
-- **Tags:** `TEST`, `POSIX_IO`, `RISK`
+- **중요도:** **A**
+- **태그:** `TEST`, `POSIX_IO`, `RISK`
 
-#### Source에서 확정된 역할
+#### 원자료에서 확인된 역할
 
 scripted read harness가 isolated fault가 아니라 ordered sequence를 공급합니다. interruption 뒤 short read와 `EAGAIN`, short read 뒤 terminal I/O error와 later successful call을 다룹니다. interruption은 caller에게 보이지 않고, temporary wait는 data loss 없이 보고되며, terminal error도 이미 accepted된 bytes를 지우지 않아야 합니다.
 
@@ -1704,11 +1703,11 @@ scripted read harness가 isolated fault가 아니라 ordered sequence를 공급�
 6. scan cursor가 error/again 뒤 possible delimiter를 skip하거나 같은 bytes를 duplicate하지 않는지 검출하는 fixture를 찾습니다.
 7. 각 sequence 종료 시 allocation/free ledger와 unread state를 확인하는 assertion을 기록합니다.
 
-#### Test commit 학습 기록
+#### 테스트 커밋 분석
 
 | 구분 | 해당 SHA에서 기록할 내용 |
 | --- | --- |
-| **Production 항상 유지해야 하는 조건** | `end`는 positive real read에만 증가하고, EINTR는 public transition이 아니며, AGAIN/ERROR 뒤 accepted `[begin,end)`와 `scan`이 retry 가능한 상태로 남아야 합니다. |
+| **Production 불변 조건** | `end`는 positive real read에만 증가하고, EINTR는 public transition이 아니며, AGAIN/ERROR 뒤 accepted `[begin,end)`와 `scan`이 retry 가능한 상태로 남아야 합니다. |
 | **Failure / boundary** | script A `EINTR → success(short) → EAGAIN`, script B `success(short) → EIO → later success`입니다. |
 | **Test technique** | target fd의 각 positive-count replacement read에 errno script entry를 순서대로 적용하고 zero entry는 read-limit이 적용된 real read를 수행합니다. exact call/result/line과 allocation ledger를 확인합니다. |
 | **Production path** | `fault_read_script` → `test_read` → `read_retrying`의 EINTR loop → parser end/scan mutation → public result → same-context next call입니다. |
@@ -1744,9 +1743,9 @@ scripted read harness가 isolated fault가 아니라 ordered sequence를 공급�
 - destroy 뒤 allocation ledger의 live/invalid/이중 해제 상태가 clean인지 확인합니다.
 - 해당 failure binary는 이 환경에서 실행하지 않았습니다.
 
-## 6. 항상 유지해야 하는 조건 ledger
+## 6. 불변 조건 ledger
 
-| 항상 유지해야 하는 조건 | 기반/도입 commit | fix에서 확정 | 현실적 검증 | deterministic 검증 | 학습자가 남길 코드 근거 |
+| 불변 조건 | 기반/도입 commit | fix에서 확정 | 현실적 검증 | deterministic 검증 | 학습자가 남길 코드 근거 |
 | --- | --- | --- | --- | --- | --- |
 | short read는 EOF가 아니라 valid progress입니다. | `fd03a831686b` harness로 제어 가능 | `f0055ae5cf19` production path 확인 | `f3504f674c73`의 staged input | `11033bd85c59` | positive `read_size`만큼 end 증가, read-limit fixtures의 complete lines. |
 | `EINTR`는 같은 logical operation으로 retry합니다. | harness baseline | `f0055ae5cf19` | actual pipe test는 직접 `EINTR`를 보장하지 않음 | `11033bd85c59` | `read_retrying` loop와 script A calls 3/first AGAIN. |
@@ -1756,9 +1755,9 @@ scripted read harness가 isolated fault가 아니라 ordered sequence를 공급�
 | compatibility adapter는 wait를 `NULL`로 map해도 hidden context를 보존합니다. | adapter architecture | `f0055ae5cf19` | `f3504f674c73` | 필요 시 scripted legacy case 확인 | `result != BLR_AGAIN`일 때만 discard; `leg`+`acy\n` test. |
 | `end`는 positive read byte 수만큼만 증가합니다. | buffer state model | `f0055ae5cf19` | staged behavior | `11033bd85c59` | `read_size <=0` break 이후에만 `end += read_size`; state traces. |
 
-## 7. Failure → Fix → Test 연결
+## 7. 실패 → 수정 → 검증 연결
 
-| 기존 가정 | 실제 failure 또는 위험 | root cause | 수정된 항상 유지해야 하는 조건/decision | 실제 수정 코드 확인 | 회귀 테스트 |
+| 기존 가정 | 실제 failure 또는 위험 | root cause | 수정된 불변 조건/decision | 실제 수정 코드 확인 | 회귀 테스트 |
 | --- | --- | --- | --- | --- | --- |
 | negative read는 모두 terminal error | `EINTR`가 logical read를 불필요하게 중단 | errno category 미분리 | `EINTR` internal retry | `f0055ae5cf19`의 `read_retrying` | `11033bd85c59` |
 | no data면 EOF/cleanup | partial fragment 뒤 `EAGAIN`에서 data loss | readiness와 stream completion 혼동 | `BLR_AGAIN` + state preservation | `f0055ae5cf19`의 errno mapping/return | `f3504f674c73`, `11033bd85c59` |
@@ -1778,7 +1777,7 @@ scripted read harness가 isolated fault가 아니라 ordered sequence를 공급�
 
 ## 8. 소유권 / state / responsibility 변화
 
-이 Thread의 핵심은 allocation owner 변경보다 read outcome을 해석하는 책임의 분리입니다.
+이 개발 흐름의 핵심은 allocation owner 변경보다 read outcome을 해석하는 책임의 분리입니다.
 
 | 책임 | fix 전 실제 위치 | `f0055ae5cf19` 이후 위치 | 보존해야 하는 state | caller가 보는 결과 |
 | --- | --- | --- | --- | --- |
@@ -1788,9 +1787,9 @@ scripted read harness가 isolated fault가 아니라 ordered sequence를 공급�
 | legacy compatibility | `NULL` 의미와 cleanup 결합 | rich result 축소 mapping | AGAIN일 때 hidden context retain 여부 | `char *`/`NULL` |
 | terminal error 이후 retry | legacy는 selected node 폐기, explicit 기준 상태는 정책 미완성 | explicit context ERROR return without unread clear | accepted unread bytes | `BLR_ERROR`, same handle later call 가능 |
 
-## 9. Thread 최종 상태
+## 9. 개발 흐름의 최종 상태
 
-Source 기준으로 이 Thread가 끝났을 때 reader는 다음을 구분합니다.
+원자료 기준으로 이 개발 흐름이 끝났을 때 reader는 다음을 구분합니다.
 
 - `EINTR`: same logical read를 내부 retry합니다.
 - positive short read: valid progress로 받아들이고 실제 byte 수만큼 state를 늘립니다.
@@ -1799,7 +1798,7 @@ Source 기준으로 이 Thread가 끝났을 때 reader는 다음을 구분합니
 - EOF: remaining unterminated suffix를 line으로 반환한 뒤 stable EOF로 이동합니다.
 - legacy adapter: wait를 `NULL`로 표현하지만 hidden 문맥을 유지해 later call이 resume할 수 있습니다.
 
-### 학습자가 작성할 최종 상태 설명
+### 최종 상태 설명
 
 - **raw read outcome taxonomy:** positive n, 0/EOF, -1/EINTR, -1/EAGAIN-or-EWOULDBLOCK, -1/other를 각각 progress, completion, internal retry, temporary wait, explicit error로 해석합니다.
 - **각 outcome의 exact state mutation:** positive만 end 증가/sentinel/scan, 0만 reached_eof set, EINTR/AGAIN/ERROR는 current call에서 index·EOF를 바꾸지 않습니다. reserve compaction/growth는 logical unread를 보존합니다.
@@ -1857,16 +1856,16 @@ get_next_line(fd)
 - [x] actual nonblocking pipe test와 scripted error test의 차이를 구분했습니다.
 - [x] ordered sequence에서 `end`가 positive read에만 증가함을 확인했습니다.
 - [x] `fd03a831686b`를 descriptor-state Thread와 중복 유지하고 여기서는 POSIX transition 관점으로 작성했습니다.
-===== END FILE: 04-posix-transient-read-and-recovery.md =====
 
-===== BEGIN FILE: README.md =====
-# get_next_line 개발 과정 복습 골격
+---
+
+# get_next_line 개발 흐름 학습 기록
 
 ## 목적
 
 이 문서 세트는 완성된 프로젝트 해설서가 아닙니다. 학습자가 실제 commit history와 각 SHA의 코드를 직접 읽고, 설계 → 구현 → 실패 가능성 → 수정 → 검증의 변화를 근거와 함께 복원하기 위한 기록 골격입니다.
 
-문서에 미리 적힌 commit 역할, 중요도, tags, 순서와 항상 유지해야 하는 조건 연결은 제공된 source를 그대로 따릅니다. 함수별 동작, 변경 전후 코드 차이, 실제 소유권과 수명, 실패 처리, 테스트 결과, 최종 설명은 학습자가 해당 SHA의 코드로 완성합니다.
+문서에 미리 적힌 commit 역할, 중요도, tags, 순서와 불변 조건 연결은 제공된 source를 그대로 따릅니다. 함수별 동작, 변경 전후 코드 차이, 실제 소유권과 수명, 실패 처리, 테스트 결과, 최종 설명은 학습자가 해당 SHA의 코드로 완성합니다.
 
 ## 권장 학습 순서
 
@@ -1875,7 +1874,7 @@ get_next_line(fd)
 3. [`03-explicit-reader-lifetime-and-authoritative-engine.md`](03-explicit-reader-lifetime-and-authoritative-engine.md)
 4. [`04-posix-transient-read-and-recovery.md`](04-posix-transient-read-and-recovery.md)
 
-각 문서는 source에 정의된 Development Thread 하나와 정확히 대응합니다. 같은 commit이 여러 Thread에 등장하면 제거하지 않고, 해당 Thread가 요구하는 관점으로 다시 확인합니다.
+각 문서는 source에 정의된 개발 흐름 하나와 정확히 대응합니다. 같은 commit이 여러 Thread에 등장하면 제거하지 않고, 해당 개발 흐름이 요구하는 관점으로 다시 확인합니다.
 
 ## Thread 문서 사용법
 
@@ -1901,15 +1900,15 @@ git diff <previous-related-sha>..<sha> -- <path>
 git show <sha>:<path>
 ```
 
-## final HEAD 소급 사용 금지
+## 최종 HEAD 소급 사용 금지
 
-final HEAD의 함수명, 구조체 배치, helper 분리, 테스트 harness를 과거 commit에 소급해서 설명하지 않습니다. 현재 코드에서 익숙한 symbol을 발견했더라도 해당 SHA에 실제로 존재하는지 먼저 확인합니다. 이후 commit에서 수정된 항상 유지해야 하는 조건은 이전 commit이 이미 보장했다고 기록하지 않습니다.
+최종 HEAD의 함수명, 구조체 배치, helper 분리, 테스트 harness를 과거 commit에 소급해서 설명하지 않습니다. 현재 코드에서 익숙한 symbol을 발견했더라도 해당 SHA에 실제로 존재하는지 먼저 확인합니다. 이후 commit에서 수정된 불변 조건은 이전 commit이 이미 보장했다고 기록하지 않습니다.
 
 ## Importance별 학습 깊이
 
 ### S
 
-프로젝트를 설명하는 핵심 architecture 또는 항상 유지해야 하는 조건으로 다룹니다. 문제, 기존 상태, 실패 가능성, 결정, 핵심 코드, 소유권/lifecycle/상태 전이, 후속 fix와 회귀 테스트까지 연결합니다. 코드 근거 없이 요약만 남기면 완료로 보지 않습니다.
+프로젝트를 설명하는 핵심 architecture 또는 불변 조건으로 다룹니다. 문제, 기존 상태, 실패 가능성, 결정, 핵심 코드, 소유권/lifecycle/상태 전이, 후속 fix와 회귀 테스트까지 연결합니다. 코드 근거 없이 요약만 남기면 완료로 보지 않습니다.
 
 ### A
 
@@ -1929,14 +1928,14 @@ Thread 이해에 필요한 경우에만 맥락으로 사용합니다. 문서 전
 - 발췌마다 `<sha>`, 파일 경로, symbol을 적습니다.
 - caller와 callee의 관계가 중요하면 양쪽을 각각 발췌합니다.
 - 변경 전후 비교는 같은 책임을 수행하는 코드끼리 나란히 기록합니다.
-- 긴 함수 전체, 관련 없는 boilerplate, final HEAD의 대체 코드는 삽입하지 않습니다.
+- 긴 함수 전체, 관련 없는 boilerplate, 최종 HEAD의 대체 코드는 삽입하지 않습니다.
 - 코드 아래에는 “무엇을 합니다”뿐 아니라 “어떤 상태를 언제 바꾸며, 실패하면 무엇이 유지되는가”를 작성합니다.
 
 ## Test commit 학습 방법
 
 각 test commit에서는 다음을 구분해 기록합니다.
 
-- 대상으로 삼은 production 항상 유지해야 하는 조건
+- 대상으로 삼은 production 불변 조건
 - 재현하는 failure 또는 boundary
 - 실제 descriptor, pipe, fault injection, build matrix, operation counting 등 사용한 test technique
 - 테스트가 통과하는 production 코드 경로
@@ -1949,13 +1948,12 @@ Thread 이해에 필요한 경우에만 맥락으로 사용합니다. 문서 전
 
 ## 문서 완료 기준
 
-- 네 Development Thread의 commit 순서를 source와 동일하게 설명할 수 있습니다.
+- 네 개발 흐름의 commit 순서를 source와 동일하게 설명할 수 있습니다.
 - 각 S commit의 핵심 state representation, decision, failure risk와 후속 검증을 실제 코드로 입증했습니다.
 - A/B commit은 importance에 맞는 깊이로 Thread 내 역할과 코드 근거가 채워져 있습니다.
-- `Invariant ledger`에서 항상 유지해야 하는 조건이 도입·강화·위험 노출·검증된 시점을 구분했습니다.
+- `Invariant ledger`에서 불변 조건이 도입·강화·위험 노출·검증된 시점을 구분했습니다.
 - fix를 기존 가정 → failure/risk → root cause → 수정된 decision → 회귀 테스트로 연결했습니다.
 - test commit마다 증명 범위와 비증명 범위를 구분했습니다.
 - 소유권, descriptor borrowing, context 수명, state mutation, cleanup 경로를 서로 혼동하지 않습니다.
-- final HEAD를 과거 SHA의 근거로 사용한 부분이 없습니다.
+- 최종 HEAD를 과거 SHA의 근거로 사용한 부분이 없습니다.
 - 각 Thread의 최종 execution flow를 코드 없이 순서대로 설명할 수 있습니다.
-===== END FILE: README.md =====

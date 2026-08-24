@@ -1,9 +1,8 @@
-===== BEGIN FILE: 01-timing-to-correlated-sequence-acks.md =====
-# Thread: From timing-dependent signal delivery to correlated sequence ACKs
+# 시간 지연 기반 신호 전송에서 순번이 일치하는 ACK까지
 
 > 완성형 해설서가 아닙니다. 아래 확정 사항을 기준으로 각 commit SHA의 실제 코드와 diff를 읽고 기록란을 채웁니다.
 
-## 1. Thread 목표
+## 1. 개발 흐름 목표
 
 고정 지연에 기대던 초기 bit 전송이 signal ACK 기반 stop-and-wait를 거쳐, 출처와 sequence를 검증하는 Unix datagram ACK 방식으로 바뀌는 과정을 복원합니다. 마지막 고정 지연 제거가 단순한 속도 조정이 아니라 더 강한 protocol 보장의 결과임을 해당 SHA의 코드로 설명할 수 있어야 합니다.
 
@@ -11,14 +10,14 @@
 
 초기 pacing은 standard signal 중복 병합 가능성을 낮출 뿐 처리 완료를 증명하지 못합니다. signal ACK는 인과적인 흐름 제어를 추가하지만 응답 식별력이 약하고 같은 signal 체계에 응답 책임까지 얹습니다. datagram control channel이 identity와 sequence를 제공한 뒤에는 이전 signal ACK 경로와 timing delay를 제거할 수 있습니다.
 
-## 2. 이 Thread를 이해하기 위한 핵심 질문
+## 2. 이 개발 흐름을 이해하기 위한 핵심 질문
 
 - 초기 client는 byte와 bit를 어떤 순서로 signal에 대응시키며, fixed delay는 무엇을 보장하지 못하는가?
 - signal ACK wait 전에 response signal을 block해야 했던 race는 어느 순서에서 발생하는가?
 - timeout은 delivery 보장과 어떻게 다르며, 어떤 failure에서 bit cursor가 전진하지 않아야 하는가?
 - request/response record의 어떤 field가 session과 개별 bit transition을 식별하는가?
 - datagram ACK 도입 뒤에도 남아 있던 구 signal ACK path는 어디였으며 제거 후 success source가 하나로 수렴했는가?
-- fixed delay를 제거해도 one-bit-in-flight 항상 유지해야 하는 조건이 어떤 코드 순서로 유지됩니까?
+- fixed delay를 제거해도 one-bit-in-flight 불변 조건이 어떤 코드 순서로 유지됩니까?
 
 ## 3. 완료 기준
 
@@ -28,9 +27,9 @@
 - [x] legacy ACK 제거 전후 정상 처리를 비교해 단일 authoritative response path를 확인했습니다.
 - [x] 최종 상태에서 sleep 없이 ordering이 유지되는 execution flow를 함수 단위로 복원했습니다.
 
-## 4. Commit map
+## 4. 커밋 목록
 
-| 순서 | SHA | Subject | Importance | Tags | Source에서 확정된 역할 |
+| 순서 | SHA | 제목 | 중요도 | 태그 | 원자료에서 확인된 역할 |
 | --- | --- | --- | --- | --- | --- |
 | 1 | `89637d63b56f` | feat(client): 메시지 바이트를 시그널로 전송 | A | CORE, SIGNAL_DATA | message byte를 MSB부터 signal bit로 직렬화하고 provisional fixed delay로 전송 속도를 낮춥니다. |
 | 2 | `78de95b3cacb` | feat(protocol): 비트 처리마다 ACK 전송 | A | CORE, SIGNAL_DATA, RISK | bit마다 signal ACK를 기다리는 stop-and-wait를 도입하고 ACK-before-wait race를 막습니다. |
@@ -47,16 +46,16 @@
 
 - 각 항목은 해당 SHA의 tree를 기준으로 읽었습니다.
 - 변경 전 상태는 해당 SHA의 parent 또는 지정된 이전 관련 SHA에서 확인했습니다.
-- 같은 commit이 다른 Thread에 다시 등장해도 이 Thread의 질문으로 별도 기록했습니다.
+- 같은 commit이 다른 Thread에 다시 등장해도 이 개발 흐름의 질문으로 별도 기록했습니다.
 - runtime test는 실행하지 않았으며, 실행 결과처럼 표현하지 않았습니다.
 
-## 5. Commit별 학습 기록
+## 5. 커밋별 학습 기록
 
 ### 1. `89637d63b56f` — feat(client): 메시지 바이트를 시그널로 전송
 
-- **Importance:** A
-- **Tags:** CORE, SIGNAL_DATA
-- **Thread 내 역할:** message byte를 MSB부터 signal bit로 직렬화하고 provisional fixed delay로 전송 속도를 낮춥니다.
+- **중요도:** A
+- **태그:** CORE, SIGNAL_DATA
+- **개발 흐름에서의 역할:** message byte를 MSB부터 signal bit로 직렬화하고 provisional fixed delay로 전송 속도를 낮춥니다.
 
 #### 원문에서 확정된 맥락
 
@@ -107,7 +106,7 @@ client는 target PID를 검증하고 message를 encoding 해석 없이 byte sequ
 - caller → callee: `main` → `send_byte` → `send_bit` → `kill`/`usleep`
 - 핵심 branch 또는 mutation 순서: `main` → `mt_parse_pid` → `kill(pid, 0)` → payload byte 선택 → bit 7부터 0까지 `send_bit` → `kill` 성공 뒤 `usleep(150)` → 다음 bit입니다. 이 SHA에서는 payload 뒤 NUL terminator를 전송하지 않습니다.
 - parent 또는 이전 관련 SHA와의 diff 요약: client transport 책임과 PID parser가 추가됐고, 아직 ACK·timeout·session state는 없습니다.
-- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 항상 유지해야 하는 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
+- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 불변 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
 - 직접 실행한 command 또는 test와 결과: 실행하지 않음. 이 환경에서는 GitHub 저장소를 로컬 checkout할 수 없어 해당 SHA의 tree와 diff를 GitHub connector로 검토했습니다. 따라서 아래의 test 결과는 test code가 요구하는 관측값이며, 이 세션에서 실제 실행해 얻은 결과가 아닙니다.
 
 #### 다음 연결
@@ -115,9 +114,9 @@ client는 target PID를 검증하고 message를 encoding 해석 없이 byte sequ
 `78de95b3cacb`에서 elapsed time 대신 ACK가 next-bit condition이 됩니다.
 ### 2. `78de95b3cacb` — feat(protocol): 비트 처리마다 ACK 전송
 
-- **Importance:** A
-- **Tags:** CORE, SIGNAL_DATA, RISK
-- **Thread 내 역할:** bit마다 signal ACK를 기다리는 stop-and-wait를 도입하고 ACK-before-wait race를 막습니다.
+- **중요도:** A
+- **태그:** CORE, SIGNAL_DATA, RISK
+- **개발 흐름에서의 역할:** bit마다 signal ACK를 기다리는 stop-and-wait를 도입하고 ACK-before-wait race를 막습니다.
 
 #### 원문에서 확정된 맥락
 
@@ -147,16 +146,16 @@ client는 ACK signal을 먼저 block하고 data signal을 보낸 뒤 `sigsuspend
 
 #### Fix 연결 기록
 
-| 단계 | Source에서 확정된 내용 | 해당 SHA의 코드 근거 |
+| 단계 | 원자료에서 확인된 내용 | 해당 SHA의 코드 근거 |
 | --- | --- | --- |
 | 기존 가정 | short delay면 server가 이전 signal을 처리했을 것이다. | `89637d63b56f: send_bit`의 `kill` 뒤 `usleep(150)` |
 | 실제 failure 또는 위험 | standard signal coalescing과 ACK-before-wait lost wakeup이 남습니다. | 직전에는 receiver state를 확인하는 flag/mask가 없었습니다. |
 | root cause | 완료 조건이 elapsed time이고 ACK 도착 전에 block하지 않았습니다. | 새 diff가 ACK block을 `kill` 앞에 둔 이유입니다. |
-| 수정 항상 유지해야 하는 조건/decision | ACK를 먼저 block하고 한 bit를 보낸 뒤 handler flag를 확인해야 다음 bit로 진행합니다. | `src/client.c: send_bit`, server bit handler의 ACK `kill` |
+| 수정 불변 조건/decision | ACK를 먼저 block하고 한 bit를 보낸 뒤 handler flag를 확인해야 다음 bit로 진행합니다. | `src/client.c: send_bit`, server bit handler의 ACK `kill` |
 
 - 변경 전 failure를 재현하거나 추론할 수 있는 입력/상태: 직전 상태와 해당 분기를 직접 비교했습니다.
 - root cause가 드러나는 field 또는 call order: ACK block → `g_acknowledged = 0` → data `kill` → ACK만 unblocked한 mask로 `sigsuspend` 반복 → handler flag 관측 → `send_bit` success → `send_byte`가 bit index 감소 순서입니다.
-- 수정된 항상 유지해야 하는 조건을 고정하는 후속 회귀 테스트: 이 단계 전용 test commit은 Thread에 없습니다. 후속 datagram 검증은 Thread 6에서 검증됩니다.
+- 수정된 불변 조건을 고정하는 후속 회귀 테스트: 이 단계 전용 test commit은 Thread에 없습니다. 후속 datagram 검증은 Thread 6에서 검증됩니다.
 
 #### 보장 범위
 
@@ -180,7 +179,7 @@ client는 ACK signal을 먼저 block하고 data signal을 보낸 뒤 `sigsuspend
 - caller → callee: client `send_byte` → `send_bit`; server 시그널 처리 함수 → bit mutation → `kill(sender, MT_ACK_SIGNAL)`
 - 핵심 branch 또는 mutation 순서: ACK block → `g_acknowledged = 0` → data `kill` → ACK만 unblocked한 mask로 `sigsuspend` 반복 → handler flag 관측 → `send_bit` success → `send_byte`가 bit index 감소 순서입니다.
 - parent 또는 이전 관련 SHA와의 diff 요약: fixed delay-only path가 signal ACK stop-and-wait로 교체되고 terminator byte가 전송됩니다.
-- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 항상 유지해야 하는 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
+- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 불변 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
 - 직접 실행한 command 또는 test와 결과: 실행하지 않음. 이 환경에서는 GitHub 저장소를 로컬 checkout할 수 없어 해당 SHA의 tree와 diff를 GitHub connector로 검토했습니다. 따라서 아래의 test 결과는 test code가 요구하는 관측값이며, 이 세션에서 실제 실행해 얻은 결과가 아닙니다.
 
 #### 다음 연결
@@ -188,9 +187,9 @@ client는 ACK signal을 먼저 block하고 data signal을 보낸 뒤 `sigsuspend
 `765efe7b75c9`에서 wait에 finite deadline이 추가됩니다.
 ### 3. `765efe7b75c9` — feat(client): ACK 대기 시간 초과 처리
 
-- **Importance:** A
-- **Tags:** RISK, PROCESS_LIFECYCLE, PRACTICAL
-- **Thread 내 역할:** ACK wait를 alarm 기반 timeout으로 제한하고 timeout과 다른 send failure를 구분합니다.
+- **중요도:** A
+- **태그:** RISK, PROCESS_LIFECYCLE, PRACTICAL
+- **개발 흐름에서의 역할:** ACK wait를 alarm 기반 timeout으로 제한하고 timeout과 다른 send failure를 구분합니다.
 
 #### 원문에서 확정된 맥락
 
@@ -240,7 +239,7 @@ process existence는 protocol participation이 아닙니다. ACK가 없으면 cu
 - caller → callee: `send_byte` → `send_bit` → `kill`/`alarm`/`sigsuspend`
 - 핵심 branch 또는 mutation 순서: flags reset → data `kill` → `alarm(MT_ACK_TIMEOUT_SECONDS)` → ACK/timeout 중 하나가 될 때까지 `sigsuspend` → `alarm(0)` → ACK면 success, timeout이면 `MT_SEND_TIMEOUT`입니다.
 - parent 또는 이전 관련 SHA와의 diff 요약: unbounded ACK wait가 alarm으로 제한되고 caller가 send error와 timeout을 다른 diagnostic으로 출력할 수 있게 됩니다.
-- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 항상 유지해야 하는 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
+- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 불변 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
 - 직접 실행한 command 또는 test와 결과: 실행하지 않음. 이 환경에서는 GitHub 저장소를 로컬 checkout할 수 없어 해당 SHA의 tree와 diff를 GitHub connector로 검토했습니다. 따라서 아래의 test 결과는 test code가 요구하는 관측값이며, 이 세션에서 실제 실행해 얻은 결과가 아닙니다.
 
 #### 다음 연결
@@ -248,9 +247,9 @@ process existence는 protocol participation이 아닙니다. ACK가 없으면 cu
 `342aea9ce9a8`에서 timeout과 post-ACK pacing이 조정됩니다.
 ### 4. `342aea9ce9a8` — fix(client): ACK 이후 시그널 전송 간격 안정화
 
-- **Importance:** B
-- **Tags:** SIGNAL_DATA, PRACTICAL
-- **Thread 내 역할:** signal ACK 뒤 short inter-signal gap을 유지하고 acknowledgement deadline을 늘립니다.
+- **중요도:** B
+- **태그:** SIGNAL_DATA, PRACTICAL
+- **개발 흐름에서의 역할:** signal ACK 뒤 short inter-signal gap을 유지하고 acknowledgement deadline을 늘립니다.
 
 #### 원문에서 확정된 맥락
 
@@ -277,12 +276,12 @@ ACK가 serialization 조건이고 delay는 scheduling sensitivity를 낮추는 w
 
 #### Fix 연결 기록
 
-| 단계 | Source에서 확정된 내용 | 해당 SHA의 코드 근거 |
+| 단계 | 원자료에서 확인된 내용 | 해당 SHA의 코드 근거 |
 | --- | --- | --- |
 | 기존 가정 | ACK만 받으면 다음 signal을 즉시 보내도 scheduling variation과 무관합니다. | 직전 success branch는 ACK flag 확인 즉시 반환했습니다. |
 | 실제 failure 또는 위험 | early signal-only response path가 handler-cycle timing에 민감할 수 있습니다. | 당시 ACK와 data가 모두 standard 시그널 처리 함수 path를 공유했습니다. |
 | root cause | causal ACK와 구현상 pacing의 역할을 분리하지 않았습니다. | 새 상수는 timeout과 별도로 정의되고 ACK 뒤에만 사용됩니다. |
-| 수정 항상 유지해야 하는 조건/decision | ACK를 ordering 조건으로 유지하되 정상 처리에 500µs gap을 둡니다. | `src/client.c: send_bit` success tail |
+| 수정 불변 조건/decision | ACK를 ordering 조건으로 유지하되 정상 처리에 500µs gap을 둡니다. | `src/client.c: send_bit` success tail |
 
 - 변경 전 failure를 재현하거나 추론할 수 있는 입력/상태: 직전 상태와 해당 분기를 직접 비교했습니다.
 - root cause가 드러나는 field 또는 call order: matching signal ACK 확인 → `usleep(MT_SIGNAL_GAP_US)` → success 반환 → 다음 bit입니다. timeout timer와 pacing delay는 별도 상수입니다.
@@ -307,7 +306,7 @@ ACK가 serialization 조건이고 delay는 scheduling sensitivity를 낮추는 w
 - caller → callee: `send_bit` ACK wait → `usleep` → caller success
 - 핵심 branch 또는 mutation 순서: matching signal ACK 확인 → `usleep(MT_SIGNAL_GAP_US)` → success 반환 → 다음 bit입니다. timeout timer와 pacing delay는 별도 상수입니다.
 - parent 또는 이전 관련 SHA와의 diff 요약: deadline을 늘리고 성공 path에만 explicit inter-signal delay를 추가했습니다.
-- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 항상 유지해야 하는 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
+- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 불변 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
 - 직접 실행한 command 또는 test와 결과: 실행하지 않음. 이 환경에서는 GitHub 저장소를 로컬 checkout할 수 없어 해당 SHA의 tree와 diff를 GitHub connector로 검토했습니다. 따라서 아래의 test 결과는 test code가 요구하는 관측값이며, 이 세션에서 실제 실행해 얻은 결과가 아닙니다.
 
 #### 다음 연결
@@ -315,9 +314,9 @@ ACK가 serialization 조건이고 delay는 scheduling sensitivity를 낮추는 w
 `4f17de94e025`에서 interrupted sleep의 remainder를 보존합니다.
 ### 5. `4f17de94e025` — fix(client): 인터럽트 뒤 남은 전송 간격 유지
 
-- **Importance:** B
-- **Tags:** SIGNAL_DATA, PRACTICAL
-- **Thread 내 역할:** `nanosleep`이 `EINTR`로 중단되면 returned remainder로 같은 logical gap을 이어갑니다.
+- **중요도:** B
+- **태그:** SIGNAL_DATA, PRACTICAL
+- **개발 흐름에서의 역할:** `nanosleep`이 `EINTR`로 중단되면 returned remainder로 같은 logical gap을 이어갑니다.
 
 #### 원문에서 확정된 맥락
 
@@ -344,12 +343,12 @@ partial sleep을 completed interval로 취급하지 않으며 original full dura
 
 #### Fix 연결 기록
 
-| 단계 | Source에서 확정된 내용 | 해당 SHA의 코드 근거 |
+| 단계 | 원자료에서 확인된 내용 | 해당 SHA의 코드 근거 |
 | --- | --- | --- |
 | 기존 가정 | 한 번의 sleep 호출이 requested interval 전체를 보장합니다. | 직전 ACK-success branch의 단일 `usleep` |
 | 실제 failure 또는 위험 | `EINTR`가 gap을 조기에 끝내 timing workaround를 약화합니다. | signal을 사용하는 process이므로 unrelated delivery가 sleep을 중단할 수 있습니다. |
 | root cause | interrupted sleep을 remaining duration을 가진 partial operation으로 다루지 않았습니다. | `nanosleep`의 두 번째 인자를 같은 `remaining` object로 사용합니다. |
-| 수정 항상 유지해야 하는 조건/decision | `EINTR`이면 remainder로 같은 logical interval을 이어갑니다. | `src/client.c: wait_signal_gap` loop |
+| 수정 불변 조건/decision | `EINTR`이면 remainder로 같은 logical interval을 이어갑니다. | `src/client.c: wait_signal_gap` loop |
 
 - 변경 전 failure를 재현하거나 추론할 수 있는 입력/상태: 직전 상태와 해당 분기를 직접 비교했습니다.
 - root cause가 드러나는 field 또는 call order: ACK success → `wait_signal_gap` → remaining timespec 초기화 → interrupted call마다 kernel이 돌려준 remainder로 재호출 → success 또는 non-EINTR 종료입니다.
@@ -376,7 +375,7 @@ partial sleep을 completed interval로 취급하지 않으며 original full dura
 - caller → callee: `send_bit` → `wait_signal_gap` → `nanosleep`
 - 핵심 branch 또는 mutation 순서: ACK success → `wait_signal_gap` → remaining timespec 초기화 → interrupted call마다 kernel이 돌려준 remainder로 재호출 → success 또는 non-EINTR 종료입니다.
 - parent 또는 이전 관련 SHA와의 diff 요약: single `usleep`이 remainder-aware `nanosleep` loop로 바뀌고 gap이 5ms로 조정됐습니다.
-- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 항상 유지해야 하는 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
+- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 불변 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
 - 직접 실행한 command 또는 test와 결과: 실행하지 않음. 이 환경에서는 GitHub 저장소를 로컬 checkout할 수 없어 해당 SHA의 tree와 diff를 GitHub connector로 검토했습니다. 따라서 아래의 test 결과는 test code가 요구하는 관측값이며, 이 세션에서 실제 실행해 얻은 결과가 아닙니다.
 
 #### 다음 연결
@@ -384,9 +383,9 @@ partial sleep을 completed interval로 취급하지 않으며 original full dura
 `1487a861046e`에서 이 delay 자체가 제거됩니다.
 ### 6. `ebed06775b92` — feat(protocol): 응답 메시지 wire 형식 정의
 
-- **Importance:** A
-- **Tags:** ARCH, RESPONSE
-- **Thread 내 역할:** `ACQUIRE`, `READY`, `ACK`를 표현하는 request/response records와 identity fields를 정의합니다.
+- **중요도:** A
+- **태그:** ARCH, RESPONSE
+- **개발 흐름에서의 역할:** `ACQUIRE`, `READY`, `ACK`를 표현하는 request/response records와 identity fields를 정의합니다.
 
 #### 원문에서 확정된 맥락
 
@@ -454,9 +453,9 @@ typedef struct s_mt_request
 `4234233ebd30`에서 sequence가 actual ACK work에 연결됩니다.
 ### 7. `4234233ebd30` — feat(protocol): 비트 ACK를 sequence 응답으로 큐잉
 
-- **Importance:** S
-- **Tags:** ARCH, RESPONSE, CORE
-- **Thread 내 역할:** accepted bit에 sequence를 부여하고 datagram ACK send work를 pipe로 queue해 direct signal response에서 분리합니다.
+- **중요도:** S
+- **태그:** ARCH, RESPONSE, CORE
+- **개발 흐름에서의 역할:** accepted bit에 sequence를 부여하고 datagram ACK send work를 pipe로 queue해 direct signal response에서 분리합니다.
 
 #### 원문에서 확정된 맥락
 
@@ -536,9 +535,9 @@ if (write(g_response_pipe[1], &request, sizeof(request)) != sizeof(request))
 `d3eacbbfeadc`에서 client가 matching sequence response만 수락합니다.
 ### 8. `d3eacbbfeadc` — feat(client): 비트 ACK를 sequence로 상관 검증
 
-- **Importance:** A
-- **Tags:** RESPONSE, RISK
-- **Thread 내 역할:** client가 expected server source와 exact current sequence의 datagram ACK만 bit success로 수락합니다.
+- **중요도:** A
+- **태그:** RESPONSE, RISK
+- **개발 흐름에서의 역할:** client가 expected server source와 exact current sequence의 datagram ACK만 bit success로 수락합니다.
 
 #### 원문에서 확정된 맥락
 
@@ -589,7 +588,7 @@ signal 전 server endpoint를 검증하고 monotonic deadline을 설정합니다
 - caller → callee: `send_byte` → `send_bit` → `kill` → `wait_for_response`/`recvfrom`
 - 핵심 branch 또는 mutation 순서: server endpoint validation → absolute deadline 생성 → data `kill` → response receive loop → exact size/source/magic/server PID/ACK kind/current token/OK status 확인 → success 반환 → caller가 sequence와 bit cursor 증가입니다.
 - parent 또는 이전 관련 SHA와의 diff 요약: signal ACK wait를 client progress condition에서 제거하고 sequence datagram response predicate를 authoritative success로 사용합니다.
-- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 항상 유지해야 하는 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
+- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 불변 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
 - 직접 실행한 command 또는 test와 결과: 실행하지 않음. 이 환경에서는 GitHub 저장소를 로컬 checkout할 수 없어 해당 SHA의 tree와 diff를 GitHub connector로 검토했습니다. 따라서 아래의 test 결과는 test code가 요구하는 관측값이며, 이 세션에서 실제 실행해 얻은 결과가 아닙니다.
 
 #### 다음 연결
@@ -597,9 +596,9 @@ signal 전 server endpoint를 검증하고 monotonic deadline을 설정합니다
 `aeb1b00867f4`에서 generic signal response와 implicit first-bit ownership을 삭제합니다.
 ### 9. `aeb1b00867f4` — refactor(protocol): 이전 signal ACK 경로 제거
 
-- **Importance:** A
-- **Tags:** ARCH, RESPONSE, REFACTOR
-- **Thread 내 역할:** obsolete ACK/NACK signal machinery를 client/server/shared/test sender에서 제거하고 datagram response만 남깁니다.
+- **중요도:** A
+- **태그:** ARCH, RESPONSE, REFACTOR
+- **개발 흐름에서의 역할:** obsolete ACK/NACK signal machinery를 client/server/shared/test sender에서 제거하고 datagram response만 남깁니다.
 
 #### 원문에서 확정된 맥락
 
@@ -630,12 +629,12 @@ handlers, alarm flags, wait masks, signal responses가 사라지며 server는 ex
 
 #### Fix 연결 기록
 
-| 단계 | Source에서 확정된 내용 | 해당 SHA의 코드 근거 |
+| 단계 | 원자료에서 확인된 내용 | 해당 SHA의 코드 근거 |
 | --- | --- | --- |
 | 기존 가정 | signal ACK와 datagram ACK가 함께 있어도 같은 success를 나타냅니다. | 직전 client/server tree에 두 response path가 동시에 존재했습니다. |
 | 실제 failure 또는 위험 | 두 path가 다른 결과를 내고 implicit first-bit path가 acquisition을 우회합니다. | server의 `g_client_pid == 0` branch가 unaquired signal sender를 owner로 지정했습니다. |
 | root cause | protocol success와 소유권의 authoritative path가 둘 이상이었습니다. | 시그널 처리 함수/mask 및 first-bit assignment가 datagram path와 병존했습니다. |
-| 수정 항상 유지해야 하는 조건/decision | success는 sequence datagram ACK만, owner는 validated ACQUIRE 뒤에만 존재합니다. | signal response code 삭제와 unauthorized sender early return |
+| 수정 불변 조건/decision | success는 sequence datagram ACK만, owner는 validated ACQUIRE 뒤에만 존재합니다. | signal response code 삭제와 unauthorized sender early return |
 
 - 변경 전 failure를 재현하거나 추론할 수 있는 입력/상태: 직전 상태와 해당 분기를 직접 비교했습니다.
 - root cause가 드러나는 field 또는 call order: ACQUIRE가 owner를 정한 뒤에만 owner PID의 data event를 처리합니다. bit/output 후 sequence datagram ACK send가 유일한 정상 처리가며 owner에게 response send가 실패하면 `reset_session(1)`을 호출합니다.
@@ -663,7 +662,7 @@ handlers, alarm flags, wait masks, signal responses가 사라지며 server는 ex
 - caller → callee: validated ACQUIRE → server owner state; client bit `kill` → server process → datagram ACK → client exact wait
 - 핵심 branch 또는 mutation 순서: ACQUIRE가 owner를 정한 뒤에만 owner PID의 data event를 처리합니다. bit/output 후 sequence datagram ACK send가 유일한 정상 처리가며 owner에게 response send가 실패하면 `reset_session(1)`을 호출합니다.
 - parent 또는 이전 관련 SHA와의 diff 요약: parallel signal response machinery와 implicit data-based 소유권이 삭제돼 datagram ACK와 ACQUIRE만 authoritative path로 남습니다.
-- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 항상 유지해야 하는 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
+- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 불변 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
 - 직접 실행한 command 또는 test와 결과: 실행하지 않음. 이 환경에서는 GitHub 저장소를 로컬 checkout할 수 없어 해당 SHA의 tree와 diff를 GitHub connector로 검토했습니다. 따라서 아래의 test 결과는 test code가 요구하는 관측값이며, 이 세션에서 실제 실행해 얻은 결과가 아닙니다.
 
 #### 다음 연결
@@ -671,9 +670,9 @@ handlers, alarm flags, wait masks, signal responses가 사라지며 server는 ex
 `1487a861046e`에서 remaining timing workaround가 제거됩니다.
 ### 10. `1487a861046e` — perf(protocol): 검증된 ACK 뒤 고정 지연 제거
 
-- **Importance:** A
-- **Tags:** PERF, RESPONSE
-- **Thread 내 역할:** matching sequence ACK 뒤 fixed sleep을 production client와 session sender에서 제거합니다.
+- **중요도:** A
+- **태그:** PERF, RESPONSE
+- **개발 흐름에서의 역할:** matching sequence ACK 뒤 fixed sleep을 production client와 session sender에서 제거합니다.
 
 #### 원문에서 확정된 맥락
 
@@ -723,16 +722,16 @@ client는 여전히 one bit를 보내고 exact ACK를 기다린 뒤 다음 bit�
 - caller → callee: `send_byte` → `send_bit` → exact response wait → caller cursor advance
 - 핵심 branch 또는 mutation 순서: current bit signal 전송 → exact current sequence ACK wait → success 반환 → caller가 sequence/bit cursor 증가 → 즉시 다음 bit입니다.
 - parent 또는 이전 관련 SHA와의 diff 요약: pacing helper와 상수만 제거되고 send→validate→advance stop-and-wait 순서는 유지됩니다.
-- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 항상 유지해야 하는 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
+- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 불변 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
 - 직접 실행한 command 또는 test와 결과: 실행하지 않음. 이 환경에서는 GitHub 저장소를 로컬 checkout할 수 없어 해당 SHA의 tree와 diff를 GitHub connector로 검토했습니다. 따라서 아래의 test 결과는 test code가 요구하는 관측값이며, 이 세션에서 실제 실행해 얻은 결과가 아닙니다.
 
 #### 다음 연결
 
 이 commit이 Thread final state입니다. elapsed time은 success condition으로 남지 않습니다.
 
-## 6. 항상 유지해야 하는 조건 ledger
+## 6. 불변 조건 ledger
 
-### Source에서 확정된 핵심 항상 유지해야 하는 조건
+### 원자료에서 확인된 핵심 불변 조건
 
 - 논리적으로 한 번에 하나의 data bit만 전송 중입니다.
 - client는 expected server endpoint에서 온 exact sequence ACK를 수락한 뒤에만 다음 bit로 진행합니다.
@@ -741,7 +740,7 @@ client는 여전히 one bit를 보내고 exact ACK를 기다린 뒤 다음 bit�
 
 ### 시간에 따른 변화 기록
 
-| Commit | Source에서 확정된 변화 | 실제 state/condition | code evidence | 상태: 도입·강화·부족·복구·검증 |
+| Commit | 원자료에서 확인된 변화 | 실제 state/condition | code evidence | 상태: 도입·강화·부족·복구·검증 |
 | --- | --- | --- | --- | --- |
 | `89637d63b56f` | message byte를 MSB부터 signal bit로 직렬화하고 provisional fixed delay로 전송 속도를 낮춥니다. | bit index는 `send_bit`가 성공한 뒤에만 감소하지만 성공 조건은 `kill`과 fixed delay뿐입니다. | `src/client.c: send_byte`, `send_bit` | 도입·부족 |
 | `78de95b3cacb` | bit마다 signal ACK를 기다리는 stop-and-wait를 도입하고 ACK-before-wait race를 막습니다. | `g_acknowledged`가 false인 동안 current bit가 outstanding이며 ACK 뒤에만 bit index가 감소합니다. | `src/client.c: send_bit`, `src/server.c` ACK branch | 강화·부족 |
@@ -754,9 +753,9 @@ client는 여전히 one bit를 보내고 exact ACK를 기다린 뒤 다음 bit�
 | `aeb1b00867f4` | obsolete ACK/NACK signal machinery를 client/server/shared/test sender에서 제거하고 datagram response만 남깁니다. | owner와 bit progress의 authoritative source가 ACQUIRE와 sequence datagram ACK 하나로 수렴합니다. | `src/server.c` first-bit branch 삭제, `src/client.c` signal wait 삭제 | 복구·강화 |
 | `1487a861046e` | matching sequence ACK 뒤 fixed sleep을 production client와 session sender에서 제거합니다. | one outstanding bit의 progress는 exact ACK 하나로만 결정되며 delay state가 없습니다. | `src/client.c: send_bit`, delay helper removal diff | 강화·완료 |
 
-## 7. Failure → Fix → Test 연결
+## 7. 실패 → 수정 → 검증 연결
 
-| 기존 가정 또는 상태 | 실제 failure/위험 | Fix 또는 전환 commit | 수정된 decision/항상 유지해야 하는 조건 | Test 또는 후속 검증 | 학습자 code evidence |
+| 기존 가정 또는 상태 | 실제 failure/위험 | Fix 또는 전환 commit | 수정된 decision/불변 조건 | Test 또는 후속 검증 | 학습자 code evidence |
 | --- | --- | --- | --- | --- | --- |
 | 여러 bit를 시간 간격만 두고 전송 | receiver 완료를 증명하지 못해 signal 병합과 byte 정렬 손상 위험 | `78de95b3cacb` | bit별 signal ACK stop-and-wait | 이 단계 전용 test commit은 Thread에 없음 | `src/client.c: send_bit`; ACK block-before-send |
 | generic signal ACK | 어느 bit의 response인지 식별 불가하고 parallel success path가 남음 | `ebed06775b92 → 4234233ebd30 → d3eacbbfeadc → aeb1b00867f4` | wire field와 sequence correlation, legacy path 제거 | `b361ef9745ff`, `1ed2acbaa353` | record schema, server `g_sequence`, client exact predicate |
@@ -773,13 +772,13 @@ client는 여전히 one bit를 보내고 exact ACK를 기다린 뒤 다음 bit�
 | datagram 전환 | server sequence와 queued response | accepted bit마다 token 부여 | legacy ACK와 잠시 공존 | `g_sequence`, `t_response_request`, response pipe |
 | 최종 | client outstanding sequence | exact ACK 뒤 증가 | fixed delay와 signal ACK 제거 | client `sequence`, response predicate |
 
-## 9. Thread 최종 상태
+## 9. 개발 흐름의 최종 상태
 
-Source에서 확정된 최종 조건:
+원자료에서 확인된 최종 조건:
 
 - data bit는 계속 `SIGUSR1`/`SIGUSR2`로 전달됩니다.
 - 진행 허가는 expected server endpoint의 sequence-correlated datagram ACK 하나로 결정됩니다.
-- fixed sleep은 ordering 항상 유지해야 하는 조건에 포함되지 않습니다.
+- fixed sleep은 ordering 불변 조건에 포함되지 않습니다.
 - timeout은 uncertainty를 bounded failure로 끝내며 retransmission 또는 exactly-once를 제공하지 않습니다.
 
 학습자 기록:
@@ -788,7 +787,7 @@ Source에서 확정된 최종 조건:
 - 정상 transition 순서: payload byte 선택 → MSB-first signal 선택 → expected server/deadline 확정 → `kill` → exact datagram ACK 검증 → sequence와 bit cursor 증가입니다.
 - 실패 시 중단·reset·cleanup 순서: endpoint validation, signal send, response receive 또는 deadline failure에서 cursor를 유지하고 client가 실패합니다. server response failure는 해당 시점의 session reset/오류 처리로 이어집니다.
 - 최종 상태가 보장하지 않는 것: retransmission, duplicate suppression, multiple in-flight bits, output와 ACK의 atomic transaction, same-UID peer의 cryptographic authentication은 제공하지 않습니다.
-- 이 Thread를 한 문단으로 설명한 최종 서술: 이 Thread는 “시간이 충분히 지났으니 다음 bit”라는 추정에서 출발해, ACK signal을 block-before-send로 기다리는 stop-and-wait, finite timeout, identity를 가진 datagram record, server sequence와 client acceptance predicate를 차례로 도입합니다. legacy signal path를 제거한 뒤 exact ACK만 progress를 허용하므로 마지막 fixed delay를 삭제해도 one-bit-in-flight ordering이 유지됩니다.
+- 이 개발 흐름을 한 문단으로 설명한 최종 서술: 이 개발 흐름은 “시간이 충분히 지났으니 다음 bit”라는 추정에서 출발해, ACK signal을 block-before-send로 기다리는 stop-and-wait, finite timeout, identity를 가진 datagram record, server sequence와 client acceptance predicate를 차례로 도입합니다. legacy signal path를 제거한 뒤 exact ACK만 progress를 허용하므로 마지막 fixed delay를 삭제해도 one-bit-in-flight ordering이 유지됩니다.
 
 ## 10. 최종 architecture 또는 실행 순서 정리
 
@@ -823,10 +822,10 @@ client main/send_byte
 
 - [x] commit map의 10개 SHA를 source 순서대로 모두 설명할 수 있습니다.
 - [x] 각 code excerpt에 SHA, path, symbol, 선택 이유가 기록돼 있습니다.
-- [x] final HEAD 코드를 historical SHA의 증거로 사용한 곳이 없습니다.
+- [x] 최종 HEAD 코드를 historical SHA의 증거로 사용한 곳이 없습니다.
 - [x] 정상 경로와 실패 처리를 state mutation 순서로 설명할 수 있습니다.
-- [x] source 확정 항상 유지해야 하는 조건과 직접 확인한 code evidence를 구분했습니다.
-- [x] test commit의 항상 유지해야 하는 조건, failure, technique, production path, proves/not-proves를 기록했습니다.
+- [x] source 확정 불변 조건과 직접 확인한 code evidence를 구분했습니다.
+- [x] test commit의 불변 조건, failure, technique, production path, proves/not-proves를 기록했습니다.
 - [x] Thread final state를 함수와 state field 수준으로 설명할 수 있습니다.
 - [ ] 해당 SHA의 test를 로컬에서 직접 실행했습니다. — 실행하지 않음. 이 환경에서는 GitHub 저장소를 로컬 checkout할 수 없어 해당 SHA의 tree와 diff를 GitHub connector로 검토했습니다. 따라서 아래의 test 결과는 test code가 요구하는 관측값이며, 이 세션에서 실제 실행해 얻은 결과가 아닙니다.
 
@@ -835,14 +834,14 @@ client main/send_byte
 - standard signal은 동일 signal의 임의 multiplicity를 reliable counted queue처럼 보존하지 않습니다.
 - signal data channel과 datagram completion channel의 state ordering을 맞춰야 합니다.
 - invalid response를 무시하는 동안에도 original monotonic deadline을 유지해야 합니다.
-===== END FILE: 01-timing-to-correlated-sequence-acks.md =====
 
-===== BEGIN FILE: 02-session-소유권-and-recovery.md =====
-# Thread: Session 소유권 from implicit first-bit capture to resource-aware recovery
+---
+
+# 첫 비트 암묵적 점유에서 자원 상태를 고려한 세션 복구까지
 
 > 완성형 해설서가 아닙니다. 아래 확정 사항을 기준으로 각 commit SHA의 실제 코드와 diff를 읽고 기록란을 채웁니다.
 
-## 1. Thread 목표
+## 1. 개발 흐름 목표
 
 첫 data signal의 sender PID를 암묵적으로 owner로 잡던 설계가 명시적인 `ACQUIRE`/`READY` reservation으로 바뀌고, 마지막에는 PID 존재뿐 아니라 usable response endpoint까지 owner availability에 포함되는 과정을 복원합니다.
 
@@ -850,7 +849,7 @@ client main/send_byte
 
 single byte accumulator를 여러 sender가 공유하므로 소유권이 없으면 bit가 섞입니다. first-bit capture는 interleaving을 막지만 data 전 reservation을 표현하지 못합니다. explicit acquisition이 authority를 control channel로 옮긴 뒤에는 zombie처럼 PID는 남았지만 response socket은 사라진 상태가 PID-only liveness 가정을 깨뜨립니다.
 
-## 2. 이 Thread를 이해하기 위한 핵심 질문
+## 2. 이 개발 흐름을 이해하기 위한 핵심 질문
 
 - owner PID, partial byte, received-bit count, sequence, visible-line state는 언제 함께 생성·reset됩니까?
 - first-bit 소유권은 competing sender를 어떻게 거부하며 explicit acquisition은 어떤 race를 없애는가?
@@ -867,9 +866,9 @@ single byte accumulator를 여러 sender가 공유하므로 소유권이 없으�
 - [x] PID-only liveness의 root cause와 endpoint-aware fix를 helper/caller로 연결했습니다.
 - [x] 각 test commit의 process orchestration과 production path를 분리해 기록했습니다.
 
-## 4. Commit map
+## 4. 커밋 목록
 
-| 순서 | SHA | Subject | Importance | Tags | Source에서 확정된 역할 |
+| 순서 | SHA | 제목 | 중요도 | 태그 | 원자료에서 확인된 역할 |
 | --- | --- | --- | --- | --- | --- |
 | 1 | `10a7211969bf` | fix(server): 활성 세션에 다른 송신자 거부 | A | SESSION, RISK | active sender PID를 기록하고 NUL terminator까지 다른 sender의 data signal을 거부합니다. |
 | 2 | `bc337552961a` | fix(server): 종료된 송신자의 세션 복구 | A | SESSION, PROCESS_LIFECYCLE, RISK | recorded owner가 사라지면 partial byte, bit count, owner, line state를 함께 reset하고 new sender가 진행할 수 있게 합니다. |
@@ -884,16 +883,16 @@ single byte accumulator를 여러 sender가 공유하므로 소유권이 없으�
 
 - 각 항목은 해당 SHA의 tree를 기준으로 읽었습니다.
 - 변경 전 상태는 해당 SHA의 parent 또는 지정된 이전 관련 SHA에서 확인했습니다.
-- 같은 commit이 다른 Thread에 다시 등장해도 이 Thread의 질문으로 별도 기록했습니다.
+- 같은 commit이 다른 Thread에 다시 등장해도 이 개발 흐름의 질문으로 별도 기록했습니다.
 - runtime test는 실행하지 않았으며, 실행 결과처럼 표현하지 않았습니다.
 
-## 5. Commit별 학습 기록
+## 5. 커밋별 학습 기록
 
 ### 1. `10a7211969bf` — fix(server): 활성 세션에 다른 송신자 거부
 
-- **Importance:** A
-- **Tags:** SESSION, RISK
-- **Thread 내 역할:** active sender PID를 기록하고 NUL terminator까지 다른 sender의 data signal을 거부합니다.
+- **중요도:** A
+- **태그:** SESSION, RISK
+- **개발 흐름에서의 역할:** active sender PID를 기록하고 NUL terminator까지 다른 sender의 data signal을 거부합니다.
 
 #### 원문에서 확정된 맥락
 
@@ -923,12 +922,12 @@ server에는 하나의 partial-byte accumulator만 있으므로 sender interleav
 
 #### Fix 연결 기록
 
-| 단계 | Source에서 확정된 내용 | 해당 SHA의 코드 근거 |
+| 단계 | 원자료에서 확인된 내용 | 해당 SHA의 코드 근거 |
 | --- | --- | --- |
 | 기존 가정 | 한 client의 signal sequence가 다른 client와 섞이지 않습니다. | 직전 server state에는 sender PID field가 없었습니다. |
 | 실제 failure 또는 위험 | 두 sender의 bits가 하나의 `(current_byte, received_bits)`를 공유합니다. | 모든 data signal이 같은 handler globals를 수정했습니다. |
 | root cause | shared receive state에 owner identity가 없습니다. | 새 `g_client_pid`와 mismatch early return이 직접 보강점입니다. |
-| 수정 항상 유지해야 하는 조건/decision | 한 owner PID만 NUL frame까지 receive state를 변경합니다. | `src/server.c: handle_bit` owner assignment/check/reset |
+| 수정 불변 조건/decision | 한 owner PID만 NUL frame까지 receive state를 변경합니다. | `src/server.c: handle_bit` owner assignment/check/reset |
 
 - 변경 전 failure를 재현하거나 추론할 수 있는 입력/상태: 직전 상태와 해당 분기를 직접 비교했습니다.
 - root cause가 드러나는 field 또는 call order: handler entry → `g_client_pid == 0`이면 sender를 owner로 지정 → owner mismatch면 NACK 후 return → owner bit만 shift/count → 8 bits 완성 → NUL이면 byte/count/owner reset입니다.
@@ -954,7 +953,7 @@ server에는 하나의 partial-byte accumulator만 있으므로 sender interleav
 - caller → callee: server 시그널 처리 함수 → owner check → bit assembly → ACK/NACK `kill`; client handler flag → send status
 - 핵심 branch 또는 mutation 순서: handler entry → `g_client_pid == 0`이면 sender를 owner로 지정 → owner mismatch면 NACK 후 return → owner bit만 shift/count → 8 bits 완성 → NUL이면 byte/count/owner reset입니다.
 - parent 또는 이전 관련 SHA와의 diff 요약: shared accumulator에 owner identity와 competitor rejection이 추가됐지만 release는 NUL frame뿐입니다.
-- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 항상 유지해야 하는 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
+- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 불변 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
 - 직접 실행한 command 또는 test와 결과: 실행하지 않음. 이 환경에서는 GitHub 저장소를 로컬 checkout할 수 없어 해당 SHA의 tree와 diff를 GitHub connector로 검토했습니다. 따라서 아래의 test 결과는 test code가 요구하는 관측값이며, 이 세션에서 실제 실행해 얻은 결과가 아닙니다.
 
 #### 다음 연결
@@ -962,9 +961,9 @@ server에는 하나의 partial-byte accumulator만 있으므로 sender interleav
 `bc337552961a`에서 owner가 terminator 전에 사라진 경우 recovery가 추가됩니다.
 ### 2. `bc337552961a` — fix(server): 종료된 송신자의 세션 복구
 
-- **Importance:** A
-- **Tags:** SESSION, PROCESS_LIFECYCLE, RISK
-- **Thread 내 역할:** recorded owner가 사라지면 partial byte, bit count, owner, line state를 함께 reset하고 new sender가 진행할 수 있게 합니다.
+- **중요도:** A
+- **태그:** SESSION, PROCESS_LIFECYCLE, RISK
+- **개발 흐름에서의 역할:** recorded owner가 사라지면 partial byte, bit count, owner, line state를 함께 reset하고 new sender가 진행할 수 있게 합니다.
 
 #### 원문에서 확정된 맥락
 
@@ -994,12 +993,12 @@ server에는 하나의 partial-byte accumulator만 있으므로 sender interleav
 
 #### Fix 연결 기록
 
-| 단계 | Source에서 확정된 내용 | 해당 SHA의 코드 근거 |
+| 단계 | 원자료에서 확인된 내용 | 해당 SHA의 코드 근거 |
 | --- | --- | --- |
 | 기존 가정 | owner는 NUL terminator로 정상 종료합니다. | 직전 release branch는 completed NUL byte뿐이었습니다. |
 | 실제 failure 또는 위험 | mid-message exit가 owner와 partial state를 남겨 server를 점유합니다. | `g_client_pid`, partial byte/count가 process exit와 독립적으로 유지됩니다. |
 | root cause | owner 수명 종료 뒤 coupled fields를 회수하는 transition이 없습니다. | 새 `reset_session`이 byte/bit/PID/line을 한곳에서 초기화합니다. |
-| 수정 항상 유지해야 하는 조건/decision | PID absence에서 visible line을 delimit하고 receive state를 함께 reset합니다. | `kill(...,0)`/ACK ESRCH branches → `reset_session(1)` |
+| 수정 불변 조건/decision | PID absence에서 visible line을 delimit하고 receive state를 함께 reset합니다. | `kill(...,0)`/ACK ESRCH branches → `reset_session(1)` |
 
 - 변경 전 failure를 재현하거나 추론할 수 있는 입력/상태: 직전 상태와 해당 분기를 직접 비교했습니다.
 - root cause가 드러나는 field 또는 call order: competitor signal → `kill(owner, 0)` → `ESRCH`면 `reset_session(1)` → newline 필요 시 출력 → byte/bit/owner/line fields reset → new sender가 clean state에서 first owner가 됩니다.
@@ -1026,7 +1025,7 @@ server에는 하나의 partial-byte accumulator만 있으므로 sender interleav
 - caller → callee: 시그널 처리 함수 → owner probe/ACK send → `reset_session` → output/reset
 - 핵심 branch 또는 mutation 순서: competitor signal → `kill(owner, 0)` → `ESRCH`면 `reset_session(1)` → newline 필요 시 출력 → byte/bit/owner/line fields reset → new sender가 clean state에서 first owner가 됩니다.
 - parent 또는 이전 관련 SHA와의 diff 요약: NUL-only cleanup이 owner disappearance에서도 실행되며 visible output 경계를 위한 `g_line_started`가 추가됐습니다.
-- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 항상 유지해야 하는 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
+- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 불변 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
 - 직접 실행한 command 또는 test와 결과: 실행하지 않음. 이 환경에서는 GitHub 저장소를 로컬 checkout할 수 없어 해당 SHA의 tree와 diff를 GitHub connector로 검토했습니다. 따라서 아래의 test 결과는 test code가 요구하는 관측값이며, 이 세션에서 실제 실행해 얻은 결과가 아닙니다.
 
 #### 다음 연결
@@ -1034,9 +1033,9 @@ server에는 하나의 partial-byte accumulator만 있으므로 sender interleav
 `bdccf91f5a44`에서 abandoned/live-competition cases를 검증합니다.
 ### 3. `bdccf91f5a44` — test(server): 중단·경쟁 송신자 세션 검증
 
-- **Importance:** A
-- **Tags:** TEST, SESSION, RISK
-- **Thread 내 역할:** dedicated sender로 one-bit abandon, complete-byte-plus-partial abandon, live competition, owner exit recovery를 재현합니다.
+- **중요도:** A
+- **태그:** TEST, SESSION, RISK
+- **개발 흐름에서의 역할:** dedicated sender로 one-bit abandon, complete-byte-plus-partial abandon, live competition, owner exit recovery를 재현합니다.
 
 #### 원문에서 확정된 맥락
 
@@ -1066,9 +1065,9 @@ normal client가 만들기 어려운 coupled session transitions를 real process
 `을 남깁니다. live holder 동안 competitor는 실패하고, holder exit 뒤 replacement는 성공해야 합니다.
 - 후속 commit이 강화하거나 교체하는 부분: `caf2feec4971` 이후 test helper가 explicit acquisition을 사용하도록 변하고 `e56e8cc87315`이 no-data reservation을 별도로 검증합니다.
 
-#### Test commit 분석 기록
+#### 테스트 커밋 분석 기록
 
-- **대상 production 항상 유지해야 하는 조건:** 한 live owner만 receive state를 변경하고 dead owner의 partial state는 다음 sender가 상속하지 않습니다.
+- **대상 production 불변 조건:** 한 live owner만 receive state를 변경하고 dead owner의 partial state는 다음 sender가 상속하지 않습니다.
 - **재현하는 failure 또는 boundary:** one-bit abandon, complete-byte-plus-partial abandon, live competitor, owner exit recovery
 - **사용한 test technique:** specialized sender + real server/client processes + exact stdout/status comparison
 - **분류:** targeted process-level integration regression
@@ -1103,7 +1102,7 @@ normal client가 만들기 어려운 coupled session transitions를 real process
 - caller → callee: test shell → session sender/client/server executables → production 시그널 처리 함수/session reset
 - 핵심 branch 또는 mutation 순서: server start → specialized sender가 지정 bit 수만 전송하거나 pause → competitor client 실행/상태 확인 → owner exit 또는 terminate → replacement client → expected stdout/stderr/status 비교 → 모든 child reap/cleanup입니다.
 - parent 또는 이전 관련 SHA와의 diff 요약: specialized sender binary와 multi-process session scenarios가 test target에 추가됐습니다.
-- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 항상 유지해야 하는 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
+- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 불변 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
 - 직접 실행한 command 또는 test와 결과: 실행하지 않음. 이 환경에서는 GitHub 저장소를 로컬 checkout할 수 없어 해당 SHA의 tree와 diff를 GitHub connector로 검토했습니다. 따라서 아래의 test 결과는 test code가 요구하는 관측값이며, 이 세션에서 실제 실행해 얻은 결과가 아닙니다.
 
 #### 다음 연결
@@ -1111,9 +1110,9 @@ normal client가 만들기 어려운 coupled session transitions를 real process
 `caf2feec4971`에서 ownership start mechanism이 control channel로 이동합니다.
 ### 4. `caf2feec4971` — feat(server): 획득 요청을 검증해 세션 소유권 예약
 
-- **Importance:** S
-- **Tags:** ARCH, SESSION, CORE
-- **Thread 내 역할:** exact `ACQUIRE` datagram을 검증한 뒤 data 전에 owner를 예약하고 `READY` 또는 `BUSY`를 반환합니다.
+- **중요도:** S
+- **태그:** ARCH, SESSION, CORE
+- **개발 흐름에서의 역할:** exact `ACQUIRE` datagram을 검증한 뒤 data 전에 owner를 예약하고 `READY` 또는 `BUSY`를 반환합니다.
 
 #### 원문에서 확정된 맥락
 
@@ -1190,9 +1189,9 @@ if (g_client_pid == 0)
 `f8e8444c5ded`에서 client가 matching READY만 acquisition success로 수락합니다.
 ### 5. `f8e8444c5ded` — feat(client): READY 응답을 출처와 nonce로 상관 검증
 
-- **Importance:** A
-- **Tags:** RESPONSE, RISK, INTEGRATION
-- **Thread 내 역할:** client가 nonzero nonce ACQUIRE를 보내고 expected source, PID, fields, deadline이 맞는 READY만 수락합니다.
+- **중요도:** A
+- **태그:** RESPONSE, RISK, INTEGRATION
+- **개발 흐름에서의 역할:** client가 nonzero nonce ACQUIRE를 보내고 expected source, PID, fields, deadline이 맞는 READY만 수락합니다.
 
 #### 원문에서 확정된 맥락
 
@@ -1243,7 +1242,7 @@ if (g_client_pid == 0)
 - caller → callee: `main` → client endpoint setup → `request_session` → `sendto`/`recvfrom` → payload send
 - 핵심 branch 또는 mutation 순서: client endpoint bind → target server socket validation → nonce open/read/close, zero면 1로 보정 → ACQUIRE send → one absolute monotonic deadline → invalid response discard loop → matching READY 뒤에만 payload send path 진입입니다.
 - parent 또는 이전 관련 SHA와의 diff 요약: production client가 data 전에 correlated ACQUIRE/READY handshake를 수행합니다.
-- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 항상 유지해야 하는 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
+- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 불변 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
 - 직접 실행한 command 또는 test와 결과: 실행하지 않음. 이 환경에서는 GitHub 저장소를 로컬 checkout할 수 없어 해당 SHA의 tree와 diff를 GitHub connector로 검토했습니다. 따라서 아래의 test 결과는 test code가 요구하는 관측값이며, 이 세션에서 실제 실행해 얻은 결과가 아닙니다.
 
 #### 다음 연결
@@ -1251,9 +1250,9 @@ if (g_client_pid == 0)
 `e56e8cc87315`에서 data 없는 acquired owner도 exclusive한지 검증합니다.
 ### 6. `e56e8cc87315` — test(session): 데이터 없는 활성 예약 경쟁 검증
 
-- **Importance:** A
-- **Tags:** TEST, SESSION
-- **Thread 내 역할:** session helper의 `reserve` mode가 acquisition만 완료하고 data를 보내지 않은 채 live owner를 유지합니다.
+- **중요도:** A
+- **태그:** TEST, SESSION
+- **개발 흐름에서의 역할:** session helper의 `reserve` mode가 acquisition만 완료하고 data를 보내지 않은 채 live owner를 유지합니다.
 
 #### 원문에서 확정된 맥락
 
@@ -1282,9 +1281,9 @@ if (g_client_pid == 0)
 - 정상 경로와 failure 경로가 갈라지는 조건: reservation 동안 output이 생기면 실패입니다. competitor가 성공해도 실패입니다. reserver exit 뒤 later client가 계속 BUSY면 recovery failure입니다.
 - 후속 commit이 강화하거나 교체하는 부분: `1e3da4580733`이 반대로 PID는 남지만 endpoint가 사라진 owner를 회수합니다.
 
-#### Test commit 분석 기록
+#### 테스트 커밋 분석 기록
 
-- **대상 production 항상 유지해야 하는 조건:** successful acquisition 자체가 소유권 start이며 payload progress는 조건이 아닙니다.
+- **대상 production 불변 조건:** successful acquisition 자체가 소유권 start이며 payload progress는 조건이 아닙니다.
 - **재현하는 failure 또는 boundary:** first bit 전 owner가 없다고 봐 두 client에게 READY를 주는 회귀
 - **사용한 test technique:** protocol-conformant helper가 ACQUIRE/READY만 완료하고 live pause
 - **분류:** deterministic session integration regression
@@ -1317,7 +1316,7 @@ if (g_client_pid == 0)
 - caller → callee: test shell → reserve helper handshake → production `handle_session_request` → competitor client
 - 핵심 branch 또는 mutation 순서: reserver child ACQUIRE/READY → ready synchronization → data를 보내지 않고 live 유지 → normal client는 BUSY failure → stdout empty 확인 → reserver exit → later client acquisition/message success입니다.
 - parent 또는 이전 관련 SHA와의 diff 요약: helper가 data bits를 보내는 hold mode 대신 acquisition만 유지하는 reserve mode를 제공합니다.
-- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 항상 유지해야 하는 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
+- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 불변 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
 - 직접 실행한 command 또는 test와 결과: 실행하지 않음. 이 환경에서는 GitHub 저장소를 로컬 checkout할 수 없어 해당 SHA의 tree와 diff를 GitHub connector로 검토했습니다. 따라서 아래의 test 결과는 test code가 요구하는 관측값이며, 이 세션에서 실제 실행해 얻은 결과가 아닙니다.
 
 #### 다음 연결
@@ -1325,9 +1324,9 @@ if (g_client_pid == 0)
 `1e3da4580733`에서 PID는 남지만 protocol resource는 사라진 반대 경계를 다룹니다.
 ### 7. `1e3da4580733` — fix(server): 응답 경로가 사라진 세션 소유자 회수
 
-- **Importance:** S
-- **Tags:** SESSION, PROCESS_LIFECYCLE, DEBUG
-- **Thread 내 역할:** owner availability를 process presence와 expected same-UID client response socket usability의 결합으로 정의합니다.
+- **중요도:** S
+- **태그:** SESSION, PROCESS_LIFECYCLE, DEBUG
+- **개발 흐름에서의 역할:** owner availability를 process presence와 expected same-UID client response socket usability의 결합으로 정의합니다.
 
 #### 원문에서 확정된 맥락
 
@@ -1368,12 +1367,12 @@ exited-but-unreaped child는 `kill(pid, 0)`에 성공하지만 cleanup으로 soc
 
 #### Fix 연결 기록
 
-| 단계 | Source에서 확정된 내용 | 해당 SHA의 코드 근거 |
+| 단계 | 원자료에서 확인된 내용 | 해당 SHA의 코드 근거 |
 | --- | --- | --- |
 | 기존 가정 | `kill(owner, 0)` success면 owner가 ACK를 받을 수 있습니다. | 직전 availability branch는 ESRCH만 dead로 분류했습니다. |
 | 실제 failure 또는 위험 | zombie child는 PID entry가 남지만 response socket은 이미 사라집니다. | client cleanup과 parent reap은 별개 lifecycle event입니다. |
 | root cause | kernel identity presence와 protocol availability를 동일시했습니다. | 새 helper가 PID와 expected endpoint를 별도 검사합니다. |
-| 수정 항상 유지해야 하는 조건/decision | process와 expected response endpoint가 모두 usable해야 owner가 available합니다. | `session_owner_available` conjunction과 request recovery branch |
+| 수정 불변 조건/decision | process와 expected response endpoint가 모두 usable해야 owner가 available합니다. | `session_owner_available` conjunction과 request recovery branch |
 | regression | `a481bfabb7b5`가 WNOWAIT로 zombie window를 유지합니다. | test가 `kill -0` success와 path absence를 동시에 assertion합니다. |
 
 - 변경 전 failure를 재현하거나 추론할 수 있는 입력/상태: 직전 상태와 해당 분기를 직접 비교했습니다.
@@ -1419,9 +1418,9 @@ return (valid_client_socket(path));
 `a481bfabb7b5`가 exited-but-unreaped state를 실제로 고정합니다.
 ### 8. `a481bfabb7b5` — test(session): 종료 송신자 회수 전 새 세션 복구 검증
 
-- **Importance:** A
-- **Tags:** TEST, SESSION, PROCESS_LIFECYCLE
-- **Thread 내 역할:** partial-session child를 exit시킨 뒤 `waitid(..., WNOWAIT)`로 unreaped 상태를 유지해 zombie PID와 vanished endpoint를 동시에 관측합니다.
+- **중요도:** A
+- **태그:** TEST, SESSION, PROCESS_LIFECYCLE
+- **개발 흐름에서의 역할:** partial-session child를 exit시킨 뒤 `waitid(..., WNOWAIT)`로 unreaped 상태를 유지해 zombie PID와 vanished endpoint를 동시에 관측합니다.
 
 #### 원문에서 확정된 맥락
 
@@ -1451,9 +1450,9 @@ test는 `kill(pid, 0)` success와 socket-path absence를 확인한 뒤 child rea
 - 정상 경로와 failure 경로가 갈라지는 조건: PID probe가 성공한다는 사실만으로 BUSY가 되면 replacement가 실패해 test가 잡습니다. endpoint-aware recovery가 성공하면 visible partial line을 newline으로 닫고 new frame을 별도 줄에 출력합니다.
 - 후속 commit이 강화하거나 교체하는 부분: 이 commit이 Thread final regression evidence입니다.
 
-#### Test commit 분석 기록
+#### 테스트 커밋 분석 기록
 
-- **대상 production 항상 유지해야 하는 조건:** owner는 PID entry뿐 아니라 usable response endpoint를 유지해야 합니다.
+- **대상 production 불변 조건:** owner는 PID entry뿐 아니라 usable response endpoint를 유지해야 합니다.
 - **재현하는 failure 또는 boundary:** exited-but-unreaped owner가 server를 BUSY로 고정하는 상황
 - **사용한 test technique:** `fork` + partial sender + `waitid(..., WNOWAIT)` + real endpoint observation
 - **분류:** root-cause-specific deterministic regression
@@ -1486,16 +1485,16 @@ test는 `kill(pid, 0)` success와 socket-path absence를 확인한 뒤 child rea
 - caller → callee: test shell → `unreaped_exec` → session sender → production server availability/recovery → replacement client
 - 핵심 branch 또는 mutation 순서: partial child ACQUIRE/data/exit → WNOWAIT로 zombie 확인 → `kill(child,0)` success assertion → client path `ENOENT` assertion → child reap 전 replacement client → abandoned newline + new message 확인 → final reap/server cleanup입니다.
 - parent 또는 이전 관련 SHA와의 diff 요약: WNOWAIT helper와 zombie-specific scenario가 추가돼 PID-only assumption의 정확한 failure window를 재현합니다.
-- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 항상 유지해야 하는 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
+- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 불변 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
 - 직접 실행한 command 또는 test와 결과: 실행하지 않음. 이 환경에서는 GitHub 저장소를 로컬 checkout할 수 없어 해당 SHA의 tree와 diff를 GitHub connector로 검토했습니다. 따라서 아래의 test 결과는 test code가 요구하는 관측값이며, 이 세션에서 실제 실행해 얻은 결과가 아닙니다.
 
 #### 다음 연결
 
 이 commit이 Thread final regression evidence입니다.
 
-## 6. 항상 유지해야 하는 조건 ledger
+## 6. 불변 조건 ledger
 
-### Source에서 확정된 핵심 항상 유지해야 하는 조건
+### 원자료에서 확인된 핵심 불변 조건
 
 - explicit acquisition을 완료한 하나의 client만 bit, byte, sequence, output state를 변경합니다.
 - live owner가 있으면 competing acquisition은 `BUSY`이고 competing data signal은 state를 바꾸지 않습니다.
@@ -1505,7 +1504,7 @@ test는 `kill(pid, 0)` success와 socket-path absence를 확인한 뒤 child rea
 
 ### 시간에 따른 변화 기록
 
-| Commit | Source에서 확정된 변화 | 실제 state/condition | code evidence | 상태: 도입·강화·부족·복구·검증 |
+| Commit | 원자료에서 확인된 변화 | 실제 state/condition | code evidence | 상태: 도입·강화·부족·복구·검증 |
 | --- | --- | --- | --- | --- |
 | `10a7211969bf` | active sender PID를 기록하고 NUL terminator까지 다른 sender의 data signal을 거부합니다. | `g_client_pid`가 0이면 first sender가 owner가 되고 NUL frame까지 다른 PID가 byte state를 바꾸지 못합니다. | `src/server.c: handle_bit` owner branches | 도입·부족 |
 | `bc337552961a` | recorded owner가 사라지면 partial byte, bit count, owner, line state를 함께 reset하고 new sender가 진행할 수 있게 합니다. | owner PID absence가 session recovery trigger가 되고 `g_line_started`가 delimiter 필요 여부를 결정합니다. | `src/server.c: reset_session`, owner probe branches | 복구·부족 |
@@ -1516,9 +1515,9 @@ test는 `kill(pid, 0)` success와 socket-path absence를 확인한 뒤 child rea
 | `1e3da4580733` | owner availability를 process presence와 expected same-UID client response socket usability의 결합으로 정의합니다. | owner availability는 PID와 expected same-UID response socket 둘 다 usable인 conjunction입니다. | `src/server.c: session_owner_available`, `handle_session_request` | 복구·강화 |
 | `a481bfabb7b5` | partial-session child를 exit시킨 뒤 `waitid(..., WNOWAIT)`로 unreaped 상태를 유지해 zombie PID와 vanished endpoint를 동시에 관측합니다. | test가 PID table retention과 response endpoint cleanup을 동시에 관측해 resource-aware availability를 검증합니다. | `tests/unreaped_exec.c`, session shell assertions | 검증 |
 
-## 7. Failure → Fix → Test 연결
+## 7. 실패 → 수정 → 검증 연결
 
-| 기존 가정 또는 상태 | 실제 failure/위험 | Fix 또는 전환 commit | 수정된 decision/항상 유지해야 하는 조건 | Test 또는 후속 검증 | 학습자 code evidence |
+| 기존 가정 또는 상태 | 실제 failure/위험 | Fix 또는 전환 commit | 수정된 decision/불변 조건 | Test 또는 후속 검증 | 학습자 code evidence |
 | --- | --- | --- | --- | --- | --- |
 | shared accumulator에 sender identity 없음 | 서로 다른 client의 bits가 한 byte에 섞임 | `10a7211969bf` | first sender를 active owner로 기록하고 competitor 거부 | `bdccf91f5a44` | `g_client_pid` assignment/mismatch early return |
 | first data signal이 ownership 시작점 | data 전 reservation과 correlated BUSY/READY 불가 | `caf2feec4971`, 완전한 bypass 제거는 `aeb1b00867f4` | validated ACQUIRE/READY가 owner authority, unaquired data는 무시 | `e56e8cc87315` | request validation/owner assignment + later first-bit branch deletion |
@@ -1536,9 +1535,9 @@ test는 `kill(pid, 0)` success와 socket-path absence를 확인한 뒤 child rea
 | `aeb1b00867f4` 이후 | ACQUIRE path만 owner authority | unaquired data는 ignore | explicit data-before-signal ownership | first-bit assignment 삭제 |
 | `1e3da4580733` | process + usable endpoint | 둘 중 하나가 없으면 recovery | resource-aware liveness | `session_owner_available` |
 
-## 9. Thread 최종 상태
+## 9. 개발 흐름의 최종 상태
 
-Source에서 확정된 최종 조건:
+원자료에서 확인된 최종 조건:
 
 - 소유권은 first bit가 아니라 validated `ACQUIRE`/`READY` transition에서 시작합니다.
 - live and usable owner는 payload progress가 없어도 exclusive합니다.
@@ -1551,7 +1550,7 @@ Source에서 확정된 최종 조건:
 - 정상 transition 순서: exact ACQUIRE receive/validation → prior owner availability 확인 및 필요 시 delimiter commit/reset → new owner fields 초기화 → nonce-correlated READY → owner data events만 mutation → NUL frame에서 release입니다.
 - 실패 시 중단·reset·cleanup 순서: invalid ACQUIRE는 무시하고 live owner면 BUSY입니다. READY send failure는 새 reservation을 rollback합니다. unavailable owner delimiter 실패는 reassignment를 막고 server error/cleanup으로 전파합니다.
 - 최종 상태가 보장하지 않는 것: lease, idle progress timeout, PID reuse 방지, same-UID peer authentication, session handoff의 distributed transaction은 제공하지 않습니다.
-- 이 Thread를 한 문단으로 설명한 최종 서술: 이 Thread는 shared accumulator에 first-sender PID를 붙여 interleaving을 막는 단계에서 시작합니다. dead PID recovery와 line delimiter를 추가한 뒤 ACQUIRE/READY control path로 reservation을 옮기지만, 해당 도입 SHA에는 implicit first-bit bypass가 잠시 남습니다. 이후 datagram-only 소유권으로 수렴하고, 마지막에는 PID 존재와 client response socket usability를 함께 검사해 zombie owner까지 회수합니다.
+- 이 개발 흐름을 한 문단으로 설명한 최종 서술: 이 개발 흐름은 shared accumulator에 first-sender PID를 붙여 interleaving을 막는 단계에서 시작합니다. dead PID recovery와 line delimiter를 추가한 뒤 ACQUIRE/READY control path로 reservation을 옮기지만, 해당 도입 SHA에는 implicit first-bit bypass가 잠시 남습니다. 이후 datagram-only 소유권으로 수렴하고, 마지막에는 PID 존재와 client response socket usability를 함께 검사해 zombie owner까지 회수합니다.
 
 ## 10. 최종 architecture 또는 실행 순서 정리
 
@@ -1587,10 +1586,10 @@ server pselect: response socket readable
 
 - [x] commit map의 8개 SHA를 source 순서대로 모두 설명할 수 있습니다.
 - [x] 각 code excerpt에 SHA, path, symbol, 선택 이유가 기록돼 있습니다.
-- [x] final HEAD 코드를 historical SHA의 증거로 사용한 곳이 없습니다.
+- [x] 최종 HEAD 코드를 historical SHA의 증거로 사용한 곳이 없습니다.
 - [x] 정상 경로와 실패 처리를 state mutation 순서로 설명할 수 있습니다.
-- [x] source 확정 항상 유지해야 하는 조건과 직접 확인한 code evidence를 구분했습니다.
-- [x] test commit의 항상 유지해야 하는 조건, failure, technique, production path, proves/not-proves를 기록했습니다.
+- [x] source 확정 불변 조건과 직접 확인한 code evidence를 구분했습니다.
+- [x] test commit의 불변 조건, failure, technique, production path, proves/not-proves를 기록했습니다.
 - [x] Thread final state를 함수와 state field 수준으로 설명할 수 있습니다.
 - [ ] 해당 SHA의 test를 로컬에서 직접 실행했습니다. — 실행하지 않음. 이 환경에서는 GitHub 저장소를 로컬 checkout할 수 없어 해당 SHA의 tree와 diff를 GitHub connector로 검토했습니다. 따라서 아래의 test 결과는 test code가 요구하는 관측값이며, 이 세션에서 실제 실행해 얻은 결과가 아닙니다.
 
@@ -1599,14 +1598,14 @@ server pselect: response socket readable
 - process exit, PID table retention, socket cleanup이 서로 다른 시점에 일어납니다.
 - partial byte와 already-written bytes를 함께 복구하지 않으면 sessions가 섞입니다.
 - no-lease design에서는 live but idle owner도 계속 exclusive하므로 availability와 progress를 구분해야 합니다.
-===== END FILE: 02-session-소유권-and-recovery.md =====
 
-===== BEGIN FILE: 03-self-pipe-event-loop.md =====
-# Thread: Async signal handling to a fail-stop self-pipe event loop
+---
+
+# 비동기 신호 처리에서 즉시 중단하는 셀프 파이프 이벤트 반복문까지
 
 > 완성형 해설서가 아닙니다. 아래 확정 사항을 기준으로 각 commit SHA의 실제 코드와 diff를 읽고 기록란을 채웁니다.
 
-## 1. Thread 목표
+## 1. 개발 흐름 목표
 
 시그널 처리 함수가 protocol state를 직접 변경하던 구조가 fixed event record와 nonblocking self-pipe를 거쳐, `pselect` event loop 하나가 session·bit·output·ACK state를 전담하는 구조로 바뀌는 과정을 복원합니다.
 
@@ -1614,7 +1613,7 @@ server pselect: response socket readable
 
 핵심은 pipe 사용 자체가 아니라 authoritative state mutation을 normal execution context 하나로 모은 것입니다. handler는 `errno`를 보존하고 ordered fact만 전달합니다. event 하나의 손실은 bit 하나의 손실이므로 recoverable queue hiccup이 아니라 fail-stop 조건입니다. termination과 inherited mask도 같은 event architecture에 통합됩니다.
 
-## 2. 이 Thread를 이해하기 위한 핵심 질문
+## 2. 이 개발 흐름을 이해하기 위한 핵심 질문
 
 - self-pipe 전 handler가 직접 수행하던 authorization, bit assembly, output, ACK 작업은 무엇입니까?
 - event record의 최소 fields와 `PIPE_BUF` compile-time condition은 무엇입니까?
@@ -1631,9 +1630,9 @@ server pselect: response socket readable
 - [x] data event와 termination event의 공통 input과 다른 result를 설명했습니다.
 - [x] masked-exec test를 disposition과 deliverability production code에 연결했습니다.
 
-## 4. Commit map
+## 4. 커밋 목록
 
-| 순서 | SHA | Subject | Importance | Tags | Source에서 확정된 역할 |
+| 순서 | SHA | 제목 | 중요도 | 태그 | 원자료에서 확인된 역할 |
 | --- | --- | --- | --- | --- | --- |
 | 1 | `a7d994b0a4b6` | refactor(server): 비트 상태 전이 로직 추출 | B | REFACTOR, SELF_PIPE | bit processing을 explicit `(sender, signal)` event를 받는 function으로 추출하고 event size가 `PIPE_BUF` 안인지 compile-time으로 확인합니다. |
 | 2 | `22363f83ff25` | refactor(server): signal 처리를 self-pipe event loop로 제한 | S | ARCH, SELF_PIPE, RISK | handler를 `errno` preservation과 fixed event self-pipe write로 제한하고 `pselect` loop가 모든 protocol work를 수행하게 합니다. |
@@ -1646,16 +1645,16 @@ server pselect: response socket readable
 
 - 각 항목은 해당 SHA의 tree를 기준으로 읽었습니다.
 - 변경 전 상태는 해당 SHA의 parent 또는 지정된 이전 관련 SHA에서 확인했습니다.
-- 같은 commit이 다른 Thread에 다시 등장해도 이 Thread의 질문으로 별도 기록했습니다.
+- 같은 commit이 다른 Thread에 다시 등장해도 이 개발 흐름의 질문으로 별도 기록했습니다.
 - runtime test는 실행하지 않았으며, 실행 결과처럼 표현하지 않았습니다.
 
-## 5. Commit별 학습 기록
+## 5. 커밋별 학습 기록
 
 ### 1. `a7d994b0a4b6` — refactor(server): 비트 상태 전이 로직 추출
 
-- **Importance:** B
-- **Tags:** REFACTOR, SELF_PIPE
-- **Thread 내 역할:** bit processing을 explicit `(sender, signal)` event를 받는 function으로 추출하고 event size가 `PIPE_BUF` 안인지 compile-time으로 확인합니다.
+- **중요도:** B
+- **태그:** REFACTOR, SELF_PIPE
+- **개발 흐름에서의 역할:** bit processing을 explicit `(sender, signal)` event를 받는 function으로 추출하고 event size가 `PIPE_BUF` 안인지 compile-time으로 확인합니다.
 
 #### 원문에서 확정된 맥락
 
@@ -1702,7 +1701,7 @@ parent handler body에서 이동한 authorization/assembly/response logic과 `22
 - caller → callee: 시그널 처리 함수 → event value construction → `process_bit` (여전히 handler context)
 - 핵심 branch 또는 mutation 순서: handler가 sender PID와 signal number를 event value에 복사한 뒤 같은 handler 문맥에서 extracted transition function을 직접 호출합니다.
 - parent 또는 이전 관련 SHA와의 diff 요약: handler 내부 logic이 event-value function으로 추출됐지만 실행 문맥은 아직 바뀌지 않았습니다.
-- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 항상 유지해야 하는 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
+- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 불변 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
 - 직접 실행한 command 또는 test와 결과: 실행하지 않음. 이 환경에서는 GitHub 저장소를 로컬 checkout할 수 없어 해당 SHA의 tree와 diff를 GitHub connector로 검토했습니다. 따라서 아래의 test 결과는 test code가 요구하는 관측값이며, 이 세션에서 실제 실행해 얻은 결과가 아닙니다.
 
 #### 다음 연결
@@ -1710,9 +1709,9 @@ parent handler body에서 이동한 authorization/assembly/response logic과 `22
 `22363f83ff25`에서 handler는 transition function 대신 event pipe write만 수행합니다.
 ### 2. `22363f83ff25` — refactor(server): signal 처리를 self-pipe event loop로 제한
 
-- **Importance:** S
-- **Tags:** ARCH, SELF_PIPE, RISK
-- **Thread 내 역할:** handler를 `errno` preservation과 fixed event self-pipe write로 제한하고 `pselect` loop가 모든 protocol work를 수행하게 합니다.
+- **중요도:** S
+- **태그:** ARCH, SELF_PIPE, RISK
+- **개발 흐름에서의 역할:** handler를 `errno` preservation과 fixed event self-pipe write로 제한하고 `pselect` loop가 모든 protocol work를 수행하게 합니다.
 
 #### 원문에서 확정된 맥락
 
@@ -1793,9 +1792,9 @@ errno = saved_errno;
 `4c535ac8657e`에서 first event-write `EAGAIN`을 주입합니다.
 ### 3. `4c535ac8657e` — test(server): self-pipe 이벤트 손실 시 fail-stop 검증
 
-- **Importance:** A
-- **Tags:** TEST, SELF_PIPE, RISK
-- **Thread 내 역할:** handler의 first self-pipe event write에 `EAGAIN`을 주입하고 server fail-stop을 검증합니다.
+- **중요도:** A
+- **태그:** TEST, SELF_PIPE, RISK
+- **개발 흐름에서의 역할:** handler의 first self-pipe event write에 `EAGAIN`을 주입하고 server fail-stop을 검증합니다.
 
 #### 원문에서 확정된 맥락
 
@@ -1824,9 +1823,9 @@ dropped event는 ordered stream의 한 bit를 잃는 것이므로 subsequent pro
 - 정상 경로와 failure 경로가 갈라지는 조건: 주입은 first call only라 failure 지점이 deterministic합니다. hook 이후 protocol processing을 계속하거나 ACK를 보내면 test가 client/server status와 output/endpoint assertion에서 실패합니다.
 - 후속 commit이 강화하거나 교체하는 부분: `e304c63bee3e`는 expected termination을 error overflow와 구분해 같은 cleanup architecture로 보냅니다.
 
-#### Test commit 분석 기록
+#### 테스트 커밋 분석 기록
 
-- **대상 production 항상 유지해야 하는 조건:** self-pipe에 전달되지 않은 signal event가 있으면 protocol processing을 계속하지 않습니다.
+- **대상 production 불변 조건:** self-pipe에 전달되지 않은 signal event가 있으면 protocol processing을 계속하지 않습니다.
 - **재현하는 failure 또는 boundary:** nonblocking pipe write `EAGAIN`으로 one bit event가 사라지는 상황
 - **사용한 test technique:** handler event-write hook의 first-call deterministic fault injection
 - **분류:** deterministic fault-injection regression
@@ -1860,7 +1859,7 @@ dropped event는 ordered stream의 한 bit를 잃는 것이므로 subsequent pro
 - caller → callee: real client signal → production handler → injected write hook → production overflow branch → loop/main cleanup
 - 핵심 branch 또는 mutation 순서: fault server start → client가 첫 data signal 전송 → handler hook first call EAGAIN → production full-size check가 overflow flag set → loop가 flag 관측 후 error return → main diagnostic/cleanup → endpoint removal → client는 success ACK 없이 bounded failure입니다.
 - parent 또는 이전 관련 SHA와의 diff 요약: fault-only server target와 deterministic event-write seam/scenario가 추가됐으며 production algorithm은 같은 full-size check를 실행합니다.
-- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 항상 유지해야 하는 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
+- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 불변 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
 - 직접 실행한 command 또는 test와 결과: 실행하지 않음. 이 환경에서는 GitHub 저장소를 로컬 checkout할 수 없어 해당 SHA의 tree와 diff를 GitHub connector로 검토했습니다. 따라서 아래의 test 결과는 test code가 요구하는 관측값이며, 이 세션에서 실제 실행해 얻은 결과가 아닙니다.
 
 #### 다음 연결
@@ -1868,9 +1867,9 @@ dropped event는 ordered stream의 한 bit를 잃는 것이므로 subsequent pro
 `e304c63bee3e`는 expected external termination도 same cleanup architecture로 보냅니다.
 ### 4. `e304c63bee3e` — fix(server): 종료 시그널을 이벤트 루프 정리 경로로 처리
 
-- **Importance:** A
-- **Tags:** SELF_PIPE, PROCESS_LIFECYCLE
-- **Thread 내 역할:** `SIGHUP`, `SIGINT`, `SIGTERM`을 data signal과 같은 self-pipe event로 전달하고 normal 정리 과정에서 종료합니다.
+- **중요도:** A
+- **태그:** SELF_PIPE, PROCESS_LIFECYCLE
+- **개발 흐름에서의 역할:** `SIGHUP`, `SIGINT`, `SIGTERM`을 data signal과 같은 self-pipe event로 전달하고 normal 정리 과정에서 종료합니다.
 
 #### 원문에서 확정된 맥락
 
@@ -1902,12 +1901,12 @@ event loop가 termination event를 인식해 signal number를 main에 돌려주�
 
 #### Fix 연결 기록
 
-| 단계 | Source에서 확정된 내용 | 해당 SHA의 코드 근거 |
+| 단계 | 원자료에서 확인된 내용 | 해당 SHA의 코드 근거 |
 | --- | --- | --- |
 | 기존 가정 | termination handler에서 직접 종료해도 owned endpoint와 descriptors가 정리됩니다. | 직전 termination lifecycle은 data event loop와 분리됐습니다. |
 | 실제 failure 또는 위험 | async 문맥에서 cleanup을 생략하거나 unsafe filesystem/socket bookkeeping을 수행할 수 있습니다. | bound Unix path와 pipe/socket descriptors는 normal teardown state가 필요합니다. |
 | root cause | external shutdown을 normal event-loop 소유권과 다른 path로 처리했습니다. | 새 diff가 termination을 같은 event record/loop return으로 옮깁니다. |
-| 수정 항상 유지해야 하는 조건/decision | termination도 self-pipe event로 capture하고 main/atexit path에서 `128 + signal`로 종료합니다. | handler registration, loop termination branch, main status calculation |
+| 수정 불변 조건/decision | termination도 self-pipe event로 capture하고 main/atexit path에서 `128 + signal`로 종료합니다. | handler registration, loop termination branch, main status calculation |
 
 - 변경 전 failure를 재현하거나 추론할 수 있는 입력/상태: 직전 상태와 해당 분기를 직접 비교했습니다.
 - root cause가 드러나는 field 또는 call order: termination signal → handler errno save/event pipe write/restore → loop complete record read → termination branch가 signal number return → main이 `128 + signal` status 선택 → registered cleanup이 fd close/path unlink를 수행합니다.
@@ -1934,7 +1933,7 @@ event loop가 termination event를 인식해 signal number를 main에 돌려주�
 - caller → callee: termination handler → self-pipe → event loop → main return/status → atexit cleanup
 - 핵심 branch 또는 mutation 순서: termination signal → handler errno save/event pipe write/restore → loop complete record read → termination branch가 signal number return → main이 `128 + signal` status 선택 → registered cleanup이 fd close/path unlink를 수행합니다.
 - parent 또는 이전 관련 SHA와의 diff 요약: 별도 direct termination 경로가 self-pipe event와 normal cleanup/status path에 통합됐습니다.
-- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 항상 유지해야 하는 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
+- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 불변 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
 - 직접 실행한 command 또는 test와 결과: 실행하지 않음. 이 환경에서는 GitHub 저장소를 로컬 checkout할 수 없어 해당 SHA의 tree와 diff를 GitHub connector로 검토했습니다. 따라서 아래의 test 결과는 test code가 요구하는 관측값이며, 이 세션에서 실제 실행해 얻은 결과가 아닙니다.
 
 #### 다음 연결
@@ -1942,9 +1941,9 @@ event loop가 termination event를 인식해 signal number를 main에 돌려주�
 `686b0d2a14e3`에서 inherited mask가 event delivery를 막지 않도록 unblock합니다.
 ### 5. `686b0d2a14e3` — fix(server): 상속된 이벤트 시그널 마스크 해제
 
-- **Importance:** A
-- **Tags:** PROCESS_LIFECYCLE, RISK
-- **Thread 내 역할:** handler 설치 후 two data signals와 three supported termination signals를 process mask에서 명시적으로 unblock합니다.
+- **중요도:** A
+- **태그:** PROCESS_LIFECYCLE, RISK
+- **개발 흐름에서의 역할:** handler 설치 후 two data signals와 three supported termination signals를 process mask에서 명시적으로 unblock합니다.
 
 #### 원문에서 확정된 맥락
 
@@ -1974,12 +1973,12 @@ signal disposition만 설치해도 blocked mask는 `exec` 뒤 남습니다. serv
 
 #### Fix 연결 기록
 
-| 단계 | Source에서 확정된 내용 | 해당 SHA의 코드 근거 |
+| 단계 | 원자료에서 확인된 내용 | 해당 SHA의 코드 근거 |
 | --- | --- | --- |
 | 기존 가정 | handler installation이면 signal delivery가 보장됩니다. | 직전 init은 `sigaction`만 수행했습니다. |
 | 실제 failure 또는 위험 | `exec` inherited mask 때문에 PID만 publish하고 events를 받지 못합니다. | POSIX process signal mask는 exec 뒤 유지됩니다. |
 | root cause | disposition만 설정하고 deliverability를 초기화하지 않았습니다. | 새 helper가 `SIG_UNBLOCK`을 명시적으로 호출합니다. |
-| 수정 항상 유지해야 하는 조건/decision | required data/termination signals를 PID publication 전에 explicit unblock합니다. | `src/server.c: unblock_event_signals`와 main call order |
+| 수정 불변 조건/decision | required data/termination signals를 PID publication 전에 explicit unblock합니다. | `src/server.c: unblock_event_signals`와 main call order |
 
 - 변경 전 failure를 재현하거나 추론할 수 있는 입력/상태: 직전 상태와 해당 분기를 직접 비교했습니다.
 - root cause가 드러나는 field 또는 call order: endpoint/self-pipe setup → `sigaction` handlers 설치 → required signal set 구성 → `SIG_UNBLOCK` → 성공 뒤 PID publication/event loop입니다.
@@ -2004,7 +2003,7 @@ signal disposition만 설치해도 blocked mask는 `exec` 뒤 남습니다. serv
 - caller → callee: server initialization → handler install → `unblock_event_signals` → PID output/event loop
 - 핵심 branch 또는 mutation 순서: endpoint/self-pipe setup → `sigaction` handlers 설치 → required signal set 구성 → `SIG_UNBLOCK` → 성공 뒤 PID publication/event loop입니다.
 - parent 또는 이전 관련 SHA와의 diff 요약: required signal disposition뿐 아니라 deliverability를 server가 자체 초기화합니다.
-- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 항상 유지해야 하는 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
+- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 불변 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
 - 직접 실행한 command 또는 test와 결과: 실행하지 않음. 이 환경에서는 GitHub 저장소를 로컬 checkout할 수 없어 해당 SHA의 tree와 diff를 GitHub connector로 검토했습니다. 따라서 아래의 test 결과는 test code가 요구하는 관측값이며, 이 세션에서 실제 실행해 얻은 결과가 아닙니다.
 
 #### 다음 연결
@@ -2012,9 +2011,9 @@ signal disposition만 설치해도 blocked mask는 `exec` 뒤 남습니다. serv
 `72424469474c`에서 masked-exec server의 message와 SIGTERM을 검증합니다.
 ### 6. `72424469474c` — test(server): 차단된 시그널 마스크 상속 뒤 메시지 검증
 
-- **Importance:** B
-- **Tags:** TEST, PROCESS_LIFECYCLE
-- **Thread 내 역할:** wrapper가 data와 termination signals를 block한 뒤 server를 `exec`하고 message delivery와 SIGTERM cleanup을 검증합니다.
+- **중요도:** B
+- **태그:** TEST, PROCESS_LIFECYCLE
+- **개발 흐름에서의 역할:** wrapper가 data와 termination signals를 block한 뒤 server를 `exec`하고 message delivery와 SIGTERM cleanup을 검증합니다.
 
 #### 원문에서 확정된 맥락
 
@@ -2041,9 +2040,9 @@ PID publication만으로 success로 보지 않습니다. bit events, ACKs, NUL f
 - 실제로 추가·수정된 핵심 symbol과 state: `masked_exec` wrapper가 data와 HUP/INT/TERM을 block한 채 real server를 `exec`하고 shell test가 real client message와 real SIGTERM을 보냅니다.
 - 이 commit만으로 충분하지 않아 후속 commit을 확인해야 하는 부분: 단순 startup/PID assertion은 blocked mask가 실제 event processing을 막는 failure를 놓칩니다.
 
-#### Test commit 분석 기록
+#### 테스트 커밋 분석 기록
 
-- **대상 production 항상 유지해야 하는 조건:** server는 launcher mask와 무관하게 required event signals를 받을 수 있어야 합니다.
+- **대상 production 불변 조건:** server는 launcher mask와 무관하게 required event signals를 받을 수 있어야 합니다.
 - **재현하는 failure 또는 boundary:** blocked mask를 상속해 PID는 출력하지만 data/termination을 처리하지 못하는 server
 - **사용한 test technique:** masked-exec wrapper + real server/client + real SIGTERM
 - **분류:** process-lifecycle integration regression
@@ -2077,16 +2076,16 @@ PID publication만으로 success로 보지 않습니다. bit events, ACKs, NUL f
 - caller → callee: test shell → `masked_exec` → real server initialization → real client/self-pipe → SIGTERM/cleanup
 - 핵심 branch 또는 mutation 순서: wrapper signal block → `exec(server)` → PID publication wait → real client message → exact output/ACK completion → SIGTERM → wait status 143 → endpoint removal/stderr 확인입니다.
 - parent 또는 이전 관련 SHA와의 diff 요약: masked-exec wrapper와 end-to-end lifecycle scenario가 test target에 추가됐습니다.
-- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 항상 유지해야 하는 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
+- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 불변 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
 - 직접 실행한 command 또는 test와 결과: 실행하지 않음. 이 환경에서는 GitHub 저장소를 로컬 checkout할 수 없어 해당 SHA의 tree와 diff를 GitHub connector로 검토했습니다. 따라서 아래의 test 결과는 test code가 요구하는 관측값이며, 이 세션에서 실제 실행해 얻은 결과가 아닙니다.
 
 #### 다음 연결
 
 이 commit이 Thread final lifecycle regression입니다.
 
-## 6. 항상 유지해야 하는 조건 ledger
+## 6. 불변 조건 ledger
 
-### Source에서 확정된 핵심 항상 유지해야 하는 조건
+### 원자료에서 확인된 핵심 불변 조건
 
 - handler는 `errno`를 보존하고 async-signal-safe event delivery만 수행합니다.
 - session, bit, byte, sequence, stdout, socket work는 event loop가 전담합니다.
@@ -2096,7 +2095,7 @@ PID publication만으로 success로 보지 않습니다. bit events, ACKs, NUL f
 
 ### 시간에 따른 변화 기록
 
-| Commit | Source에서 확정된 변화 | 실제 state/condition | code evidence | 상태: 도입·강화·부족·복구·검증 |
+| Commit | 원자료에서 확인된 변화 | 실제 state/condition | code evidence | 상태: 도입·강화·부족·복구·검증 |
 | --- | --- | --- | --- | --- |
 | `a7d994b0a4b6` | bit processing을 explicit `(sender, signal)` event를 받는 function으로 추출하고 event size가 `PIPE_BUF` 안인지 compile-time으로 확인합니다. | protocol transition이 `(sender, signal)` value를 입력으로 받지만 handler가 authoritative caller입니다. | `src/server.c: t_bit_event`, extracted processor, handler caller | 도입·준비 |
 | `22363f83ff25` | handler를 `errno` preservation과 fixed event self-pipe write로 제한하고 `pselect` loop가 모든 protocol work를 수행하게 합니다. | handler는 event producer이고 event loop만 session/bit/output/ACK state를 수정합니다. enqueue loss는 fatal flag입니다. | `src/server.c: handle_signal`, event pipe setup, `run_event_loop` | 강화·전환 |
@@ -2105,9 +2104,9 @@ PID publication만으로 success로 보지 않습니다. bit events, ACKs, NUL f
 | `686b0d2a14e3` | handler 설치 후 two data signals와 three supported termination signals를 process mask에서 명시적으로 unblock합니다. | server startup이 required event set의 deliverability를 직접 소유합니다. | `src/server.c: unblock_event_signals`, main call order | 복구 |
 | `72424469474c` | wrapper가 data와 termination signals를 block한 뒤 server를 `exec`하고 message delivery와 SIGTERM cleanup을 검증합니다. | blocked mask를 상속한 real process가 data와 termination 모두 처리하고 cleanup하는지 검증합니다. | `tests/masked_exec.c`, `tests/inherited_mask.sh` | 검증 |
 
-## 7. Failure → Fix → Test 연결
+## 7. 실패 → 수정 → 검증 연결
 
-| 기존 가정 또는 상태 | 실제 failure/위험 | Fix 또는 전환 commit | 수정된 decision/항상 유지해야 하는 조건 | Test 또는 후속 검증 | 학습자 code evidence |
+| 기존 가정 또는 상태 | 실제 failure/위험 | Fix 또는 전환 commit | 수정된 decision/불변 조건 | Test 또는 후속 검증 | 학습자 code evidence |
 | --- | --- | --- | --- | --- | --- |
 | handler가 state/output/ACK를 직접 처리 | async-safe 범위를 넘고 multi-field state가 handler context에 결합 | `a7d994b0a4b6 → 22363f83ff25` | event value 추출 후 handler는 self-pipe write만 수행 | `4c535ac8657e` | handler full-record write/overflow flag/loop error |
 | termination handler에서 직접 cleanup | filesystem/socket bookkeeping을 async context에서 수행하거나 생략할 위험 | `e304c63bee3e` | termination도 event loop와 normal cleanup 사용 | `72424469474c` | termination event branch, main `128+signal`, endpoint assertion |
@@ -2124,9 +2123,9 @@ PID publication만으로 success로 보지 않습니다. bit events, ACKs, NUL f
 | `22363f83ff25` | `pselect` event loop | 모든 authoritative mutation과 I/O | handler는 event producer | event pipe, ordinary session fields |
 | shutdown integration | event loop + main/atexit | termination signal number→status/cleanup | handler cleanup 없음 | loop return, main, `cleanup_server` |
 
-## 9. Thread 최종 상태
+## 9. 개발 흐름의 최종 상태
 
-Source에서 확정된 최종 조건:
+원자료에서 확인된 최종 조건:
 
 - handler는 sender PID와 signal number를 fixed event로 복사해 nonblocking self-pipe에 씁니다.
 - event loop가 complete event를 읽고 authorization, assembly, stdout, ACK를 순서대로 실행합니다.
@@ -2140,7 +2139,7 @@ Source에서 확정된 최종 조건:
 - 정상 transition 순서: signal delivery → handler의 errno 보존/fixed record write → pselect wakeup → complete event read → data/termination 분기 → data면 authorization/assembly/output/ACK, termination이면 signal status return입니다.
 - 실패 시 중단·reset·cleanup 순서: event enqueue loss 또는 permanent read/transition/output/response error는 loop error→main failure→registered cleanup입니다. supported termination은 error가 아니라 `128+signal` status로 같은 cleanup을 사용합니다.
 - 최종 상태가 보장하지 않는 것: pipe capacity 확장, lost event 복원, standard signal multiplicity 자체의 보존, uncatchable signal cleanup은 제공하지 않습니다.
-- 이 Thread를 한 문단으로 설명한 최종 서술: 이 Thread는 handler body를 event value processor로 먼저 분리한 뒤, fixed record를 nonblocking self-pipe에 쓰는 producer로 handler 책임을 축소합니다. event loop 하나가 session과 I/O를 직렬화하고 enqueue loss를 fail-stop으로 처리합니다. termination도 같은 event path에 넣고 required signals를 startup에서 unblock해 launcher의 inherited mask와 무관한 lifecycle을 완성합니다.
+- 이 개발 흐름을 한 문단으로 설명한 최종 서술: 이 개발 흐름은 handler body를 event value processor로 먼저 분리한 뒤, fixed record를 nonblocking self-pipe에 쓰는 producer로 handler 책임을 축소합니다. event loop 하나가 session과 I/O를 직렬화하고 enqueue loss를 fail-stop으로 처리합니다. termination도 같은 event path에 넣고 required signals를 startup에서 unblock해 launcher의 inherited mask와 무관한 lifecycle을 완성합니다.
 
 ## 10. 최종 architecture 또는 실행 순서 정리
 
@@ -2180,10 +2179,10 @@ pselect event loop
 
 - [x] commit map의 6개 SHA를 source 순서대로 모두 설명할 수 있습니다.
 - [x] 각 code excerpt에 SHA, path, symbol, 선택 이유가 기록돼 있습니다.
-- [x] final HEAD 코드를 historical SHA의 증거로 사용한 곳이 없습니다.
+- [x] 최종 HEAD 코드를 historical SHA의 증거로 사용한 곳이 없습니다.
 - [x] 정상 경로와 실패 처리를 state mutation 순서로 설명할 수 있습니다.
-- [x] source 확정 항상 유지해야 하는 조건과 직접 확인한 code evidence를 구분했습니다.
-- [x] test commit의 항상 유지해야 하는 조건, failure, technique, production path, proves/not-proves를 기록했습니다.
+- [x] source 확정 불변 조건과 직접 확인한 code evidence를 구분했습니다.
+- [x] test commit의 불변 조건, failure, technique, production path, proves/not-proves를 기록했습니다.
 - [x] Thread final state를 함수와 state field 수준으로 설명할 수 있습니다.
 - [ ] 해당 SHA의 test를 로컬에서 직접 실행했습니다. — 실행하지 않음. 이 환경에서는 GitHub 저장소를 로컬 checkout할 수 없어 해당 SHA의 tree와 diff를 GitHub connector로 검토했습니다. 따라서 아래의 test 결과는 test code가 요구하는 관측값이며, 이 세션에서 실제 실행해 얻은 결과가 아닙니다.
 
@@ -2192,14 +2191,14 @@ pselect event loop
 - asynchronous signal delivery와 sequential protocol 상태 머신 사이에 lossless bridge가 필요합니다.
 - handler에서 complex work를 제거하면서 sender PID와 signal identity를 보존해야 합니다.
 - shutdown과 mask normalization을 별도 unsafe path가 아니라 같은 lifecycle에 통합해야 합니다.
-===== END FILE: 03-self-pipe-event-loop.md =====
 
-===== BEGIN FILE: 04-output-commit-boundary.md =====
-# Thread: Output becomes part of protocol commit
+---
+
+# 프로토콜 완료 조건에 포함되는 출력 성공
 
 > 완성형 해설서가 아닙니다. 아래 확정 사항을 기준으로 각 commit SHA의 실제 코드와 diff를 읽고 기록란을 채웁니다.
 
-## 1. Thread 목표
+## 1. 개발 흐름 목표
 
 single `write`를 호출하던 helper가 all-or-failure write contract로 바뀌고, payload·terminator·recovery delimiter·PID output이 성공한 뒤에만 protocol ACK를 보낼 수 있게 되는 commit boundary를 복원합니다.
 
@@ -2207,26 +2206,26 @@ single `write`를 호출하던 helper가 all-or-failure write contract로 바뀌
 
 server의 in-memory state와 stdout은 분리된 효과가 아닙니다. 상태 전이 뒤 ACK를 보내고 stdout이 실패하면 client는 실제로 보이지 않은 data를 success로 판단합니다. `mt_write_all`이 local completion contract를 만들고 S-level fix가 output-before-ACK order를 정의하며 fault tests가 normal output과 abandoned-session recovery newline을 함께 고정합니다.
 
-## 2. 이 Thread를 이해하기 위한 핵심 질문
+## 2. 이 개발 흐름을 이해하기 위한 핵심 질문
 
 - `write`의 EINTR, short count, zero count, terminal error를 `mt_write_all`은 각각 어떻게 처리합니까?
 - completed byte 또는 NUL delimiter에서 state mutation, stdout write, ACK send의 실제 순서는 무엇입니까?
 - PID publication failure는 endpoint와 process cleanup에 어떻게 전파됩니까?
 - `SIGPIPE` ignore로 closed stdout을 `EPIPE`로 관측하는 이유는 무엇입니까?
-- output success 뒤 ACK datagram이 유실되는 경우까지 이 항상 유지해야 하는 조건이 해결하는가?
+- output success 뒤 ACK datagram이 유실되는 경우까지 이 불변 조건이 해결하는가?
 - dead-owner recovery newline failure가 owner reset과 replacement READY를 왜 막아야 하는가?
 
 ## 3. 완료 기준
 
-- [x] `mt_write_all` loop 항상 유지해야 하는 조건과 pointer/remaining update를 코드로 설명했습니다.
+- [x] `mt_write_all` loop 불변 조건과 pointer/remaining update를 코드로 설명했습니다.
 - [x] PID, payload byte, NUL newline, recovery newline의 output-to-ACK ordering을 기록했습니다.
 - [x] output failure가 event loop → main → endpoint cleanup → client failure로 전파되는 path를 작성했습니다.
 - [x] fault-injection mode를 production branch와 process result에 연결했습니다.
 - [x] local commit guarantee와 non-exactly-once limit를 구분했습니다.
 
-## 4. Commit map
+## 4. 커밋 목록
 
-| 순서 | SHA | Subject | Importance | Tags | Source에서 확정된 역할 |
+| 순서 | SHA | 제목 | 중요도 | 태그 | 원자료에서 확인된 역할 |
 | --- | --- | --- | --- | --- | --- |
 | 1 | `826dd34c378f` | fix(io): 중단·부분 쓰기를 끝까지 처리 | A | OUTPUT_COMMIT, PRACTICAL, RISK | `mt_write_all`이 EINTR를 retry하고 short write만큼 offset을 전진하며 zero progress를 `EIO`로 처리합니다. |
 | 2 | `db2004556d8b` | fix(server): stdout 실패 뒤 ACK 전송 차단 | S | CORE, OUTPUT_COMMIT, RISK | PID, payload, terminator newline, recovery newline을 all-or-failure로 쓰고 failure 시 triggering ACK를 보내지 않습니다. |
@@ -2237,16 +2236,16 @@ server의 in-memory state와 stdout은 분리된 효과가 아닙니다. 상태 
 
 - 각 항목은 해당 SHA의 tree를 기준으로 읽었습니다.
 - 변경 전 상태는 해당 SHA의 parent 또는 지정된 이전 관련 SHA에서 확인했습니다.
-- 같은 commit이 다른 Thread에 다시 등장해도 이 Thread의 질문으로 별도 기록했습니다.
+- 같은 commit이 다른 Thread에 다시 등장해도 이 개발 흐름의 질문으로 별도 기록했습니다.
 - runtime test는 실행하지 않았으며, 실행 결과처럼 표현하지 않았습니다.
 
-## 5. Commit별 학습 기록
+## 5. 커밋별 학습 기록
 
 ### 1. `826dd34c378f` — fix(io): 중단·부분 쓰기를 끝까지 처리
 
-- **Importance:** A
-- **Tags:** OUTPUT_COMMIT, PRACTICAL, RISK
-- **Thread 내 역할:** `mt_write_all`이 EINTR를 retry하고 short write만큼 offset을 전진하며 zero progress를 `EIO`로 처리합니다.
+- **중요도:** A
+- **태그:** OUTPUT_COMMIT, PRACTICAL, RISK
+- **개발 흐름에서의 역할:** `mt_write_all`이 EINTR를 retry하고 short write만큼 offset을 전진하며 zero progress를 `EIO`로 처리합니다.
 
 #### 원문에서 확정된 맥락
 
@@ -2277,12 +2276,12 @@ string/number helpers가 이 primitive를 사용합니다. success는 모든 req
 
 #### Fix 연결 기록
 
-| 단계 | Source에서 확정된 내용 | 해당 SHA의 코드 근거 |
+| 단계 | 원자료에서 확인된 내용 | 해당 SHA의 코드 근거 |
 | --- | --- | --- |
 | 기존 가정 | 한 번의 successful `write` call이 requested buffer 전체를 출력합니다. | 직전 helper는 반환 count를 누적하지 않는 single-call 구현이었습니다. |
 | 실제 failure 또는 위험 | `EINTR`, short write, zero progress에서 PID·diagnostic·protocol-visible output이 잘리거나 loop가 멈출 수 있습니다. | `write`의 반환 count와 remaining length를 저장하는 state가 없었습니다. |
 | root cause | descriptor write를 partial-progress interface가 아니라 atomic completion operation으로 취급했습니다. | 새 구현은 `offset`과 `written`을 분리해 progress를 직접 관리합니다. |
-| 수정 항상 유지해야 하는 조건/decision | success는 모든 bytes를 쓴 경우뿐이며 interruption은 retry하고 short count만큼 전진합니다. | `mt_write_all`의 `while (offset < size)`와 세 반환 branch |
+| 수정 불변 조건/decision | success는 모든 bytes를 쓴 경우뿐이며 interruption은 retry하고 short count만큼 전진합니다. | `mt_write_all`의 `while (offset < size)`와 세 반환 branch |
 | regression | `9aa80e047514`가 first-call EINTR, one-byte short write, zero write를 주입합니다. | `tests/write_fault.c`, `tests/output_failure.sh`, fault server build seam |
 
 - 변경 전 failure를 재현하거나 추론할 수 있는 입력/상태: 직전 상태와 해당 분기를 직접 비교했습니다.
@@ -2340,9 +2339,9 @@ while (offset < size)
 `db2004556d8b`에서 local write success가 protocol commit condition이 됩니다.
 ### 2. `db2004556d8b` — fix(server): stdout 실패 뒤 ACK 전송 차단
 
-- **Importance:** S
-- **Tags:** CORE, OUTPUT_COMMIT, RISK
-- **Thread 내 역할:** PID, payload, terminator newline, recovery newline을 all-or-failure로 쓰고 failure 시 triggering ACK를 보내지 않습니다.
+- **중요도:** S
+- **태그:** CORE, OUTPUT_COMMIT, RISK
+- **개발 흐름에서의 역할:** PID, payload, terminator newline, recovery newline을 all-or-failure로 쓰고 failure 시 triggering ACK를 보내지 않습니다.
 
 #### 원문에서 확정된 맥락
 
@@ -2384,12 +2383,12 @@ while (offset < size)
 
 #### Fix 연결 기록
 
-| 단계 | Source에서 확정된 내용 | 해당 SHA의 코드 근거 |
+| 단계 | 원자료에서 확인된 내용 | 해당 SHA의 코드 근거 |
 | --- | --- | --- |
 | 기존 가정 | byte state를 완성하면 ACK를 보내도 됩니다. | 직전 code는 stdout completion을 authoritative success predicate로 사용하지 않았습니다. |
 | 실제 failure 또는 위험 | stdout partial/`EPIPE`에도 client가 success를 관측할 수 있습니다. | output과 response가 서로 다른 실패 가능한 외부 효과입니다. |
 | root cause | in-memory transition과 visible output commit order가 분리됐습니다. | 수정 diff가 write return을 processor/loop return과 ACK condition에 연결합니다. |
-| 수정 항상 유지해야 하는 조건/decision | required output complete 뒤에만 triggering ACK를 보내고, recovery delimiter 성공 전에는 owner를 reset/reassign하지 않습니다. | `flush_byte`, `reset_session`, `process_bit`의 return/order |
+| 수정 불변 조건/decision | required output complete 뒤에만 triggering ACK를 보내고, recovery delimiter 성공 전에는 owner를 reset/reassign하지 않습니다. | `flush_byte`, `reset_session`, `process_bit`의 return/order |
 | regression | `9aa80e047514`와 `081a882d7fa3`이 각 output site의 false-success를 검증합니다. | write fault hook, client timeout, server exit, endpoint removal assertions |
 
 - 변경 전 failure를 재현하거나 추론할 수 있는 입력/상태: 직전 상태와 해당 분기를 직접 비교했습니다.
@@ -2444,9 +2443,9 @@ static int reset_session(int close_partial_line)
 `9aa80e047514`가 normal output failures를, `081a882d7fa3`이 recovery newline failure를 검증합니다.
 ### 3. `9aa80e047514` — test(server): 부분 쓰기와 출력 실패 검증
 
-- **Importance:** A
-- **Tags:** TEST, OUTPUT_COMMIT, RISK
-- **Thread 내 역할:** low-level write를 deterministic test implementation으로 바꿔 EINTR, one-byte short write, zero write, selected payload/newline EPIPE를 주입합니다.
+- **중요도:** A
+- **태그:** TEST, OUTPUT_COMMIT, RISK
+- **개발 흐름에서의 역할:** low-level write를 deterministic test implementation으로 바꿔 EINTR, one-byte short write, zero write, selected payload/newline EPIPE를 주입합니다.
 
 #### 원문에서 확정된 맥락
 
@@ -2476,9 +2475,9 @@ complete output under partial progress와 startup/message failure의 no-false-su
 - 정상 경로와 failure 경로가 갈라지는 조건: startup PID zero-write는 PID publication 전에 실패합니다. payload 또는 terminating newline EPIPE는 bit processor가 실패하고 ACK가 없어 client가 bounded timeout합니다. short/EINTR mode는 offset loop가 계속 진행해 expected bytes를 완성합니다.
 - 후속 commit이 강화하거나 교체하는 부분: `081a882d7fa3`이 같은 seam을 dead-owner recovery newline이라는 별도 branch에 적용합니다.
 
-#### Test commit 분석 기록
+#### 테스트 커밋 분석 기록
 
-- **대상 production 항상 유지해야 하는 조건:** stdout effect가 complete되지 않으면 해당 transition을 success ACK하지 않습니다.
+- **대상 production 불변 조건:** stdout effect가 complete되지 않으면 해당 transition을 success ACK하지 않습니다.
 - **재현하는 failure 또는 boundary:** EINTR, one-byte short write, zero progress, payload/newline EPIPE
 - **사용한 test technique:** compile-time/link-time write hook against the real server algorithm
 - **분류:** deterministic production-path fault regression
@@ -2513,7 +2512,7 @@ complete output under partial progress와 startup/message failure의 no-false-su
 - caller → callee: fault server의 `mt_write_all` → test hook → configured return; shell → real client/server process 관측
 - 핵심 branch 또는 mutation 순서: Makefile fault target → `tests/write_fault.c` hook 선택 → real server algorithm 실행 → shell scenario가 server/client status, stdout/stderr, socket path를 관측합니다. EINTR/short mode는 같은 logical output을 완성하고, zero/EPIPE mode는 server error와 no-success response로 끝납니다.
 - parent 또는 이전 관련 SHA와의 diff 요약: production binary는 유지하고 test-only link seam과 fault server target, process-level assertion script를 추가했습니다.
-- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 항상 유지해야 하는 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
+- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 불변 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
 - 직접 실행한 command 또는 test와 결과: 실행하지 않음. 이 환경에서는 GitHub 저장소를 로컬 checkout할 수 없어 해당 SHA의 tree와 diff를 GitHub connector로 검토했습니다. 따라서 아래의 test 결과는 test code가 요구하는 관측값이며, 이 세션에서 실제 실행해 얻은 결과가 아닙니다.
 
 #### 다음 연결
@@ -2521,9 +2520,9 @@ complete output under partial progress와 startup/message failure의 no-false-su
 `081a882d7fa3`에서 recovery delimiter까지 같은 invariant를 검증합니다.
 ### 4. `081a882d7fa3` — test(server): 회수 줄바꿈 출력 실패 검증
 
-- **Importance:** A
-- **Tags:** TEST, OUTPUT_COMMIT, SESSION
-- **Thread 내 역할:** dead owner가 visible partial line을 남긴 상태에서 replacement acquisition이 recovery newline을 쓰는 순간 failure를 주입합니다.
+- **중요도:** A
+- **태그:** TEST, OUTPUT_COMMIT, SESSION
+- **개발 흐름에서의 역할:** dead owner가 visible partial line을 남긴 상태에서 replacement acquisition이 recovery newline을 쓰는 순간 failure를 주입합니다.
 
 #### 원문에서 확정된 맥락
 
@@ -2552,9 +2551,9 @@ server는 event loop를 종료하고 replacement client는 READY/ACK success가 
 - 정상 경로와 failure 경로가 갈라지는 조건: delimiter write가 실패하면 coupled fields를 clear하지 않고 `reset_session`이 `-1`을 반환합니다. event loop는 종료되고 replacement READY와 subsequent bit ACK 모두 전송되지 않습니다.
 - 후속 commit이 강화하거나 교체하는 부분: 이 commit이 Thread final regression입니다. 후속 상태에서도 recovery output은 successful handoff의 선행 조건이어야 합니다.
 
-#### Test commit 분석 기록
+#### 테스트 커밋 분석 기록
 
-- **대상 production 항상 유지해야 하는 조건:** visible abandoned line을 delimit하기 전에는 owner reassignment가 완료되지 않습니다.
+- **대상 production 불변 조건:** visible abandoned line을 delimit하기 전에는 owner reassignment가 완료되지 않습니다.
 - **재현하는 failure 또는 boundary:** new ACQUIRE 중 recovery newline EPIPE
 - **사용한 test technique:** partial-session real process + selected write fault + real replacement client
 - **분류:** failure-path-specific deterministic regression
@@ -2588,16 +2587,16 @@ server는 event loop를 종료하고 replacement client는 READY/ACK success가 
 - caller → callee: replacement ACQUIRE handling → owner availability recovery → `reset_session(1)` → `mt_write_all` → fault hook
 - 핵심 branch 또는 mutation 순서: server start → partial-session helper가 acquire/visible byte/partial bit 후 exit → replacement client ACQUIRE → owner unavailable 판단 → `reset_session(1)`의 recovery newline write → injected EPIPE → reset/READY 생략 → loop/main failure → endpoint cleanup; replacement client는 timeout합니다.
 - parent 또는 이전 관련 SHA와의 diff 요약: 기존 output fault suite에 dead-owner recovery setup과 selected recovery-newline failure assertion을 추가했습니다.
-- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 항상 유지해야 하는 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
+- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 불변 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
 - 직접 실행한 command 또는 test와 결과: 실행하지 않음. 이 환경에서는 GitHub 저장소를 로컬 checkout할 수 없어 해당 SHA의 tree와 diff를 GitHub connector로 검토했습니다. 따라서 아래의 test 결과는 test code가 요구하는 관측값이며, 이 세션에서 실제 실행해 얻은 결과가 아닙니다.
 
 #### 다음 연결
 
 이 commit이 Thread final regression입니다.
 
-## 6. 항상 유지해야 하는 조건 ledger
+## 6. 불변 조건 ledger
 
-### Source에서 확정된 핵심 항상 유지해야 하는 조건
+### 원자료에서 확인된 핵심 불변 조건
 
 - writer success는 requested bytes 전체가 descriptor interface에 전달됐음을 뜻합니다.
 - EINTR와 short write는 progress를 보존해 끝까지 처리하며 zero write는 `EIO`입니다.
@@ -2607,16 +2606,16 @@ server는 event loop를 종료하고 replacement client는 READY/ACK success가 
 
 ### 시간에 따른 변화 기록
 
-| Commit | Source에서 확정된 변화 | 실제 state/condition | code evidence | 상태: 도입·강화·부족·복구·검증 |
+| Commit | 원자료에서 확인된 변화 | 실제 state/condition | code evidence | 상태: 도입·강화·부족·복구·검증 |
 | --- | --- | --- | --- | --- |
 | `826dd34c378f` | `mt_write_all`이 EINTR를 retry하고 short write만큼 offset을 전진하며 zero progress를 `EIO`로 처리합니다. | `offset`이 requested `size`에 도달해야 success이고, zero progress는 `EIO`입니다. | `src/write_utils.c: mt_write_all` | 도입 |
 | `db2004556d8b` | PID, payload, terminator newline, recovery newline을 all-or-failure로 쓰고 failure 시 triggering ACK를 보내지 않습니다. | output success가 ACK 전에 필요한 protocol commit condition이 되고 recovery fields는 delimiter 성공 뒤에만 clear됩니다. | `src/server.c: flush_byte`, `reset_session`, bit processor response order | 강화·수정 |
 | `9aa80e047514` | low-level write를 deterministic test implementation으로 바꿔 EINTR, one-byte short write, zero write, selected payload/newline EPIPE를 주입합니다. | fault hook이 production progress/commit branches를 결정적으로 선택하고 process-level outcomes를 확인합니다. | `tests/write_fault.c`, `tests/output_failure.sh`, Makefile fault target | 검증 |
 | `081a882d7fa3` | dead owner가 visible partial line을 남긴 상태에서 replacement acquisition이 recovery newline을 쓰는 순간 failure를 주입합니다. | recovery delimiter가 성공하지 않으면 owner/reset/reassignment transition이 commit되지 않습니다. | `tests/output_failure.sh` recovery scenario와 `src/server.c: reset_session` | 검증 |
 
-## 7. Failure → Fix → Test 연결
+## 7. 실패 → 수정 → 검증 연결
 
-| 기존 가정 또는 상태 | 실제 failure/위험 | Fix 또는 전환 commit | 수정된 decision/항상 유지해야 하는 조건 | Test 또는 후속 검증 | 학습자 code evidence |
+| 기존 가정 또는 상태 | 실제 failure/위험 | Fix 또는 전환 commit | 수정된 decision/불변 조건 | Test 또는 후속 검증 | 학습자 code evidence |
 | --- | --- | --- | --- | --- | --- |
 | single `write` success를 complete output으로 간주 | EINTR/short write에서 PID·payload truncation 가능 | `826dd34c378f` | `mt_write_all` all-or-failure loop | `9aa80e047514` | writer hook의 EINTR/one-byte/zero branches |
 | state transition 후 ACK부터 전송 | stdout failure에도 client가 success 관측 | `db2004556d8b` | output complete 뒤 ACK, failure면 server exit | `9aa80e047514` | payload/newline EPIPE, timeout, cleanup assertions |
@@ -2633,9 +2632,9 @@ server는 event loop를 종료하고 replacement client는 READY/ACK success가 
 | recovery commit | session reset caller | delimiter success 뒤 reset/reassign | failure 시 server 종료 | `reset_session(close_partial_line)` |
 | startup | main/initialization | PID line complete write 뒤 ready | false readiness 방지 | PID buffer/publication path, `cleanup_server` |
 
-## 9. Thread 최종 상태
+## 9. 개발 흐름의 최종 상태
 
-Source에서 확정된 최종 조건:
+원자료에서 확인된 최종 조건:
 
 - 모든 protocol-visible server output은 all-or-failure writer를 사용합니다.
 - ACK는 triggering bit가 요구한 visible output effect가 성공한 뒤에만 전송됩니다.
@@ -2648,7 +2647,7 @@ Source에서 확정된 최종 조건:
 - 정상 transition 순서: bit event가 byte 또는 delimiter completion을 결정한 뒤 `mt_write_all`이 필요한 output을 모두 완료합니다. 성공한 경우에만 line/session state를 commit하고 matching ACK를 보냅니다.
 - 실패 시 중단·reset·cleanup 순서: EINTR은 retry하고 short count는 누적합니다. zero/terminal error는 processor→event loop→main failure로 전파되며 triggering ACK를 생략하고 registered cleanup이 descriptor와 bound endpoint를 정리합니다.
 - 최종 상태가 보장하지 않는 것: output과 ACK의 원자적 transaction, output rollback, ACK 재전송·deduplication, remote persistence는 제공하지 않습니다.
-- 이 Thread를 한 문단으로 설명한 최종 서술: 이 Thread는 descriptor write를 partial-progress interface로 바로잡은 뒤 그 success를 server protocol의 commit 조건으로 끌어올립니다. PID, payload, NUL delimiter와 abandoned-session delimiter는 모두 complete write 뒤에만 다음 state나 ACK로 넘어갑니다. deterministic fault tests는 EINTR·short·zero·EPIPE의 각 branch를 고정하지만 output 성공 후 ACK 손실까지 제거하지는 못합니다.
+- 이 개발 흐름을 한 문단으로 설명한 최종 서술: 이 개발 흐름은 descriptor write를 partial-progress interface로 바로잡은 뒤 그 success를 server protocol의 commit 조건으로 끌어올립니다. PID, payload, NUL delimiter와 abandoned-session delimiter는 모두 complete write 뒤에만 다음 state나 ACK로 넘어갑니다. deterministic fault tests는 EINTR·short·zero·EPIPE의 각 branch를 고정하지만 output 성공 후 ACK 손실까지 제거하지는 못합니다.
 
 ## 10. 최종 architecture 또는 실행 순서 정리
 
@@ -2685,10 +2684,10 @@ dead-owner recovery
 
 - [x] commit map의 4개 SHA를 source 순서대로 모두 설명할 수 있습니다.
 - [x] 각 code excerpt에 SHA, path, symbol, 선택 이유가 기록돼 있습니다.
-- [x] final HEAD 코드를 historical SHA의 증거로 사용한 곳이 없습니다.
+- [x] 최종 HEAD 코드를 historical SHA의 증거로 사용한 곳이 없습니다.
 - [x] 정상 경로와 실패 처리를 state mutation 순서로 설명할 수 있습니다.
-- [x] source 확정 항상 유지해야 하는 조건과 직접 확인한 code evidence를 구분했습니다.
-- [x] test commit의 항상 유지해야 하는 조건, failure, technique, production path, proves/not-proves를 기록했습니다.
+- [x] source 확정 불변 조건과 직접 확인한 code evidence를 구분했습니다.
+- [x] test commit의 불변 조건, failure, technique, production path, proves/not-proves를 기록했습니다.
 - [x] Thread final state를 함수와 state field 수준으로 설명할 수 있습니다.
 - [ ] 해당 SHA의 test를 로컬에서 직접 실행했습니다. — 실행하지 않음. 이 환경에서는 GitHub 저장소를 로컬 checkout할 수 없어 해당 SHA의 tree와 diff를 GitHub connector로 검토했습니다. 따라서 아래의 test 결과는 test code가 요구하는 관측값이며, 이 세션에서 실제 실행해 얻은 결과가 아닙니다.
 
@@ -2697,14 +2696,14 @@ dead-owner recovery
 - partial descriptor progress와 protocol state progress를 같은 commit order로 묶어야 합니다.
 - output success 뒤 ACK loss는 exactly-once transaction 없이 완전히 제거할 수 없습니다.
 - PID, payload, NUL newline, recovery newline의 모든 output sites를 같은 contract로 바꿔야 합니다.
-===== END FILE: 04-output-commit-boundary.md =====
 
-===== BEGIN FILE: 05-endpoint-소유권-and-bounded-polling.md =====
-# Thread: Endpoint 소유권 and bounded polling
+---
+
+# 엔드포인트 소유 관계와 제한된 폴링
 
 > 완성형 해설서가 아닙니다. 아래 확정 사항을 기준으로 각 commit SHA의 실제 코드와 diff를 읽고 기록란을 채웁니다.
 
-## 1. Thread 목표
+## 1. 개발 흐름 목표
 
 per-UID Unix socket namespace와 client/server endpoint 수명을 복원하고, path를 계산한 사실과 actual bind 소유권을 구분한 fix, `fd_set`이 표현할 수 없는 descriptor를 startup에서 거부하는 runtime boundary를 확인합니다.
 
@@ -2712,7 +2711,7 @@ per-UID Unix socket namespace와 client/server endpoint 수명을 복원하고, 
 
 predictable socket path는 naming convenience가 아니라 filesystem authority와 cleanup responsibility를 만듭니다. same-UID stale socket은 교체할 수 있지만 regular file이나 자신이 bind하지 않은 entry를 삭제해서는 안 됩니다. valid descriptor라도 `FD_SETSIZE` 이상이면 `FD_SET`이 object 밖을 쓸 수 있으므로 polling representation의 한계를 controlled failure로 바꿔야 합니다.
 
-## 2. 이 Thread를 이해하기 위한 핵심 질문
+## 2. 이 개발 흐름을 이해하기 위한 핵심 질문
 
 - runtime directory의 UID와 permissions를 어떤 checks로 보장하는가?
 - role/PID path에서 invalid role, nonpositive PID, `sun_path` overflow를 어디서 거부하는가?
@@ -2730,9 +2729,9 @@ predictable socket path는 naming convenience가 아니라 filesystem authority�
 - [x] regular-file preservation과 clean startup failure를 test assertion에 연결했습니다.
 - [x] client socket, server socket, self-pipe read fd guards와 real high-fd regression을 확인했습니다.
 
-## 4. Commit map
+## 4. 커밋 목록
 
-| 순서 | SHA | Subject | Importance | Tags | Source에서 확정된 역할 |
+| 순서 | SHA | 제목 | 중요도 | 태그 | 원자료에서 확인된 역할 |
 | --- | --- | --- | --- | --- | --- |
 | 1 | `2c37cb592d05` | feat(runtime): 안전한 응답 endpoint 경로 생성 | A | ARCH, ENDPOINT, RISK | per-UID private runtime directory와 role/PID-derived Unix socket path helper를 정의합니다. |
 | 2 | `25780b881ee8` | feat(client): datagram 응답 endpoint 수명주기 관리 | B | ENDPOINT, PROCESS_LIFECYCLE | client가 nonblocking, close-on-exec datagram socket을 PID-derived path에 bind하고 invocation lifetime에 맞춰 cleanup합니다. |
@@ -2746,16 +2745,16 @@ predictable socket path는 naming convenience가 아니라 filesystem authority�
 
 - 각 항목은 해당 SHA의 tree를 기준으로 읽었습니다.
 - 변경 전 상태는 해당 SHA의 parent 또는 지정된 이전 관련 SHA에서 확인했습니다.
-- 같은 commit이 다른 Thread에 다시 등장해도 이 Thread의 질문으로 별도 기록했습니다.
+- 같은 commit이 다른 Thread에 다시 등장해도 이 개발 흐름의 질문으로 별도 기록했습니다.
 - runtime test는 실행하지 않았으며, 실행 결과처럼 표현하지 않았습니다.
 
-## 5. Commit별 학습 기록
+## 5. 커밋별 학습 기록
 
 ### 1. `2c37cb592d05` — feat(runtime): 안전한 응답 endpoint 경로 생성
 
-- **Importance:** A
-- **Tags:** ARCH, ENDPOINT, RISK
-- **Thread 내 역할:** per-UID private runtime directory와 role/PID-derived Unix socket path helper를 정의합니다.
+- **중요도:** A
+- **태그:** ARCH, ENDPOINT, RISK
+- **개발 흐름에서의 역할:** per-UID private runtime directory와 role/PID-derived Unix socket path helper를 정의합니다.
 
 #### 원문에서 확정된 맥락
 
@@ -2825,9 +2824,9 @@ if (!S_ISDIR(info.st_mode) || info.st_uid != getuid()
 `25780b881ee8`과 `32390dcdfc1b`가 client/server lifetime에 이 policy를 적용합니다.
 ### 2. `25780b881ee8` — feat(client): datagram 응답 endpoint 수명주기 관리
 
-- **Importance:** B
-- **Tags:** ENDPOINT, PROCESS_LIFECYCLE
-- **Thread 내 역할:** client가 nonblocking, close-on-exec datagram socket을 PID-derived path에 bind하고 invocation 수명에 맞춰 cleanup합니다.
+- **중요도:** B
+- **태그:** ENDPOINT, PROCESS_LIFECYCLE
+- **개발 흐름에서의 역할:** client가 nonblocking, close-on-exec datagram socket을 PID-derived path에 bind하고 invocation 수명에 맞춰 cleanup합니다.
 
 #### 원문에서 확정된 맥락
 
@@ -2878,7 +2877,7 @@ existing entry는 same-UID socket일 때만 remove하며 initialization failure�
 - caller → callee: client `main`/initialization → `bind_client_socket` → path/stale/socket/flags/bind; exit → `cleanup_response_socket`
 - 핵심 branch 또는 mutation 순서: path 계산 → existing path `lstat`/same-UID socket이면 unlink → socket create → O_NONBLOCK → FD_CLOEXEC → sockaddr 작성/length check → bind → cleanup registration/사용입니다. 이 SHA의 cleanup은 path가 계산돼 nonempty이면 unlink해 bind 성공 여부와 완전히 대칭적이지 않습니다.
 - parent 또는 이전 관련 SHA와의 diff 요약: client에 response resource acquisition과 cleanup이 추가됐지만 actual bind 소유권을 나타내는 boolean은 아직 없습니다.
-- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 항상 유지해야 하는 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
+- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 불변 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
 - 직접 실행한 command 또는 test와 결과: 실행하지 않음. 이 환경에서는 GitHub 저장소를 로컬 checkout할 수 없어 해당 SHA의 tree와 diff를 GitHub connector로 검토했습니다. 따라서 아래의 test 결과는 test code가 요구하는 관측값이며, 이 세션에서 실제 실행해 얻은 결과가 아닙니다.
 
 #### 다음 연결
@@ -2886,9 +2885,9 @@ existing entry는 same-UID socket일 때만 remove하며 initialization failure�
 `32390dcdfc1b`에서 server counterpart가 추가되고 `622d80020fb2`에서 client cleanup을 수정합니다.
 ### 3. `32390dcdfc1b` — feat(server): datagram 응답 endpoint 수명주기 관리
 
-- **Importance:** B
-- **Tags:** ENDPOINT, PROCESS_LIFECYCLE
-- **Thread 내 역할:** server가 long-lived nonblocking, close-on-exec datagram endpoint를 server path에 bind하고 normal exit와 rollback에서 cleanup합니다.
+- **중요도:** B
+- **태그:** ENDPOINT, PROCESS_LIFECYCLE
+- **개발 흐름에서의 역할:** server가 long-lived nonblocking, close-on-exec datagram endpoint를 server path에 bind하고 normal exit와 rollback에서 cleanup합니다.
 
 #### 원문에서 확정된 맥락
 
@@ -2938,7 +2937,7 @@ client counterpart와 acquisition 단계는 유사하지만 server는 event pipe
 - caller → callee: server `main` → `prepare_response_channel` → path/stale/socket/flags/bind; loop → `FD_SET`; exit → `cleanup_server`
 - 핵심 branch 또는 mutation 순서: event pipe setup → server path 계산/stale check → datagram socket create/flags → bind → `g_server_bound = 1` → event loop가 socket을 read set에 등록 → normal/error exit에서 close 후 bound path만 unlink합니다.
 - parent 또는 이전 관련 SHA와의 diff 요약: server response endpoint, bound flag, event-loop input와 cleanup이 추가됐습니다.
-- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 항상 유지해야 하는 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
+- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 불변 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
 - 직접 실행한 command 또는 test와 결과: 실행하지 않음. 이 환경에서는 GitHub 저장소를 로컬 checkout할 수 없어 해당 SHA의 tree와 diff를 GitHub connector로 검토했습니다. 따라서 아래의 test 결과는 test code가 요구하는 관측값이며, 이 세션에서 실제 실행해 얻은 결과가 아닙니다.
 
 #### 다음 연결
@@ -2946,9 +2945,9 @@ client counterpart와 acquisition 단계는 유사하지만 server는 event pipe
 `622d80020fb2`와 `ffd3647a1518`이 cleanup authority와 stale policy를 강화합니다.
 ### 4. `622d80020fb2` — fix(client): bind한 응답 경로만 정리
 
-- **Importance:** A
-- **Tags:** ENDPOINT, RISK
-- **Thread 내 역할:** client cleanup이 response path를 실제 `bind`한 경우에만 unlink하도록 bound 소유권 flag를 사용합니다.
+- **중요도:** A
+- **태그:** ENDPOINT, RISK
+- **개발 흐름에서의 역할:** client cleanup이 response path를 실제 `bind`한 경우에만 unlink하도록 bound 소유권 flag를 사용합니다.
 
 #### 원문에서 확정된 맥락
 
@@ -2978,12 +2977,12 @@ path 계산은 namespace object 생성 증거가 아닙니다. existing endpoint
 
 #### Fix 연결 기록
 
-| 단계 | Source에서 확정된 내용 | 해당 SHA의 코드 근거 |
+| 단계 | 원자료에서 확인된 내용 | 해당 SHA의 코드 근거 |
 | --- | --- | --- |
 | 기존 가정 | path를 계산했으면 cleanup에서 삭제해도 됩니다. | `25780b881ee8` cleanup은 nonempty path만 확인했습니다. |
 | 실제 failure 또는 위험 | bind failure 원인인 existing endpoint 또는 unowned object를 삭제할 수 있습니다. | path 계산은 bind 전이고 cleanup은 init failure에도 실행됩니다. |
 | root cause | name knowledge와 resource 소유권을 동일시했습니다. | descriptor와 path의 acquisition 시점이 다른데 하나의 path-nonempty state만 사용했습니다. |
-| 수정 항상 유지해야 하는 조건/decision | successful bind가 있었을 때만 path를 unlink합니다. | `g_client_bound` set/reset과 cleanup condition |
+| 수정 불변 조건/decision | successful bind가 있었을 때만 path를 unlink합니다. | `g_client_bound` set/reset과 cleanup condition |
 | regression | `ffd3647a1518`이 regular file preservation과 stale socket replacement를 검증합니다. | `tests/stale_exec.c`, `tests/protocol_regressions.sh`의 real path scenarios |
 
 - 변경 전 failure를 재현하거나 추론할 수 있는 입력/상태: 직전 상태와 해당 분기를 직접 비교했습니다.
@@ -3030,9 +3029,9 @@ return (0);
 `ffd3647a1518`에서 stale socket replacement와 protected file preservation을 검증합니다.
 ### 5. `ffd3647a1518` — test(runtime): stale 응답 endpoint 처리 검증
 
-- **Importance:** A
-- **Tags:** TEST, ENDPOINT, RISK
-- **Thread 내 역할:** real PID-derived paths에 stale client/server sockets, regular files, unrelated live processes를 만들어 endpoint trust와 cleanup policy를 검증합니다.
+- **중요도:** A
+- **태그:** TEST, ENDPOINT, RISK
+- **개발 흐름에서의 역할:** real PID-derived paths에 stale client/server sockets, regular files, unrelated live processes를 만들어 endpoint trust와 cleanup policy를 검증합니다.
 
 #### 원문에서 확정된 맥락
 
@@ -3062,9 +3061,9 @@ same-UID stale socket은 remove/replace되지만 non-socket은 preserved되고 s
 - 정상 경로와 failure 경로가 갈라지는 조건: same-UID socket entry는 unlink 후 bind가 성공하고 exit에서 새 path도 제거됩니다. regular file은 non-socket이라 보존되고 process는 clean failure합니다. valid PID만 있고 expected server endpoint가 없으면 client가 target을 protocol server로 인정하지 않습니다.
 - 후속 commit이 강화하거나 교체하는 부분: `4e1c84bfacfc`가 path/object authority와 별개인 descriptor representation boundary를 추가합니다.
 
-#### Test commit 분석 기록
+#### 테스트 커밋 분석 기록
 
-- **대상 production 항상 유지해야 하는 조건:** replaceable same-UID stale socket만 제거하고 non-socket/unowned entry는 보존합니다.
+- **대상 production 불변 조건:** replaceable same-UID stale socket만 제거하고 non-socket/unowned entry는 보존합니다.
 - **재현하는 failure 또는 boundary:** predictable path를 근거로 regular file 또는 다른 endpoint를 destructive cleanup하는 상황
 - **사용한 test technique:** real filesystem objects, PID-derived names, child exec, live processes
 - **분류:** runtime/filesystem integration regression
@@ -3100,7 +3099,7 @@ same-UID stale socket은 remove/replace되지만 non-socket은 preserved되고 s
 - caller → callee: test helper/filesystem setup → real client/server endpoint setup → production stale/type/bind/cleanup branches
 - 핵심 branch 또는 mutation 순서: private runtime dir 준비/검사 → child PID 확보 → 해당 role path에 stale socket 또는 regular file 생성 → real client/server 실행 → status/output/object existence 검사 → child/socket/file cleanup입니다. unrelated live PID에는 server path가 없어 client가 protocol 시작 전에 실패합니다.
 - parent 또는 이전 관련 SHA와의 diff 요약: runtime integration helper와 stale/protected object scenarios가 test target에 추가됐습니다.
-- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 항상 유지해야 하는 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
+- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 불변 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
 - 직접 실행한 command 또는 test와 결과: 실행하지 않음. 이 환경에서는 GitHub 저장소를 로컬 checkout할 수 없어 해당 SHA의 tree와 diff를 GitHub connector로 검토했습니다. 따라서 아래의 test 결과는 test code가 요구하는 관측값이며, 이 세션에서 실제 실행해 얻은 결과가 아닙니다.
 
 #### 다음 연결
@@ -3108,9 +3107,9 @@ same-UID stale socket은 remove/replace되지만 non-socket은 preserved되고 s
 `4e1c84bfacfc`에서 endpoint descriptor의 polling representability를 추가합니다.
 ### 6. `4e1c84bfacfc` — fix(runtime): select 범위를 벗어난 descriptor 거부
 
-- **Importance:** A
-- **Tags:** EDGE, PRACTICAL, RISK
-- **Thread 내 역할:** client response socket, server response socket, self-pipe read fd가 `FD_SETSIZE` 이상이면 initialization에서 거부합니다.
+- **중요도:** A
+- **태그:** EDGE, PRACTICAL, RISK
+- **개발 흐름에서의 역할:** client response socket, server response socket, self-pipe read fd가 `FD_SETSIZE` 이상이면 initialization에서 거부합니다.
 
 #### 원문에서 확정된 맥락
 
@@ -3141,12 +3140,12 @@ endpoint setup commits의 `FD_SET` 호출 지점을 역추적해 실제 read set
 
 #### Fix 연결 기록
 
-| 단계 | Source에서 확정된 내용 | 해당 SHA의 코드 근거 |
+| 단계 | 원자료에서 확인된 내용 | 해당 SHA의 코드 근거 |
 | --- | --- | --- |
 | 기존 가정 | open에 성공한 descriptor는 `FD_SET`에 넣을 수 있습니다. | 직전 setup은 `fd == -1`만 확인한 뒤 later `FD_SET`을 수행했습니다. |
 | 실제 failure 또는 위험 | `fd >= FD_SETSIZE`면 fixed object 밖에 bit를 쓸 수 있습니다. | client/server event loops가 `fd_set`과 `pselect`를 사용합니다. |
 | root cause | OS fd validity와 polling representation range를 혼동했습니다. | 새 branch는 allocation success와 별개로 numeric upper bound를 검사합니다. |
-| 수정 항상 유지해야 하는 조건/decision | polling descriptor는 resource creation 단계에서 range-check합니다. | client socket, server pipe read end, server socket의 three guards |
+| 수정 불변 조건/decision | polling descriptor는 resource creation 단계에서 range-check합니다. | client socket, server pipe read end, server socket의 three guards |
 | regression | `1de95310195d`가 real inherited descriptor table로 경계를 만듭니다. | `tests/high_fd_exec.c`, `tests/high_fd.sh` |
 
 - 변경 전 failure를 재현하거나 추론할 수 있는 입력/상태: 직전 상태와 해당 분기를 직접 비교했습니다.
@@ -3193,9 +3192,9 @@ if (g_response_socket == -1
 `1de95310195d`에서 real descriptors로 client/server guards를 실행합니다.
 ### 7. `1de95310195d` — test(runtime): 높은 descriptor 번호의 안전한 실패 검증
 
-- **Importance:** A
-- **Tags:** TEST, EDGE, RISK
-- **Thread 내 역할:** wrapper가 `/dev/null`을 반복 open해 inherited descriptor table을 `FD_SETSIZE` boundary까지 높인 뒤 real client/server를 `exec`합니다.
+- **중요도:** A
+- **태그:** TEST, EDGE, RISK
+- **개발 흐름에서의 역할:** wrapper가 `/dev/null`을 반복 open해 inherited descriptor table을 `FD_SETSIZE` boundary까지 높인 뒤 real client/server를 `exec`합니다.
 
 #### 원문에서 확정된 맥락
 
@@ -3225,9 +3224,9 @@ if (g_response_socket == -1
 - 정상 경로와 failure 경로가 갈라지는 조건: server는 response pipe/socket 중 guard가 실패해 PID를 publish하지 않고 종료합니다. client는 response socket guard에서 protocol datagram/signal을 보내기 전에 실패합니다. wrapper 또는 target setup failure도 nonzero status로 수집됩니다.
 - 후속 commit이 강화하거나 교체하는 부분: 이 commit이 Thread final regression입니다. polling API를 바꾸지 않는 한 range guard와 test가 함께 유지돼야 합니다.
 
-#### Test commit 분석 기록
+#### 테스트 커밋 분석 기록
 
-- **대상 production 항상 유지해야 하는 조건:** `fd_set`에 들어가는 descriptors는 모두 `FD_SETSIZE` 미만입니다.
+- **대상 production 불변 조건:** `fd_set`에 들어가는 descriptors는 모두 `FD_SETSIZE` 미만입니다.
 - **재현하는 failure 또는 boundary:** inherited descriptor pressure로 new socket/pipe가 unrepresentable range에 할당되는 상황
 - **사용한 test technique:** real `/dev/null` allocations retained across `exec`
 - **분류:** environmental boundary integration regression
@@ -3262,16 +3261,16 @@ if (g_response_socket == -1
 - caller → callee: shell → `high_fd_exec` open loop → `exec` real binary → production allocation/range guard
 - 핵심 branch 또는 mutation 순서: wrapper starts → low descriptors부터 `/dev/null`을 open해 next allocation을 boundary로 이동 → target client/server exec → production socket/pipe creation → range guard failure → normal diagnostic/status/cleanup. client case에서는 별도 정상 server를 유지해 그 process가 영향받지 않았는지 확인합니다.
 - parent 또는 이전 관련 SHA와의 diff 요약: high-fd wrapper binary, shell orchestration와 test target이 추가됐습니다.
-- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 항상 유지해야 하는 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
+- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 불변 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
 - 직접 실행한 command 또는 test와 결과: 실행하지 않음. 이 환경에서는 GitHub 저장소를 로컬 checkout할 수 없어 해당 SHA의 tree와 diff를 GitHub connector로 검토했습니다. 따라서 아래의 test 결과는 test code가 요구하는 관측값이며, 이 세션에서 실제 실행해 얻은 결과가 아닙니다.
 
 #### 다음 연결
 
 이 commit이 Thread final regression입니다.
 
-## 6. 항상 유지해야 하는 조건 ledger
+## 6. 불변 조건 ledger
 
-### Source에서 확정된 핵심 항상 유지해야 하는 조건
+### 원자료에서 확인된 핵심 불변 조건
 
 - runtime directory는 current UID 소유이며 group/other access가 없는 private namespace입니다.
 - role/PID path는 검증과 length check를 통과한 경우에만 사용합니다.
@@ -3281,7 +3280,7 @@ if (g_response_socket == -1
 
 ### 시간에 따른 변화 기록
 
-| Commit | Source에서 확정된 변화 | 실제 state/condition | code evidence | 상태: 도입·강화·부족·복구·검증 |
+| Commit | 원자료에서 확인된 변화 | 실제 state/condition | code evidence | 상태: 도입·강화·부족·복구·검증 |
 | --- | --- | --- | --- | --- |
 | `2c37cb592d05` | per-UID private runtime directory와 role/PID-derived Unix socket path helper를 정의합니다. | validated per-UID directory와 role/PID-derived path가 생기지만 path knowledge는 resource ownership이 아닙니다. | `src/response_channel.c: mt_runtime_dir`, `mt_response_path` | 도입 |
 | `25780b881ee8` | client가 nonblocking, close-on-exec datagram socket을 PID-derived path에 bind하고 invocation lifetime에 맞춰 cleanup합니다. | descriptor와 computed path를 client lifetime state로 보관하지만 unlink authority가 bind success와 아직 분리되지 않았습니다. | `src/client.c: bind_client_socket`, `cleanup_response_socket` | 도입·부족 |
@@ -3291,9 +3290,9 @@ if (g_response_socket == -1
 | `4e1c84bfacfc` | client response socket, server response socket, self-pipe read fd가 `FD_SETSIZE` 이상이면 initialization에서 거부합니다. | `fd_set`에 등록될 resource는 allocation 직후 `fd < FD_SETSIZE`를 만족해야 합니다. | `src/client.c: bind_client_socket`, `src/server.c: prepare_response_channel` | 수정 |
 | `1de95310195d` | wrapper가 `/dev/null`을 반복 open해 inherited descriptor table을 `FD_SETSIZE` boundary까지 높인 뒤 real client/server를 `exec`합니다. | real inherited descriptor pressure에서 client/server가 `FD_SET` 전에 controlled failure하는지 고정합니다. | `tests/high_fd_exec.c`, `tests/high_fd.sh` | 검증 |
 
-## 7. Failure → Fix → Test 연결
+## 7. 실패 → 수정 → 검증 연결
 
-| 기존 가정 또는 상태 | 실제 failure/위험 | Fix 또는 전환 commit | 수정된 decision/항상 유지해야 하는 조건 | Test 또는 후속 검증 | 학습자 code evidence |
+| 기존 가정 또는 상태 | 실제 failure/위험 | Fix 또는 전환 commit | 수정된 decision/불변 조건 | Test 또는 후속 검증 | 학습자 code evidence |
 | --- | --- | --- | --- | --- | --- |
 | PID-derived path를 계산하면 cleanup authority가 있다고 간주 | bind failure 뒤 existing/unowned entry를 unlink할 수 있음 | `622d80020fb2` | successful bind를 ownership flag로 기록하고 그때만 unlink | `ffd3647a1518` | regular file preservation/stale socket replacement |
 | descriptor open success면 `FD_SET` 가능 | `fd >= FD_SETSIZE`에서 fixed bitset 밖 memory write 가능 | `4e1c84bfacfc` | polling descriptor를 creation 단계에서 range-check | `1de95310195d` | real inherited high-fd wrapper와 pre-poll failure |
@@ -3309,9 +3308,9 @@ if (g_response_socket == -1
 | client fix | `g_client_bound` | bind success 때 unlink authority 획득 | computed path와 소유권 분리 | bind success assignment, conditional cleanup |
 | polling setup | `fd_set` representation | range 안 descriptor만 registration | 범위 밖 startup failure | client/server response fd, self-pipe read fd |
 
-## 9. Thread 최종 상태
+## 9. 개발 흐름의 최종 상태
 
-Source에서 확정된 최종 조건:
+원자료에서 확인된 최종 조건:
 
 - response endpoints는 private per-UID runtime directory의 validated PID-derived paths를 사용합니다.
 - same-UID stale socket은 policy에 따라 replace하지만 non-socket과 unowned entry는 삭제하지 않습니다.
@@ -3324,7 +3323,7 @@ Source에서 확정된 최종 조건:
 - 정상 transition 순서: private runtime directory 검증 → role/PID path 생성 → stale object type/UID 판정 → socket/pipe 생성과 flags → polling fd range check → bind 성공과 bound flag → event loop → close와 conditional unlink입니다.
 - 실패 시 중단·reset·cleanup 순서: validation/stale/flags/range/bind 단계의 failure는 이미 획득한 descriptors를 닫고, successful bind를 기록한 path만 unlink합니다. protected/unowned object는 보존합니다.
 - 최종 상태가 보장하지 않는 것: same-UID malicious peer authentication, TOCTOU 완전 제거, dynamic polling, descriptor pressure 자체의 해소는 제공하지 않습니다.
-- 이 Thread를 한 문단으로 설명한 최종 서술: 이 Thread는 Unix socket path를 단순 문자열이 아니라 filesystem resource로 취급합니다. private per-UID directory와 role/PID 검증을 정의하고, client/server의 socket·path 수명을 단계별로 관리합니다. client fix는 computed name과 successful bind 소유권을 분리하며, 마지막 guard는 valid descriptor도 `fd_set` 범위 밖이면 사용할 수 없음을 controlled startup failure로 바꿉니다.
+- 이 개발 흐름을 한 문단으로 설명한 최종 서술: 이 개발 흐름은 Unix socket path를 단순 문자열이 아니라 filesystem resource로 취급합니다. private per-UID directory와 role/PID 검증을 정의하고, client/server의 socket·path 수명을 단계별로 관리합니다. client fix는 computed name과 successful bind 소유권을 분리하며, 마지막 guard는 valid descriptor도 `fd_set` 범위 밖이면 사용할 수 없음을 controlled startup failure로 바꿉니다.
 
 ## 10. 최종 architecture 또는 실행 순서 정리
 
@@ -3363,10 +3362,10 @@ cleanup/rollback
 
 - [x] commit map의 7개 SHA를 source 순서대로 모두 설명할 수 있습니다.
 - [x] 각 code excerpt에 SHA, path, symbol, 선택 이유가 기록돼 있습니다.
-- [x] final HEAD 코드를 historical SHA의 증거로 사용한 곳이 없습니다.
+- [x] 최종 HEAD 코드를 historical SHA의 증거로 사용한 곳이 없습니다.
 - [x] 정상 경로와 실패 처리를 state mutation 순서로 설명할 수 있습니다.
-- [x] source 확정 항상 유지해야 하는 조건과 직접 확인한 code evidence를 구분했습니다.
-- [x] test commit의 항상 유지해야 하는 조건, failure, technique, production path, proves/not-proves를 기록했습니다.
+- [x] source 확정 불변 조건과 직접 확인한 code evidence를 구분했습니다.
+- [x] test commit의 불변 조건, failure, technique, production path, proves/not-proves를 기록했습니다.
 - [x] Thread final state를 함수와 state field 수준으로 설명할 수 있습니다.
 - [ ] 해당 SHA의 test를 로컬에서 직접 실행했습니다. — 실행하지 않음. 이 환경에서는 GitHub 저장소를 로컬 checkout할 수 없어 해당 SHA의 tree와 diff를 GitHub connector로 검토했습니다. 따라서 아래의 test 결과는 test code가 요구하는 관측값이며, 이 세션에서 실제 실행해 얻은 결과가 아닙니다.
 
@@ -3375,22 +3374,22 @@ cleanup/rollback
 - socket path가 crash 뒤 남을 수 있어 stale recovery와 destructive cleanup을 구분해야 합니다.
 - same-UID integrity boundary는 same-UID peer authentication이 아닙니다.
 - inherited descriptor pressure가 ordinary socket/pipe allocation을 polling range 밖으로 밀 수 있습니다.
-===== END FILE: 05-endpoint-소유권-and-bounded-polling.md =====
 
-===== BEGIN FILE: 06-bounded-response-correlation.md =====
-# Thread: Response correlation remains bounded under hostile or stale input
+---
+
+# 악의적이거나 오래된 입력에서도 제한을 지키는 응답 대조
 
 > 완성형 해설서가 아닙니다. 아래 확정 사항을 기준으로 각 commit SHA의 실제 코드와 diff를 읽고 기록란을 채웁니다.
 
-## 1. Thread 목표
+## 1. 개발 흐름 목표
 
 Unix datagram response가 현재 client와 현재 transition에 속한다는 판단 규칙을 복원합니다. exact frame size, source endpoint, PID, magic, kind, nonce 또는 sequence, status를 함께 검증하고, stale·forged·oversized·uncorrelated traffic을 무시하면서도 원래의 monotonic deadline을 늘리지 않는 bounded wait를 실제 코드와 adversarial tests로 확인합니다.
 
 ### Significance
 
-control channel의 응답은 단순히 도착했다는 이유로 state를 전진시킬 수 없습니다. 한 field만 맞는 datagram도 현재 `ACQUIRE` 또는 bit transition을 증명하지 못합니다. production 검증은 모든 identity field와 source를 결합하고, ignored traffic은 기존 deadline budget을 소비할 뿐 새 budget을 만들지 않아야 합니다. 이 Thread는 wire representation에서 시작해 READY와 sequence ACK validation, forged response, oversized frame, invalid flood 검증으로 그 조건을 고정합니다.
+control channel의 응답은 단순히 도착했다는 이유로 state를 전진시킬 수 없습니다. 한 field만 맞는 datagram도 현재 `ACQUIRE` 또는 bit transition을 증명하지 못합니다. production 검증은 모든 identity field와 source를 결합하고, ignored traffic은 기존 deadline budget을 소비할 뿐 새 budget을 만들지 않아야 합니다. 이 개발 흐름은 wire representation에서 시작해 READY와 sequence ACK validation, forged response, oversized frame, invalid flood 검증으로 그 조건을 고정합니다.
 
-## 2. 이 Thread를 이해하기 위한 핵심 질문
+## 2. 이 개발 흐름을 이해하기 위한 핵심 질문
 
 - `t_mt_request`와 `t_mt_response`의 어떤 fields가 peer와 transition identity를 표현하는가?
 - READY와 bit ACK는 token을 각각 nonce와 sequence로 어떻게 해석하는가?
@@ -3409,9 +3408,9 @@ control channel의 응답은 단순히 도착했다는 이유로 state를 전진
 - [x] forged-source, wrong-token, bad-magic, wrong-PID, oversized, invalid-flood cases를 production branch에 연결했습니다.
 - [x] 같은 UID의 predictable path 검증이 cryptographic peer authentication을 뜻하지 않음을 구분했습니다.
 
-## 4. Commit map
+## 4. 커밋 목록
 
-| 순서 | SHA | Subject | Importance | Tags | Source에서 확정된 역할 |
+| 순서 | SHA | 제목 | 중요도 | 태그 | 원자료에서 확인된 역할 |
 | --- | --- | --- | --- | --- | --- |
 | 1 | `ebed06775b92` | feat(protocol): 응답 메시지 wire 형식 정의 | A | ARCH, RESPONSE | request와 특정 bit transition을 식별할 수 있는 request/response fields를 정의합니다. |
 | 2 | `f8e8444c5ded` | feat(client): READY 응답을 출처와 nonce로 상관 검증 | A | RESPONSE, RISK, INTEGRATION | READY에 exact size, source, PID, kind, nonce, status와 absolute readiness deadline을 적용합니다. |
@@ -3423,16 +3422,16 @@ control channel의 응답은 단순히 도착했다는 이유로 state를 전진
 
 - 각 항목은 해당 SHA의 tree를 기준으로 읽었습니다.
 - 변경 전 상태는 해당 SHA의 parent 또는 지정된 이전 관련 SHA에서 확인했습니다.
-- 같은 commit이 다른 Thread에 다시 등장해도 이 Thread의 질문으로 별도 기록했습니다.
+- 같은 commit이 다른 Thread에 다시 등장해도 이 개발 흐름의 질문으로 별도 기록했습니다.
 - runtime test는 실행하지 않았으며, 실행 결과처럼 표현하지 않았습니다.
 
-## 5. Commit별 학습 기록
+## 5. 커밋별 학습 기록
 
 ### 1. `ebed06775b92` — feat(protocol): 응답 메시지 wire 형식 정의
 
-- **Importance:** A
-- **Tags:** ARCH, RESPONSE
-- **Thread 내 역할:** request와 특정 bit transition을 식별할 수 있는 request/response fields를 정의합니다.
+- **중요도:** A
+- **태그:** ARCH, RESPONSE
+- **개발 흐름에서의 역할:** request와 특정 bit transition을 식별할 수 있는 request/response fields를 정의합니다.
 
 #### 원문에서 확정된 맥락
 
@@ -3453,7 +3452,7 @@ control channel의 응답은 단순히 도착했다는 이유로 state를 전진
 
 #### 비교 기준
 
-직전 signal-only ACK에는 kind/token/status/PID field가 없습니다. 이 Thread에서는 각 field가 후속 stale/forged/oversized rejection의 어느 조건에 쓰이는지 연결합니다.
+직전 signal-only ACK에는 kind/token/status/PID field가 없습니다. 이 개발 흐름에서는 각 field가 후속 stale/forged/oversized rejection의 어느 조건에 쓰이는지 연결합니다.
 
 #### A-level 설계 및 failure 기록
 
@@ -3514,9 +3513,9 @@ typedef struct s_mt_response
 `f8e8444c5ded`가 READY validation에 이 fields를 실제로 적용합니다.
 ### 2. `f8e8444c5ded` — feat(client): READY 응답을 출처와 nonce로 상관 검증
 
-- **Importance:** A
-- **Tags:** RESPONSE, RISK, INTEGRATION
-- **Thread 내 역할:** READY에 exact size, source, PID, kind, nonce, status와 absolute readiness deadline을 적용합니다.
+- **중요도:** A
+- **태그:** RESPONSE, RISK, INTEGRATION
+- **개발 흐름에서의 역할:** READY에 exact size, source, PID, kind, nonce, status와 absolute readiness deadline을 적용합니다.
 
 #### 원문에서 확정된 맥락
 
@@ -3591,9 +3590,9 @@ if (!valid_source(&source, server_path)
 `d3eacbbfeadc`가 같은 규칙을 current bit sequence에 적용합니다.
 ### 3. `d3eacbbfeadc` — feat(client): 비트 ACK를 sequence로 상관 검증
 
-- **Importance:** A
-- **Tags:** RESPONSE, RISK
-- **Thread 내 역할:** 현재 sequence와 정확히 일치하는 datagram ACK만 bit success로 인정합니다.
+- **중요도:** A
+- **태그:** RESPONSE, RISK
+- **개발 흐름에서의 역할:** 현재 sequence와 정확히 일치하는 datagram ACK만 bit success로 인정합니다.
 
 #### 원문에서 확정된 맥락
 
@@ -3647,7 +3646,7 @@ READY predicate와 exact fields를 공유하지만 token 의미가 acquisition n
 - caller → callee: `send_byte` → `send_bit` → signal `kill` → datagram response wait/validation → cursor/sequence advance
 - 핵심 branch 또는 mutation 순서: server endpoint validate → current sequence deadline 생성 → current bit `kill` → exact ACK candidate loop → matching response 후에만 caller가 sequence와 bit cursor를 증가시킵니다. invalid/stale frames는 state를 바꾸지 않고 same deadline budget을 소비합니다.
 - parent 또는 이전 관련 SHA와의 diff 요약: per-bit send success가 generic ACK flag가 아니라 exact datagram token과 source/field predicate에 연결됩니다.
-- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 항상 유지해야 하는 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
+- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 불변 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
 - 직접 실행한 command 또는 test와 결과: 실행하지 않음. 이 환경에서는 GitHub 저장소를 로컬 checkout할 수 없어 해당 SHA의 tree와 diff를 GitHub connector로 검토했습니다. 따라서 아래의 test 결과는 test code가 요구하는 관측값이며, 이 세션에서 실제 실행해 얻은 결과가 아닙니다.
 
 #### 다음 연결
@@ -3655,9 +3654,9 @@ READY predicate와 exact fields를 공유하지만 token 의미가 acquisition n
 `b361ef9745ff`가 READY와 first ACK 모두에 forged/mismatched candidates를 주입합니다.
 ### 4. `b361ef9745ff` — test(protocol): 응답 출처와 token 검증
 
-- **Importance:** A
-- **Tags:** TEST, RESPONSE, RISK
-- **Thread 내 역할:** valid READY와 first bit ACK 전에 forged-source와 mismatched-field responses를 주입해 conjunctive 검증을 검증합니다.
+- **중요도:** A
+- **태그:** TEST, RESPONSE, RISK
+- **개발 흐름에서의 역할:** valid READY와 first bit ACK 전에 forged-source와 mismatched-field responses를 주입해 conjunctive 검증을 검증합니다.
 
 #### 원문에서 확정된 맥락
 
@@ -3688,9 +3687,9 @@ purpose-built response server는 forged socket, wrong token, invalid magic, inco
 - 정상 경로와 failure 경로가 갈라지는 조건: forger socket frame은 source-path check, token+1은 token check, magic 0은 magic check, PID+1은 server PID check에서 discard됩니다. final valid frame만 acquisition 또는 first bit를 완료합니다.
 - 후속 commit이 강화하거나 교체하는 부분: `1ed2acbaa353`가 exact-size trailing byte와 sustained wrong-token traffic 아래 deadline을 별도로 검증합니다.
 
-#### Test commit 분석 기록
+#### 테스트 커밋 분석 기록
 
-- **대상 production 항상 유지해야 하는 조건:** source endpoint와 모든 response identity fields가 맞아야 현재 READY 또는 ACK transition이 완료됩니다.
+- **대상 production 불변 조건:** source endpoint와 모든 response identity fields가 맞아야 현재 READY 또는 ACK transition이 완료됩니다.
 - **재현하는 failure 또는 boundary:** forged source 또는 token, magic, server PID 하나만 다른 stale/uncorrelated response가 state를 전진시키는 상황
 - **사용한 test technique:** purpose-built datagram peer가 invalid candidates를 순서대로 주입한 뒤 valid frame을 전송
 - **분류:** adversarial protocol integration regression
@@ -3726,7 +3725,7 @@ purpose-built response server는 forged socket, wrong token, invalid magic, inco
 - caller → callee: test response server → datagram candidates → production client `read_response` predicate → valid-frame progress
 - 핵심 branch 또는 mutation 순서: response server PID/path 준비 → real client ACQUIRE 수신 → invalid READY sequence와 valid READY → first data signal event 관측 → invalid ACK sequence와 valid ACK → remaining ACKs 정상 응답 → NUL frame/cleanup → shell이 client/helper status와 output/stderr를 검사합니다.
 - parent 또는 이전 관련 SHA와의 diff 요약: purpose-built response server binary와 validation shell test가 Makefile test target에 추가됐습니다.
-- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 항상 유지해야 하는 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
+- 삽입할 최소 코드 조각과 선택 이유: 표와 호출 순서만으로 불변 조건이 충분히 드러나므로 코드 덤프를 추가하지 않았습니다.
 - 직접 실행한 command 또는 test와 결과: 실행하지 않음. 이 환경에서는 GitHub 저장소를 로컬 checkout할 수 없어 해당 SHA의 tree와 diff를 GitHub connector로 검토했습니다. 따라서 아래의 test 결과는 test code가 요구하는 관측값이며, 이 세션에서 실제 실행해 얻은 결과가 아닙니다.
 
 #### 다음 연결
@@ -3734,9 +3733,9 @@ purpose-built response server는 forged socket, wrong token, invalid magic, inco
 `1ed2acbaa353`가 exact size와 continuous invalid traffic liveness를 별도로 검증합니다.
 ### 5. `1ed2acbaa353` — test(response): oversized 응답과 invalid flood 검증
 
-- **Importance:** A
-- **Tags:** TEST, RESPONSE, RISK
-- **Thread 내 역할:** response record보다 한 byte 큰 datagram과 sustained wrong-token traffic을 이용해 exact framing과 absolute deadline을 검증합니다.
+- **중요도:** A
+- **태그:** TEST, RESPONSE, RISK
+- **개발 흐름에서의 역할:** response record보다 한 byte 큰 datagram과 sustained wrong-token traffic을 이용해 exact framing과 absolute deadline을 검증합니다.
 
 #### 원문에서 확정된 맥락
 
@@ -3767,9 +3766,9 @@ client는 valid prefix 뒤 trailing byte가 있는 frame을 거부하고, otherw
 - 정상 경로와 failure 경로가 갈라지는 조건: oversized `recvfrom` count는 `sizeof(response)`와 다르므로 field copy/validation 전에 discard됩니다. wrong token은 exact-size/source/other fields가 맞아도 token branch에서 discard되고 original monotonic deadline이 만료되면 client가 timeout/cleanup합니다.
 - 후속 commit이 강화하거나 교체하는 부분: 이 commit이 Thread final adversarial regression입니다. production code는 invalid traffic에 rate limit을 두지 않지만 wait budget은 늘리지 않습니다.
 
-#### Test commit 분석 기록
+#### 테스트 커밋 분석 기록
 
-- **대상 production 항상 유지해야 하는 조건:** response는 exact record size여야 하고 ignored traffic은 original monotonic deadline을 연장하지 않습니다.
+- **대상 production 불변 조건:** response는 exact record size여야 하고 ignored traffic은 original monotonic deadline을 연장하지 않습니다.
 - **재현하는 failure 또는 boundary:** valid prefix를 가진 oversized frame 수락 또는 invalid response마다 timeout을 재시작해 wait가 무한 연장되는 상황
 - **사용한 test technique:** oversized datagram injection + sustained wrong-token response flood
 - **분류:** adversarial framing and liveness regression
@@ -3819,9 +3818,9 @@ sendto(socket_fd, payload, sizeof(payload), 0, ...);
 
 이 commit이 Thread final adversarial regression입니다.
 
-## 6. 항상 유지해야 하는 조건 ledger
+## 6. 불변 조건 ledger
 
-### Source에서 확정된 핵심 항상 유지해야 하는 조건
+### 원자료에서 확인된 핵심 불변 조건
 
 - response datagram은 protocol record와 정확히 같은 크기여야 하며 valid prefix만으로 수락하지 않습니다.
 - expected source path와 record의 magic, server PID, kind, token, status가 모두 일치해야 transition이 완료됩니다.
@@ -3831,7 +3830,7 @@ sendto(socket_fd, payload, sizeof(payload), 0, ...);
 
 ### 시간에 따른 변화 기록
 
-| Commit | Source에서 확정된 변화 | 실제 state/condition | code evidence | 상태: 도입·강화·부족·복구·검증 |
+| Commit | 원자료에서 확인된 변화 | 실제 state/condition | code evidence | 상태: 도입·강화·부족·복구·검증 |
 | --- | --- | --- | --- | --- |
 | `ebed06775b92` | request와 특정 bit transition을 식별할 수 있는 request/response fields를 정의합니다. | nonce와 token을 포함한 fixed request/response record가 생기지만 acceptance behavior는 아직 caller에 없습니다. | `include/minitalk.h: t_mt_request`, `t_mt_response` | 도입·부족 |
 | `f8e8444c5ded` | READY에 exact size, source, PID, kind, nonce, status와 absolute readiness deadline을 적용합니다. | outstanding acquisition은 nonce, expected server path/PID, one absolute deadline으로 식별되며 exact READY만 완료합니다. | `src/client.c: generate_nonce`, READY response wait/validation | 강화 |
@@ -3839,9 +3838,9 @@ sendto(socket_fd, payload, sizeof(payload), 0, ...);
 | `b361ef9745ff` | valid READY와 first bit ACK 전에 forged-source와 mismatched-field responses를 주입해 conjunctive validation을 검증합니다. | READY와 first ACK에서 source/field 하나씩 틀린 candidates가 state를 전진시키지 않고 final valid frame만 완료합니다. | `tests/response_server.c: reply_with_invalid_events`, `tests/response_validation.sh` | 검증 |
 | `1ed2acbaa353` | response record보다 한 byte 큰 datagram과 sustained wrong-token traffic을 이용해 exact framing과 absolute deadline을 검증합니다. | exact frame length과 original absolute deadline이 adversarial oversized/flood traffic에서도 유지됩니다. | `tests/response_server.c`, `tests/protocol_regressions.sh`, client response loop | 검증 |
 
-## 7. Failure → Fix → Test 연결
+## 7. 실패 → 수정 → 검증 연결
 
-| 기존 가정 또는 상태 | 실제 failure/위험 | Fix 또는 전환 commit | 수정된 decision/항상 유지해야 하는 조건 | Test 또는 후속 검증 | 학습자 code evidence |
+| 기존 가정 또는 상태 | 실제 failure/위험 | Fix 또는 전환 commit | 수정된 decision/불변 조건 | Test 또는 후속 검증 | 학습자 code evidence |
 | --- | --- | --- | --- | --- | --- |
 | 도착 순서나 kind 하나만 맞으면 current response로 간주 | stale/forged datagram이 READY/ACK를 거짓 완료 | `f8e8444c5ded → d3eacbbfeadc` | exact source와 모든 identity fields conjunction | `b361ef9745ff` | forger source, token, magic, PID invalid frames 뒤 valid frame |
 | record prefix가 valid하면 frame 전체도 valid | trailing data를 가진 oversized frame 수락 가능 | `f8e8444c5ded` | received size가 record와 정확히 같을 때만 검증 | `1ed2acbaa353` | `sizeof(response)+1` legitimate-source datagram |
@@ -3858,9 +3857,9 @@ sendto(socket_fd, payload, sizeof(payload), 0, ...);
 | ACK wait | client current bit/sequence | matching ACK 뒤에만 cursor/sequence advance | retransmission/dedup 없음 | sequence token, bit index |
 | invalid traffic handling | receive loop + original deadline | discard하고 같은 budget으로 계속 wait | processing rate limit 없음 | `read_response`, `time_until` |
 
-## 9. Thread 최종 상태
+## 9. 개발 흐름의 최종 상태
 
-Source에서 확정된 최종 조건:
+원자료에서 확인된 최종 조건:
 
 - READY는 exact size, expected server source path, magic, server PID, READY kind, nonce token, success status가 모두 맞아야 수락됩니다.
 - bit ACK는 같은 검증에 현재 sequence token을 적용하며 exact match 뒤에만 다음 bit로 전진합니다.
@@ -3873,7 +3872,7 @@ Source에서 확정된 최종 조건:
 - 정상 transition 순서: transition identity와 absolute deadline 확정 → request/signal send → remaining budget으로 receive → exact byte count/source 검사 → magic/PID/kind/token/status 검사 → invalid면 state 그대로 반복, valid면 acquisition 또는 bit cursor/sequence advance입니다.
 - 실패 시 중단·reset·cleanup 순서: permanent send/receive/clock error는 즉시 실패하고, invalid candidate는 같은 deadline budget 안에서 discard합니다. deadline 만료는 timeout으로 전송 전체를 중단하며 current bit를 성공 처리하지 않습니다.
 - 최종 상태가 보장하지 않는 것: same-UID malicious peer에 대한 authentication, invalid traffic rate limiting/CPU bound, retransmission, deduplication, exactly-once delivery는 제공하지 않습니다.
-- 이 Thread를 한 문단으로 설명한 최종 서술: 이 Thread는 raw response record의 field set을 current transition의 acceptance predicate로 바꿉니다. READY는 acquisition nonce를, ACK는 bit sequence를 token으로 사용하며 exact size와 expected source path, internal PID, magic, kind, status가 모두 맞아야 progress합니다. invalid datagram은 state를 바꾸지 않고 최초 absolute deadline만 소비하므로 forged·oversized·flood traffic 아래에서도 wait가 bounded됩니다.
+- 이 개발 흐름을 한 문단으로 설명한 최종 서술: 이 개발 흐름은 raw response record의 field set을 current transition의 acceptance predicate로 바꿉니다. READY는 acquisition nonce를, ACK는 bit sequence를 token으로 사용하며 exact size와 expected source path, internal PID, magic, kind, status가 모두 맞아야 progress합니다. invalid datagram은 state를 바꾸지 않고 최초 absolute deadline만 소비하므로 forged·oversized·flood traffic 아래에서도 wait가 bounded됩니다.
 
 ## 10. 최종 architecture 또는 실행 순서 정리
 
@@ -3913,10 +3912,10 @@ receive loop
 
 - [x] commit map의 5개 SHA를 source 순서대로 모두 설명할 수 있습니다.
 - [x] 각 code excerpt에 SHA, path, symbol, 선택 이유가 기록돼 있습니다.
-- [x] final HEAD 코드를 historical SHA의 증거로 사용한 곳이 없습니다.
+- [x] 최종 HEAD 코드를 historical SHA의 증거로 사용한 곳이 없습니다.
 - [x] 정상 경로와 실패 처리를 state mutation 순서로 설명할 수 있습니다.
-- [x] source 확정 항상 유지해야 하는 조건과 직접 확인한 code evidence를 구분했습니다.
-- [x] test commit의 항상 유지해야 하는 조건, failure, technique, production path, proves/not-proves를 기록했습니다.
+- [x] source 확정 불변 조건과 직접 확인한 code evidence를 구분했습니다.
+- [x] test commit의 불변 조건, failure, technique, production path, proves/not-proves를 기록했습니다.
 - [x] Thread final state를 함수와 state field 수준으로 설명할 수 있습니다.
 - [ ] 해당 SHA의 test를 로컬에서 직접 실행했습니다. — 실행하지 않음. 이 환경에서는 GitHub 저장소를 로컬 checkout할 수 없어 해당 SHA의 tree와 diff를 GitHub connector로 검토했습니다. 따라서 아래의 test 결과는 test code가 요구하는 관측값이며, 이 세션에서 실제 실행해 얻은 결과가 아닙니다.
 
@@ -3925,15 +3924,15 @@ receive loop
 - predictable local endpoint와 record field 하나만으로는 stale 또는 unrelated traffic을 배제할 수 없습니다.
 - acquisition nonce와 per-bit sequence는 범위가 달라 공통 검증과 transition-specific 검증을 함께 유지해야 합니다.
 - continuous invalid traffic이 receive loop를 계속 깨워도 relative timeout을 반복 시작하지 않아야 합니다.
-===== END FILE: 06-bounded-response-correlation.md =====
 
-===== BEGIN FILE: README.md =====
+---
+
 \
-# minitalk 개발 Thread 학습 골격
+# minitalk 개발 흐름 학습 기록
 
 ## 1. 목적
 
-이 문서 세트는 `commit-importance.md`가 확정한 Development Threads와 commit 평가를 유지하고, `commit-bodies.md`의 구현 의도와 실패 처리 정보를 이용해 실제 commit history를 복원하기 위한 기록 틀입니다.
+이 문서 세트는 `commit-importance.md`가 확정한 개발 흐름s와 commit 평가를 유지하고, `commit-bodies.md`의 구현 의도와 실패 처리 정보를 이용해 실제 commit history를 복원하기 위한 기록 틀입니다.
 
 완성형 프로젝트 해설서가 아닙니다. 각 SHA의 코드와 diff를 직접 읽고 설계, 구현, 실패, 수정, 검증의 연결을 채웁니다.
 
@@ -3946,7 +3945,7 @@ receive loop
 5. [`05-endpoint-ownership-and-bounded-polling.md`](05-endpoint-ownership-and-bounded-polling.md)
 6. [`06-bounded-response-correlation.md`](06-bounded-response-correlation.md)
 
-source의 Development Threads 순서와 같습니다. 동일 commit은 각 Thread의 학습 관점으로 중복 확인합니다.
+source의 개발 흐름s 순서와 같습니다. 동일 commit은 각 Thread의 학습 관점으로 중복 확인합니다.
 
 ## 3. Thread 문서 사용법
 
@@ -3955,8 +3954,8 @@ source의 Development Threads 순서와 같습니다. 동일 commit은 각 Threa
 3. source 확정 역할과 실제 파일, 함수, state field를 연결합니다.
 4. 정상 경로와 failure branch를 caller → callee와 mutation 순서로 추적합니다.
 5. 필요한 최소 코드만 path, symbol, SHA와 함께 삽입합니다.
-6. test commit이면 production 항상 유지해야 하는 조건과 test technique을 production path에 연결합니다.
-7. commit 기록을 항상 유지해야 하는 조건 ledger와 Failure → Fix → Test 표에 반영합니다.
+6. test commit이면 production 불변 조건과 test technique을 production path에 연결합니다.
+7. commit 기록을 불변 조건 ledger와 실패 → 수정 → 검증 표에 반영합니다.
 8. 마지막에는 Thread execution flow를 자신의 설명으로 완성합니다.
 
 ```sh
@@ -3971,11 +3970,11 @@ git show <sha>:<path>
 - 모든 해석은 해당 commit SHA의 tree를 기준으로 합니다.
 - 변경 전 코드는 parent 또는 지정된 이전 관련 SHA에서 확인합니다.
 - commit body만 옮기지 않고 path, symbol, condition, state mutation으로 확인합니다.
-- source에 없는 항상 유지해야 하는 조건은 확정 사실로 추가하지 않고 학습자 관찰로 표시합니다.
+- source에 없는 불변 조건은 확정 사실로 추가하지 않고 학습자 관찰로 표시합니다.
 
-## 5. final HEAD 소급 사용 금지
+## 5. 최종 HEAD 소급 사용 금지
 
-final HEAD의 함수, 테스트, 주석, state layout을 과거 commit에 소급하지 않습니다.
+최종 HEAD의 함수, 테스트, 주석, state layout을 과거 commit에 소급하지 않습니다.
 
 최종 server가 self-pipe를 사용하더라도 `4234233ebd30`에서는 그 SHA에 실제로 존재하는 중간 response queue와 handler responsibility를 확인해야 합니다. 후속 fix의 helper나 validation을 이전 commit의 보장으로 적지 않습니다.
 
@@ -3990,7 +3989,7 @@ final HEAD의 함수, 테스트, 주석, state layout을 과거 commit에 소급
 
 ## 7. 실제 코드 삽입 기준
 
-각 코드 조각에 commit SHA, 파일 경로, symbol, caller/callee, 보여 주는 항상 유지해야 하는 조건 또는 failure branch, 이전 관련 SHA와의 차이를 기록합니다.
+각 코드 조각에 commit SHA, 파일 경로, symbol, caller/callee, 보여 주는 불변 조건 또는 failure branch, 이전 관련 SHA와의 차이를 기록합니다.
 
 우선 삽입할 대상:
 
@@ -4006,7 +4005,7 @@ final HEAD의 함수, 테스트, 주석, state layout을 과거 commit에 소급
 
 각 test commit에서 다음을 구분합니다.
 
-- 대상 production 항상 유지해야 하는 조건
+- 대상 production 불변 조건
 - 재현 failure 또는 boundary
 - test technique
 - 실제 production code path
@@ -4018,13 +4017,12 @@ final HEAD의 함수, 테스트, 주석, state layout을 과거 commit에 소급
 
 ## 9. 문서 완료 기준
 
-- 6개 Development Thread 문서를 source 순서대로 완성했습니다.
+- 6개 개발 흐름 문서를 source 순서대로 완성했습니다.
 - SHA, subject, importance, tags, commit 순서를 변경하지 않았습니다.
 - 중복 commit은 각 Thread 관점으로 별도 기록했습니다.
 - 중요한 commit마다 해당 SHA의 path, symbol, state, failure evidence가 있습니다.
 - S/A/B/C별 깊이가 구분됩니다.
-- fix는 기존 가정 → failure → root cause → 수정 항상 유지해야 하는 조건 → code → regression으로 연결됩니다.
-- test는 항상 유지해야 하는 조건, technique, production path, proves/not-proves를 구분합니다.
-- final HEAD를 과거 증거로 사용하지 않았습니다.
+- fix는 기존 가정 → failure → root cause → 수정 불변 조건 → code → regression으로 연결됩니다.
+- test는 불변 조건, technique, production path, proves/not-proves를 구분합니다.
+- 최종 HEAD를 과거 증거로 사용하지 않았습니다.
 - 각 Thread의 설계 → 구현 → 실패 → 수정 → 검증을 commit history로 설명할 수 있습니다.
-===== END FILE: README.md =====

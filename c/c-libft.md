@@ -1,23 +1,22 @@
-===== BEGIN FILE: 01-non-overlap-copy-and-overlap-safe-movement.md =====
-# Thread: Separating non-overlapping copy from overlap-safe movement
+# 겹치지 않는 복사와 겹침에 안전한 이동의 분리
 
-## Thread 목표
+## 개발 흐름 목표
 
-**Source significance**
+**원자료에서 확인된 중요성**
 
 > The sequence makes the precondition boundary explicit instead of hiding overlap handling inside every copy. The stronger operation is built only where needed, and the tests cover both possible overlap directions because the safe traversal direction changes with range placement.
 
-이 문서에서는 source가 확정한 non-overlap precondition과 overlap-safe movement의 분리를 실제 SHA 코드에서 복원합니다.
+이 문서에서는 원자료에서 확인된 non-overlap precondition과 overlap-safe movement의 분리를 실제 SHA 코드에서 복원합니다.
 
-### 이 Thread에 직접 연결된 source 항상 유지해야 하는 조건
+### 이 개발 흐름에 직접 연결된 원자료의 불변 조건
 
 > A length-bounded memory operation accesses only the specified valid byte range; zero-length operations perform no access, and overlapping movement preserves every source byte needed by later copies.
 
-### 이 Thread에 직접 연결된 engineering difficulty
+### 이 개발 흐름에 직접 연결된 구현 난점
 
 > Distinguishing the weaker non-overlap copy precondition from the direction-sensitive behavior required for overlapping ranges.
 
-## 이 Thread를 이해하기 위한 핵심 질문
+## 이 개발 흐름을 이해하기 위한 핵심 질문
 
 - `ft_memcpy`가 책임지지 않는 조건은 어디에 명시되거나 구현으로 드러나는가?
 - overlap이 발생했을 때 어떤 배치에서 forward copy가 unread source를 파괴하는가?
@@ -32,19 +31,19 @@
 - `69853cd4d3ce`에서 same-position, forward-overlap, backward-overlap, disjoint case가 실제 production path를 어떻게 통과하는지 확인했습니다.
 - whole-buffer 비교가 destination 밖 변경까지 잡는지 test code에서 확인했습니다.
 
-## Commit map
+## 커밋 목록
 
-| 순서 | Commit | Subject | Importance | Tags | Source role |
+| 순서 | 커밋 | 제목 | 중요도 | 태그 | 원자료에서 확인된 역할 |
 | --- | --- | --- | --- | --- | --- |
 | 1 | `4873fb11ac60` | `feat(memory): 겹치지 않는 메모리 복사 구현` | B | BYTE_RANGE, CORE | Establishes `ft_memcpy` as the primitive whose caller guarantees non-overlapping ranges. |
 | 2 | `f2c4c042b339` | `feat(memory): 겹치는 메모리의 안전한 이동 구현` | A | BYTE_RANGE, CORE, RISK | Adds direction-sensitive movement so destination overlap cannot destroy unread source bytes. |
 | 3 | `69853cd4d3ce` | `test(memory): 겹치는 메모리 이동 검증` | B | BYTE_RANGE, TEST | Differentially verifies same-position, forward-overlap, backward-overlap, and disjoint cases. |
 
-## Commit별 학습 기록
+## 커밋별 학습 기록
 
 ### `4873fb11ac60` — `feat(memory): 겹치지 않는 메모리 복사 구현`
 
-**Source 확정 역할:** non-overlapping byte-copy primitive를 도입하며, overlap 처리는 의도적으로 책임 범위 밖에 둡니다.
+**원자료에서 확인된 역할:** non-overlapping byte-copy primitive를 도입하며, overlap 처리는 의도적으로 책임 범위 밖에 둡니다.
 
 #### 해당 SHA에서 확인할 코드
 
@@ -68,9 +67,9 @@
 
 ### `f2c4c042b339` — `feat(memory): 겹치는 메모리의 안전한 이동 구현`
 
-**Source 확정 역할:** overlap 시 unread source byte가 destination write로 파괴되지 않도록 traversal direction을 선택합니다.
+**원자료에서 확인된 역할:** overlap 시 unread source byte가 destination write로 파괴되지 않도록 traversal direction을 선택합니다.
 
-**Source 확정 결정:** same-position 또는 zero length는 즉시 반환하고, destination이 source interval 내부에서 시작하는 경우 backward copy를 사용하며, 나머지 경우 forward `ft_memcpy`를 재사용합니다.
+**원자료에서 확인된 결정:** same-position 또는 zero length는 즉시 반환하고, destination이 source interval 내부에서 시작하는 경우 backward copy를 사용하며, 나머지 경우 forward `ft_memcpy`를 재사용합니다.
 
 #### 변경 전 상태 확인
 
@@ -87,7 +86,7 @@
 - forward-safe case가 `ft_memcpy`로 위임되는 caller/callee 연결을 확인합니다.
 - source 설명대로 unrelated object에 대한 단순 address ordering 대신 source range 내 위치 판정을 어떻게 구현했는지 확인합니다.
 
-#### 상태 / 항상 유지해야 하는 조건 변화 기록
+#### 상태 / 불변 조건 변화 기록
 
 - 변경 전 precondition: `ft_memcpy` caller가 두 range의 non-overlap을 보장해야 했습니다. 구현은 항상 낮은 offset에서 높은 offset으로 진행했습니다.
 - 새로 제공되는 stronger contract: 두 유효 range가 겹쳐도 `ft_memmove`가 아직 읽지 않은 source byte를 보존하는 방향으로 복사합니다. 성공 후 destination의 `length` bytes는 호출 전 source bytes와 같습니다.
@@ -110,11 +109,11 @@
 
 ### `69853cd4d3ce` — `test(memory): 겹치는 메모리 이동 검증`
 
-**Source 확정 역할:** system `memmove`를 oracle로 사용해 same-position, forward-overlap, backward-overlap, disjoint move를 비교합니다.
+**원자료에서 확인된 역할:** system `memmove`를 oracle로 사용해 same-position, forward-overlap, backward-overlap, disjoint move를 비교합니다.
 
-#### Test commit 학습
+#### 테스트 커밋 분석
 
-- production 항상 유지해야 하는 조건 대상:
+- production 불변 조건 대상:
   - 기록: 호출 전 source bytes가 overlap 방향과 무관하게 destination에 보존되고, 함수가 원래 destination을 반환하며, 지정 range 밖 buffer는 변하지 않아야 합니다. zero length는 `NULL` pointer에도 접근하지 않아야 합니다.
 - 재현하는 boundary/failure:
   - same-position: `check_move(0, 0, length)`가 모든 길이에서 identical-pointer early return을 통과합니다.
@@ -138,15 +137,15 @@
 - 후속 변경에서 막아야 할 회귀: overlap 판정 조건 반전, backward index의 off-by-one, zero-length에서 pointer access, forward branch에서 잘못된 길이 전달, 원래 destination이 아닌 전진한 pointer 반환, destination 밖 write를 막습니다.
 - 실행 근거: 저장소 checkout을 만들 수 없는 현재 환경에서는 test binary를 실행하지 않았습니다. 위 결과는 `69853cd4d3ce`의 test code와 해당 production SHA를 직접 검사한 내용이며 실행 성공을 주장하지 않습니다.
 
-## 항상 유지해야 하는 조건 ledger
+## 불변 조건 ledger
 
-| 시점 | Commit | Source에 연결된 항상 유지해야 하는 조건 | 실제 코드에서 확인한 근거 |
+| 시점 | Commit | Source에 연결된 불변 조건 | 실제 코드에서 확인한 근거 |
 | --- | --- | --- | --- |
 | weaker primitive | `4873fb11ac60` | non-overlap precondition 아래 지정 byte range만 copy | `src/memory/ft_memory_copy.c`의 `length > 0` loop가 byte 하나씩 읽고 쓰며 overlap branch 없이 원래 `destination`을 반환합니다. |
 | stronger operation | `f2c4c042b339` | overlap 시 later copy에 필요한 source byte 보존 | `destination == source + offset`을 source interval 안에서 찾으면 `length - 1`부터 0까지 복사하고, 나머지는 `ft_memcpy`로 위임합니다. |
 | verification | `69853cd4d3ce` | 두 overlap 방향, same-position, disjoint, zero-length 경계 검증 | `tests/test_memory_move.c`가 고정 pattern과 여러 길이/offset을 system `memmove`와 whole-buffer 차등 비교하고 `NULL, NULL, 0`을 별도로 검사합니다. |
 
-## Failure → Fix → Test 연결
+## 실패 → 수정 → 검증 연결
 
 이 thread는 source상 별도 `fix(...)` commit이 아니라 stronger feature 도입으로 위험을 해결합니다.
 
@@ -161,10 +160,10 @@
 
 - `ft_memcpy` caller responsibility: 두 유효 byte range가 겹치지 않는다는 사실과 각 range가 `length` bytes를 수용한다는 사실을 보장합니다.
 - `ft_memmove` implementation responsibility: 유효 range가 겹치는지 방향상 필요한 만큼 판정하고 unread source를 보존하는 traversal을 선택합니다.
-- 공통 byte-range 항상 유지해야 하는 조건: 정상 입력에서는 지정된 `length` bytes만 읽고 destination의 같은 길이만 쓰며, 길이 0이면 접근하지 않고 원래 destination을 반환합니다.
+- 공통 byte-range 불변 조건: 정상 입력에서는 지정된 `length` bytes만 읽고 destination의 같은 길이만 쓰며, 길이 0이면 접근하지 않고 원래 destination을 반환합니다.
 - 두 API를 분리했을 때 얻는 계약상의 차이: 일반 복사는 단순한 forward primitive와 명시적 non-overlap precondition을 유지하고, overlap 비용과 방향 결정은 이를 요구하는 `ft_memmove` 호출에만 부과됩니다.
 
-## Thread 최종 상태
+## 개발 흐름의 최종 상태
 
 - 마지막 commit 시점에 이 thread가 보장하는 것:
   - 기록: 코드상 `ft_memcpy`와 `ft_memmove`의 책임이 분리되고, `ft_memmove`는 destination-inside-source에만 backward traversal을 적용합니다. 고정된 차등 테스트는 선택한 경계 조합에서 반환값과 전체 buffer가 libc oracle과 같음을 검사합니다.
@@ -191,20 +190,20 @@
 - [x] 실제 코드 근거와 source 확정 설명을 구분했습니다.
 - [x] 변경 전/후 비교가 필요한 commit은 이전 관련 SHA와 비교했습니다.
 - [x] failure → fix → test 연결을 실제 코드와 test code로 확인했습니다.
-- [x] final HEAD를 과거 commit 설명에 소급하지 않았습니다.
-- [x] 이 thread의 최종 항상 유지해야 하는 조건과 execution flow를 코드 근거로 설명할 수 있습니다.
-===== END FILE: 01-non-overlap-copy-and-overlap-safe-movement.md =====
+- [x] 최종 HEAD를 과거 commit 설명에 소급하지 않았습니다.
+- [x] 이 thread의 최종 불변 조건과 execution flow를 코드 근거로 설명할 수 있습니다.
 
-===== BEGIN FILE: 02-single-allocation-to-rollback-safe-소유권.md =====
-# Thread: From single allocations to rollback-safe 소유권
+---
 
-## Thread 목표
+# 단일 메모리 할당에서 실패 시 정리 가능한 소유 관계까지
 
-**Source significance**
+## 개발 흐름 목표
+
+**원자료에서 확인된 중요성**
 
 > The 소유권 model grows from one returned allocation to nested object graphs. `ft_split` establishes the decisive complete-or-rollback rule; list lifecycle callbacks generalize 소유권 to opaque caller data; `ft_lstmap` combines both concerns. The final failure harness demonstrates that cleanup holds at every intermediate acquisition point rather than only on successful examples.
 
-### 이 Thread에 직접 연결된 source 항상 유지해야 하는 조건
+### 이 개발 흐름에 직접 연결된 원자료의 불변 조건
 
 > Allocation size arithmetic must be validated before multiplication or addition so wrapped sizes are never passed to `malloc`.
 
@@ -212,13 +211,13 @@
 
 > List nodes and list content have separate 수명. A content destructor is invoked exactly according to the caller-supplied policy, and completed cleanup leaves the caller's head `NULL`.
 
-### 이 Thread에 직접 연결된 engineering difficulties
+### 이 개발 흐름에 직접 연결된 engineering difficulties
 
 > Rolling back nested allocations in `ft_split` and callback-produced node/content pairs in `ft_lstmap`.
 
 > Reproducing allocation and write failures deterministically without changing the production API.
 
-## 이 Thread를 이해하기 위한 핵심 질문
+## 이 개발 흐름을 이해하기 위한 핵심 질문
 
 - single allocation의 size arithmetic 검증이 이후 multi-allocation builder의 전제가 되는가?
 - 새 allocation의 소유권은 어느 시점에 caller 또는 container로 이전됩니까?
@@ -235,9 +234,9 @@
 - `fd3ae063139d`가 `ft_split`과 `ft_lstmap`의 각 allocation failure 위치를 실제로 강제하는 방법을 test code에서 확인했습니다.
 - success 소유권 graph와 failure cleanup graph를 각각 그릴 수 있습니다.
 
-## Commit map
+## 커밋 목록
 
-| 순서 | Commit | Subject | Importance | Tags | Source role |
+| 순서 | 커밋 | 제목 | 중요도 | 태그 | 원자료에서 확인된 역할 |
 | --- | --- | --- | --- | --- | --- |
 | 1 | `3b1b30983876` | `feat(alloc): 0 초기화 메모리와 문자열 복제 추가` | A | SIZE_ARITH, OWNERSHIP, RISK | Establishes overflow-checked allocation sizes and the basic caller-owned allocation contract. |
 | 2 | `6d076de7185e` | `feat(string): 부분 문자열 생성을 구현` | B | OWNERSHIP, SIZE_ARITH | Applies that contract to an exactly sized substring result. |
@@ -247,13 +246,13 @@
 | 6 | `6672ea67fae4` | `feat(list): 실패 시 정리되는 리스트 변환 구현` | A | LIST_LIFECYCLE, OWNERSHIP, RISK | Applies all-or-nothing ownership to callback-produced content and newly allocated list nodes. |
 | 7 | `fd3ae063139d` | `test(alloc): 할당 실패와 rollback을 검증` | A | OWNERSHIP, TEST, RISK | Injects failure at each allocation position and measures leaks and invalid frees. |
 
-## Commit별 학습 기록
+## 커밋별 학습 기록
 
 ### `3b1b30983876` — `feat(alloc): 0 초기화 메모리와 문자열 복제 추가`
 
-**Source 확정 역할:** overflow-checked allocation size와 caller-owned single allocation contract의 기반을 만듭니다.
+**원자료에서 확인된 역할:** overflow-checked allocation size와 caller-owned single allocation contract의 기반을 만듭니다.
 
-**Source 확정 위험:** `count * size` wrap은 논리 요청보다 작은 allocation을 만들 수 있으므로 multiplication 전에 검증해야 합니다.
+**원자료에서 확인된 위험:** `count * size` wrap은 논리 요청보다 작은 allocation을 만들 수 있으므로 multiplication 전에 검증해야 합니다.
 
 #### 해당 SHA에서 확인할 코드
 
@@ -277,7 +276,7 @@
 
 ### `6d076de7185e` — `feat(string): 부분 문자열 생성을 구현`
 
-**Source 확정 역할:** single allocation 소유권 contract를 exactly sized substring에 적용합니다.
+**원자료에서 확인된 역할:** single allocation 소유권 contract를 exactly sized substring에 적용합니다.
 
 #### 해당 SHA에서 확인할 코드
 
@@ -299,7 +298,7 @@
 
 ### `644b1c65444c` — `feat(string): 문자열 결합을 구현`
 
-**Source 확정 역할:** joined string construction에 checked addition을 확장합니다.
+**원자료에서 확인된 역할:** joined string construction에 checked addition을 확장합니다.
 
 #### 해당 SHA에서 확인할 코드
 
@@ -319,7 +318,7 @@
 
 ### `8c0a35a50878` — `feat(string): 실패 시 정리되는 문자열 분리 구현`
 
-**Source 확정 역할:** 첫 project-defining multi-allocation transaction을 도입합니다. 성공 시 complete root를 publish하고, 실패 시 이미 획득한 모든 child와 root를 해제합니다.
+**원자료에서 확인된 역할:** 첫 project-defining multi-allocation transaction을 도입합니다. 성공 시 complete root를 publish하고, 실패 시 이미 획득한 모든 child와 root를 해제합니다.
 
 #### 변경 전 상태 확인
 
@@ -363,7 +362,7 @@
 
 ### `7a016ad8fd21` — `feat(list): 연결 리스트 순회와 삭제 구현`
 
-**Source 확정 역할:** list node 수명과 caller-defined content 수명을 분리하고 complete clearing을 제공합니다.
+**원자료에서 확인된 역할:** list node 수명과 caller-defined content 수명을 분리하고 complete clearing을 제공합니다.
 
 #### 해당 SHA에서 확인할 코드
 
@@ -380,13 +379,13 @@
 - content owner / destructor policy: library는 `void *content`의 실제 타입과 해제 방식을 알지 못합니다. caller가 전달한 `del` callback이 content 수명 policy를 정의하며, library는 이를 호출한 뒤 node를 해제합니다.
 - `ft_lstdelone` transition: `node == NULL || del == NULL`이면 아무것도 하지 않습니다. 정상 경로에서는 먼저 `del(node->content)`로 opaque content를 정리하고 그 다음 `free(node)`로 node storage를 정리합니다.
 - `ft_lstclear` loop state: `list == NULL || del == NULL`이면 반환합니다. 각 iteration에서 `next = (*list)->next`를 node free 전에 저장하고 `ft_lstdelone(*list, del)`을 호출한 뒤 `*list = next`로 caller head를 전진시킵니다.
-- cleanup 완료 항상 유지해야 하는 조건: loop가 종료되면 `*list == NULL`입니다. successor를 먼저 보존하므로 freed node의 `next`를 읽지 않습니다.
+- cleanup 완료 불변 조건: loop가 종료되면 `*list == NULL`입니다. successor를 먼저 보존하므로 freed node의 `next`를 읽지 않습니다.
 - missing destructor에서 보장하는 것: content 정리 없이 node만 free하는 partial destruction을 수행하지 않고 list/head를 그대로 둡니다. 대신 cleanup을 대신해 주지 않으므로 소유권은 caller에게 남습니다.
 - `ft_lstmap`이 이 lifecycle API에 의존할 이유: mapping 중 여러 node가 이미 연결된 뒤 새 node allocation이 실패할 수 있습니다. established `ft_lstclear`를 사용하면 각 mapped content에 같은 destructor policy를 적용하면서 partial node chain과 head를 한 번에 정리할 수 있습니다.
 
 ### `6672ea67fae4` — `feat(list): 실패 시 정리되는 리스트 변환 구현`
 
-**Source 확정 역할:** callback-produced content와 새 list node에 all-or-nothing 소유권을 적용합니다.
+**원자료에서 확인된 역할:** callback-produced content와 새 list node에 all-or-nothing 소유권을 적용합니다.
 
 #### 변경 전 상태 확인
 
@@ -426,11 +425,11 @@
 
 ### `fd3ae063139d` — `test(alloc): 할당 실패와 rollback을 검증`
 
-**Source 확정 역할:** tracked `malloc`/`free`와 선택적 allocation failure를 이용해 split과 list mapping의 각 acquisition position에서 rollback을 재현하고 측정합니다.
+**원자료에서 확인된 역할:** tracked `malloc`/`free`와 선택적 allocation failure를 이용해 split과 list mapping의 각 acquisition position에서 rollback을 재현하고 측정합니다.
 
-#### Test commit 학습
+#### 테스트 커밋 분석
 
-- production 항상 유지해야 하는 조건 대상:
+- production 불변 조건 대상:
   - pre-allocation size safety와 single-allocation failure: production source 전체를 substituted allocator로 다시 compile하고 첫 allocation을 실패시켜 `ft_calloc`, `ft_strdup`, `ft_substr`, `ft_strjoin`, `ft_strtrim`, `ft_itoa`, `ft_strmapi`, `ft_lstnew`가 `NULL`과 live count 0을 남기는지 검사합니다. overflow branch 자체를 이 failure suite가 직접 주입하는 것은 아닙니다.
   - `ft_split` complete-or-rollback: 네 field 입력의 정상 allocation count가 root 1 + fields 4 = 5인지 먼저 측정하고, failure index 1부터 5까지 각각 실패시켜 result `NULL`, live 0, invalid free 0을 검사합니다.
   - `ft_lstmap` callback content + node rollback: 세 source node에서 production `ft_lstnew` allocation 1·2·3번째를 각각 실패시키고, 최신 unlinked callback content와 이전 mapped chain에 대한 destructor 호출 수가 failure index와 같은지 검사합니다.
@@ -456,9 +455,9 @@
 - 후속 변경에서 막아야 할 회귀: split partial child/root leak, 실패 slot까지 잘못 free, mapped latest content 누락, partial mapped list leak, tracked node invalid/이중 해제, failure 후 non-`NULL` partial publish, source content 변조를 막습니다.
 - 실행 근거: 저장소 checkout을 만들 수 없는 현재 환경에서는 `make failure-test`를 실행하지 않았습니다. 이 절의 수치와 경로는 `fd3ae063139d`의 Makefile, `tests/failure/test_failure.c`, `tests/support/fail_alloc.c`를 직접 검사한 결과이며 실행 성공을 기록하지 않습니다.
 
-## 항상 유지해야 하는 조건 ledger
+## 불변 조건 ledger
 
-| 단계 | Commit | Source에 연결된 항상 유지해야 하는 조건 | 실제 코드에서 확인한 근거 |
+| 단계 | Commit | Source에 연결된 불변 조건 | 실제 코드에서 확인한 근거 |
 | --- | --- | --- | --- |
 | size foundation | `3b1b30983876` | multiplication/addition wrap을 allocation 전에 차단 | `ft_calloc`이 division guard 후에만 product를 계산하고, `ft_strdup`이 `length == SIZE_MAX`를 `length + 1` 전에 거부합니다. |
 | single owner | `6d076de7185e` | 성공 시 독립 allocation 하나를 caller가 소유 | `ft_substr`이 suffix를 clamp한 뒤 새 block을 만들고 명시적으로 NUL을 써서 반환하며 out-of-range start도 `ft_strdup("")`로 독립 allocation을 만듭니다. |
@@ -468,7 +467,7 @@
 | callback-produced graph | `6672ea67fae4` | unlinked content와 partial list를 모두 rollback | node failure branch가 `del(mapped_content)` 후 `ft_lstclear(&mapped, del)`을 호출하며 source에는 write하지 않습니다. |
 | deterministic evidence | `fd3ae063139d` | 각 allocation failure 위치에서 leak/invalid free 없이 cleanup | substituted allocator가 exact attempt를 실패시키고 split 1~5, map node 1~3에서 `NULL`, live 0, invalid 0, 예상 destructor count를 assertion합니다. |
 
-## Failure → Fix → Test 연결
+## 실패 → 수정 → 검증 연결
 
 ### `ft_split`
 
@@ -478,7 +477,7 @@
 - `8c0a35a50878`의 complete-or-rollback decision: root를 먼저 zero-initialize하고 성공 child 수를 `field_index`로 유지하며, 모든 field가 끝난 경우에만 root를 publish합니다.
 - 실제 cleanup 코드: `copy_field` 실패 시 `free_fields(fields, field_index)`가 이미 연결된 fields를 역순 free하고 root를 free한 뒤 `NULL`을 반환합니다.
 - `fd3ae063139d`의 failure injection: 정상 control run으로 allocation count 5를 얻고 1~5번째를 각각 실패시켜 모든 acquisition branch를 통과합니다.
-- regression으로 고정된 항상 유지해야 하는 조건: 어떤 acquisition이 실패해도 partial root가 반환되지 않고 tracked live allocation과 invalid free가 0입니다.
+- regression으로 고정된 불변 조건: 어떤 acquisition이 실패해도 partial root가 반환되지 않고 tracked live allocation과 invalid free가 0입니다.
 
 ### `ft_lstmap`
 
@@ -488,7 +487,7 @@
 - `6672ea67fae4`의 cleanup decision: 최신 unlinked content를 직접 `del`하고, 이미 연결된 chain은 `ft_lstclear`에 맡깁니다.
 - 실제 cleanup 코드: `if (node == NULL) { del(mapped_content); ft_lstclear(&mapped, del); return (NULL); }` 순서입니다.
 - `fd3ae063139d`의 failure injection: production node allocator 1~3번째를 실패시키고 destructor 호출 수가 각각 1~3인지, tracked node live/invalid count가 0인지 검사합니다.
-- regression으로 고정된 항상 유지해야 하는 조건: 최신 unlinked content와 이전 linked contents/nodes가 모두 한 번씩 정리되고 source content 값은 유지됩니다. callback allocation failure 자체는 이 harness의 주입 범위가 아닙니다.
+- regression으로 고정된 불변 조건: 최신 unlinked content와 이전 linked contents/nodes가 모두 한 번씩 정리되고 source content 값은 유지됩니다. callback allocation failure 자체는 이 harness의 주입 범위가 아닙니다.
 
 ## 소유권 / state / responsibility 변화
 
@@ -500,7 +499,7 @@
 | list node + opaque content | node storage와 caller-defined content | node는 list owner, content policy는 `del` callback이 결정 | `ft_lstdelone`/`ft_lstclear`가 content 후 node를 정리; `del == NULL`이면 소유권 유지 | `src/list/ft_list_lifecycle.c` guard와 successor-before-free loop |
 | mapped content + mapped node | callback result와 새 node chain | callback 직후 builder가 content 소유; node 성공·link 후 partial mapped list가 소유; 전체 성공 시 caller로 이전 | 최신 unlinked content는 직접 `del`, linked chain은 `ft_lstclear` | `src/list/ft_list_map.c` failure branch와 tail append |
 
-## Thread 최종 상태
+## 개발 흐름의 최종 상태
 
 - 마지막 commit 시점에 이 thread가 보장하는 것:
   - 기록: single allocation은 size를 먼저 검증하고 완성된 pointer만 반환합니다. `ft_split`과 `ft_lstmap`은 partial 소유권 상태를 내부에 유지하다 성공 시에만 complete graph를 반환하고, inspected failure paths는 확보한 resource를 전부 회수합니다. list cleanup은 caller destructor와 node free를 분리합니다. deterministic harness는 지정 acquisition 위치의 rollback을 검사합니다.
@@ -518,7 +517,7 @@
 - 상태 또는 소유권 변화: 새 allocation은 처음에는 생성 함수가 소유합니다. split child는 root slot 연결 시 partial graph로, mapped content는 node 성공·link 시 partial list로 이전됩니다. complete return에서 graph 전체가 caller에게 이전됩니다.
 - failure 처리: split은 성공 child count로 child와 root를 회수합니다. list map은 최신 unlinked content를 직접 지우고 기존 linked chain은 `ft_lstclear`에 넘깁니다. 어떤 경우에도 partial root를 반환하지 않습니다.
 - verification 경로: failure build가 production `malloc/free`를 tracked functions로 치환해 exact attempt를 실패시키고 live/invalid counters, 반환값, destructor count, 일부 source 값을 검사합니다.
-- 최종 설명: 이 Thread의 핵심은 `malloc` 성공 여부만 확인하는 것이 아니라 소유권이 어느 statement에서 어느 container로 이동했는지를 추적하는 것입니다. complete graph가 되기 전에는 builder가 모든 cleanup 책임을 유지하며, list의 opaque content는 caller가 제공한 destructor policy에 따라 node와 별도로 정리됩니다. failure harness는 이 규칙을 선택한 acquisition마다 반복 가능하게 통과시킵니다.
+- 최종 설명: 이 개발 흐름의 핵심은 `malloc` 성공 여부만 확인하는 것이 아니라 소유권이 어느 statement에서 어느 container로 이동했는지를 추적하는 것입니다. complete graph가 되기 전에는 builder가 모든 cleanup 책임을 유지하며, list의 opaque content는 caller가 제공한 destructor policy에 따라 node와 별도로 정리됩니다. failure harness는 이 규칙을 선택한 acquisition마다 반복 가능하게 통과시킵니다.
 
 ## 학습 완료 자가 점검
 
@@ -527,30 +526,30 @@
 - [x] 실제 코드 근거와 source 확정 설명을 구분했습니다.
 - [x] 변경 전/후 비교가 필요한 commit은 이전 관련 SHA와 비교했습니다.
 - [x] failure → fix → test 연결을 실제 코드와 test code로 확인했습니다.
-- [x] final HEAD를 과거 commit 설명에 소급하지 않았습니다.
-- [x] 이 thread의 최종 항상 유지해야 하는 조건과 execution flow를 코드 근거로 설명할 수 있습니다.
-===== END FILE: 02-single-allocation-to-rollback-safe-소유권.md =====
+- [x] 최종 HEAD를 과거 commit 설명에 소급하지 않았습니다.
+- [x] 이 thread의 최종 불변 조건과 execution flow를 코드 근거로 설명할 수 있습니다.
 
-===== BEGIN FILE: 03-fd-output-partial-system-calls.md =====
-# Thread: Hardening file-descriptor output against partial system calls
+---
 
-## Thread 목표
+# 부분 시스템 호출에도 안전한 파일 디스크립터 출력
 
-**Source significance**
+## 개발 흐름 목표
 
-> The initial 공개 API cannot return status, so reliability has to be enforced internally and failure has to stop further composite output. The thread evolves from formatting correctness to a system-call progress 항상 유지해야 하는 조건, then proves that 항상 유지해야 하는 조건 with a deterministic substitute for `write`.
+**원자료에서 확인된 중요성**
 
-### 이 Thread에 직접 연결된 source 항상 유지해야 하는 조건
+> The initial 공개 API cannot return status, so reliability has to be enforced internally and failure has to stop further composite output. The thread evolves from formatting correctness to a system-call progress 불변 조건, then proves that 불변 조건 with a deterministic substitute for `write`.
+
+### 이 개발 흐름에 직접 연결된 원자료의 불변 조건
 
 > File-descriptor output advances after every positive short write, retries `EINTR`, treats zero progress as failure, and stops composite output after a permanent error.
 
-### 이 Thread에 직접 연결된 engineering difficulties
+### 이 개발 흐름에 직접 연결된 engineering difficulties
 
 > Preserving output progress across short system calls while fitting a public `void` descriptor API that cannot return an error status.
 
 > Reproducing allocation and write failures deterministically without changing the production API.
 
-## 이 Thread를 이해하기 위한 핵심 질문
+## 이 개발 흐름을 이해하기 위한 핵심 질문
 
 - 초기 one-shot `write`가 어떤 failure/partial-success 상태를 처리하지 못하는가?
 - public API가 `void`일 때 내부 helper는 failure를 어떻게 전달해 composite output을 멈추는가?
@@ -566,9 +565,9 @@
 - sign/prefix 또는 앞선 component failure 뒤 후속 출력이 중지되는 control flow를 확인했습니다.
 - `b013c926ceb5`에서 scripted return/error sequence와 production call sequence가 1:1로 연결되는지 확인했습니다.
 
-## Commit map
+## 커밋 목록
 
-| 순서 | Commit | Subject | Importance | Tags | Source role |
+| 순서 | 커밋 | 제목 | 중요도 | 태그 | 원자료에서 확인된 역할 |
 | --- | --- | --- | --- | --- | --- |
 | 1 | `26509fd54c3d` | `feat(io): 파일 디스크립터 출력 함수 추가` | B | FD_OUTPUT, CORE | Adds the initial void-returning descriptor API and one-shot writes. |
 | 2 | `60c35f2fb431` | `test(io): 파일 디스크립터 출력 검증` | B | FD_OUTPUT, TEST | Captures normal bytes and establishes the initial invalid-descriptor and broken-pipe observations. |
@@ -576,11 +575,11 @@
 | 4 | `3f2bfbf11e1f` | `fix(io): 파일 디스크립터 출력을 끝까지 재시도` | S | FD_OUTPUT, CORE, RISK | Introduces write-until-complete behavior, `EINTR` retry, zero-progress rejection, and permanent-error stopping. |
 | 5 | `b013c926ceb5` | `test(io): 부분 쓰기와 EINTR 이후 진행을 검증` | A | FD_OUTPUT, TEST, RISK | Replaces nondeterministic operating-system timing with scripted write results and verifies the exact retry sequence. |
 
-## Commit별 학습 기록
+## 커밋별 학습 기록
 
 ### `26509fd54c3d` — `feat(io): 파일 디스크립터 출력 함수 추가`
 
-**Source 확정 역할:** arbitrary 파일 디스크립터를 대상으로 하는 initial void-returning output API를 one-shot writes로 도입합니다.
+**원자료에서 확인된 역할:** arbitrary 파일 디스크립터를 대상으로 하는 initial void-returning output API를 one-shot writes로 도입합니다.
 
 #### 해당 SHA에서 확인할 코드
 
@@ -604,11 +603,11 @@
 
 ### `60c35f2fb431` — `test(io): 파일 디스크립터 출력 검증`
 
-**Source 확정 역할:** pipe capture로 정상 byte sequence를 확인하고, invalid closed descriptor와 suppressed `SIGPIPE` 아래 broken pipe의 초기 observable 동작을 기록합니다.
+**원자료에서 확인된 역할:** pipe capture로 정상 byte sequence를 확인하고, invalid closed descriptor와 suppressed `SIGPIPE` 아래 broken pipe의 초기 observable 동작을 기록합니다.
 
-#### Test commit 학습
+#### 테스트 커밋 분석
 
-- production 항상 유지해야 하는 조건/contract 대상:
+- production 불변 조건/contract 대상:
   - 정상 formatting과 ordering: pipe write end에 네 helper를 조합해 `Afoundation\n0|-1|2147483647|-2147483648`을 출력하고, write end를 닫은 뒤 read end에서 예상 길이와 byte sequence를 비교합니다.
   - invalid descriptor control return: 새 pipe 양쪽을 닫은 뒤 closed fd에 네 helper를 호출합니다. 명시적 return/`errno` assertion은 없고, test process가 종료·hang하지 않고 함수 호출 뒤로 돌아오는지만 간접 관찰합니다.
   - broken pipe에서 `EPIPE` 관찰: `SIGPIPE` handler를 `SIG_IGN`으로 바꾸고 pipe read end를 닫은 뒤 `ft_putstr_fd("closed", pipe_fd[1])`를 호출해 `errno == EPIPE`인지 확인합니다. 마지막에 이전 시그널 처리 함수를 복구합니다.
@@ -630,7 +629,7 @@
 
 ### `1077556d1c4b` — `refactor(io): 숫자 출력을 자릿수 helper로 분리`
 
-**Source 확정 역할:** signed-decimal output을 sign handling + recursive unsigned digit emitter로 분리하고 각 digit을 공통 character-output primitive로 보냅니다.
+**원자료에서 확인된 역할:** signed-decimal output을 sign handling + recursive unsigned digit emitter로 분리하고 각 digit을 공통 character-output primitive로 보냅니다.
 
 #### 해당 SHA에서 확인할 코드
 
@@ -652,7 +651,7 @@
 
 ### `3f2bfbf11e1f` — `fix(io): 파일 디스크립터 출력을 끝까지 재시도`
 
-**Source 확정 역할:** positive short write progress 보존, `EINTR` retry, zero progress rejection, permanent-error stop을 포함하는 project-defining system-call 항상 유지해야 하는 조건을 복구합니다.
+**원자료에서 확인된 역할:** positive short write progress 보존, `EINTR` retry, zero progress rejection, permanent-error stop을 포함하는 project-defining system-call 불변 조건을 복구합니다.
 
 #### 기존 가정 → 실제 failure 또는 위험
 
@@ -685,7 +684,7 @@
 | zero progress | 기존 offset과 remaining 유지 | `written == 0` | `errno = EIO`, progress 없음 | stop / failure 0 | error branch의 explicit `written == 0` 처리 |
 | permanent error | 기존 offset과 remaining 유지 | `written < 0`, `errno != EINTR` | system `errno` 유지 | 즉시 stop / failure 0 | `else` branch에서 추가 call 없이 return 0 |
 
-#### 수정된 항상 유지해야 하는 조건
+#### 수정된 불변 조건
 
 - progress가 보존되는 조건: system call이 양수를 반환한 경우에만 그 반환 byte 수만큼 offset을 증가시킵니다. 다음 request는 남은 길이이며 `buffer + offset`부터 시작합니다.
 - retry 가능한 유일한 error: 이 구현에서 명시적으로 retry하는 error는 `EINTR`뿐입니다. progress를 적용하지 않고 같은 remaining range를 재요청합니다.
@@ -701,11 +700,11 @@
 
 ### `b013c926ceb5` — `test(io): 부분 쓰기와 EINTR 이후 진행을 검증`
 
-**Source 확정 역할:** deterministic scripted `write` 결과를 사용해 partial progress, interruption, zero, permanent error의 정확한 retry/stop sequence를 검증합니다.
+**원자료에서 확인된 역할:** deterministic scripted `write` 결과를 사용해 partial progress, interruption, zero, permanent error의 정확한 retry/stop sequence를 검증합니다.
 
-#### Test commit 학습
+#### 테스트 커밋 분석
 
-- production 항상 유지해야 하는 조건 대상:
+- production 불변 조건 대상:
   - positive short write 후 남은 byte만 재시도: `"abcdef"`에 첫 result 2를 주고 다음 request가 4인지 검사합니다.
   - `EINTR` retry: 두 번째 call이 `-1/EINTR`일 때 세 번째 request가 여전히 4이고 output progress가 중복되지 않는지 검사합니다.
   - zero progress rejection: 2 bytes 성공 뒤 0을 반환시켜 두 call에서 멈추고 output이 `"ab"`, `errno == EIO`인지 검사합니다.
@@ -729,13 +728,13 @@
   - [ ] broad integration
   - [x] deterministic regression
   - [x] deterministic system-call failure injection
-  - 선택 근거: production system-call symbol을 compile-time substitute하고 exact return/error script, request lengths, output, call count를 assertion합니다. 실제 OS timing을 관찰하는 test가 아니라 progress 항상 유지해야 하는 조건 전용 regression입니다.
+  - 선택 근거: production system-call symbol을 compile-time substitute하고 exact return/error script, request lengths, output, call count를 assertion합니다. 실제 OS timing을 관찰하는 test가 아니라 progress 불변 조건 전용 regression입니다.
 - 후속 변경에서 막아야 할 회귀: short write 뒤 original length 재요청, offset을 requested size만큼 잘못 증가, `EINTR`에서 중복 progress, zero에서 무한 loop, hard error 뒤 newline/digits 계속 출력, sign 실패 뒤 digits 출력, 잘못된 fd 전달을 막습니다.
 - 실행 근거: 현재 환경에서는 `make write-failure-test`를 실행하지 않았습니다. 위 exact sequence는 `b013c926ceb5`의 test/support code와 Makefile을 검사한 결과이며 실제 실행 성공을 주장하지 않습니다.
 
-## 항상 유지해야 하는 조건 ledger
+## 불변 조건 ledger
 
-| 단계 | Commit | Source에 연결된 항상 유지해야 하는 조건 상태 | 실제 코드에서 확인한 근거 |
+| 단계 | Commit | Source에 연결된 불변 조건 상태 | 실제 코드에서 확인한 근거 |
 | --- | --- | --- | --- |
 | initial API | `26509fd54c3d` | one-shot write, completion invariant 미확립 | 네 public helper가 `write` 반환값을 버리고 short write/`EINTR` loop 없이 동작합니다. |
 | initial observation | `60c35f2fb431` | 정상 bytes와 기본 error observation만 검증 | 실제 pipe로 expected bytes와 `EPIPE`를 확인하지만 write return sequence를 통제하지 않습니다. |
@@ -743,7 +742,7 @@
 | fix / invariant restoration | `3f2bfbf11e1f` | progress, `EINTR`, zero, permanent error 정책 확립 | `write_all`이 positive bytes만큼 offset을 갱신하고 EINTR만 retry하며 zero를 EIO, 다른 error를 stop으로 처리합니다. |
 | deterministic regression | `b013c926ceb5` | exact retry/stop sequence 강제 검증 | substituted `test_write`가 scripted results를 반환하고 fd/request/output/call count를 기록해 `6→4→4→3` 및 stop cases를 assertion합니다. |
 
-## Failure → Fix → Test 연결
+## 실패 → 수정 → 검증 연결
 
 - 기존 가정: one-shot `write`가 요청을 충분히 처리한다고 간주
 - 실제 failure/위험: short write, `EINTR`, zero progress, permanent error 후 잘못된 continuation
@@ -753,7 +752,7 @@
 - 실제 수정 코드: private `write_all`이 bounded request, offset, positive progress, EINTR retry, zero/hard error stop을 담당하고, newline/number private paths가 boolean success를 전파합니다.
 - regression test: `b013c926ceb5`
 - failure injection script: `write`를 `test_write`로 바꾸고 `{result, errno}` steps를 순서대로 제공하며 request/call/output를 기록합니다.
-- 고정된 항상 유지해야 하는 조건: 양수 반환만큼만 전진하고, EINTR에는 같은 remaining range를 재시도하며, zero와 permanent error에서는 추가 component를 쓰지 않습니다.
+- 고정된 불변 조건: 양수 반환만큼만 전진하고, EINTR에는 같은 remaining range를 재시도하며, zero와 permanent error에서는 추가 component를 쓰지 않습니다.
 
 ## State / responsibility 변화
 
@@ -762,14 +761,14 @@
 - composite helper가 맡는 stop-on-error responsibility: 앞 component의 private failure를 검사해 newline, sign 이후 digits, recursive 후속 digits를 중지합니다.
 - test harness가 맡는 deterministic system-call boundary: 실제 OS 대신 exact short/error results를 공급하고 production request와 output progression을 측정합니다.
 
-## Thread 최종 상태
+## 개발 흐름의 최종 상태
 
 - 마지막 commit 시점에 이 thread가 보장하는 것:
   - 기록: valid text/value와 fd 입력에서 내부 completion path는 positive short write를 모두 이어 쓰고 EINTR을 재시도합니다. zero는 EIO, permanent error는 즉시 stop이며 composite helper는 앞선 failure 뒤 후속 bytes를 제출하지 않습니다. scripted test가 대표 sequence를 정확히 검사합니다.
 - 이 thread만으로는 보장하지 않는 것:
   - 기록: public API가 caller에게 status를 반환하지 않고, `NULL` string 방어, nonblocking `EAGAIN` retry, 모든 kernel timing, atomic multi-byte output, thread safety를 보장하지 않습니다. 현재 작업 환경에서 test 명령은 실행하지 않았습니다.
 - source의 significance와 실제 코드 확인 결과가 연결되는 지점:
-  - 기록: API signature를 바꾸지 않고 private status propagation과 stop-on-error를 추가했으며, nondeterministic system call을 scripted substitute로 바꿔 exact progress 항상 유지해야 하는 조건을 검증한다는 점이 source significance와 일치합니다.
+  - 기록: API signature를 바꾸지 않고 private status propagation과 stop-on-error를 추가했으며, nondeterministic system call을 scripted substitute로 바꿔 exact progress 불변 조건을 검증한다는 점이 source significance와 일치합니다.
 
 ## 최종 architecture 또는 실행 순서 정리
 
@@ -780,7 +779,7 @@
 - 상태 또는 소유권 변화: allocation은 없습니다. local `offset`만 이미 처리된 prefix를 나타내며, remaining은 `length - offset`으로 매 iteration 재계산됩니다.
 - failure 처리: EINTR만 state 변화 없이 retry합니다. zero는 EIO로 바꿔 실패하고 다른 error는 errno를 유지한 채 실패합니다. composite operation은 실패 status를 받으면 즉시 반환합니다.
 - verification 경로: normal pipe test는 formatting과 기본 error를 관찰하고, special build는 `write`를 scripted function으로 치환해 request lengths, fd, accumulated bytes, call count를 검사합니다.
-- 최종 설명: 이 Thread는 출력 문자열을 올바르게 만드는 문제에서 system call의 부분 성공을 올바르게 이어 가는 문제로 확장됩니다. public API는 여전히 `void`지만 private helper가 progress와 failure를 명시적으로 관리해 잘린 출력과 오류 뒤 continuation을 막습니다.
+- 최종 설명: 이 개발 흐름은 출력 문자열을 올바르게 만드는 문제에서 system call의 부분 성공을 올바르게 이어 가는 문제로 확장됩니다. public API는 여전히 `void`지만 private helper가 progress와 failure를 명시적으로 관리해 잘린 출력과 오류 뒤 continuation을 막습니다.
 
 ## 학습 완료 자가 점검
 
@@ -789,30 +788,30 @@
 - [x] 실제 코드 근거와 source 확정 설명을 구분했습니다.
 - [x] 변경 전/후 비교가 필요한 commit은 이전 관련 SHA와 비교했습니다.
 - [x] failure → fix → test 연결을 실제 코드와 test code로 확인했습니다.
-- [x] final HEAD를 과거 commit 설명에 소급하지 않았습니다.
-- [x] 이 thread의 최종 항상 유지해야 하는 조건과 execution flow를 코드 근거로 설명할 수 있습니다.
-===== END FILE: 03-fd-output-partial-system-calls.md =====
+- [x] 최종 HEAD를 과거 commit 설명에 소급하지 않았습니다.
+- [x] 이 thread의 최종 불변 조건과 execution flow를 코드 근거로 설명할 수 있습니다.
 
-===== BEGIN FILE: 04-static-archive-release-verification.md =====
-# Thread: Treating the static archive as a verified release artifact
+---
 
-## Thread 목표
+# 검증된 배포 산출물로서의 정적 라이브러리
 
-**Source significance**
+## 개발 흐름 목표
+
+**원자료에서 확인된 중요성**
 
 > The project stops treating a successful local compile as sufficient evidence. Compiler builtins are excluded, the archive and consumer boundary are inspected directly, independent defect detectors cover different failure classes, and the same evidence is reproduced across compiler families before being orchestrated into one release check.
 
-### 이 Thread에 직접 연결된 source 항상 유지해야 하는 조건
+### 이 개발 흐름에 직접 연결된 원자료의 불변 조건
 
 > The archive contains the intended translation units and public symbols only, links from outside the repository, and depends only on the explicitly allowed runtime functions.
 
 > Tests of reimplemented libc-style functions must not be invalidated by compiler builtin substitution.
 
-### 이 Thread에 직접 연결된 engineering difficulty
+### 이 개발 흐름에 직접 연결된 구현 난점
 
 > Inspecting archive symbols portably enough for both Darwin and Linux and validating the same source under Clang and GNU GCC.
 
-## 이 Thread를 이해하기 위한 핵심 질문
+## 이 개발 흐름을 이해하기 위한 핵심 질문
 
 - compiler builtin substitution이 libc reimplementation test의 신뢰성을 어떻게 훼손할 수 있으며 build flags는 이를 어디서 차단하는가?
 - `libft.a`의 member, exported symbol, undefined external dependency는 어떤 manifest/inspection 단계로 검증됩니까?
@@ -829,9 +828,9 @@
 - Clang/GCC 검증이 clean copied tree에서 full suite를 실행하는지 확인했습니다.
 - 최종 orchestration target이 기존 evidence를 재사용하는 순서와 failure propagation을 확인했습니다.
 
-## Commit map
+## 커밋 목록
 
-| 순서 | Commit | Subject | Importance | Tags | Source role |
+| 순서 | 커밋 | 제목 | 중요도 | 태그 | 원자료에서 확인된 역할 |
 | --- | --- | --- | --- | --- | --- |
 | 1 | `4df8b23505b8` | `build(flags): C99 경고와 builtin 정책을 고정` | A | RELEASE, VERIFY, RISK | Locks C99 warnings and disables compiler builtin substitution. |
 | 2 | `79c0dcefb590` | `test(release): archive와 consumer 경계를 검증` | A | RELEASE, ARCH, VERIFY | Verifies archive members, public definitions, allowed external dependencies, and an out-of-tree consumer. |
@@ -841,11 +840,11 @@
 | 6 | `e31a2e748685` | `test(build): Clang과 GCC 호환성을 검증` | A | RELEASE, VERIFY | Runs the complete release-oriented suite under both Clang and GNU GCC in clean copied trees. |
 | 7 | `b90fd748255a` | `test(release): 전체 검증 절차를 연결` | B | RELEASE, VERIFY | Connects clean build, functional, failure, sanitizer, archive, compiler, leak, and no-op rebuild checks. |
 
-## Commit별 학습 기록
+## 커밋별 학습 기록
 
 ### `4df8b23505b8` — `build(flags): C99 경고와 builtin 정책을 고정`
 
-**Source 확정 역할:** strict C99 warnings와 compiler builtin 비활성화를 고정해 low-level reimplementation 검증의 compiler boundary를 강화합니다.
+**원자료에서 확인된 역할:** strict C99 warnings와 compiler builtin 비활성화를 고정해 low-level reimplementation 검증의 compiler boundary를 강화합니다.
 
 #### 해당 SHA에서 확인할 코드 / build 설정
 
@@ -866,7 +865,7 @@
 
 ### `79c0dcefb590` — `test(release): archive와 consumer 경계를 검증`
 
-**Source 확정 역할:** archive members, normalized public symbol sets, allowed external dependencies, out-of-tree consumer를 검증해 `libft.a`를 binary/release boundary로 취급합니다.
+**원자료에서 확인된 역할:** archive members, normalized public symbol sets, allowed external dependencies, out-of-tree consumer를 검증해 `libft.a`를 binary/release boundary로 취급합니다.
 
 #### 해당 SHA에서 확인할 실제 핵심 코드
 
@@ -887,9 +886,9 @@
 - platform-specific normalization: Darwin은 `nm -gU -j`와 `nm -u -j`를 사용하고 leading underscore를 `sed`로 제거합니다. Linux는 `nm -g --defined-only -j`와 `nm -u -j` 결과를 그대로 사용합니다. 그 밖의 OS는 `unsupported symbol tool platform`으로 실패합니다.
 - 검증 실패가 의미하는 artifact defect: source list와 archive 불일치, 외부에 공개된 API drift, forbidden runtime dependency, platform normalization 실패, public header/archive만으로 external consumer를 build하거나 실행하지 못하는 문제 중 하나입니다.
 
-#### Test commit 학습
+#### 테스트 커밋 분석
 
-- production/release 항상 유지해야 하는 조건 대상: intended translation units와 public globals만 가진 archive, 허용 external dependencies, repository 밖 current directory에서도 header와 archive를 명시해 compile/link/run할 수 있는 consumer boundary입니다.
+- production/release 불변 조건 대상: intended translation units와 public globals만 가진 archive, 허용 external dependencies, repository 밖 current directory에서도 header와 archive를 명시해 compile/link/run할 수 있는 consumer boundary입니다.
 - failure 또는 boundary:
   - missing/extra archive member: `members.expected`와 `members.actual`의 `cmp`가 nonzero입니다.
   - missing/extra global symbol: normalized identifier set과 API manifest의 `cmp`가 nonzero입니다.
@@ -911,9 +910,9 @@
 
 ### `f5de4306ebcd` — `test(sanitize): undefined behavior 검사를 추가`
 
-**Source 확정 역할:** UBSan-specific objects와 execution target을 추가합니다.
+**원자료에서 확인된 역할:** UBSan-specific objects와 execution target을 추가합니다.
 
-#### Test commit 학습
+#### 테스트 커밋 분석
 
 - sanitizer용 object/build flags가 ordinary build와 어떻게 분리되는지 찾습니다. 모든 production `SRC`를 `build/ubsan` 아래 별도 object로 compile하며 `UBSAN_FLAGS := -fsanitize=undefined -fno-omit-frame-pointer`를 공통 strict flags에 추가합니다. ordinary `build/obj`와 섞지 않습니다.
 - 어떤 test suite 또는 executable이 UBSan build에서 실행되는지 확인합니다. ordinary `TEST_SRC := $(wildcard tests/test_*.c)`와 instrumented production objects를 `tests/bin/test_ubsan`으로 link합니다. allocation/write failure-injection binaries는 이 target에 포함되지 않습니다.
@@ -926,9 +925,9 @@
 
 ### `c625970fd211` — `test(sanitize): address sanitizer 검사를 추가`
 
-**Source 확정 역할:** ASan-specific builds와 runtime checks를 추가하며, source는 이것이 leak testing을 대체하지 않는다고 명시합니다.
+**원자료에서 확인된 역할:** ASan-specific builds와 runtime checks를 추가하며, source는 이것이 leak testing을 대체하지 않는다고 명시합니다.
 
-#### Test commit 학습
+#### 테스트 커밋 분석
 
 - ASan용 compile/link flags와 object separation을 찾습니다. 모든 production `SRC`를 `build/asan` 아래 별도 object로 만들고 `-fsanitize=address -fno-omit-frame-pointer`를 compile/link에 적용해 `tests/bin/test_asan`을 만듭니다.
 - 어떤 functional/failure paths가 ASan instrumented binary에서 실행되는지 확인합니다. UBSan과 마찬가지로 ordinary `TEST_SRC`만 link합니다. allocator/write failure test drivers는 ASan binary에 포함되지 않습니다.
@@ -942,9 +941,9 @@
 
 ### `9f555c37a6d8` — `test(leak): host 누수 검사 경로를 추가`
 
-**Source 확정 역할:** host에서 `leaks` 또는 Valgrind를 사용하는 leak-checking path를 추가합니다.
+**원자료에서 확인된 역할:** host에서 `leaks` 또는 Valgrind를 사용하는 leak-checking path를 추가합니다.
 
-#### Test commit 학습
+#### 테스트 커밋 분석
 
 - platform/host에 따라 어떤 leak checker가 선택되는지 실제 target/script에서 확인합니다. shell이 먼저 `command -v leaks`를 확인해 있으면 `leaks --atExit -- ./$(TEST_BIN)`을 실행합니다. 없으면 `command -v valgrind`를 확인해 full leak check를 실행합니다. 둘 다 없으면 명시적으로 stderr와 exit 1을 반환합니다.
 - 검사 대상 executable과 실행 범위를 기록합니다. ordinary `tests/bin/test_libft`만 검사합니다. failure-injection binaries와 sanitizer binaries는 leak target의 직접 대상이 아닙니다.
@@ -957,7 +956,7 @@
 
 ### `e31a2e748685` — `test(build): Clang과 GCC 호환성을 검증`
 
-**Source 확정 역할:** clean copied trees에서 complete release-oriented suite를 Clang과 GNU GCC 각각으로 실행합니다.
+**원자료에서 확인된 역할:** clean copied trees에서 complete release-oriented suite를 Clang과 GNU GCC 각각으로 실행합니다.
 
 #### 해당 SHA에서 확인할 build/test flow
 
@@ -982,7 +981,7 @@
 
 ### `b90fd748255a` — `test(release): 전체 검증 절차를 연결`
 
-**Source 확정 역할:** clean build, functional, failure, sanitizer, archive, compiler, leak, no-op rebuild 검증을 하나의 release procedure로 orchestration합니다.
+**원자료에서 확인된 역할:** clean build, functional, failure, sanitizer, archive, compiler, leak, no-op rebuild 검증을 하나의 release procedure로 orchestration합니다.
 
 #### Test / orchestration commit 학습
 
@@ -992,7 +991,7 @@
 - functional/failure/sanitizer/archive/compiler/leak/no-op rebuild 각 단계가 기존 target을 재사용하는지 확인합니다.
 - 한 단계 실패 시 뒤 단계가 실행되는지 중단되는지 실제 Make/shell semantics로 확인합니다.
 - no-op rebuild check가 무엇을 관찰하는지 해당 SHA에서 직접 확인합니다.
-- orchestration 자체가 새 runtime 항상 유지해야 하는 조건을 만드는지, 기존 evidence를 묶는지 source role과 실제 코드를 구분합니다.
+- orchestration 자체가 새 runtime 불변 조건을 만드는지, 기존 evidence를 묶는지 source role과 실제 코드를 구분합니다.
 
 #### 검증 범위 기록
 
@@ -1013,9 +1012,9 @@
 - 관찰된 scaffold/implementation 차이 기록: source role은 sanitizer check를 연결한다고 고정하며 실제로 `sanitize`를 호출합니다. 그러나 해당 SHA의 dependency는 `sanitize: ubsan`이고 `asan`을 포함하지 않습니다. fixed role을 변경하지 않고, 학습자가 실제 실행 범위를 UBSan으로 제한해 이해해야 합니다.
 - 실행 근거: 현재 환경에서는 Git checkout과 required host tools를 구성하지 못해 `make check`를 실행하지 않았습니다. 이 절은 Make recipe inspection이며 모든 단계 성공을 주장하지 않습니다.
 
-## 항상 유지해야 하는 조건 ledger
+## 불변 조건 ledger
 
-| 단계 | Commit | Source에 연결된 항상 유지해야 하는 조건 / evidence | 실제 build/test 근거 |
+| 단계 | Commit | Source에 연결된 불변 조건 / evidence | 실제 build/test 근거 |
 | --- | --- | --- | --- |
 | compiler honesty | `4df8b23505b8` | libc-style tests를 builtin substitution으로 무효화하지 않음 | `override CFLAGS`가 strict C99 warnings와 `-fno-builtin`을 ordinary/special compile commands에 전달합니다. |
 | artifact contract | `79c0dcefb590` | intended members/symbols/dependencies/out-of-tree linkage | three manifests, `ar`/`nm` normalization, exact `cmp`, temporary consumer compile/link/run을 `check-archive`가 연결합니다. |
@@ -1025,7 +1024,7 @@
 | compiler matrix | `e31a2e748685` | Clang/GCC clean-tree compatibility evidence | compiler를 version 문자열로 식별하고 별도 copied tree에서 `all test failure-test write-failure-test check-archive`를 실행합니다. |
 | orchestration | `b90fd748255a` | established checks를 하나의 release procedure로 연결 | `check` recipe가 fail-fast 순서로 기존 targets와 마지막 `make -q all`을 호출합니다. 실제 `sanitize`는 UBSan만 포함합니다. |
 
-## Failure → Fix → Test 연결
+## 실패 → 수정 → 검증 연결
 
 이 thread는 하나의 runtime fix chain보다 release evidence를 점층적으로 강화하는 구조입니다.
 
@@ -1049,7 +1048,7 @@
 - compiler matrix가 책임지는 것: Clang과 GNU GCC 각각의 독립 clean copy에서 build, functional/failure, archive contract를 재현합니다.
 - orchestration target이 책임지는 것: 설정된 하위 evidence를 fail-fast 순서로 호출하고 마지막에 no-op rebuild 상태를 확인합니다. 각 detector의 내부 범위를 확장하지는 않습니다.
 
-## Thread 최종 상태
+## 개발 흐름의 최종 상태
 
 - 마지막 commit 시점에 이 thread가 보장하는 것:
   - 기록: Makefile과 scripts는 strict no-builtin build, archive manifests, external consumer, UBSan, 독립 ASan, host leak checker, Clang/GCC matrix, top-level fail-fast release procedure를 제공합니다. 각 target이 성공했을 때의 artifact/evidence 조건은 코드로 명시돼 있습니다.
@@ -1067,7 +1066,7 @@
 - 상태 또는 소유권 변화: production 소유권 변화는 없습니다. build system은 ordinary, failure, UBSan, ASan object directories와 test binaries를 분리하고 temporary consumer/compiler directories는 trap으로 제거합니다.
 - failure 처리: scripts는 `set -eu` 또는 unguarded commands와 exact comparisons를 사용하고 Make는 첫 nonzero recipe에서 중단합니다. unsupported platform, missing compiler/checker도 explicit failure입니다.
 - verification 경로: `check`가 whitespace → clean build → functional → two failure suites → UBSan → archive → compiler matrix → host leak → no-op query를 순서대로 실행합니다. ASan은 별도 `asan` path입니다.
-- 최종 설명: release artifact를 신뢰하려면 compile 성공 외에 archive contents, API/dependency surface, external linkage, runtime defect detectors, compiler portability, incremental build 상태가 각각 독립 evidence로 필요합니다. 이 Thread는 그 evidence를 scripts와 Make targets로 분리해 만들고 fail-fast release 진입점으로 조합합니다.
+- 최종 설명: release artifact를 신뢰하려면 compile 성공 외에 archive contents, API/dependency surface, external linkage, runtime defect detectors, compiler portability, incremental build 상태가 각각 독립 evidence로 필요합니다. 이 개발 흐름은 그 evidence를 scripts와 Make targets로 분리해 만들고 fail-fast release 진입점으로 조합합니다.
 
 ## 학습 완료 자가 점검
 
@@ -1076,16 +1075,16 @@
 - [x] 실제 코드 근거와 source 확정 설명을 구분했습니다.
 - [x] 변경 전/후 비교가 필요한 commit은 이전 관련 SHA와 비교했습니다.
 - [x] failure → fix → test 연결을 실제 코드와 test code로 확인했습니다.
-- [x] final HEAD를 과거 commit 설명에 소급하지 않았습니다.
-- [x] 이 thread의 최종 항상 유지해야 하는 조건과 execution flow를 코드 근거로 설명할 수 있습니다.
-===== END FILE: 04-static-archive-release-verification.md =====
+- [x] 최종 HEAD를 과거 commit 설명에 소급하지 않았습니다.
+- [x] 이 thread의 최종 불변 조건과 execution flow를 코드 근거로 설명할 수 있습니다.
 
-===== BEGIN FILE: README.md =====
-# libft Development Thread 학습 골격
+---
+
+# libft 개발 흐름 학습 기록
 
 ## 목적
 
-이 문서 세트는 `commit-importance.md`에 정의된 Development Thread를 따라 실제 commit history와 해당 SHA의 코드를 직접 읽으면서 `libft`의 설계, 구현, 실패 처리, 수정, 검증 과정을 복원하기 위한 학습 골격입니다.
+이 문서 세트는 `commit-importance.md`에 정의된 개발 흐름을 따라 실제 commit history와 해당 SHA의 코드를 직접 읽으면서 `libft`의 설계, 구현, 실패 처리, 수정, 검증 과정을 복원하기 위한 학습 골격입니다.
 
 완성형 해설서가 아닙니다. source에 이미 확정된 thread 구조, commit metadata, 역할, 중요도와 연결 관계만 고정하고, 실제 구현 해석과 실행 결과는 학습자가 채웁니다.
 
@@ -1096,20 +1095,20 @@
 3. [`03-fd-output-partial-system-calls.md`](03-fd-output-partial-system-calls.md)
 4. [`04-static-archive-release-verification.md`](04-static-archive-release-verification.md)
 
-이 순서는 source의 Development Threads 순서를 그대로 따릅니다.
+이 순서는 source의 개발 흐름s 순서를 그대로 따릅니다.
 
 ## Thread 문서 사용법
 
-- 먼저 Commit map에서 thread의 commit 순서와 각 commit의 역할을 확인합니다.
+- 먼저 커밋 목록에서 thread의 commit 순서와 각 commit의 역할을 확인합니다.
 - 각 commit은 반드시 해당 SHA로 checkout하거나 그 SHA의 tree를 직접 열어 확인합니다.
 - 필요하면 문서가 지시하는 이전 관련 SHA와 비교합니다.
 - source에 확정된 설명과 실제 코드에서 직접 확인한 사실을 구분해서 기록합니다.
 - 구현 코드를 붙일 때는 전체 파일보다 판단에 필요한 최소 범위만 삽입하고, caller/callee, state mutation, 소유권 transfer, failure branch가 끊기지 않게 주변 문맥을 포함합니다.
-- Thread 마지막에는 commit별 기록을 다시 연결하여 항상 유지해야 하는 조건, failure → fix → test, 책임 변화, 최종 execution flow를 학습자 자신의 설명으로 정리합니다.
+- Thread 마지막에는 commit별 기록을 다시 연결하여 불변 조건, failure → fix → test, 책임 변화, 최종 execution flow를 학습자 자신의 설명으로 정리합니다.
 
 ## 해당 SHA 코드 확인 원칙
 
-- final HEAD를 과거 commit 설명에 소급해서 사용하지 않습니다.
+- 최종 HEAD를 과거 commit 설명에 소급해서 사용하지 않습니다.
 - 각 commit의 구현은 해당 SHA 시점의 코드로만 판단합니다.
 - 변경 전 상태가 필요하면 해당 commit의 parent 또는 문서에 지정된 이전 관련 SHA를 확인합니다.
 - 후속 fix/test는 후속 SHA에서 따로 확인하고, 이전 SHA의 구현에 소급 적용하지 않습니다.
@@ -1117,10 +1116,10 @@
 
 ## Importance별 학습 깊이
 
-- **S**: 프로젝트 핵심 architecture/항상 유지해야 하는 조건으로 추적합니다. 문제, 직전 상태, 실패 가능성, 핵심 결정, 실제 핵심 코드, 소유권/lifecycle/상태 전이, 후속 fix/test까지 연결합니다.
+- **S**: 프로젝트 핵심 architecture/불변 조건으로 추적합니다. 문제, 직전 상태, 실패 가능성, 핵심 결정, 실제 핵심 코드, 소유권/lifecycle/상태 전이, 후속 fix/test까지 연결합니다.
 - **A**: 주요 subsystem, boundary, 실패 처리, integration point를 중심으로 핵심 코드와 설계 판단까지 확인합니다.
 - **B**: thread 흐름에서 맡는 구현 역할과 필요한 코드·상태 변화를 확인합니다. S/A와 같은 분량을 기계적으로 요구하지 않습니다.
-- **C**: thread 이해에 필요한 맥락일 때만 사용합니다. 이 문서 세트의 source-defined Development Threads에는 C commit이 포함되어 있지 않습니다.
+- **C**: thread 이해에 필요한 맥락일 때만 사용합니다. 이 문서 세트의 source-defined 개발 흐름s에는 C commit이 포함되어 있지 않습니다.
 
 ## 실제 코드 삽입 기준
 
@@ -1135,7 +1134,7 @@
 
 각 test commit에서 다음을 구분하여 기록합니다.
 
-- 대상으로 하는 production 항상 유지해야 하는 조건
+- 대상으로 하는 production 불변 조건
 - 재현하는 failure 또는 boundary
 - 사용하는 test technique
 - 실제로 통과하는 production 코드 경로
@@ -1151,9 +1150,8 @@ source에 test technique이 확정되어 있으면 그 사실은 고정하고, �
 모든 thread에서 다음 조건을 만족해야 완료로 봅니다.
 
 - commit 순서를 따라 직전 상태 → 결정 → 구현 → failure/fix/test 연결을 설명할 수 있습니다.
-- 중요한 항상 유지해야 하는 조건이 어느 commit에서 도입, 강화, 부족함 노출, 복구, 검증되었는지 실제 코드 근거와 함께 기록되어 있습니다.
+- 중요한 불변 조건이 어느 commit에서 도입, 강화, 부족함 노출, 복구, 검증되었는지 실제 코드 근거와 함께 기록되어 있습니다.
 - S/A commit은 핵심 코드와 실패 처리를 SHA 기준으로 직접 확인했습니다.
 - test commit은 production 경로와 증명 범위를 분리해 기록했습니다.
-- final HEAD를 과거 설명에 소급 사용한 기록이 없습니다.
-- Thread 최종 상태와 architecture 또는 execution flow를 source 요약 복사가 아니라 학습자 자신의 코드 근거로 설명할 수 있습니다.
-===== END FILE: README.md =====
+- 최종 HEAD를 과거 설명에 소급 사용한 기록이 없습니다.
+- 개발 흐름의 최종 상태와 architecture 또는 execution flow를 source 요약 복사가 아니라 학습자 자신의 코드 근거로 설명할 수 있습니다.
