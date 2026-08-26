@@ -1,246 +1,253 @@
-# Thread: stdout 성공이 protocol ACK의 commit 조건이 되기까지
-
-Project: `minitalk` · Branch: `c/minitalk` · 문서 번호: 04
+# Thread: stdout 반영 성공이 ACK 전송의 commit 조건이다
+> Project: `minitalk` · Branch: `c/minitalk` · 문서 번호: 04
 
 ## 개요
 
-server가 byte를 decoder state에 반영했다는 사실과 그 byte가 stdout에 보였다는 사실은 같지 않다. 이전 구현처럼 `write`의 반환값을 무시한 채 ACK를 보내면 client는 실제로 출력되지 않은 data를 성공으로 확정하고 다음 bit로 넘어간다.
+server가 bit를 memory state에 반영했다는 사실과 사용자가 stdout에서 그 byte를 관찰했다는 사실은 같지 않다. output이 실패했는데도 ACK를 보내면 client는 실제로 보이지 않은 data를 성공으로 판단한다. 이 Thread는 low-level `write`를 complete-or-fail primitive로 만든 뒤, payload·terminator·recovery delimiter·startup PID가 성공적으로 기록된 경우에만 protocol이 전진하도록 한다.
 
-이 Thread는 output을 protocol state transition의 외부 부수 효과가 아니라 **ACK보다 먼저 성공해야 하는 commit 단계**로 바꾸는 과정을 다룬다. payload byte, terminating newline, abandoned session을 닫는 recovery newline, startup PID line이 모두 all-or-failure write를 사용한다.
+첫 두 커밋이 production contract를 만든다. 뒤의 두 test commit은 `EINTR`, short write, zero progress, selected `EPIPE`를 deterministic하게 주입하고, 일반 payload뿐 아니라 abandoned-session recovery newline도 같은 commit boundary에 포함되는지 확인한다.
 
-### 최종 불변 조건
+### 최종 상태
 
-- `mt_write_all`의 성공은 요청한 모든 byte가 descriptor에 전달됐음을 뜻한다.
-- positive short write는 progress이며 남은 suffix를 계속 쓴다.
-- `EINTR`은 같은 위치에서 재시도하고, zero progress는 `EIO`로 실패한다.
-- 완성 byte 또는 delimiter write가 실패하면 그 bit의 ACK를 보내지 않는다.
-- output failure 뒤 server는 decoder를 계속 사용하지 않고 event loop를 중단한다.
-- dead-owner recovery newline이 실패하면 stale state를 지우거나 replacement에 READY를 보내지 않는다.
+| output 지점 | write 성공 | write 실패 |
+| --- | --- | --- |
+| startup PID line | event loop 시작 | diagnostic 후 status 1, endpoint cleanup |
+| payload byte | decoder/sequence 진행 후 ACK | ACK 없이 server failure |
+| NUL terminator newline | session reset 후 ACK | reset/ACK 없이 server failure |
+| dead-owner recovery newline | old session reset 후 replacement 처리 | replacement 승인 없이 server failure |
 
 ### 커밋 목록
 
 | 순서 | SHA | 제목 | 중요도 | 태그 | 역할 |
 | ---: | --- | --- | :---: | --- | --- |
-| 1 | `826dd34c378f` | fix(io): 중단·부분 쓰기를 끝까지 처리 | A | `OUTPUT_COMMIT, PRACTICAL, RISK` | `mt_write_all`이 EINTR를 retry하고 short write만큼 offset을 전진하며 zero progress를 `EIO`로 처리합니다. |
-| 2 | `db2004556d8b` | fix(server): stdout 실패 뒤 ACK 전송 차단 | S | `CORE, OUTPUT_COMMIT, RISK` | PID, payload, terminator newline, recovery newline을 all-or-failure로 쓰고 failure 시 triggering ACK를 보내지 않습니다. |
-| 3 | `9aa80e047514` | test(server): 부분 쓰기와 출력 실패 검증 | A | `TEST, OUTPUT_COMMIT, RISK` | low-level write를 deterministic test implementation으로 바꿔 EINTR, one-byte short write, zero write, selected payload/newline EPIPE를 주입합니다. |
-| 4 | `081a882d7fa3` | test(server): 회수 줄바꿈 출력 실패 검증 | A | `TEST, OUTPUT_COMMIT, SESSION` | dead owner가 visible partial line을 남긴 상태에서 replacement acquisition이 recovery newline을 쓰는 순간 failure를 주입합니다. |
+| 1 | `826dd34c378f` | fix(io): 중단·부분 쓰기를 끝까지 처리 | A | `OUTPUT_COMMIT, PRACTICAL, RISK` | `EINTR`과 short write를 누적 처리하고 zero progress를 `EIO`로 종료하는 `mt_write_all`을 추가한다. |
+| 2 | `db2004556d8b` | fix(server): stdout 실패 뒤 ACK 전송 차단 | S | `CORE, OUTPUT_COMMIT, RISK` | protocol-visible output이 성공한 뒤에만 state reset과 ACK가 진행되게 한다. |
+| 3 | `9aa80e047514` | test(server): 부분 쓰기와 출력 실패 검증 | A | `TEST, OUTPUT_COMMIT, RISK` | write seam으로 interruption, partial progress, zero write와 selected output failure를 재현한다. |
+| 4 | `081a882d7fa3` | test(server): 회수 줄바꿈 출력 실패 검증 | A | `TEST, OUTPUT_COMMIT, SESSION` | dead owner의 partial line을 닫는 newline 실패가 replacement success로 오인되지 않는지 검증한다. |
 
-## `826dd34c378f` — fix(io): 중단·부분 쓰기를 끝까지 처리
+## 826dd34c378f — fix(io): 중단·부분 쓰기를 끝까지 처리
 
 **중요도** `A` · **태그** `OUTPUT_COMMIT, PRACTICAL, RISK`
 
-### single `write`에서 completion loop로
+### 왜 바뀌었는가 (문제 → 원인 → 결정)
 
-`write(fd, buffer, size)`는 성공 시에도 `size`보다 작은 양수를 반환할 수 있고, signal에 의해 `EINTR`로 중단될 수 있다. 새 helper는 이미 전송한 prefix와 아직 남은 suffix를 명시적으로 추적한다.
+기존 helper는 한 번의 `write` 반환만 보고 요청한 buffer 전체가 출력됐다고 간주했다. 그러나 descriptor write는 `EINTR`로 중단되거나 요청보다 적은 positive count를 반환할 수 있다. 반환값 0을 무조건 retry하면 progress 없이 무한 반복할 수도 있다. 따라서 success를 “모든 byte의 누적 전달”로 정의하는 공통 primitive가 필요하다.
+
+### 최종 코드는 어떤 상태를 추적하는가
 
 ```c
 int mt_write_all(int fd, const void *buffer, size_t size)
 {
     const unsigned char *bytes;
-    size_t              offset;
-    ssize_t             written;
+    size_t               offset;
+    ssize_t              written;
 
     bytes = (const unsigned char *)buffer;
     offset = 0;
     while (offset < size)
     {
         written = write(fd, bytes + offset, size - offset);
+        // interruption은 progress가 없으므로 같은 offset에서 다시 시도한다.
         if (written == -1 && errno == EINTR)
             continue ;
+        // EINTR 이외의 terminal error는 caller가 판단하도록 그대로 실패한다.
         if (written == -1)
             return (-1);
+        // zero progress를 무한 loop로 숨기지 않는다.
         if (written == 0)
         {
             errno = EIO;
             return (-1);
         }
+        // short write도 실제로 전달된 byte만큼은 보존한다.
         offset += (size_t)written;
     }
     return (0);
 }
 ```
 
-loop invariant는 `buffer[0..offset)`이 이미 전달됐고, 다음 호출은 `buffer[offset..size)`만 요청한다는 것이다. `size == 0`이면 write를 호출하지 않고 성공한다. 남은 byte가 있는데 `write`가 0을 반환하면 progress 없이 무한 반복할 수 있으므로 `EIO`로 바꾼다.
+같은 commit에서 string/number helper의 raw write도 새 primitive를 사용한다.
 
-`mt_putstr_fd`와 `mt_putnbr_fd`도 내부 write를 이 helper로 바꾼다. 다만 두 함수의 반환형은 여전히 `void`이므로 caller가 diagnostic 출력 실패를 관찰하는 API로 바뀐 것은 아니다. protocol-critical output은 다음 commit에서 `mt_write_all`의 반환값을 직접 사용한다.
+```diff
+-    write(fd, text, mt_strlen(text));
++    mt_write_all(fd, text, mt_strlen(text));
+@@
+-        write(fd, &buffer[--index], 1);
++        mt_write_all(fd, &buffer[--index], 1);
+```
 
-## `db2004556d8b` — fix(server): stdout 실패 뒤 ACK 전송 차단
+### 이 커밋이 보장하는 것 / 보장하지 않는 것
+
+`mt_write_all`의 success는 요청한 byte가 모두 descriptor interface에 전달됐다는 뜻이다. `mt_putstr_fd`와 `mt_putnbr_fd`의 반환형은 여전히 `void`이므로 diagnostic output failure를 상위 caller가 관찰하는 API까지 바꾸지는 않는다. protocol-critical output은 `db2004556d8b`이 `mt_write_all` 반환값을 직접 확인한다.
+
+### 관련 커밋과 어떤 관계인가
+
+`db2004556d8b`는 이 complete-or-fail 결과를 payload, newline과 PID publication의 protocol decision에 연결한다. `9aa80e047514`는 loop의 `EINTR`, short count와 zero count branch를 deterministic하게 통과시킨다.
+
+## db2004556d8b — fix(server): stdout 실패 뒤 ACK 전송 차단
 
 **중요도** `S` · **태그** `CORE, OUTPUT_COMMIT, RISK`
 
-### 기존 실패 순서
+### 왜 바뀌었는가 (문제 → 원인 → 결정)
 
-self-pipe 전환 직후의 `process_bit`은 8번째 bit에서 `flush_byte`를 호출했지만, `flush_byte`는 `write` 결과를 무시했다. 이후 decoder를 reset하고 sequence를 증가시켜 ACK를 전송했다.
+이전 `process_bit`은 8번째 bit를 조립한 뒤 `flush_byte`를 호출했지만 output 결과를 관찰하지 않았다. write가 실패해도 decoder reset, sequence 증가와 ACK 전송이 이어져 client가 false success를 받았다. 결정은 output을 local commit point로 두고, 실패하면 event loop를 종료해 triggering ACK를 보내지 않는 것이다.
 
-```text
-state에 8번째 bit 반영
-  → write 시도(성공 여부 무시)
-  → decoder reset
-  → sequence 증가
-  → ACK 전송
+```diff
+-static void flush_byte(unsigned char output)
++static int flush_byte(unsigned char output)
+ {
+     if (output == '\0')
+     {
+-        write(STDOUT_FILENO, "\n", 1);
+-        reset_session(0);
++        if (mt_write_all(STDOUT_FILENO, "\n", 1) == -1)
++            return (-1);
++        return (reset_session(0));
+     }
+-    else
+-    {
+-        write(STDOUT_FILENO, &output, 1);
+-        g_line_started = 1;
+-    }
++    if (mt_write_all(STDOUT_FILENO, &output, 1) == -1)
++        return (-1);
++    g_line_started = 1;
++    return (0);
+ }
+@@
+     if (g_received_bits == 8)
+     {
+         output = g_current_byte;
+-        flush_byte(output);
++        if (flush_byte(output) == -1)
++            return (-1);
+         g_current_byte = 0;
+         g_received_bits = 0;
+     }
+     if (g_client_pid != 0)
+         g_sequence++;
 ```
 
-stdout이 닫혀 있거나 부분 쓰기 뒤 실패해도 client는 ACK를 받아 “이 byte가 commit됐다”고 판단할 수 있었다.
+`process_bit`이 `-1`을 반환하면 event loop와 `main`이 status 1로 종료한다. ACK call은 이 code 이후에 있으므로 output failure를 success로 publish하지 않는다.
 
-### output-before-ACK 순서
+### delimiter도 payload와 같은 commit인 이유는 무엇인가
 
-`reset_session`과 `flush_byte`가 `int`를 반환하도록 바뀐다.
+NUL byte는 visible data가 아니지만 server는 이를 newline과 session release로 materialize한다. newline이 실패한 상태에서 owner를 reset하고 ACK하면 client는 message가 정상적으로 닫혔다고 믿게 된다. 그래서 terminator newline을 먼저 쓰고, 성공한 경우에만 `reset_session(0)`을 수행한다.
 
-```c
-static int flush_byte(unsigned char output)
-{
-    if (output == '\0')
-    {
-        if (mt_write_all(STDOUT_FILENO, "\n", 1) == -1)
-            return (-1);
-        return (reset_session(0));
-    }
-    if (mt_write_all(STDOUT_FILENO, &output, 1) == -1)
-        return (-1);
-    g_line_started = 1;
-    return (0);
-}
+abandoned-session recovery도 같다.
+
+```diff
+-static void reset_session(int close_partial_line)
++static int reset_session(int close_partial_line)
+ {
+-    if (close_partial_line && g_line_started)
+-        write(STDOUT_FILENO, "\n", 1);
++    if (close_partial_line && g_line_started
++        && mt_write_all(STDOUT_FILENO, "\n", 1) == -1)
++        return (-1);
+     g_current_byte = 0;
+     g_received_bits = 0;
+     g_client_pid = 0;
+     g_line_started = 0;
+     g_sequence = 0;
++    return (0);
+ }
 ```
 
-`process_bit`은 write 성공 뒤에만 decoder reset, sequence 증가, ACK 전송으로 진행한다.
+recovery newline을 기록하지 못하면 old owner state를 지우지 않고 replacement `READY`도 보내지 않는다.
 
-```c
-if (g_received_bits == 8)
-{
-    output = g_current_byte;
-    if (flush_byte(output) == -1)
-        return (-1);
-    g_current_byte = 0;
-    g_received_bits = 0;
-}
-if (g_client_pid != 0)
-    g_sequence++;
-if (send_response(event->sender, MT_RESPONSE_ACK, sequence,
-        MT_RESPONSE_OK) == -1)
-{
-    /* session recovery */
-}
-```
+### startup publication과 `SIGPIPE`는 어떻게 처리되는가
 
-8번째 bit의 output이 실패하면 `process_bit`이 즉시 `-1`을 반환한다. sequence는 증가하지 않고 ACK도 생성되지 않으며, event loop가 실패해 server가 종료된다. 손상된 partial state를 가지고 다음 event를 계속 처리하지 않는다.
+PID와 newline을 하나의 buffer로 만들어 `mt_write_all`하고, 실패하면 event loop를 시작하지 않는다. `SIGPIPE`를 ignore해 closed stdout을 즉시 process termination이 아니라 `write == -1`, `errno == EPIPE`로 관찰하고 같은 failure path로 보낸다.
 
-### delimiter도 payload와 같은 commit이다
+### 이 커밋이 보장하는 것 / 보장하지 않는 것
 
-두 종류의 newline이 같은 원칙을 따른다.
+local stdout commit이 성공하기 전에 ACK를 보내지 않는다. output 성공 후 datagram ACK 자체가 유실되는 경우까지 exactly-once를 제공하지는 않는다. ACK를 못 받은 client가 retry protocol을 갖고 있지 않으므로, 이 Thread의 보장은 “보이지 않은 output을 성공으로 ACK하지 않는다”까지다.
 
-- message NUL을 받은 뒤 쓰는 terminating newline
-- dead owner가 이미 visible byte를 남겼을 때 replacement 전에 쓰는 recovery newline
+### 관련 커밋과 어떤 관계인가
 
-```c
-static int reset_session(int close_partial_line)
-{
-    if (close_partial_line && g_line_started
-        && mt_write_all(STDOUT_FILENO, "\n", 1) == -1)
-        return (-1);
-    g_current_byte = 0;
-    g_received_bits = 0;
-    g_client_pid = 0;
-    g_line_started = 0;
-    g_sequence = 0;
-    return (0);
-}
-```
+`9aa80e047514`는 startup, payload와 terminator output을 selected fault로 고정한다. `081a882d7fa3`는 별도의 recovery newline branch가 같은 contract를 지키는지 추가한다.
 
-recovery newline이 실패하면 state reset 전에 반환한다. 즉 output boundary를 만들지 못했는데도 새 owner를 READY/OK로 승인하는 상태를 피한다.
-
-### startup publication과 `SIGPIPE`
-
-server PID와 newline을 하나의 buffer로 조립해 `mt_write_all`로 publish한다. 실패하면 event loop에 들어가지 않고 `server: failed to publish pid` 경로로 끝난다. response endpoint는 이미 생성됐더라도 `atexit` cleanup이 제거한다.
-
-또한 server는 `SIGPIPE`를 ignore한다. closed pipe/stdout에 쓸 때 process가 signal default action으로 즉시 사라지는 대신 `write`가 `-1/EPIPE`를 반환해 위 failure path가 실행되도록 한다.
-
-### 이 commit이 뜻하는 commit의 범위
-
-`mt_write_all` 성공은 byte가 kernel descriptor interface에 전달됐다는 local guarantee다. terminal이 실제로 화면에 그렸거나 파일이 durable storage에 sync됐다는 뜻은 아니다. output 뒤 ACK datagram 자체가 유실될 수도 있으므로 exactly-once delivery도 보장하지 않는다. 이 경우 output은 존재하지만 client는 timeout할 수 있다.
-
-## `9aa80e047514` — test(server): 부분 쓰기와 출력 실패 검증
+## 9aa80e047514 — test(server): 부분 쓰기와 출력 실패 검증
 
 **중요도** `A` · **태그** `TEST, OUTPUT_COMMIT, RISK`
 
-### production path를 유지한 write seam
+### 왜 다른 기법이 필요한가
 
-fault build는 `src/write_utils.c`의 low-level call만 macro로 바꾼다.
+normal stdout에서는 short write나 특정 byte의 `EPIPE`를 안정적으로 만들기 어렵다. production `mt_write_all`의 call site는 유지하고 fault build에서만 low-level write implementation을 바꾼다.
 
-```c
-#ifndef MT_WRITE_CALL
-# define MT_WRITE_CALL write
-#endif
-
-written = MT_WRITE_CALL(fd, bytes + offset, size - offset);
+```diff
++#ifndef MT_WRITE_CALL
++# define MT_WRITE_CALL write
++#endif
+@@
+-        written = write(fd, bytes + offset, size - offset);
++        written = MT_WRITE_CALL(fd, bytes + offset, size - offset);
 ```
 
-production build에서는 raw `write`와 같고, test build에서는 환경 변수에 따라 `mt_test_write`가 selected behavior를 만든다.
+fault implementation은 environment로 한 번의 `EINTR`, 한 번의 zero return, maximum positive count, selected byte 또는 N번째 newline failure를 구성한다. shell suite는 다음 경로를 분리한다.
 
-| fault | production branch | test가 요구하는 결과 |
-| --- | --- | --- |
-| startup에서 0 반환 | `written == 0` → `EIO` | PID output 없음, server 실패, endpoint 없음 |
-| first `EINTR` + max 1-byte write | retry + offset progress | 전체 message와 newline이 정확히 출력됨 |
-| payload byte `X`에서 `EPIPE` | `flush_byte` 실패 | client와 server 모두 실패, 해당 byte ACK 없음 |
-| 두 번째 newline에서 `EPIPE` | terminating newline 실패 | empty message를 성공으로 ACK하지 않음 |
+```diff
++MT_TEST_ZERO_ONCE=1 "$ROOT/tests/fault_server" \
++    >"$STARTUP_OUT" 2>"$STARTUP_ERR"
++grep -qx 'server: failed to publish pid' "$STARTUP_ERR"
++
++MT_TEST_MAX_WRITE=1 MT_TEST_EINTR_ONCE=1 \
++    "$ROOT/tests/fault_server" >"$PARTIAL_OUT" 2>"$PARTIAL_ERR" &
++"$ROOT/client" "$SERVER_PID" partial
++
++MT_TEST_FAIL_BYTE=X MT_TEST_FAIL_EPIPE=1 \
++    "$ROOT/tests/fault_server" >"$BYTE_OUT" 2>"$BYTE_ERR" &
++"$ROOT/client" "$SERVER_PID" X 2>"$BYTE_CLIENT_ERR" || client_status=$?
+```
 
-첫 newline은 startup PID line에 포함되므로 `MT_TEST_FAIL_NEWLINE_NUMBER=2`는 message terminator를 정확히 겨냥한다. payload와 delimiter가 같은 output contract를 통과하는지 분리해 확인한다.
+### 이 테스트가 증명하는 것 / 증명하지 않는 것
 
-이 commit의 test code는 실제 OS가 우연히 short write를 만들기를 기다리지 않는다. 같은 production loop에 deterministic 반환값을 넣어 각 branch를 재현한다.
+`EINTR`와 one-byte short write 뒤에도 full output이 완성되고, zero progress는 startup failure가 되며, selected payload/terminator failure에서는 server와 client가 모두 success를 반환하지 않는다는 regression evidence다. 실제 kernel backpressure, 모든 errno, output 성공 후 ACK loss는 재현하지 않는다.
 
-## `081a882d7fa3` — test(server): 회수 줄바꿈 출력 실패 검증
+### 관련 커밋과 어떤 관계인가
+
+`826dd34c378f`의 progress loop와 `db2004556d8b`의 output-before-ACK ordering을 같은 production path에서 검증한다. recovery delimiter는 `081a882d7fa3`이 별도 scenario로 추가한다.
+
+## 081a882d7fa3 — test(server): 회수 줄바꿈 출력 실패 검증
 
 **중요도** `A` · **태그** `TEST, OUTPUT_COMMIT, SESSION`
 
-앞 test의 newline failure는 정상 message 종료를 겨냥했다. 이 commit은 **abandoned session 회수** 중 newline을 겨냥한다.
+### 무엇을 검증하는가 (diff)
 
-```text
-session_sender partial
-  → server stdout에 'X'는 보였지만 newline은 없음
-  → sender 종료
-replacement client ACQUIRE
-  → server가 old owner unavailable 판단
-  → reset_session(1)에서 recovery newline write
-  → 두 번째 newline에 EPIPE 주입
+```diff
++RECOVERY_OUT="$TEST_TMP/recovery.out"
++RECOVERY_ERR="$TEST_TMP/recovery.err"
++RECOVERY_CLIENT_ERR="$TEST_TMP/recovery-client.err"
++MT_TEST_FAIL_NEWLINE_NUMBER=2 MT_TEST_FAIL_EPIPE=1 \
++    "$ROOT/tests/fault_server" >"$RECOVERY_OUT" 2>"$RECOVERY_ERR" &
++SERVER_PID=$!
++wait_ready "$RECOVERY_OUT"
++"$ROOT/tests/session_sender" "$SERVER_PID" partial
++"$ROOT/client" "$SERVER_PID" recovered \
++    2>"$RECOVERY_CLIENT_ERR" || recovery_client_status=$?
++wait "$SERVER_PID" || recovery_server_status=$?
++[ "$recovery_client_status" -ne 0 ]
++[ "$recovery_server_status" -ne 0 ]
++grep -qx 'client: timed out waiting for acknowledgement' \
++    "$RECOVERY_CLIENT_ERR"
 ```
 
-script는 replacement client가 성공하지 않아야 하고 server도 nonzero로 끝나야 한다고 요구한다. server stdout의 complete line 수는 PID line 하나뿐이어야 하며, server diagnostic은 event channel failure, client diagnostic은 acknowledgement timeout이어야 한다.
+첫 newline은 startup PID line이고, 두 번째 newline failure를 selected recovery delimiter에 맞춘다. partial owner가 visible `'X'`를 남긴 뒤 replacement client가 acquisition을 시도할 때 `reset_session(1)`이 실패해야 한다.
 
-이 test가 고정하는 핵심은 “dead owner를 발견했다”만으로 recovery가 완료되지 않는다는 점이다. visible partial line을 닫는 output commit까지 성공해야 state를 지우고 replacement session을 열 수 있다.
+### 이 테스트가 증명하는 것 / 증명하지 않는 것
 
-## 최종 commit 순서
+recovery delimiter failure가 old owner reset이나 replacement success로 숨겨지지 않고 server failure와 client timeout으로 나타난다는 exact scenario를 고정한다. newline 번호에 의존하는 test fixture이므로 모든 future output ordering을 일반적으로 증명하지는 않는다.
 
-```text
-bit 1..7
-  → decoder state 반영
-  → ACK
+### 관련 커밋과 어떤 관계인가
 
-bit 8
-  → decoder state 반영
-  → 완성 byte 판정
-  → mt_write_all(payload 또는 newline)
-       ├─ 실패: event loop 중단, ACK 없음
-       └─ 성공: decoder/session state 정리
-  → sequence transition
-  → ACK
-
-stale owner replacement
-  → owner unavailable 판정
-  → visible partial line이면 mt_write_all("\n")
-       ├─ 실패: owner state 유지, READY 없음, server 중단
-       └─ 성공: decoder/session reset, 새 owner 예약
-```
+`db2004556d8b`가 recovery newline을 fallible commit으로 만든 branch를 직접 겨냥한다. owner availability 자체는 `02-session-ownership-and-recovery.md`가 설명한다.
 
 ## 이 Thread의 경계
 
-이 Thread는 **어떤 stdout write가 성공해야 protocol transition을 ACK할 수 있는가**를 다룬다.
+- 어느 sender가 session owner이고 언제 recovery가 필요한지는 `02-session-ownership-and-recovery.md`의 책임이다. 이 문서는 recovery output이 성공해야 state를 release할 수 있다는 조건만 다룬다.
+- signal event를 self-pipe로 이동하고 overflow를 fail-stop으로 처리하는 구조는 `03-self-pipe-event-loop.md`가 다룬다.
+- socket path·descriptor cleanup은 `05-endpoint-ownership-and-bounded-polling.md`의 주제다. 이 문서에서는 output failure 뒤 registered cleanup이 실행된다는 연결만 확인한다.
+- output 성공 후 ACK datagram 유실, retransmission과 exactly-once delivery는 별개의 protocol 문제다.
 
-- `mt_write_all`은 remote ACK delivery나 exactly-once output을 보장하지 않는다.
-- owner availability 판단 자체는 `02-session-ownership-and-recovery.md`에서 다룬다.
-- signal event loss의 fail-stop은 `03-self-pipe-event-loop.md`의 주제다.
-- endpoint path와 descriptor cleanup은 `05-endpoint-ownership-and-bounded-polling.md`에서 다룬다.
-- response identity와 timeout validation은 `06-bounded-response-correlation.md`에서 다룬다.
-
-## 조사 범위
-
-각 설명은 exact SHA의 `src/write_utils.c`, `src/server.c`, fault build와 shell script diff를 기준으로 작성했다. 테스트는 실행하지 않았으므로 “통과했다”가 아니라 fixture가 요구하는 status·output·diagnostic을 서술했다.
+> 검토 범위: `826dd34c378f`, `db2004556d8b`, `9aa80e047514`, `081a882d7fa3`의 diff와 해당 SHA의 `src/write_utils.c`, `src/server.c`, fault build seam, `tests/output_failure.sh`를 확인했다. branch checkout, fault binary와 shell suite 실행은 수행하지 않았으므로 assertion을 실제 통과 결과로 주장하지 않는다.

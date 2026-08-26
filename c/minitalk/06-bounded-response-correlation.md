@@ -1,297 +1,310 @@
-# Thread: stale·forged 응답 속에서도 bounded correlation 유지하기
-
-Project: `minitalk` · Branch: `c/minitalk` · 문서 번호: 06
+# Thread: 응답은 현재 operation과 일치할 때만 원래 deadline 안에서 수락된다
+> Project: `minitalk` · Branch: `c/minitalk` · 문서 번호: 06
 
 ## 개요
 
-Unix datagram 하나가 client socket에 도착했다는 사실만으로 현재 operation이 성공한 것은 아니다. 그 datagram은 이전 bit의 지연된 ACK, 다른 request의 READY, 다른 endpoint에서 보낸 forged record, correct prefix 뒤에 trailing byte가 붙은 frame일 수 있다.
+Unix datagram이 client socket에 도착했다는 사실만으로 현재 operation이 성공한 것은 아니다. record는 이전 bit의 stale ACK, 다른 acquisition의 READY, 다른 endpoint에서 온 forged datagram, valid prefix 뒤에 trailing byte가 붙은 oversized frame일 수 있다. 따라서 response acceptance는 source와 record 내부 identity를 모두 만족하는 conjunction이어야 한다.
 
-client는 response를 현재 state transition과 연결하기 위해 source endpoint와 record 내부 field를 함께 검증한다. READY에는 acquisition nonce를, bit ACK에는 monotonically 증가하는 sequence를 token으로 사용한다. 유효하지 않은 traffic은 폐기하되, 최초에 만든 monotonic deadline은 그대로 유지해 invalid flood가 wait를 무한히 연장하지 못하게 한다.
+이 Thread는 shared record를 정의한 뒤 READY에는 random nonce, bit ACK에는 monotonically 증가하는 sequence를 token으로 연결한다. invalid datagram은 state를 바꾸지 않고 폐기하지만, wait budget은 매 receive마다 새로 만들지 않는다. request 또는 bit 전송 전에 계산한 absolute `CLOCK_MONOTONIC` deadline을 계속 재사용해 invalid flood가 timeout을 연장하지 못하게 한다.
 
 ### 최종 acceptance 조건
 
 | 조건 | READY | bit ACK |
 | --- | --- | --- |
-| datagram 크기 | `sizeof(t_mt_response)`와 정확히 같음 | 같음 |
-| source | expected server Unix socket path | 같음 |
-| `magic` | `MT_RESPONSE_MAGIC` | 같음 |
-| `server_pid` | target PID | 같음 |
-| `kind` | `MT_RESPONSE_READY` | `MT_RESPONSE_ACK` |
-| `token` | current nonzero nonce | current sequence |
-| `status` | `OK`이면 성공, `BUSY`이면 거부 | `OK`이어야 성공 |
-| wait budget | request 전에 만든 absolute monotonic deadline | bit 전송 전에 만든 absolute monotonic deadline |
-
-하나라도 맞지 않으면 response는 현재 operation의 증거가 아니다. nonce, sequence, bit cursor, deadline은 바뀌지 않는다.
+| frame length | 정확히 `sizeof(t_mt_response)` | 동일 |
+| source | expected server Unix socket path | 동일 |
+| record identity | `magic`, target `server_pid` | 동일 |
+| operation kind | `MT_RESPONSE_READY` | `MT_RESPONSE_ACK` |
+| token | current nonzero nonce | current sequence |
+| status | `OK` 성공, `BUSY` 거부, 그 밖은 error | `OK`만 성공 |
+| wait budget | ACQUIRE 전 만든 absolute deadline | bit signal 전 만든 absolute deadline |
 
 ### 커밋 목록
 
 | 순서 | SHA | 제목 | 중요도 | 태그 | 역할 |
 | ---: | --- | --- | :---: | --- | --- |
-| 1 | `ebed06775b92` | feat(protocol): 응답 메시지 wire 형식 정의 | A | `ARCH, RESPONSE` | request와 특정 bit transition을 식별할 수 있는 request/response fields를 정의합니다. |
-| 2 | `f8e8444c5ded` | feat(client): READY 응답을 출처와 nonce로 상관 검증 | A | `RESPONSE, RISK, INTEGRATION` | READY에 exact size, source, PID, kind, nonce, status와 absolute readiness deadline을 적용합니다. |
-| 3 | `d3eacbbfeadc` | feat(client): 비트 ACK를 sequence로 상관 검증 | A | `RESPONSE, RISK` | 현재 sequence와 정확히 일치하는 datagram ACK만 bit success로 인정합니다. |
-| 4 | `b361ef9745ff` | test(protocol): 응답 출처와 token 검증 | A | `TEST, RESPONSE, RISK` | valid READY와 first bit ACK 전에 forged-source와 mismatched-field responses를 주입해 conjunctive validation을 검증합니다. |
-| 5 | `1ed2acbaa353` | test(response): oversized 응답과 invalid flood 검증 | A | `TEST, RESPONSE, RISK` | response record보다 한 byte 큰 datagram과 sustained wrong-token traffic을 이용해 exact framing과 absolute deadline을 검증합니다. |
+| 1 | `ebed06775b92` | feat(protocol): 응답 메시지 wire 형식 정의 | A | `ARCH, RESPONSE` | request와 response에 peer·operation·token identity를 표현할 fixed record를 정의한다. |
+| 2 | `f8e8444c5ded` | feat(client): READY 응답을 출처와 nonce로 상관 검증 | A | `RESPONSE, RISK, INTEGRATION` | exact source·PID·kind·nonce·status와 absolute deadline을 acquisition wait에 적용한다. |
+| 3 | `d3eacbbfeadc` | feat(client): 비트 ACK를 sequence로 상관 검증 | A | `RESPONSE, RISK` | 현재 sequence의 datagram ACK만 bit success로 인정한다. |
+| 4 | `b361ef9745ff` | test(protocol): 응답 출처와 token 검증 | A | `TEST, RESPONSE, RISK` | valid response 앞에 forged source와 field별 mismatch를 넣어 conjunctive validation을 검증한다. |
+| 5 | `1ed2acbaa353` | test(response): oversized 응답과 invalid flood 검증 | A | `TEST, RESPONSE, RISK` | trailing byte frame과 지속적인 wrong-token traffic으로 exact framing과 bounded wait를 검증한다. |
 
-## `ebed06775b92` — feat(protocol): 응답 메시지 wire 형식 정의
+---
+
+**역할군: response가 current operation을 식별할 표현과 acceptance predicate를 만들기**
+
+## ebed06775b92 — feat(protocol): 응답 메시지 wire 형식 정의
 
 **중요도** `A` · **태그** `ARCH, RESPONSE`
 
-signal ACK는 payload가 없으므로 “응답이 왔다”는 사실만 표현한다. shared header에 두 fixed record를 추가해 peer와 transition identity를 담는다.
+### 무엇을 준비했는가 (diff)
 
-```c
-typedef struct s_mt_request
-{
-    uint32_t    magic;
-    uint32_t    kind;
-    uint32_t    nonce;
-    pid_t       client_pid;
-}   t_mt_request;
-
-typedef struct s_mt_response
-{
-    uint32_t    magic;
-    uint32_t    kind;
-    uint32_t    token;
-    int32_t     status;
-    pid_t       server_pid;
-}   t_mt_response;
+```diff
++# define MT_RESPONSE_MAGIC 0x4d54414bU
++# define MT_REQUEST_ACQUIRE 1U
++# define MT_RESPONSE_READY 1U
++# define MT_RESPONSE_ACK 2U
++# define MT_RESPONSE_OK 0
++# define MT_RESPONSE_BUSY 1
++
++typedef struct s_mt_request
++{
++    uint32_t magic;
++    uint32_t kind;
++    uint32_t nonce;
++    pid_t    client_pid;
++} t_mt_request;
++
++typedef struct s_mt_response
++{
++    uint32_t magic;
++    uint32_t kind;
++    uint32_t token;
++    int32_t  status;
++    pid_t    server_pid;
++} t_mt_response;
 ```
 
-### field가 답하는 질문
+`magic`은 record family, `kind`는 acquisition과 bit ACK, PID는 claimed peer, nonce/token은 current transition, `status`는 success와 `BUSY`를 표현한다. 이 SHA는 schema만 정의하고 send/receive validation은 아직 없다.
 
-| field | 질문 |
-| --- | --- |
-| `magic` | minitalk response 형식인가? |
-| `kind` | acquisition READY인가, bit ACK인가? |
-| `nonce` / `token` | 현재 어느 request 또는 bit transition에 대한 응답인가? |
-| `client_pid` / `server_pid` | record가 주장하는 endpoint process는 누구인가? |
-| `status` | operation이 승인됐는가, BUSY인가, 그 밖의 오류인가? |
+raw C struct를 `sizeof` 그대로 local datagram에 사용하므로 padding, native byte order와 `pid_t` representation에 의존한다. portable serialized protocol이나 cryptographic authentication으로 해석해서는 안 된다.
 
-이 commit에는 send/receive code가 없다. 또한 C struct를 `sizeof` 그대로 local datagram payload로 쓰는 형식이므로 host ABI, alignment, byte order에 의존한다. portable serialized network protocol이나 versioned schema로 설명해서는 안 된다.
+### 관련 커밋과 어떤 관계인가
 
-## `f8e8444c5ded` — feat(client): READY 응답을 출처와 nonce로 상관 검증
+`f8e8444c5ded`은 request nonce를 echoed READY token으로 사용하고, `d3eacbbfeadc`는 response token을 current bit sequence로 해석한다. 두 acceptance path가 같은 record를 서로 다른 operation identity에 연결한다.
+
+## f8e8444c5ded — feat(client): READY 응답을 출처와 nonce로 상관 검증
 
 **중요도** `A` · **태그** `RESPONSE, RISK, INTEGRATION`
 
-### acquisition token 만들기
+### 무엇을 만들었는가 (diff)
 
-client는 `/dev/urandom`에서 `uint32_t` 크기만큼 읽고, `EINTR`과 short read를 처리해 nonce를 완성한다. 결과가 0이면 1로 바꾼다. request는 이 nonce와 current PID를 담는다.
+client는 response보다 한 byte 큰 receive buffer를 사용하고 exact record size만 구조체로 복사한다.
 
-```c
-request.magic = MT_RESPONSE_MAGIC;
-request.kind = MT_REQUEST_ACQUIRE;
-request.nonce = nonce;
-request.client_pid = getpid();
+```diff
++static int read_response(pid_t server_pid, uint32_t kind, uint32_t token,
++        const char *server_path)
++{
++    unsigned char      payload[sizeof(t_mt_response) + 1];
++    struct sockaddr_un source;
++    t_mt_response      response;
++    ssize_t            size;
++
++    size = recvfrom(g_response_socket, payload, sizeof(payload), 0,
++            (struct sockaddr *)&source, &source_size);
++    if (size == -1 && (errno == EAGAIN || errno == EWOULDBLOCK
++            || errno == EINTR))
++        return (0);
++    if (size == -1)
++        return (SEND_ERROR);
++    if (size != (ssize_t)sizeof(response))
++        return (0);
++    memcpy(&response, payload, sizeof(response));
 ```
 
-server path를 `sockaddr_un`에 넣어 request를 보내기 전에 `CLOCK_MONOTONIC` 기반 absolute deadline을 한 번 만든다. wall clock 조정이 wait budget을 늘리거나 줄이지 않게 하기 위한 clock 선택이다.
+valid record는 source path와 내부 fields를 모두 만족해야 한다.
 
-### exact frame과 source 검사
-
-receive buffer는 valid record보다 한 byte 크다.
-
-```c
-unsigned char payload[sizeof(t_mt_response) + 1];
-size = recvfrom(g_response_socket, payload, sizeof(payload), 0,
-        (struct sockaddr *)&source, &source_size);
-if (size != (ssize_t)sizeof(t_mt_response))
-    return (0);
-memcpy(&response, payload, sizeof(response));
+```diff
++    if (!valid_source(&source, server_path)
++        || response.magic != MT_RESPONSE_MAGIC
++        || response.server_pid != server_pid || response.kind != kind
++        || response.token != token)
++        return (0);
++    if (response.status == MT_RESPONSE_BUSY)
++        return (SEND_REJECTED);
++    if (response.status != MT_RESPONSE_OK)
++        return (SEND_ERROR);
++    return (-1);
++}
 ```
 
-valid prefix 뒤에 trailing byte가 있으면 `size == sizeof(response) + 1`이므로 폐기된다. 작은 frame도 같은 exact-size check에서 거부된다.
+여기서 `0`은 “아직 current operation의 응답이 아님”, `-1`은 internal sentinel로 “valid success”, positive value는 client-visible failure다. caller `wait_for_response`가 sentinel을 0 success로 변환한다.
 
-record 수락에는 source path와 내부 field가 모두 필요하다.
+### deadline은 어떻게 bounded wait를 만드는가
 
-```c
-if (source.sun_family != AF_UNIX
-    || source.sun_path[sizeof(source.sun_path) - 1] != '\0'
-    || strcmp(source.sun_path, server_path) != 0
-    || response.magic != MT_RESPONSE_MAGIC
-    || response.server_pid != server_pid
-    || response.kind != kind
-    || response.token != token)
-    return (0);
-if (response.status == MT_RESPONSE_BUSY)
-    return (SEND_REJECTED);
-if (response.status != MT_RESPONSE_OK)
-    return (SEND_ERROR);
-return (1);
+`request_session`은 nonzero nonce 생성, server socket validation과 `clock_gettime(CLOCK_MONOTONIC, &deadline)`을 ACQUIRE 전 한 번 수행하고 timeout seconds를 더한다. wait loop는 매 iteration마다 current time과 **같은 absolute deadline**의 차이를 계산한다.
+
+```diff
++    while (1)
++    {
++        status = read_response(server_pid, kind, token, server_path);
++        if (status != 0)
++        {
++            if (status == -1)
++                return (0);
++            return (status);
++        }
++        remaining = time_until(deadline);
++        if (remaining.tv_sec == 0 && remaining.tv_nsec == 0)
++            return (SEND_TIMEOUT);
++        status = pselect(g_response_socket + 1, &read_set, NULL, NULL,
++                &remaining, NULL);
++        if (status == -1 && errno != EINTR)
++            return (SEND_ERROR);
++    }
 ```
 
-source path만 맞고 내부 PID가 틀린 응답, 내부 field가 모두 맞지만 다른 bound socket에서 온 응답 모두 실패한다. predictable same-UID path를 사용하는 local protocol이므로 이 결합이 cryptographic authentication을 뜻하지는 않는다.
+invalid frame은 nonce, operation kind와 deadline을 바꾸지 않는다. receive가 반복돼도 새 timeout budget을 만들지 않는다.
 
-### invalid datagram이 deadline을 갱신하지 않는 구조
+### 이 커밋이 보장하는 것 / 보장하지 않는 것
 
-`wait_for_response`는 loop마다 새 timeout을 부여하지 않고, 동일한 absolute deadline까지 남은 시간만 다시 계산한다.
+READY는 exact frame, source, server PID, kind, nonce와 status가 맞아야만 acquisition success다. same-UID predictable path는 local integrity check일 뿐 secret-based peer authentication은 아니다. random nonce도 cryptographic session protocol 전체를 제공하지 않는다.
 
-```text
-deadline = now_monotonic + MT_RESPONSE_TIMEOUT_SECONDS
-loop:
-  remaining = deadline - now_monotonic
-  pselect(..., remaining)
-  readable이면 datagram 하나 검사
-    valid response → return
-    invalid response → 같은 deadline으로 loop
-  remaining == 0 → timeout
-```
+### 관련 커밋과 어떤 관계인가
 
-따라서 wrong nonce datagram이 계속 도착해 socket이 즉시 readable 상태가 되어도 총 wait budget은 늘어나지 않는다.
+`d3eacbbfeadc`가 같은 predicate와 absolute-deadline machinery를 bit ACK에 적용한다. `b361ef9745ff`와 `1ed2acbaa353`은 각각 field mismatch와 framing/deadline failure를 분리해 검증한다.
 
-## `d3eacbbfeadc` — feat(client): 비트 ACK를 sequence로 상관 검증
+## d3eacbbfeadc — feat(client): 비트 ACK를 sequence로 상관 검증
 
 **중요도** `A` · **태그** `RESPONSE, RISK`
 
-READY에 사용한 같은 response reader를 bit ACK에도 적용한다. signal ACK wait를 success path에서 제거하고 현재 sequence token과 일치하는 datagram만 bit 완료로 인정한다.
+### 무엇이 바뀌었는가 (diff)
 
-```c
-status = wait_for_response(server_pid, MT_RESPONSE_ACK, *sequence,
-        server_path, &deadline);
-if (status != 0)
-    return (status);
-(*sequence)++;
+signal ACK/NACK/alarm wait를 `send_bit`에서 제거하고, bit signal을 보내기 전에 current sequence의 absolute deadline을 만든다.
+
+```diff
+-static int send_bit(pid_t server_pid, int bit, const sigset_t *old_mask,
+-        uint32_t sequence, const char *server_path)
++static int send_bit(pid_t server_pid, int bit, uint32_t sequence,
++        const char *server_path)
+@@
+-    g_ack_received = 0;
+-    g_timed_out = 0;
+-    g_rejected = 0;
+-    if (kill(server_pid, signal) == -1)
++    if (validate_server_socket(server_path) == -1)
+         return (SEND_ERROR);
+-    alarm(MT_ACK_TIMEOUT_SECONDS);
+-    while (!g_ack_received && !g_timed_out && !g_rejected)
+-        sigsuspend(old_mask);
+-    alarm(0);
+     if (clock_gettime(CLOCK_MONOTONIC, &deadline) == -1)
+         return (SEND_ERROR);
+     deadline.tv_sec += MT_ACK_TIMEOUT_SECONDS;
++    if (kill(server_pid, signal) == -1)
++        return (SEND_ERROR);
+     status = wait_for_response(server_pid, MT_RESPONSE_ACK, sequence,
+             server_path, &deadline);
 ```
 
-sequence mutation이 response validation **뒤**에 있다는 점이 핵심이다.
+`send_byte`는 `send_bit(..., *sequence, ...)`가 성공한 뒤에만 `(*sequence)++`를 수행한다. wrong token, stale ACK, forged source는 current bit의 success가 아니므로 bit cursor와 sequence가 그대로다.
 
-| 받은 ACK token | current sequence | 결과 |
-| ---: | ---: | --- |
-| 같음 | `n` | bit `n` 성공, sequence `n+1` |
-| `n-1` | `n` | stale ACK 폐기, cursor 불변 |
-| `n+1` | `n` | 미래/무관 ACK 폐기, cursor 불변 |
-| correct token, wrong source/PID | `n` | 폐기, cursor 불변 |
-| valid ACK 없음 | `n` | deadline에서 실패, 다음 bit 미전송 |
+### 무엇을 준비하고 아직 어디까지인가
 
-이 commit 직후 obsolete signal handler와 mask code 일부는 source에 남아 있지만 `send_bit`의 success를 결정하지 않는다. 실제 삭제는 `aeb1b00867f4`이며, 여기서는 correlation logic의 도입만 다룬다.
+이 commit으로 production bit success는 datagram correlation에 연결된다. source file에 남은 obsolete signal handler와 mask machinery를 실제로 삭제하는 작업은 `aeb1b00867f4`이며, 그 정리와 pacing 제거의 history는 `01-timing-to-correlated-sequence-acks.md`가 다룬다.
 
-## `b361ef9745ff` — test(protocol): 응답 출처와 token 검증
+### 관련 커밋과 어떤 관계인가
+
+`b361ef9745ff`의 response server는 first bit ACK 전에 forged-source와 wrong-field records를 넣어, sequence가 valid ACK 전에 전진하지 않는지 확인한다.
+
+---
+
+**역할군: conjunctive validation과 bounded wait를 adversarial input으로 고정하기**
+
+## b361ef9745ff — test(protocol): 응답 출처와 token 검증
 
 **중요도** `A` · **태그** `TEST, RESPONSE, RISK`
 
-### 하나씩 틀린 response를 valid response 앞에 배치
+### 무엇을 검증하는가
 
-`tests/response_server`는 정상 server path와 별도의 `forger` path에 datagram sockets를 bind한다. READY와 첫 bit ACK 전에 다음 records를 순서대로 보낸다.
+전용 `response_server`는 valid READY와 first bit ACK를 바로 보내지 않는다. 먼저 각 identity 요소가 하나씩 틀린 response를 client socket에 넣고, 짧은 pause 뒤 exact valid response를 보낸다.
 
-1. field는 맞지만 `forger` socket에서 보낸 response
-2. expected server socket에서 보냈지만 `token + 1`
-3. expected source/token이지만 `magic = 0`
-4. expected source/token/magic이지만 `server_pid = getpid() + 1`
-5. 20ms 뒤 모든 조건이 맞는 response
-
-핵심 test helper는 대략 다음 순서다.
-
-```c
-response.magic = MT_RESPONSE_MAGIC;
-response.kind = kind;
-response.token = token;
-response.status = MT_RESPONSE_OK;
-response.server_pid = getpid();
-send_response(g_forger_socket, client_pid, &response);
-
-response.token = token + 1;
-send_response(g_server_socket, client_pid, &response);
-
-response.token = token;
-response.magic = 0;
-send_response(g_server_socket, client_pid, &response);
-
-response.magic = MT_RESPONSE_MAGIC;
-response.server_pid = getpid() + 1;
-send_response(g_server_socket, client_pid, &response);
-
-/* 마지막에 valid response */
+```diff
++    response.magic = MT_RESPONSE_MAGIC;
++    response.kind = kind;
++    response.token = token;
++    response.status = MT_RESPONSE_OK;
++    response.server_pid = getpid();
++    if (send_response(g_forger_socket, client_pid, &response) == -1)
++        return (-1);
++    response.token = token + 1;
++    if (send_response(g_server_socket, client_pid, &response) == -1)
++        return (-1);
++    response.token = token;
++    response.magic = 0;
++    if (send_response(g_server_socket, client_pid, &response) == -1)
++        return (-1);
++    response.magic = MT_RESPONSE_MAGIC;
++    response.server_pid = getpid() + 1;
++    if (send_response(g_server_socket, client_pid, &response) == -1)
++        return (-1);
++    /* ... */
 ```
 
-client가 “처음 받은 datagram”이나 “correct source의 첫 datagram”을 성공으로 인정하면 test server와의 message 전송이 깨진다. fixture가 요구하는 정상 completion은 모든 predicate가 conjunction으로 적용된다는 증거다.
+같은 sequence가 READY와 first ACK 양쪽에 적용된다. client가 invalid response 하나라도 성공으로 받아들이면 sender/server의 byte assembly와 expected output이 어긋나거나 client가 잘못 종료한다.
 
-이 commit은 wrong kind, non-OK status, truncated frame 전체를 각각 주입하지는 않는다. source, token, magic, internal PID를 집중적으로 검증한다.
+### 이 테스트가 증명하는 것 / 증명하지 않는 것
 
-## `1ed2acbaa353` — test(response): oversized 응답과 invalid flood 검증
+selected forged source, wrong token, bad magic와 wrong server PID를 각각 무시하고 뒤의 valid response를 기다린다는 conjunctive validation evidence다. oversized frame, 지속적인 invalid traffic과 timeout budget은 아직 다루지 않는다. same-UID path spoofing 전체를 security proof로 만들지도 않는다.
+
+### 관련 커밋과 어떤 관계인가
+
+`f8e8444c5ded`의 READY predicate와 `d3eacbbfeadc`의 ACK predicate를 같은 adversarial server로 통과시킨다. `1ed2acbaa353`은 field 값이 아니라 frame length와 wait budget을 공격한다.
+
+## 1ed2acbaa353 — test(response): oversized 응답과 invalid flood 검증
 
 **중요도** `A` · **태그** `TEST, RESPONSE, RISK`
 
-### valid prefix + trailing byte
+### 왜 다른 기법이 필요한가
 
-기존 invalid sequence 앞에 정확히 한 byte 큰 datagram을 추가한다.
+한두 개의 invalid response 뒤 valid response를 보내는 test는 validation predicate는 확인하지만, invalid traffic이 계속 도착할 때 wait budget을 새로 시작하는 bug는 잡지 못한다. 또한 field가 전부 valid인 prefix 뒤 trailing byte가 붙은 frame은 값 비교만으로 구별되지 않는다.
 
-```c
-unsigned char payload[sizeof(*response) + 1];
+### exact frame boundary는 어떻게 검증하는가
 
-memcpy(payload, response, sizeof(*response));
-payload[sizeof(*response)] = 0xa5;
-sendto(socket_fd, payload, sizeof(payload), 0, ...);
+```diff
++static int send_oversized_response(int socket_fd, pid_t client_pid,
++        const t_mt_response *response)
++{
++    unsigned char payload[sizeof(*response) + 1];
++    /* ... */
++    memcpy(payload, response, sizeof(*response));
++    payload[sizeof(*response)] = 0xa5;
++    if (sendto(socket_fd, payload, sizeof(payload), 0,
++            (struct sockaddr *)&address, sizeof(address))
++        != (ssize_t)sizeof(payload))
++        return (-1);
++    return (0);
++}
 ```
 
-앞 `sizeof(response)` byte만 복사해 보면 완전히 valid한 record다. parser가 prefix만 읽거나 oversized datagram을 truncate해 수락하면 현재 transition이 잘못 열린다. production reader의 `sizeof(response) + 1` buffer와 exact-size 비교가 이 frame을 폐기한다.
+record prefix가 모두 맞아도 received size가 `sizeof(t_mt_response) + 1`이므로 `read_response`는 구조체로 해석하지 않고 폐기해야 한다.
 
-### invalid traffic이 timeout을 갱신하는지 확인
+### invalid flood가 deadline을 늘리는지 어떻게 확인하는가
 
-`MT_TEST_INVALID_FLOOD` mode는 valid server socket에서 다음 READY를 반복 전송한다.
+response server는 correct source에서 wrong nonce READY를 반복 전송한다.
 
-```c
-response.magic = MT_RESPONSE_MAGIC;
-response.kind = MT_RESPONSE_READY;
-response.token = token + 1;      /* 유일한 핵심 mismatch */
-response.status = MT_RESPONSE_OK;
-response.server_pid = getpid();
+```diff
++    response.magic = MT_RESPONSE_MAGIC;
++    response.kind = MT_RESPONSE_READY;
++    response.token = token + 1;
++    response.status = MT_RESPONSE_OK;
++    response.server_pid = getpid();
++    while (tries < 100000 && lstat(path, &info) == 0)
++    {
++        (void)sendto(g_server_socket, &response, sizeof(response), 0,
++                (struct sockaddr *)&address, sizeof(address));
++        pause_time.tv_nsec = 100000L;
++        while (nanosleep(&pause_time, &pause_time) == -1 && errno == EINTR)
++            ;
++        tries++;
++    }
 ```
 
-최대 100000회, 각 전송 사이 100µs를 두고 client endpoint가 없어질 때까지 보낸다. source, magic, kind, status, PID가 모두 맞고 nonce만 틀리므로 socket은 계속 readable하지만 client는 성공할 수 없다.
+shell fixture는 client가 timeout diagnostic과 nonzero status를 내고, wall-clock elapsed time이 2초 이상 6초 이하인지 확인한다. invalid response가 올 때마다 3초 budget을 새로 만들면 flood가 끝날 때까지 client가 살아 있어 이 상한을 넘는다.
 
-shell test는 다음을 요구한다.
+### 이 테스트가 증명하는 것 / 증명하지 않는 것
 
-- client가 nonzero로 끝난다.
-- diagnostic은 acknowledgement timeout이다.
-- elapsed wall-clock seconds가 2 이상 6 이하이다.
-- test server는 client endpoint가 사라진 뒤 정상 종료하고 stderr가 비어 있다.
+valid prefix에 trailing byte가 붙은 frame을 거부하고, sustained wrong-token traffic 아래에서도 original deadline이 만료된다는 selected regression evidence다. wall-clock assertion은 test scheduling 여유를 포함한 간접 관찰이며 모든 load environment에서 정밀한 latency guarantee를 뜻하지 않는다. datagram truncation flag, credentials ancillary data와 cryptographic authentication은 범위 밖이다.
 
-project timeout은 약 3초다. 매 invalid response 뒤 timeout을 새로 시작했다면 flood가 지속되는 동안 client는 끝나지 않는다. 정해진 범위에서 종료한다는 assertion은 absolute monotonic deadline이 invalid traffic에도 소비되고 있음을 겨냥한다.
+### 관련 커밋과 어떤 관계인가
 
-이 test의 elapsed check는 `date +%s`의 초 단위 관찰이며 정밀 timer 검증은 아니다. 또한 같은 UID의 hostile process에 대한 보안 증명을 제공하지 않는다. exact framing과 bounded wait라는 두 regression에 집중한다.
-
-## response 상태 전이
-
-```text
-[current operation]
-  READY: expected token = nonce
-  ACK:   expected token = sequence
-
-[datagram receive]
-  size != exact record ───────────────┐
-  source path mismatch ───────────────┤
-  magic/PID/kind/token mismatch ──────┤→ discard
-  unknown/non-OK status ──────────────┘   state와 deadline 불변
-
-  all identity fields match
-    ├─ BUSY → acquisition rejected
-    └─ OK
-         ├─ READY → data 전송 시작 가능
-         └─ ACK → sequence 증가, 다음 bit 가능
-
-[absolute deadline reached]
-  → timeout
-  → nonce/sequence/cursor 전진 없음
-```
-
-## 보장 범위와 한계
-
-이 Thread가 보장하는 것은 **현재 client가 현재 operation의 응답으로 무엇을 수락하는가**다.
-
-- exact record보다 작거나 큰 datagram은 수락하지 않는다.
-- stale, future, wrong-source, inconsistent-PID response는 state를 전진시키지 않는다.
-- invalid traffic 양과 무관하게 하나의 operation wait는 원래 deadline 안에 끝난다.
-- response 유실 시 재전송은 하지 않는다. client는 timeout으로 실패한다.
-- host-local native struct ABI이므로 서로 다른 ABI/byte order의 peer interoperability는 범위 밖이다.
-- per-UID filesystem path와 field 검사는 cooperative local identity boundary이며 cryptographic authentication이 아니다.
+`f8e8444c5ded`의 `payload[sizeof(response) + 1]`, exact size branch와 absolute deadline reuse가 모두 유지돼야 두 scenario가 성립한다. `b361ef9745ff`가 field-level conjunction을, 이 커밋이 framing과 liveness bound를 보완한다.
 
 ## 이 Thread의 경계
 
-- sequence ACK가 고정 지연을 대체하는 역사적 흐름은 `01-timing-to-correlated-sequence-acks.md`에서 다룬다.
-- ACQUIRE가 owner를 만들고 stale owner를 회수하는 규칙은 `02-session-ownership-and-recovery.md`의 주제다.
-- expected server/client path의 생성·bind·cleanup은 `05-endpoint-ownership-and-bounded-polling.md`에서 다룬다.
-- signal handler의 event 전달 방식과 output-before-ACK ordering은 각각 Thread 03과 Thread 04에서 다룬다.
+- signal ACK에서 sequence datagram ACK로 이동하고 obsolete timing을 제거하는 history는 `01-timing-to-correlated-sequence-acks.md`가 다룬다. 이 문서는 최종 response acceptance predicate에 집중한다.
+- 어느 client가 session을 소유하는지는 `02-session-ownership-and-recovery.md`의 책임이다. nonce-correlated READY는 그 ownership decision을 전달하는 response일 뿐이다.
+- server/client endpoint path의 생성·bind·unlink ownership은 `05-endpoint-ownership-and-bounded-polling.md`가 다룬다.
+- predictable same-UID path와 random nonce를 넘어선 peer credential 검증, MAC·encryption·portable serialization은 별개의 security/protocol 문제다.
 
-## 조사 범위
-
-각 설명은 표시된 exact SHA의 shared header, `src/client.c`, `tests/response_server.c`, shell regression diff를 기준으로 작성했다. adversarial tests는 실행하지 않았으며, source가 구성한 frame 순서와 assertion만 근거로 검증 범위를 서술했다.
+> 검토 범위: `ebed06775b92`, `f8e8444c5ded`, `d3eacbbfeadc`, `b361ef9745ff`, `1ed2acbaa353`의 diff와 해당 SHA의 shared header, `src/client.c`, `tests/response_server.c`, response-validation/protocol-regression scripts를 확인했다. branch checkout과 adversarial test 실행은 수행하지 않았으므로 elapsed-time assertion을 실제 측정 결과처럼 주장하지 않는다.

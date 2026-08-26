@@ -1,313 +1,309 @@
-# Thread: signal handler에서 fail-stop self-pipe event loop로
-
-Project: `minitalk` · Branch: `c/minitalk` · 문서 번호: 03
+# Thread: signal handler는 사실만 기록하고 event loop가 protocol state를 소유한다
+> Project: `minitalk` · Branch: `c/minitalk` · 문서 번호: 03
 
 ## 개요
 
-초기 server의 signal handler는 sender 확인, session 검사, bit 조립, byte 출력, sequence 증가, ACK 생성까지 protocol 전체를 직접 수행했다. 이 구조에서는 normal code와 handler가 같은 state를 공유하고, handler 안에서 호출할 수 있는 함수도 async-signal-safe 범위에 묶인다.
+초기 server의 signal handler는 sender 확인, session 검사, bit 조립, stdout 출력, sequence 증가와 ACK 생성까지 protocol 전체를 직접 수행했다. 이 구조에서는 authoritative state가 async signal context 안에서 바뀌고, 호출 가능한 operation도 async-signal-safe 범위에 묶인다.
 
-이 Thread의 핵심은 “pipe를 하나 추가했다”가 아니다. **authoritative state mutation을 normal execution context 하나로 옮겼다**는 데 있다. handler는 `(sender PID, signal number)`라는 사실만 고정 크기 record로 남기고, `pselect` event loop가 그 record를 읽어 session·decoder·stdout·ACK 상태를 순서대로 바꾼다.
+이 Thread는 `(sender PID, signal number)`를 고정 크기 event로 표현한 뒤 handler의 책임을 self-pipe write 하나로 줄이고, `pselect` event loop가 session·bit·output·ACK를 전담하도록 옮긴다. event 하나의 손실은 bit 하나의 손실이므로 queue overflow를 부분 복구하지 않고 fail-stop으로 다룬다. 마지막 두 커밋은 termination signal과 inherited signal mask를 같은 event architecture에 포함한다.
 
-### 최종 불변 조건
+### 최종 책임 분리
 
-- data/termination signal handler는 `errno`를 보존하고 self-pipe에 fixed event 하나를 쓰는 일만 한다.
-- `g_client_pid`, partial byte, bit count, line state, sequence는 event loop에서만 변경된다.
-- event record는 `PIPE_BUF` 이하이며 한 signal의 sender와 signal 값이 서로 다른 event와 섞이지 않는다.
-- write end는 nonblocking이다. record를 완전히 기록하지 못하면 event loss로 간주하고 server가 중단된다.
-- inherited process mask와 무관하게 server가 사용하는 data·termination signal은 handler 설치 뒤 명시적으로 unblock된다.
-- `SIGHUP`, `SIGINT`, `SIGTERM`도 self-pipe를 거쳐 normal cleanup path로 종료된다.
+| 실행 위치 | 책임 |
+| --- | --- |
+| signal handler | `errno` 보존, sender/signal을 `t_bit_event`에 복사, nonblocking self-pipe write, 실패 시 overflow flag 설정 |
+| event loop | full event read, event validation, owner 검사, byte/sequence mutation, stdout 반영, ACK 전송, termination 처리 |
+| process exit path | overflow·I/O failure는 status 1, supported termination은 `128 + signal`, `atexit` cleanup으로 socket과 pipe close/unlink |
 
 ### 커밋 목록
 
 | 순서 | SHA | 제목 | 중요도 | 태그 | 역할 |
 | ---: | --- | --- | :---: | --- | --- |
-| 1 | `a7d994b0a4b6` | refactor(server): 비트 상태 전이 로직 추출 | B | `REFACTOR, SELF_PIPE` | bit processing을 explicit `(sender, signal)` event를 받는 function으로 추출하고 event size가 `PIPE_BUF` 안인지 compile-time으로 확인합니다. |
-| 2 | `22363f83ff25` | refactor(server): signal 처리를 self-pipe event loop로 제한 | S | `ARCH, SELF_PIPE, RISK` | handler를 `errno` preservation과 fixed event self-pipe write로 제한하고 `pselect` loop가 모든 protocol work를 수행하게 합니다. |
-| 3 | `4c535ac8657e` | test(server): self-pipe 이벤트 손실 시 fail-stop 검증 | A | `TEST, SELF_PIPE, RISK` | handler의 first self-pipe event write에 `EAGAIN`을 주입하고 server fail-stop을 검증합니다. |
-| 4 | `e304c63bee3e` | fix(server): 종료 시그널을 이벤트 루프 정리 경로로 처리 | A | `SELF_PIPE, PROCESS_LIFECYCLE` | `SIGHUP`, `SIGINT`, `SIGTERM`을 data signal과 같은 self-pipe event로 전달하고 normal cleanup path에서 종료합니다. |
-| 5 | `686b0d2a14e3` | fix(server): 상속된 이벤트 시그널 마스크 해제 | A | `PROCESS_LIFECYCLE, RISK` | handler 설치 후 two data signals와 three supported termination signals를 process mask에서 명시적으로 unblock합니다. |
-| 6 | `72424469474c` | test(server): 차단된 시그널 마스크 상속 뒤 메시지 검증 | B | `TEST, PROCESS_LIFECYCLE` | wrapper가 data와 termination signals를 block한 뒤 server를 `exec`하고 message delivery와 SIGTERM cleanup을 검증합니다. |
+| 1 | `a7d994b0a4b6` | refactor(server): 비트 상태 전이 로직 추출 | B | `REFACTOR, SELF_PIPE` | handler body의 bit transition을 explicit event 인자를 받는 함수로 추출한다. |
+| 2 | `22363f83ff25` | refactor(server): signal 처리를 self-pipe event loop로 제한 | S | `ARCH, SELF_PIPE, RISK` | handler를 fixed event write로 제한하고 normal loop에 authoritative state mutation을 이전한다. |
+| 3 | `4c535ac8657e` | test(server): self-pipe 이벤트 손실 시 fail-stop 검증 | A | `TEST, SELF_PIPE, RISK` | 첫 event write에 `EAGAIN`을 주입해 overflow가 server failure와 cleanup으로 이어지는지 검증한다. |
+| 4 | `e304c63bee3e` | fix(server): 종료 시그널을 이벤트 루프 정리 경로로 처리 | A | `SELF_PIPE, PROCESS_LIFECYCLE` | `SIGHUP`, `SIGINT`, `SIGTERM`을 self-pipe event로 전달해 normal cleanup 뒤 종료한다. |
+| 5 | `686b0d2a14e3` | fix(server): 상속된 이벤트 시그널 마스크 해제 | A | `PROCESS_LIFECYCLE, RISK` | handler 설치 뒤 data·termination signal을 process mask에서 명시적으로 unblock한다. |
+| 6 | `72424469474c` | test(server): 차단된 시그널 마스크 상속 뒤 메시지 검증 | B | `TEST, PROCESS_LIFECYCLE` | blocked mask를 상속한 `exec` 뒤 message delivery와 SIGTERM cleanup을 검증한다. |
 
-## `a7d994b0a4b6` — refactor(server): 비트 상태 전이 로직 추출
+---
+
+**역할군: state transition을 event value로 분리한 뒤 실행 context를 이동하기**
+
+## a7d994b0a4b6 — refactor(server): 비트 상태 전이 로직 추출
 
 **중요도** `B` · **태그** `REFACTOR, SELF_PIPE`
 
-### event representation을 먼저 만든 중간 단계
+이 커밋은 self-pipe를 완성하지 않는다. handler가 받던 `siginfo_t`에서 protocol input을 분리해, `22363f83ff25`가 caller를 normal loop로 옮길 수 있게 만드는 enabling refactor다.
 
-`siginfo_t`와 signal handler에 묶여 있던 protocol code를 `(sender, signal)`만 받는 `process_bit`으로 옮긴다.
+### 무엇이 바뀌었는가 (diff)
 
-```c
-typedef struct s_bit_event
-{
-    pid_t  sender;
-    int    signal;
-}   t_bit_event;
-
-typedef char t_event_must_fit_pipe_buf[
-    (sizeof(t_bit_event) <= PIPE_BUF) * 2 - 1];
+```diff
++typedef struct s_bit_event
++{
++    pid_t sender;
++    int   signal;
++} t_bit_event;
++
++typedef char t_event_must_fit_pipe_buf[
++    (sizeof(t_bit_event) <= PIPE_BUF) * 2 - 1];
+@@
+-static void handle_bit(int signal, siginfo_t *info, void *context)
++static void process_bit(const t_bit_event *event)
+ {
+-    if (info == NULL || info->si_pid <= 0)
++    if (event->sender <= 0)
+         return ;
+-    if (g_client_pid == 0 || g_client_pid != info->si_pid)
++    if (g_client_pid == 0 || g_client_pid != event->sender)
+         return ;
+@@
+-    if (signal == MT_ONE_SIGNAL)
++    if (event->signal == MT_ONE_SIGNAL)
+         g_current_byte |= 1;
+@@
+-    queue_response(info->si_pid, MT_RESPONSE_ACK, sequence, MT_RESPONSE_OK);
++    queue_response(event->sender, MT_RESPONSE_ACK, sequence, MT_RESPONSE_OK);
+ }
 ```
 
-compile-time array 크기는 조건이 참이면 1, 거짓이면 -1이 되어 build를 실패시킨다. 앞으로 이 record를 pipe 한 번의 write로 넘길 수 있다는 전제를 type 정의 근처에서 고정한다.
+handler는 event를 만들어 `process_bit`을 직접 호출한다. 따라서 authorization, output와 sequence mutation은 여전히 async signal context에서 실행된다. compile-time check는 record가 `PIPE_BUF` 이하라는 다음 단계의 atomic-write 전제를 미리 고정할 뿐, 이 SHA에서 pipe write를 수행하지는 않는다.
 
-handler는 `siginfo_t`에서 event를 만든다.
+### production semantics가 유지되는 근거는 무엇인가
 
-```c
-event.sender = 0;
-if (info != NULL)
-    event.sender = info->si_pid;
-event.signal = signal;
-process_bit(&event);
-```
+sender와 signal을 local event로 복사한 뒤 동일한 transition function을 같은 handler context에서 호출한다. state mutation 순서와 response 생성은 이동하지 않았고 입력 표현만 바뀌었다.
 
-그러나 이 SHA에서는 handler가 `process_bit`을 **직접 호출한다**. 추출된 함수 안에서는 여전히 다음 작업이 handler context에서 실행된다.
+### 관련 커밋과 어떤 관계인가
 
-- current owner 검사
-- partial byte shift와 bit count 증가
-- 완성 byte 출력 및 session reset
-- sequence 증가
-- response work queueing
+`22363f83ff25`가 handler의 `process_bit` 호출을 self-pipe write로 교체하고, 동일한 event를 normal loop에서 소비한다. 이 refactor가 없으면 responsibility 이동과 transition logic 변경이 한 diff에 섞인다.
 
-따라서 이 commit은 async-signal boundary를 완성한 것이 아니라, 다음 commit이 state transition을 event loop로 옮길 수 있도록 입력 표현을 정리한 준비 작업이다.
-
-## `22363f83ff25` — refactor(server): signal 처리를 self-pipe event loop로 제한
+## 22363f83ff25 — refactor(server): signal 처리를 self-pipe event loop로 제한
 
 **중요도** `S` · **태그** `ARCH, SELF_PIPE, RISK`
 
-### 책임 이동
+### 무엇이 바뀌었는가 (diff)
 
-이전과 이후의 차이는 함수 위치가 아니라 실행 context다.
-
-| 작업 | 변경 전 | 변경 후 |
-| --- | --- | --- |
-| sender/signal snapshot | handler | handler |
-| owner 검사 | handler가 호출한 `process_bit` | event loop의 `process_bit` |
-| byte/bit/sequence mutation | handler | event loop |
-| stdout write | handler | event loop |
-| ACK datagram 전송 | response loop | event loop |
-| event loss 판단 | response pipe overflow | event pipe overflow, fail-stop |
-
-handler에는 다음 코드만 남는다.
-
-```c
-static void handle_bit(int signal, siginfo_t *info, void *context)
-{
-    t_bit_event event;
-    int         saved_errno;
-
-    saved_errno = errno;
-    (void)context;
-    event.sender = 0;
-    if (info != NULL)
-        event.sender = info->si_pid;
-    event.signal = signal;
-    if (write(g_event_pipe[1], &event, sizeof(event))
-        != (ssize_t)sizeof(event))
-        g_event_overflow = 1;
-    errno = saved_errno;
-}
-```
-
-`write`는 async-signal-safe 함수이고 event 크기는 `PIPE_BUF` 이하이다. write end는 `O_NONBLOCK | FD_CLOEXEC`, read end는 `FD_CLOEXEC`로 설정된다. handler가 pipe capacity를 기다리며 block하지 않도록 하고, exec된 다른 program이 내부 channel을 상속하지 않게 한다.
-
-### state를 normal type으로 되돌린 이유
-
-이전에는 handler가 직접 읽고 쓰므로 여러 field가 `volatile sig_atomic_t`였다. 이동 후에는 handler와 event loop가 공유하는 값이 `g_event_overflow` 하나뿐이다.
+handler는 state를 직접 바꾸지 않고 fixed event를 nonblocking write한다.
 
 ```diff
--static volatile sig_atomic_t g_current_byte;
--static volatile sig_atomic_t g_received_bits;
--static volatile sig_atomic_t g_client_pid;
-+static unsigned char          g_current_byte;
-+static unsigned int           g_received_bits;
-+static pid_t                  g_client_pid;
- ...
-+static volatile sig_atomic_t  g_event_overflow;
+ static void handle_bit(int signal, siginfo_t *info, void *context)
+ {
+     t_bit_event event;
+     int         saved_errno;
+@@
+     if (info != NULL)
+         event.sender = info->si_pid;
+     event.signal = signal;
+-    process_bit(&event);
++    if (write(g_event_pipe[1], &event, sizeof(event))
++        != (ssize_t)sizeof(event))
++        g_event_overflow = 1;
+     errno = saved_errno;
+ }
 ```
 
-이 변화는 단순 type cleanup이 아니다. protocol state의 writer가 event loop 하나로 수렴했다는 코드 증거다.
+pipe의 read end는 `FD_CLOEXEC`, write end는 `O_NONBLOCK | FD_CLOEXEC`로 설정한다. event loop는 response socket과 event-pipe read end를 함께 `pselect`하고, full record를 읽은 뒤 `process_bit`을 호출한다.
 
-### self-pipe 소비 경로
-
-`read_event`는 fixed record가 완성될 때까지 offset을 전진한다.
-
-```c
-bytes = (unsigned char *)event;
-offset = 0;
-while (offset < sizeof(*event))
-{
-    size = read(g_event_pipe[0], bytes + offset,
-            sizeof(*event) - offset);
-    if (size == -1 && errno == EINTR)
-        continue ;
-    if (size <= 0)
-        return (-1);
-    offset += (size_t)size;
-}
+```diff
++static int read_event(t_bit_event *event)
++{
++    unsigned char *bytes;
++    size_t         offset;
++    ssize_t        size;
++
++    bytes = (unsigned char *)event;
++    offset = 0;
++    while (offset < sizeof(*event))
++    {
++        size = read(g_event_pipe[0], bytes + offset,
++                sizeof(*event) - offset);
++        if (size == -1 && errno == EINTR)
++            continue ;
++        if (size <= 0)
++            return (-1);
++        offset += (size_t)size;
++    }
++    return (0);
++}
 ```
 
-`run_event_loop`는 control socket과 event pipe를 같은 `pselect`에서 관찰한다.
+### 왜 이것이 단순한 pipe 추가가 아닌가
 
-```c
-FD_SET(g_event_pipe[0], &read_set);
-FD_SET(g_response_socket, &read_set);
-status = pselect(max_fd + 1, &read_set, NULL, NULL, NULL, NULL);
+이전의 `volatile sig_atomic_t` protocol fields는 handler와 normal context가 공유하기 때문에 선택된 타입이었다. mutation owner가 event loop 하나로 수렴한 뒤 `g_current_byte`, `g_received_bits`, `g_client_pid`, `g_sequence`는 normal C types로 돌아간다. handler가 접근하는 mutable global은 pipe descriptor와 `g_event_overflow`뿐이다.
+
+normal-loop 순서는 다음과 같다.
+
+```text
+full event read
+  → sender/signal validation
+  → current owner 확인
+  → byte와 bit count mutation
+  → complete byte면 stdout 반영
+  → sequence 증가
+  → exact sequence ACK 전송
 ```
 
-ready source에 따라 session request 또는 bit event를 하나 처리한다. `process_bit`은 event의 signal 값과 sender를 검증하고, current owner의 bit일 때만 decoder state를 변경한다. 완성 byte를 output한 뒤 sequence ACK를 보내는 순서도 이제 normal context에서 실행된다.
+### 왜 event 손실을 복구하지 않는가
 
-### 왜 overflow를 복구하지 않는가
+standard signal로 전달된 bit 하나와 pipe event 하나가 1:1이다. handler write가 partial 또는 `EAGAIN`으로 실패하면 event stream의 어느 위치가 사라졌는지 normal loop는 복원할 수 없다. 계속 실행하면 이후 bit를 잘못된 byte 위치에 넣고도 ACK할 수 있으므로, overflow flag를 관찰한 event loop는 `ENOBUFS`와 failure로 종료한다.
 
-```c
-if (g_event_overflow)
-{
-    errno = ENOBUFS;
-    return (-1);
-}
-```
+### 관련 커밋과 어떤 관계인가
 
-signal 하나는 bit 하나다. self-pipe write가 실패한 뒤 server가 계속 실행하면 accumulator가 실제 sender sequence보다 한 bit 뒤처진다. 이후의 모든 byte 경계와 ACK token이 틀어질 수 있지만 어느 위치에서 event가 빠졌는지 알 수 없다. 그래서 queue pressure를 “나중에 다시 시도할 일”로 보지 않고 **protocol state를 더 이상 신뢰할 수 없는 상태**로 보고 중단한다.
+`4c535ac8657e`는 실제 pipe saturation을 기다리지 않고 첫 write failure를 deterministic하게 주입해 fail-stop branch를 고정한다. `e304c63bee3e`는 같은 event channel에 termination signal을 추가한다.
 
-이 SHA에서 output helper는 아직 write 오류를 제대로 전파하지 않는다. stdout-before-ACK invariant는 Thread 04의 `db2004556d8b`에서 추가된다.
-
-## `4c535ac8657e` — test(server): self-pipe 이벤트 손실 시 fail-stop 검증
+## 4c535ac8657e — test(server): self-pipe 이벤트 손실 시 fail-stop 검증
 
 **중요도** `A` · **태그** `TEST, SELF_PIPE, RISK`
 
-production source의 event write call만 test build에서 교체할 수 있게 한다.
+### 무엇을 검증하는가
 
-```c
-#ifndef MT_EVENT_WRITE
-# define MT_EVENT_WRITE write
-#endif
+production handler call site만 macro seam으로 바꾸고, fault build에서 첫 event write가 `EAGAIN`을 반환하도록 한다.
+
+```diff
++#ifndef MT_EVENT_WRITE
++# define MT_EVENT_WRITE write
++#endif
+@@
+-    if (write(g_event_pipe[1], &event, sizeof(event))
++    if (MT_EVENT_WRITE(g_event_pipe[1], &event, sizeof(event))
+         != (ssize_t)sizeof(event))
+         g_event_overflow = 1;
 ```
 
-fault implementation은 첫 event write에 `EAGAIN`을 한 번 반환한다.
-
-```c
-if (!failed && read_number("MT_TEST_EVENT_EAGAIN", 0) == 1)
-{
-    failed = 1;
-    errno = EAGAIN;
-    return (-1);
-}
+```diff
++ssize_t mt_test_event_write(int fd, const void *buffer, size_t size)
++{
++    static int failed;
++
++    if (!failed && read_number("MT_TEST_EVENT_EAGAIN", 0) == 1)
++    {
++        failed = 1;
++        errno = EAGAIN;
++        return (-1);
++    }
++    return (write(fd, buffer, size));
++}
 ```
 
-fixture가 요구하는 관측값은 다음과 같다.
+shell fixture는 client가 실패하고, server도 nonzero로 종료하며, stderr가 `server: signal event channel failed`를 포함하고, server socket path가 cleanup됐는지 요구한다.
 
-- client의 message 전송은 ACK를 받지 못해 실패한다.
-- server는 `server: signal event channel failed`를 출력하고 nonzero로 종료한다.
-- server endpoint path는 normal exit cleanup으로 제거된다.
+### 이 테스트가 증명하는 것 / 증명하지 않는 것
 
-이 test는 pipe를 실제로 가득 채우지는 않는다. handler가 “한 event를 완전히 기록하지 못했다”는 production branch를 deterministic하게 재현해, overflow flag를 무시하고 계속 실행하는 회귀를 막는다.
+첫 event write failure가 silent bit loss로 이어지지 않고 fail-stop과 endpoint cleanup으로 수렴한다는 selected branch를 증명한다. 실제 kernel pipe를 가득 채우거나 partial positive write를 재현하지는 않는다. macro seam이 production build에서 raw `write`로 해석된다는 점은 유지된다.
 
-## `e304c63bee3e` — fix(server): 종료 시그널을 이벤트 루프 정리 경로로 처리
+### 관련 커밋과 어떤 관계인가
+
+`22363f83ff25`가 정의한 “event 하나라도 잃으면 계속하지 않는다”는 정책을 직접 고정한다. output write fault와 같은 다른 failure seam은 `04-output-commit-boundary.md`의 테스트가 맡는다.
+
+---
+
+**역할군: lifecycle signal도 event loop와 cleanup 경로에 통합하기**
+
+## e304c63bee3e — fix(server): 종료 시그널을 이벤트 루프 정리 경로로 처리
 
 **중요도** `A` · **태그** `SELF_PIPE, PROCESS_LIFECYCLE`
 
-`SIGHUP`, `SIGINT`, `SIGTERM`에도 같은 `handle_bit`을 설치한다. handler가 직접 `_exit`하거나 cleanup하지 않고 termination event를 self-pipe에 넣는다.
+### 왜 바뀌었는가 (문제 → 원인 → 결정)
 
-`process_bit`은 sender나 data signal validation보다 먼저 termination signal을 구분한다.
+기본 signal disposition으로 process가 즉시 종료되면 normal loop가 종료 이유를 관찰하지 못한다. `atexit` cleanup과 shell-compatible exit status를 같은 path에서 보장하기 위해 supported termination signal도 `t_bit_event.signal`로 전달한다.
 
-```c
-if (event->signal == SIGHUP || event->signal == SIGINT
-    || event->signal == SIGTERM)
-    return (event->signal);
+```diff
+     if (sigaction(MT_ZERO_SIGNAL, &action, NULL) == -1
+-        || sigaction(MT_ONE_SIGNAL, &action, NULL) == -1)
++        || sigaction(MT_ONE_SIGNAL, &action, NULL) == -1
++        || sigaction(SIGHUP, &action, NULL) == -1
++        || sigaction(SIGINT, &action, NULL) == -1
++        || sigaction(SIGTERM, &action, NULL) == -1)
+         return (-1);
+@@
++    if (event->signal == SIGHUP || event->signal == SIGINT
++        || event->signal == SIGTERM)
++        return (event->signal);
+@@
+-    if (run_event_loop() == -1)
++    status = run_event_loop();
++    if (status == -1)
+         return (1);
++    if (status > 0)
++        return (128 + status);
 ```
 
-`run_event_loop`는 이 양수 값을 main에 반환하고, main은 conventional status로 바꾼다.
+handler는 data signal과 같은 방식으로 termination event를 pipe에 넣는다. event loop가 positive signal number를 반환하면 `main`이 `128 + signal`로 종료하고, normal return 과정에서 registered cleanup이 pipe descriptors와 response socket을 정리한다.
 
-```c
-status = run_event_loop();
-if (status == -1)
-    return (1);
-if (status > 0)
-    return (128 + status);
-```
+### 이 커밋이 보장하는 것 / 보장하지 않는 것
 
-main에서 return하므로 등록된 `atexit(cleanup_server)`가 socket과 pipe descriptors를 닫고 bound path를 unlink한다. 종료 signal도 data signal과 동일한 ordered input channel을 사용하므로, handler에서 filesystem이나 descriptor cleanup을 시도하지 않는다.
+등록된 세 termination signal은 protocol state mutation과 같은 serialized input path를 통과한다. `SIGKILL`, `SIGSTOP`처럼 catch할 수 없는 signal이나 모든 possible signal을 일반화하지 않는다.
 
-## `686b0d2a14e3` — fix(server): 상속된 이벤트 시그널 마스크 해제
+### 관련 커밋과 어떤 관계인가
+
+handler disposition만 설치해도 inherited process mask가 signal을 계속 block할 수 있다. `686b0d2a14e3`가 startup 시 deliverability까지 복구한다.
+
+## 686b0d2a14e3 — fix(server): 상속된 이벤트 시그널 마스크 해제
 
 **중요도** `A` · **태그** `PROCESS_LIFECYCLE, RISK`
 
-handler를 설치하는 것과 signal을 받을 수 있게 만드는 것은 별개다. process가 blocked mask를 상속한 채 `exec`되면 새 disposition은 설치돼도 signal은 pending 상태로 남아 handler가 실행되지 않는다.
+### 무엇이 바뀌었는가 (diff)
 
-```c
-static int unblock_event_signals(void)
-{
-    sigset_t event_signals;
-
-    sigemptyset(&event_signals);
-    sigaddset(&event_signals, MT_ZERO_SIGNAL);
-    sigaddset(&event_signals, MT_ONE_SIGNAL);
-    sigaddset(&event_signals, SIGHUP);
-    sigaddset(&event_signals, SIGINT);
-    sigaddset(&event_signals, SIGTERM);
-    return (sigprocmask(SIG_UNBLOCK, &event_signals, NULL));
-}
+```diff
++static int unblock_event_signals(void)
++{
++    sigset_t event_signals;
++
++    sigemptyset(&event_signals);
++    sigaddset(&event_signals, MT_ZERO_SIGNAL);
++    sigaddset(&event_signals, MT_ONE_SIGNAL);
++    sigaddset(&event_signals, SIGHUP);
++    sigaddset(&event_signals, SIGINT);
++    sigaddset(&event_signals, SIGTERM);
++    return (sigprocmask(SIG_UNBLOCK, &event_signals, NULL));
++}
+@@
+-    if (install_signal_handlers() == -1)
++    if (install_signal_handlers() == -1 || unblock_event_signals() == -1)
 ```
 
-초기화 순서는 handler 설치 후 unblock이다.
+### 왜 이렇게 작은가
 
-```c
-if (install_signal_handlers() == -1 || unblock_event_signals() == -1)
-    return (1);
-```
+`exec`는 signal disposition 일부를 초기화하지만 process signal mask는 상속한다. parent가 data signal이나 SIGTERM을 block한 채 server를 `exec`하면 handler가 올바르게 설치돼도 signal은 pending 상태에 머물 수 있다. fix는 handler 설치 뒤 정확히 event channel이 소비하는 다섯 signal만 unblock한다.
 
-이 순서는 inherited pending signal이 default disposition으로 처리되는 창을 만들지 않고, 이 program이 실제로 소비하는 다섯 signal만 명시적으로 정상화한다. caller의 전체 mask를 빈 집합으로 덮어쓰지 않는다.
+### 관련 커밋과 어떤 관계인가
 
-## `72424469474c` — test(server): 차단된 시그널 마스크 상속 뒤 메시지 검증
+`72424469474c`가 wrapper에서 이 다섯 signal을 block한 뒤 server를 `exec`해, disposition과 mask가 서로 다른 startup 책임임을 regression으로 고정한다.
+
+## 72424469474c — test(server): 차단된 시그널 마스크 상속 뒤 메시지 검증
 
 **중요도** `B` · **태그** `TEST, PROCESS_LIFECYCLE`
 
-`tests/masked_exec`가 data signal 두 개와 termination signal 세 개를 block한 뒤 server를 `exec`한다. mask는 exec를 지나 유지되므로, `686b0d2a14e3`이 없으면 handler가 설치돼도 message를 받을 수 없다.
+### 무엇을 검증하는가
 
-script는 다음을 함께 확인한다.
+`tests/masked_exec`가 data와 termination signal을 모두 block한 뒤 child에서 server를 `exec`한다.
 
-1. masked wrapper 아래 server가 PID line을 publish한다.
-2. 정상 client가 `inherited mask`를 전송하고 server output에 같은 line이 생긴다.
-3. server에 `SIGTERM`을 보낸다.
-4. wrapper가 관찰한 status가 `143`이다.
-5. server Unix socket path가 제거된다.
-
-즉 이 test는 data deliverability만 확인하지 않는다. 같은 unblock set에 포함된 termination signal이 event loop를 통과해 status와 cleanup까지 보존하는지도 고정한다.
-
-## 최종 execution flow
-
-```text
-[kernel signal delivery]
-  → handle_bit
-       sender/signal snapshot
-       fixed record를 nonblocking pipe에 한 번 write
-       실패/short write면 g_event_overflow=1
-       errno 복원
-  → pselect loop
-       ├─ control socket: ACQUIRE 처리
-       └─ event pipe: exact record read
-            ├─ termination event → signal number 반환 → main return 128+signal
-            └─ data event
-                 owner 검사
-                 bit accumulator 변경
-                 8 bit이면 output
-                 sequence 증가
-                 ACK datagram 전송
-
-[event write loss]
-  → overflow flag 관찰
-  → event loop -1
-  → server status 1
-  → atexit cleanup
+```diff
+     sigaddset(&blocked, MT_ZERO_SIGNAL);
+     sigaddset(&blocked, MT_ONE_SIGNAL);
++    sigaddset(&blocked, SIGHUP);
++    sigaddset(&blocked, SIGINT);
++    sigaddset(&blocked, SIGTERM);
+     if (sigprocmask(SIG_BLOCK, &blocked, &old_mask) == -1)
+         return (1);
 ```
+
+shell fixture는 normal client가 `inherited mask`를 전송해 stdout에 정확한 message가 나타나는지 확인한 뒤 server에 SIGTERM을 보낸다. wrapper의 wait status가 143이고 server socket path가 사라져야 한다.
+
+### 이 테스트가 증명하는 것 / 증명하지 않는 것
+
+inherited blocked mask에서 startup fix가 data delivery와 supported termination cleanup을 모두 복구한다는 selected integration path를 검증한다. arbitrary parent dispositions, real-time signals, fork 없이 mask가 런타임 중 다시 바뀌는 상황은 범위 밖이다.
+
+### 관련 커밋과 어떤 관계인가
+
+`686b0d2a14e3`의 `unblock_event_signals`가 없다면 client data와 SIGTERM 모두 handler에 전달되지 않는다. `e304c63bee3e`의 termination event path까지 함께 통과해야 expected status와 cleanup이 성립한다.
 
 ## 이 Thread의 경계
 
-이 Thread는 **signal이라는 비동기 입력을 normal context의 ordered event로 바꾸는 책임 분리**를 다룬다.
+- session owner를 예약하고 unavailable owner를 회수하는 정책은 `02-session-ownership-and-recovery.md`가 다룬다. event loop는 그 정책의 실행 context일 뿐이다.
+- stdout write failure를 ACK보다 먼저 관찰하는 commit boundary는 `04-output-commit-boundary.md`의 책임이다.
+- event loop가 함께 polling하는 Unix socket의 path·bind·cleanup과 `FD_SETSIZE` guard는 `05-endpoint-ownership-and-bounded-polling.md`가 다룬다.
+- response record의 source·token·deadline 검증은 `06-bounded-response-correlation.md`가 다룬다.
+- catch할 수 없는 signal, multi-threaded signal routing과 kernel-level signal queue semantics 일반론은 별개의 문제다.
 
-- 어떤 sender가 owner인지와 stale owner를 언제 회수하는지는 `02-session-ownership-and-recovery.md`의 주제다.
-- output이 성공한 뒤에만 ACK를 보내는 commit boundary는 `04-output-commit-boundary.md`에서 다룬다.
-- event pipe와 response socket descriptor가 `FD_SETSIZE` 범위 안에 있어야 한다는 조건은 `05-endpoint-ownership-and-bounded-polling.md`에서 다룬다.
-- datagram 응답의 source/token validation은 `06-bounded-response-correlation.md`에서 다룬다.
-
-## 조사 범위
-
-각 commit은 exact SHA의 `src/server.c`, 관련 test source와 diff를 기준으로 설명했다. self-pipe 이후의 output fix를 `22363f83ff25`에 소급하지 않았고, 과도기 `a7d994b0a4b6`도 handler-safe 구조로 과장하지 않았다. test는 실행하지 않았으며 script와 fault seam이 요구하는 결과만 기록했다.
+> 검토 범위: `a7d994b0a4b6`, `22363f83ff25`, `4c535ac8657e`, `e304c63bee3e`, `686b0d2a14e3`, `72424469474c`의 diff와 해당 SHA의 `src/server.c`, fault seam, inherited-mask test source를 확인했다. branch checkout과 test 실행은 수행하지 않았으므로 shell fixture의 assertion을 실제 통과 결과로 주장하지 않는다.

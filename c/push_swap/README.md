@@ -1,35 +1,21 @@
-# push_swap Development Threads — rewritten
+# push_swap Development Thread 문서
 
-대상은 `42-archive` 저장소의 `c/push_swap` 브랜치입니다. 기존 `development-thread-workbook/completed`에 있던 여섯 Thread의 commit grouping, SHA, 제목, importance, tags를 유지하고, 각 commit의 실제 diff와 해당 SHA source를 기준으로 본문을 다시 작성했습니다.
+이 디렉터리는 `c/push_swap` 브랜치의 개발 이력을 여섯 개의 문제 단위로 재구성한 문서 세트입니다. 각 문서는 commit 시간순 요약이 아니라 하나의 불변 조건, 책임, 실패와 수정, 또는 검증 기법을 설명합니다.
 
 ## 문서 목록
 
-| 번호 | 문서 | 중심 문제 |
-| ---: | --- | --- |
-| 01 | `01-parallel-stack-state-and-operation-invariants.md` | 병렬 `values`/`ranks` 표현과 11개 연산의 pairing·보존·no-op 불변 조건 |
-| 02 | `02-input-grammar-coordinate-compression-and-size-safety.md` | argv token 문법, int 경계, duplicate 거절, dense rank, count·allocation 크기 안전성 |
-| 03 | `03-building-the-sorting-engine.md` | 2~5개 tiny sort와 6개 이상 안정적 LSD radix sort |
-| 04 | `04-independent-correctness-and-cost-evidence.md` | 독립 Python model, exhaustive/multi-seed 검증, 명령·이동·allocation budget, sanitizer path |
-| 05 | `05-checker-protocol-and-verdict-hardening.md` | 최대 3-byte 명령 frame, `EINTR`, NUL·overlength 거절, `OK`/`KO`/`Error` 의미 |
-| 06 | `06-runtime-fault-injection-and-output-failure-propagation.md` | N번째 allocation/read/write 실패, short write, SIGPIPE, cleanup과 status 전파 |
+1. [`01-parallel-stack-state-and-operation-invariants.md`](01-parallel-stack-state-and-operation-invariants.md) — 값과 순위를 하나의 원소로 보존하는 stack representation과 11개 operation
+2. [`02-input-grammar-coordinate-compression-and-size-safety.md`](02-input-grammar-coordinate-compression-and-size-safety.md) — argv tokenization, strict integer grammar, duplicate rejection, dense rank, 크기 계산 방어
+3. [`03-building-the-sorting-engine.md`](03-building-the-sorting-engine.md) — tiny case analysis와 stable LSD radix strategy
+4. [`04-independent-correctness-and-cost-evidence.md`](04-independent-correctness-and-cost-evidence.md) — 독립 replay, deterministic fixture, command/movement/allocation metric, sanitizer build
+5. [`05-checker-protocol-and-verdict-hardening.md`](05-checker-protocol-and-verdict-hardening.md) — command framing, silent dispatch, `OK`/`KO`/`Error`, read boundary 강화
+6. [`06-runtime-fault-injection-and-output-failure-propagation.md`](06-runtime-fault-injection-and-output-failure-propagation.md) — allocation/read/write failure seam, cleanup evidence, output status propagation
+7. [`STYLE-GUIDE-AUDIT.md`](STYLE-GUIDE-AUDIT.md) — 최초 위반 사항, 교정 내역, 최종 QC 결과
 
-## Thread 관계
+## 문서 간 관계
 
-Thread 번호는 선형 구현 순서를 뜻하지 않습니다.
+입력 문서는 원본 정수와 dense rank를 만들고, stack operation 문서는 두 표현이 분리되지 않도록 이동 규칙을 정합니다. 정렬 엔진은 그 operation만 조합해 command stream을 생성합니다. 독립 검증 문서는 생성된 stream과 비용을 외부에서 측정하고, checker 문서는 stdin의 command protocol과 verdict를 정의합니다. runtime 문서는 allocation·read·write 실패가 helper 안에서 사라지지 않도록 전체 호출 경로를 닫습니다.
 
-```text
-01 상태·연산 의미 ─────┬─ 03 정렬기가 같은 연산으로 명령 생성
-                       ├─ 05 checker가 같은 연산을 silent 재생
-02 입력·dense rank ────┘
+## 검토 원칙
 
-04는 03의 결과를 독립 model·checker·resource metric으로 검증
-06은 01~05 전반의 allocation/read/write 실패 경로를 가로질러 보강
-```
-
-## 작성 범위
-
-- 지정 브랜치의 최초 Thread commit `96b5324448e4`와 대상 이력에서 가장 뒤의 `5505adf3e469`가 모두 `c/push_swap`의 조상임을 확인했습니다.
-- 각 설명은 exact SHA diff와 그 시점 source를 사용했습니다. final HEAD의 후속 반환형·wrapper·테스트를 이전 commit 설명에 소급하지 않았습니다.
-- 같은 commit에 여러 변경이 포함된 경우 해당 Thread와 직접 연결되는 diff만 설명했습니다.
-- 기존 workbook의 반복적인 완료란·자가 점검·고정 heading은 제거하고, 문제 크기에 따라 코드·원인·결정·보장 범위를 다르게 배치했습니다.
-- 현재 작업 환경에서는 repository를 checkout해 build/test를 실행하지 않았습니다. 따라서 문서는 test source가 무엇을 assertion하는지 설명하며, 이번 세션에서의 통과 결과를 주장하지 않습니다.
+각 커밋 설명은 표에 적힌 exact SHA의 diff와 그 시점 source/test에 근거합니다. 같은 commit에 섞인 변경 중 해당 Thread와 무관한 hunk는 제외했습니다. 현재 환경에서는 repository checkout, build, functional test, fault suite, resource suite, sanitizer target을 실행하지 않았으므로 문서는 source에 존재하는 동작과 assertion만 설명하며 실행 성공을 주장하지 않습니다.

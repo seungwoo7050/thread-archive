@@ -1,449 +1,297 @@
-# Thread: POSIX transient read와 복구 가능한 parser state
+# Thread: transient `read` 결과를 byte-preserving parser state로 분리하기
+> Project: `get_next_line` · Branch: `c/get_next_line` · 문서 번호: 04
 
-streaming reader는 `read`의 반환값을 단순히 “성공/실패”로만 나눌 수 없습니다.
+## 개요
 
-- 양수는 EOF가 아니라 progress입니다. 요청한 크기보다 작아도 정상입니다.
-- 0은 현재 stream의 EOF입니다.
-- `-1/EINTR`는 logical operation이 끝난 것이 아니므로 같은 read를 다시 시도해야 합니다.
-- `-1/EAGAIN` 또는 `-1/EWOULDBLOCK`은 nonblocking fd에 현재 data가 부족하다는 뜻이며, 이미 받은 bytes를 보존한 채 caller에게 wait 상태를 알려야 합니다.
-- 그 밖의 `-1/error`는 terminal result로 보고하되 explicit context가 이미 받아들인 bytes를 임의로 소비하거나 지우면 안 됩니다.
+streaming reader에서 positive short read, EOF, `EINTR`, `EAGAIN`/`EWOULDBLOCK`, 다른 I/O error는 서로 다른 state transition입니다. 이 결과를 단순 성공/실패로 합치면 partial bytes를 조기 line으로 반환하거나, wait를 EOF로 오해하거나, 이미 받아들인 bytes를 error와 함께 버릴 수 있습니다.
 
-이 Thread는 이러한 POSIX 결과를 parser state transition으로 바꾸는 과정과, 실제 nonblocking pipe·deterministic fault script가 각각 무엇을 검증하는지 다룹니다.
+이 Thread는 먼저 short read와 지정 read failure를 만들 수 있는 baseline harness를 세우고, `EINTR` retry와 `BLR_AGAIN`을 production policy로 도입합니다. 실제 nonblocking pipe는 OS behavior를 end-to-end로 확인하고, ordered errno script는 progress와 failure가 섞인 정확한 cursor 변화를 결정적으로 고정합니다.
 
-## 커밋 구성
-
-| 순서 | SHA | 제목 | 중요도 | 태그 | 이 Thread에서의 역할 |
+| 순서 | SHA | 제목 | 중요도 | 태그 | 역할 |
 | ---: | --- | --- | :---: | --- | --- |
-| 1 | `fd03a831686b` | `test(failure): 메모리 할당과 읽기 실패 처리 검증` | A | `TEST`, `POSIX_IO`, `RISK` | short-read와 지정 호출 read error를 재현하는 baseline harness를 제공합니다. |
-| 2 | `f0055ae5cf19` | `fix(reader): 중단된 읽기를 재시도하고 대기 상태를 보존` | S | `CORE`, `POSIX_IO`, `RISK` | `EINTR` retry, `BLR_AGAIN`, hidden wait-state retention을 도입합니다. |
-| 3 | `f3504f674c73` | `test(reader): 비차단 부분 입력 보존 검증` | A | `TEST`, `POSIX_IO`, `EDGE` | 실제 nonblocking pipe에서 partial input → wait → resume → EOF를 검증합니다. |
-| 4 | `11033bd85c59` | `test(failure): EINTR·EAGAIN·I/O 오류 순서 검증` | A | `TEST`, `POSIX_IO`, `RISK` | errno sequence를 순서대로 주입해 progress와 failure가 섞인 cursor 변화를 고정합니다. |
+| 1 | `fd03a831686b` | `test(failure): 메모리 할당과 읽기 실패 처리 검증` | A | `TEST, POSIX_IO, RISK` | short read와 지정 호출 EIO를 재현하는 baseline fault harness를 제공합니다. |
+| 2 | `f0055ae5cf19` | `fix(reader): 중단된 읽기를 재시도하고 대기 상태를 보존` | S | `CORE, POSIX_IO, RISK` | `EINTR` retry, `BLR_AGAIN`, accepted-byte preservation policy를 확립합니다. |
+| 3 | `f3504f674c73` | `test(reader): 비차단 부분 입력 보존 검증` | A | `TEST, POSIX_IO, EDGE` | 실제 nonblocking pipe에서 partial input·wait·resume·EOF를 검증합니다. |
+| 4 | `11033bd85c59` | `test(failure): EINTR·EAGAIN·I/O 오류 순서 검증` | A | `TEST, POSIX_IO, RISK` | ordered errno script로 progress와 failure가 섞인 state를 검증합니다. |
 
-## 최종 read transition 표
+### 최종 state transition은 어떻게 구분되는가
 
-| `read` 결과 | parser 해석 | `end` 변화 | unread bytes | explicit result | legacy `get_next_line` |
-| --- | --- | --- | --- | --- | --- |
-| `n > 0` | progress | `end += n` 후 sentinel | 보존 + 새 bytes 추가 | line이 생길 때까지 계속 | 같은 engine 계속 |
-| `0` | EOF | 변화 없음 | tail이 있으면 line, 없으면 terminal | `BLR_LINE` 또는 `BLR_EOF` | line 또는 `NULL` |
-| `-1`, `EINTR` | operation 미완료 | 변화 없음 | 그대로 | 내부 retry, caller에게 보이지 않음 | 내부 retry |
-| `-1`, `EAGAIN/EWOULDBLOCK` | 현재 data 미준비 | 변화 없음 | 그대로 | `BLR_AGAIN` | `NULL`, hidden context 유지 |
-| `-1`, 기타 errno | I/O error | 변화 없음 | explicit context에 그대로 남음 | `BLR_ERROR` | `NULL`, hidden context 폐기 |
+| `read` 결과 | state 변화 | explicit result | compatibility API |
+| --- | --- | --- | --- |
+| `n > 0` | bytes를 `[end, end+n)`에 publish하고 `end` 전진 | line이 생길 때까지 계속 | 같은 engine 계속 |
+| `0` | `reached_eof=1`; tail이 있으면 line, 없으면 terminal | `BLR_LINE` 또는 `BLR_EOF` | line 또는 `NULL` |
+| `-1/EINTR` | cursor 변화 없이 같은 system call 재시도 | caller에게 보이지 않음 | caller에게 보이지 않음 |
+| `-1/EAGAIN` 또는 `EWOULDBLOCK` | accepted bytes와 cursor 유지 | `BLR_AGAIN` | `NULL`, hidden context 유지 |
+| 다른 `-1/error` | accepted bytes와 cursor 유지 | `BLR_ERROR` | `NULL`, hidden context 폐기 |
 
 non-line result에서는 `*line == NULL`입니다.
 
----
+## fd03a831686b — test(failure): 메모리 할당과 읽기 실패 처리 검증
+**중요도** `A` · **태그** `TEST, POSIX_IO, RISK`
 
-## `fd03a831686b` — short read와 단일 read failure를 재현하는 기반
+### 왜 baseline fault harness가 필요한가
 
-**중요도** A · **태그** `TEST, POSIX_IO, RISK`
+normal file과 pipe만으로는 “한 번에 최대 3 byte”, “세 번째 positive-count read만 EIO” 같은 transition을 안정적으로 만들기 어렵습니다. 이 commit은 production object의 `read`, `malloc`, `free`를 replacement로 바꾼 별도 binary를 추가합니다.
 
-이 커밋의 fault binary는 production source를 다음 replacement로 컴파일합니다.
-
-```make
--Dmalloc=test_malloc -Dfree=test_free -Dread=test_read
+```diff
++FAULT_DEFINES := -Dmalloc=test_malloc -Dfree=test_free -Dread=test_read
++
++failure-test:
++	@set -e; for size in $(MATRIX_SIZES); do \
++		$(MAKE) --no-print-directory failure-run BUFFER_SIZE=$$size; \
++	done
 ```
 
-POSIX transition 관점에서 중요한 기능은 두 가지입니다.
+`fault_read_limit(3)`은 target fd의 request count를 줄인 뒤 실제 `read`를 호출하므로 bytes는 실제 stream에서 옵니다. short positive result가 EOF가 아니라 progress인지 확인합니다.
 
-### positive read의 최대 길이 제한
-
-```c
-void fault_read_limit(size_t limit)
-{
-    g_read_limit = limit;
-}
+```diff
++	fault_read_limit(3);
++	line = get_next_line(fd);
++	CHECK(line != NULL && strcmp(line, "short reads still work\n") == 0);
++	line = get_next_line(fd);
++	CHECK(line != NULL && strcmp(line, "last") == 0);
++	CHECK(get_next_line(fd) == NULL);
++	CHECK(fault_read_calls() > 2);
 ```
 
-`test_read`는 target fd의 request count를 이 limit 이하로 줄인 뒤 실제 `read`를 호출합니다. 따라서 bytes 자체는 실제 pipe/file에서 오고, harness는 kernel이 작은 positive read를 반환한 것처럼 만듭니다.
+지정한 positive-count read 하나를 EIO로 만들 수도 있습니다.
 
-`"short reads still work\nlast"`를 최대 3 byte씩 읽어도 다음 sequence가 나와야 합니다.
-
-```text
-"short reads still work\n"
-"last"
-NULL
+```diff
++	fault_read_limit(4);
++	fault_read_fail_on(fd, 3);
++	CHECK(get_next_line(fd) == NULL);
++	CHECK(fault_read_calls() == 3);
++	CHECK(fault_read_failed());
 ```
 
-short positive return을 EOF로 오해하면 첫 호출이 incomplete record를 반환하거나 suffix를 잃게 됩니다.
+### 이 baseline이 증명하는 것과 한계는 무엇인가
 
-### N번째 positive-count read를 EIO로 실패
+short positive read를 이어 붙여 complete line과 EOF tail을 만드는 behavior, first/middle read error의 당시 cleanup, allocation ownership counter를 검증합니다. 그러나 이 exact SHA의 middle-error fixture는 partial bytes가 **discard**되는 legacy policy를 기대합니다. harness도 한 call의 EIO와 request cap만 제공하며 `EINTR → progress → EAGAIN` 같은 ordered sequence는 만들지 못합니다.
 
-```c
-void fault_read_fail_on(int fd, size_t call_index)
+### 관련 커밋
+
+`f0055ae5cf19`는 이 baseline과 달리 explicit context에서 accepted bytes를 transient/terminal error 뒤 유지하고, wait를 별도 result로 표현합니다. `11033bd85c59`는 baseline harness를 ordered errno script로 확장합니다.
+
+## f0055ae5cf19 — fix(reader): 중단된 읽기를 재시도하고 대기 상태를 보존
+**중요도** `S` · **태그** `CORE, POSIX_IO, RISK`
+
+### 왜 바뀌었는가 (문제 → 원인 → 결정)
+
+이전 engine은 모든 negative `read`를 `BLR_ERROR`로 처리했습니다. `EINTR`는 system call이 signal에 의해 중단됐다는 뜻일 뿐 stream failure가 아니고, `EAGAIN`은 nonblocking fd에 현재 data가 없다는 뜻일 뿐 EOF가 아닙니다. 둘을 terminal error와 합치면 caller가 잘못된 recovery 결정을 내립니다.
+
+결정은 `EINTR`를 wrapper 안에서 재시도하고, `EAGAIN`/`EWOULDBLOCK`을 `BLR_AGAIN`으로 분리하며, positive read에서만 `end`를 전진시키는 기존 publish 순서를 유지하는 것입니다.
+
+### 무엇이 바뀌었는가 (diff)
+
+모든 descriptor probe와 data read가 같은 retry wrapper를 사용합니다.
+
+```diff
++#include <errno.h>
++
++static ssize_t	read_retrying(int fd, void *buffer, size_t count)
++{
++	ssize_t	read_size;
++
++	read_size = read(fd, buffer, count);
++	while (read_size < 0 && errno == EINTR)
++		read_size = read(fd, buffer, count);
++	return (read_size);
++}
 ```
 
-이 API는 선택한 한 번의 호출에 `errno=EIO`, `-1`을 반환합니다. zero-length descriptor probe는 counter 대상이 아니며, 실제 data read 호출만 셉니다.
-
-- 첫 read failure: progress가 전혀 없는 상태에서 error cleanup 확인
-- 중간 read failure: 여러 short positive reads 뒤 error가 왔을 때 당시 policy 확인
-- 한 fd failure: 다른 descriptor의 node가 살아 있는지 확인
-
-### 이 baseline의 한계
-
-이 exact SHA의 legacy implementation은 중간 read error가 오면 selected node와 accepted partial bytes를 **폐기**합니다. fixture 이름도 `"partial bytes must be discarded"`입니다.
-
-또한 harness는 아직 `EINTR`, normal progress, `EAGAIN`을 순서대로 배열에 담을 수 없습니다. 가능한 것은 다음뿐입니다.
-
-```text
-- request size cap
-- 지정한 한 call index에서 EIO
-```
-
-따라서 후속 commit의 `BLR_AGAIN`이나 errno sequence behavior를 이 커밋이 이미 검증했다고 설명하면 안 됩니다. 이 commit은 read fault infrastructure와 이전 policy의 기준점입니다.
-
----
-
-## `f0055ae5cf19` — interruption, wait, terminal error를 분리
-
-**중요도** S · **태그** `CORE, POSIX_IO, RISK`
-
-### `EINTR`는 result가 아니라 retry 신호다
-
-signal handler 실행 등으로 `read`가 중단되면 `-1/EINTR`가 올 수 있습니다. parser가 이를 `BLR_ERROR`로 노출하면 실제 stream 상태와 무관한 transient event가 caller-visible failure가 됩니다.
-
-이 커밋은 모든 descriptor probe와 data read를 `read_retrying`으로 통일합니다.
-
-```c
-static ssize_t read_retrying(int fd, void *buffer, size_t count)
-{
-    ssize_t read_size;
-
-    read_size = read(fd, buffer, count);
-    while (read_size < 0 && errno == EINTR)
-        read_size = read(fd, buffer, count);
-    return (read_size);
-}
-```
-
-`EINTR` 동안에는 buffer cursor를 전혀 바꾸지 않고 동일한 logical operation을 반복합니다. 결국 positive/zero/다른 error가 나왔을 때만 상위 state machine이 결과를 해석합니다.
-
-zero-length fd probe도 같은 wrapper를 사용하므로 create나 next 진입 시 발생한 `EINTR` 역시 caller에게 보이지 않습니다.
-
-### temporary unavailability를 `BLR_AGAIN`으로 표현
+public result enum에 wait state가 추가됩니다.
 
 ```diff
  typedef enum e_blr_result
  {
-     BLR_ERROR = -1,
-     BLR_EOF = 0,
--    BLR_LINE = 1
-+    BLR_LINE = 1,
-+    BLR_AGAIN = 2
- } t_blr_result;
+ 	BLR_ERROR = -1,
+ 	BLR_EOF = 0,
+-	BLR_LINE = 1
++	BLR_LINE = 1,
++	BLR_AGAIN = 2
+ }t_blr_result;
 ```
 
-read loop가 음수로 끝났을 때 errno를 분류합니다.
+read loop가 음수로 끝난 뒤 errno를 분류합니다.
 
-```c
-if (read_size < 0)
-{
-    if (errno == EAGAIN || errno == EWOULDBLOCK)
-        return (BLR_AGAIN);
-    return (BLR_ERROR);
-}
+```diff
+ 	if (read_size < 0)
++	{
++		if (errno == EAGAIN || errno == EWOULDBLOCK)
++			return (BLR_AGAIN);
+ 		return (BLR_ERROR);
++	}
 ```
 
-`BLR_AGAIN`은 EOF가 아닙니다. 현재 buffered bytes에 완전한 줄이 없고, nonblocking fd에서도 당장 더 받을 data가 없다는 뜻입니다.
+compatibility adapter는 `BLR_AGAIN`에서만 hidden node를 유지합니다.
 
-### accepted bytes가 보존되는 이유
-
-positive read에서만 `end`를 전진시킵니다.
-
-```c
-read_size = read_retrying(reader->fd, reader->bytes + reader->end,
-        (size_t)BUFFER_SIZE);
-if (read_size <= 0)
-    break ;
-reader->end += (size_t)read_size;
-reader->bytes[reader->end] = '\0';
+```diff
+ 	result = blr_reader_next(reader, &line);
+ 	if (result == BLR_LINE)
+ 		return (line);
+-	discard_legacy_reader(reader);
++	if (result != BLR_AGAIN)
++		discard_legacy_reader(reader);
+ 	return (NULL);
 ```
 
-따라서 `EAGAIN`이나 일반 I/O error가 발생한 call은 `end`를 바꾸지 않습니다. 그 전에 성공한 positive read가 있다면 이미 `end` 안쪽에 publish된 bytes가 남습니다.
+### accepted bytes는 왜 사라지지 않는가
 
-newline을 찾지 못해 `scan == end`가 되었더라도 다음 positive read는 같은 allocation tail에 append되고, `find_line_end`는 이전 `scan`부터 새 범위만 검사합니다.
+`read_retrying`의 destination은 `reader->bytes + reader->end`이고, `read_size > 0`인 경우에만 `end += read_size`와 sentinel write가 실행됩니다. `EAGAIN`이나 다른 error가 발생한 call은 indices를 바꾸지 않으므로 이전 positive read가 이미 publish한 bytes가 그대로 남습니다.
 
 ```text
-처음: begin=0, scan=0, end=0
-read "par" -> begin=0, scan=3, end=3
-EAGAIN     -> begin=0, scan=3, end=3, BLR_AGAIN
-read "tial\n" -> end 증가, scan 3부터 재개
+read "par"  -> begin=0, scan=3, end=3
+EAGAIN      -> begin=0, scan=3, end=3, BLR_AGAIN
+read "tial\n" -> end 증가, scan=3부터 새 범위 검사
 ```
 
-이 diff가 “error에서 buffer reset을 제거”한 것은 아닙니다. authoritative explicit engine은 이미 read error에서 context를 파괴하지 않고 `BLR_ERROR`를 반환하는 형태였습니다. 이 커밋은 그 보존 특성을 errno-aware state policy로 명시하고, transient wait를 terminal error와 분리합니다.
+explicit caller는 `BLR_ERROR` 뒤에도 같은 context를 retry·reset·destroy할 수 있습니다. legacy caller는 return type 때문에 EOF·wait·error를 모두 `NULL`로 보지만, hidden state retention은 AGAIN에서만 제공됩니다.
 
-### explicit API와 compatibility adapter의 차이
+### 무엇을 보장하고 무엇을 보장하지 않는가
 
-explicit caller는 result를 직접 봅니다.
+`EINTR`가 caller-visible result가 되지 않고, nonblocking wait가 EOF와 분리되며, accepted bytes가 AGAIN/ERROR 때문에 소비되거나 지워지지 않음을 보장합니다. 계속 `EINTR`만 발생하는 환경에서 retry 횟수의 상한은 없고, readiness를 기다리는 `poll`/`select` 자체는 제공하지 않습니다.
 
-```text
-BLR_AGAIN -> input readiness를 기다린 뒤 같은 context 재호출
-BLR_ERROR -> 원인을 처리한 뒤 같은 context 재시도, reset, destroy 중 선택
+### 관련 커밋
+
+`f3504f674c73`은 실제 `O_NONBLOCK` pipe에서 wait와 resume를 확인합니다. `11033bd85c59`는 exact `EINTR`, progress, `EAGAIN`, EIO 순서를 주입해 cursor preservation을 더 직접적으로 검증합니다.
+
+## f3504f674c73 — test(reader): 비차단 부분 입력 보존 검증
+**중요도** `A` · **태그** `TEST, POSIX_IO, EDGE`
+
+### 무엇을 검증하는가
+
+pipe read end에 실제 `O_NONBLOCK`을 설정하고 writer를 단계적으로 사용합니다.
+
+```diff
++static int	make_nonblocking_pipe(int fds[2])
++{
++	int	flags;
++
++	if (pipe(fds) != 0)
++		return (0);
++	flags = fcntl(fds[0], F_GETFL);
++	if (flags < 0 || fcntl(fds[0], F_SETFL, flags | O_NONBLOCK) < 0)
++	{
++		close(fds[0]);
++		close(fds[1]);
++		return (0);
++	}
++	return (1);
++}
 ```
 
-legacy `get_next_line`은 return type이 `char *`이므로 `BLR_AGAIN`을 `NULL`로 축소합니다. 다만 hidden node를 제거하지 않습니다.
+explicit context fixture는 partial bytes, wait, complete line, buffered suffix, EOF tail을 한 sequence로 검사합니다.
 
-```c
-result = blr_reader_next(reader, &line);
-if (result == BLR_LINE)
-    return (line);
-if (result != BLR_AGAIN)
-    discard_legacy_reader(reader);
-return (NULL);
+```diff
++	CHECK(write(fds[1], "part", 4) == 4);
++	CHECK(blr_reader_next(reader, &line) == BLR_AGAIN);
++	CHECK(line == NULL);
++	CHECK(write(fds[1], "ial\nnext", 8) == 8);
++	CHECK(blr_reader_next(reader, &line) == BLR_LINE);
++	CHECK(line != NULL && strcmp(line, "partial\n") == 0);
++	free(line);
++	CHECK(blr_reader_next(reader, &line) == BLR_AGAIN);
++	CHECK(line == NULL);
++	close(fds[1]);
++	CHECK(blr_reader_next(reader, &line) == BLR_LINE);
++	CHECK(line != NULL && strcmp(line, "next") == 0);
++	free(line);
++	CHECK(blr_reader_next(reader, &line) == BLR_EOF);
 ```
 
-결과는 다음과 같습니다.
+compatibility fixture도 `"leg"` 뒤 첫 `NULL`에서 hidden state를 유지하고, `"acy\n"`이 도착한 뒤 `"legacy\n"`을 반환하는지 확인합니다.
 
-| engine result | legacy return | hidden context |
-| --- | --- | --- |
-| `BLR_LINE` | line | 유지 |
-| `BLR_AGAIN` | `NULL` | 유지 |
-| `BLR_EOF` | `NULL` | 폐기 |
-| `BLR_ERROR` | `NULL` | 폐기 |
+### 무엇을 증명하고 무엇을 증명하지 않는가
 
-따라서 compatibility API는 nonblocking wait 뒤에는 resume할 수 있지만, terminal `BLR_ERROR` 뒤 accepted partial bytes를 다시 꺼낼 수는 없습니다. explicit context만 그 선택권을 보존합니다.
+실제 kernel nonblocking pipe에서 partial input이 write call 사이에 보존되고, writer가 열린 동안 unterminated suffix를 EOF tail로 조기 반환하지 않으며, close 뒤 tail과 stable EOF가 순서대로 나옴을 증명합니다. 실제 asynchronous signal delivery가 만든 `EINTR`나 terminal EIO 뒤 resume는 이 fixture의 범위가 아닙니다.
 
-### 보장 범위
+### 관련 커밋
 
-- `EINTR`는 무한정 같은 read를 retry합니다.
-- `EAGAIN`과 `EWOULDBLOCK`은 `BLR_AGAIN`으로 분리됩니다.
-- non-line result는 line pointer를 `NULL`로 둡니다.
-- accepted positive bytes는 AGAIN/ERROR 때문에 cursor에서 제거되지 않습니다.
-- legacy hidden context는 AGAIN에서만 유지됩니다.
+`f0055ae5cf19`의 `BLR_AGAIN` mapping과 adapter retention이 직접 검증 대상입니다. `11033bd85c59`는 실제 scheduler에 맡기기 어려운 errno ordering을 deterministic harness로 보완합니다.
 
-계속 `EINTR`만 발생하는 비정상 환경에서 retry가 끝난다는 상한은 없습니다. readiness notification이나 polling 자체도 library가 제공하지 않습니다.
+## 11033bd85c59 — test(failure): EINTR·EAGAIN·I/O 오류 순서 검증
+**중요도** `A` · **태그** `TEST, POSIX_IO, RISK`
 
----
+### 왜 다른 기법이 필요한가
 
-## `f3504f674c73` — 실제 nonblocking pipe에서 wait와 resume 확인
+실제 pipe는 `EAGAIN`을 만들 수 있지만 정확히 첫 call은 `EINTR`, 둘째는 progress, 셋째는 `EAGAIN`으로 강제하기 어렵습니다. 기존 single-failure harness에 per-call errno array를 추가합니다.
 
-**중요도** A · **태그** `TEST, POSIX_IO, EDGE`
-
-fault replacement가 아니라 실제 pipe read end에 `O_NONBLOCK`을 설정합니다.
-
-```c
-flags = fcntl(fds[0], F_GETFL);
-fcntl(fds[0], F_SETFL, flags | O_NONBLOCK);
+```diff
++#define MAX_READ_SCRIPT 64
++
++static int		g_read_script[MAX_READ_SCRIPT];
++static size_t	g_read_script_length;
++
++void	fault_read_script(int fd, const int *errors, size_t length)
++{
++	size_t	index;
++
++	if (length > MAX_READ_SCRIPT)
++		length = MAX_READ_SCRIPT;
++	g_read_fd = fd;
++	g_read_calls = 0;
++	g_read_fail_at = 0;
++	g_read_script_length = length;
++	index = 0;
++	while (index < length)
++	{
++		g_read_script[index] = errors[index];
++		index++;
++	}
++}
 ```
 
-### explicit context sequence
+`test_read`는 script의 nonzero entry에서 지정 errno와 `-1`을 반환하고, zero entry에서는 실제 read를 수행합니다.
 
-#### 1. delimiter 없는 partial input
-
-writer가 `"part"`만 씁니다.
-
-```c
-CHECK(write(fds[1], "part", 4) == 4);
-CHECK(blr_reader_next(reader, &line) == BLR_AGAIN);
-CHECK(line == NULL);
+```diff
++	if (g_read_calls <= g_read_script_length
++		&& g_read_script[g_read_calls - 1] != 0)
++	{
++		g_read_failed = 1;
++		errno = g_read_script[g_read_calls - 1];
++		return (-1);
++	}
 ```
 
-reader는 네 bytes를 받아 internal buffer에 넣지만 newline이 없고, 다음 nonblocking read는 `EAGAIN`입니다.
+첫 regression은 `{EINTR, 0, EAGAIN}`와 read limit 3을 사용합니다.
 
-#### 2. 나머지 bytes가 도착해 첫 줄 완성
-
-```c
-CHECK(write(fds[1], "ial\nnext", 8) == 8);
-CHECK(blr_reader_next(reader, &line) == BLR_LINE);
-CHECK(strcmp(line, "partial\n") == 0);
+```diff
++	const int	errors[] = {EINTR, 0, EAGAIN};
++	fault_read_limit(3);
++	fault_read_script(fd, errors, sizeof(errors) / sizeof(errors[0]));
++	CHECK(blr_reader_next(reader, &line) == BLR_AGAIN);
++	CHECK(line == NULL);
++	CHECK(fault_read_calls() == 3);
++	CHECK(blr_reader_next(reader, &line) == BLR_LINE);
++	CHECK(line != NULL && strcmp(line, "partial\n") == 0);
 ```
 
-이전에 보존한 `"part"`와 새 `"ial\n"`가 합쳐져야 합니다. 새 write에 함께 들어온 `"next"`는 unread suffix로 남습니다.
+둘째 regression은 progress 뒤 EIO를 반환하고 같은 context의 retry가 complete line을 만드는지 확인합니다.
 
-#### 3. suffix는 있지만 아직 EOF가 아님
-
-writer가 열린 상태에서 `"next"` 뒤 newline이 없으므로 다음 호출은 `BLR_AGAIN`입니다. suffix를 EOF tail처럼 조기에 반환하면 안 됩니다.
-
-#### 4. writer close가 EOF boundary를 확정
-
-writer를 닫은 뒤 다음 read가 0을 반환합니다. 그때 buffered `"next"`가 EOF tail `BLR_LINE`으로 반환되고, 다음 호출은 `BLR_EOF`입니다.
-
-```text
-part -> AGAIN
-+ ial\nnext -> LINE "partial\n"
-next only, writer open -> AGAIN
-writer close -> LINE "next"
-next call -> EOF
+```diff
++	const int	errors[] = {0, EIO};
++	fault_read_limit(3);
++	fault_read_script(fd, errors, sizeof(errors) / sizeof(errors[0]));
++	CHECK(blr_reader_next(reader, &line) == BLR_ERROR);
++	CHECK(line == NULL);
++	CHECK(blr_reader_next(reader, &line) == BLR_LINE);
++	CHECK(line != NULL && strcmp(line, "recoverable\n") == 0);
 ```
 
-### compatibility wrapper sequence
+### 무엇을 증명하고 무엇을 증명하지 않는가
 
-```text
-write "leg"
-get_next_line -> NULL      # AGAIN을 표현할 수 없음, state는 유지
-write "acy\n"
-get_next_line -> "legacy\n"
-```
+지정된 sequence에서 `EINTR`가 wrapper 내부에서 retry되고, positive progress 뒤 `EAGAIN`이나 EIO가 와도 `begin/scan/end`가 duplicate·skip 없이 이어지는지 증명합니다. 모든 POSIX errno, 실제 signal timing, 64개를 넘는 script, compatibility API의 terminal-error retention, concurrent access는 증명하지 않습니다.
 
-legacy caller는 첫 `NULL`이 EOF인지 wait인지 return value만으로 구분할 수 없습니다. 하지만 adapter가 hidden context를 유지했기 때문에 두 번째 호출에서 partial bytes가 복원됩니다.
+### 관련 커밋
 
-### 이 test가 증명하는 것
-
-- 실제 OS nonblocking pipe에서 `EAGAIN`이 발생하는 경로
-- partial bytes가 write call 사이에 보존됨
-- writer가 열린 상태의 unterminated suffix는 line으로 조기 반환되지 않음
-- writer close 후 suffix와 stable EOF가 순서대로 나옴
-- compatibility adapter가 AGAIN state를 보존함
-
-실제 signal delivery로 `EINTR`를 만드는 test는 아닙니다. 특정 errno ordering이나 terminal EIO 뒤 resume도 다음 deterministic test가 맡습니다.
-
----
-
-## `11033bd85c59` — progress와 errno를 순서대로 주입
-
-**중요도** A · **태그** `TEST, POSIX_IO, RISK`
-
-기존 “N번째 read 하나를 EIO로 실패”하던 harness를 per-call errno script로 확장합니다.
-
-```c
-#define MAX_READ_SCRIPT 64
-
-static int    g_read_script[MAX_READ_SCRIPT];
-static size_t g_read_script_length;
-```
-
-각 script entry는 다음 의미입니다.
-
-```text
-0          -> 실제 read 수행
-nonzero    -> errno를 그 값으로 설정하고 -1 반환
-```
-
-positive result의 bytes는 여전히 실제 fd에서 오며, `fault_read_limit`으로 최대 길이를 제한할 수 있습니다.
-
-### `EINTR → progress → EAGAIN`
-
-```c
-const int errors[] = {EINTR, 0, EAGAIN};
-fault_read_limit(3);
-fault_read_script(fd, errors, 3);
-```
-
-첫 `blr_reader_next` 안의 실제 sequence는 다음과 같습니다.
-
-```text
-read call #1 -> -1/EINTR
-read_retrying이 즉시 재호출
-read call #2 -> 실제 3-byte progress
-parser end += 3, scan은 새 bytes 끝까지 진행
-read call #3 -> -1/EAGAIN
-blr_reader_next -> BLR_AGAIN, line=NULL
-```
-
-assertion은 첫 API call 동안 read counter가 3인지도 확인합니다. 이는 `EINTR`가 caller에게 결과로 노출되지 않고 wrapper 안에서 retry됐음을 보여 줍니다.
-
-fault script가 끝난 뒤 같은 context를 호출하면 나머지 실제 input을 읽어 다음 sequence가 나옵니다.
-
-```text
-BLR_LINE "partial\n"
-BLR_LINE "last"
-BLR_EOF
-```
-
-초기 3 bytes를 버리거나 다시 읽으면 첫 line 비교가 실패합니다.
-
-### `progress → EIO → retry`
-
-```c
-const int errors[] = {0, EIO};
-fault_read_limit(3);
-```
-
-첫 read는 3 bytes를 받아들인 뒤 두 번째 read가 EIO입니다.
-
-```text
-1차 next -> BLR_ERROR, line=NULL
-           accepted 3 bytes는 context에 유지
-2차 next -> 남은 input과 결합해 BLR_LINE "recoverable\n"
-3차 next -> BLR_EOF
-```
-
-이 test는 terminal error를 “EOF”로 바꾸지 않고, 이미 accepted한 bytes를 context reset 없이 재사용한다는 점을 고정합니다.
-
-### cursor 관점의 trace
-
-```text
-input: recoverable\n
-limit: 3
-
-normal read "rec"
-  begin=0, end=3
-  find_line_end -> scan=3
-
-EIO
-  begin=0, scan=3, end=3
-  BLR_ERROR
-
-retry normal read "ove" ...
-  end 증가
-  scan은 3부터 진행
-
-newline 발견
-  result allocation 성공
-  begin=line_end, scan=begin
-```
-
-`end`를 EIO call 전에 미리 늘리거나, error에서 `begin/end`를 reset하거나, retry에서 scan을 0으로 잘못 다루면 이 ordered regression이 결과 mismatch로 드러납니다.
-
-### 증명 범위와 한계
-
-이 커밋은 지정된 두 sequence에서 다음을 증명합니다.
-
-- `EINTR`가 wrapper 안에서 retry됨
-- positive progress 뒤 `EAGAIN`이 wait state가 됨
-- positive progress 뒤 EIO가 `BLR_ERROR`가 되지만 accepted bytes는 남음
-- retry에서 byte duplicate/skip 없이 complete line과 tail을 반환함
-
-다음을 exhaustive하게 증명하지는 않습니다.
-
-- 모든 POSIX errno
-- 실제 asynchronous signal handler가 만든 EINTR timing
-- script 64개를 넘는 sequence
-- compatibility wrapper가 terminal error 뒤 state를 보존함
-- multi-threaded concurrent calls
-
----
-
-## failure와 state mutation의 순서
-
-```text
-[reserve capacity]
-      ↓ 성공
-[read_retrying(fd, bytes + end, BUFFER_SIZE)]
-      ├─ EINTR ──────────────┐
-      │                      └─ 같은 call 다시 시도
-      ├─ n > 0
-      │    ├─ end += n
-      │    ├─ bytes[end] = '\0'
-      │    └─ scan 새 범위
-      │          ├─ newline: result allocation 후 begin commit
-      │          └─ 없음: read 반복
-      ├─ 0
-      │    ├─ reached_eof = 1
-      │    ├─ unread 있음: tail line
-      │    └─ unread 없음: EOF
-      ├─ EAGAIN/EWOULDBLOCK
-      │    └─ cursor 유지, AGAIN
-      └─ 다른 error
-           └─ cursor 유지, ERROR
-```
-
-## 최종 recovery 계약
-
-| 상황 | 보존되는 것 | 소비되는 것 | 다음 행동 |
-| --- | --- | --- | --- |
-| short positive read | 받은 bytes | 없음, delimiter line 성공 전까지 | 계속 read |
-| EINTR | 모든 context state | 없음 | 내부 자동 retry |
-| AGAIN | buffer, `begin/scan/end`, EOF=false | 없음 | readiness 뒤 같은 context 호출 |
-| terminal ERROR | explicit context의 accepted bytes와 cursor | 없음 | caller가 retry/reset/destroy 결정 |
-| line allocation ERROR | delimiter/tail bytes | 없음 | 같은 context retry 가능 |
-| EOF with tail | tail result allocation 성공 후 해당 bytes | 한 줄로 commit | 다음 호출 EOF |
-| empty EOF | stable EOF state | 없음 | 반복 EOF 또는 reset/destroy |
+`f0055ae5cf19`의 retry/result policy가 production 대상이고, `fd03a831686b`의 one-shot EIO harness가 이 ordered script의 기반입니다. 실제 nonblocking behavior는 `f3504f674c73`가 별도의 integration evidence로 제공합니다.
 
 ## 이 Thread의 경계
 
-- 이 문서는 input readiness를 기다리는 event loop나 `poll`/`select`/`epoll` API를 제공하지 않습니다. `BLR_AGAIN`은 caller가 그런 mechanism과 연결할 수 있는 상태값입니다.
-- explicit context는 terminal I/O error 뒤 state를 보존하지만, 오류 원인이 자동으로 복구된다는 보장은 없습니다.
-- legacy `get_next_line`은 API 제약 때문에 EOF, wait, error를 모두 `NULL`로 축소합니다. 내부 유지 정책만 다릅니다.
-- descriptor별 node architecture와 context ownership 자체는 앞선 두 Thread에서 다룹니다.
+이 문서는 system-call result를 parser state로 해석하고 accepted bytes를 보존하는 책임에 한정합니다.
 
-> 검증 메모: exact SHA의 GitHub diff와 source/test harness를 확인했습니다. 현재 환경에서는 nonblocking test와 fault suite를 실행하지 않았습니다.
+- readiness를 기다리는 event loop나 `poll`/`select`/`epoll` integration은 제공하지 않습니다.
+- terminal I/O error 뒤 context가 bytes를 보존해도 error 원인이 자동으로 복구된다는 뜻은 아닙니다.
+- descriptor별 hidden node와 explicit context ownership은 `02-singleton-to-descriptor-scoped-state.md`와 `03-explicit-reader-lifetime-and-authoritative-engine.md`가 담당합니다.
+
+> 검토 범위: `fd03a831686b`, `f0055ae5cf19`, `f3504f674c73`, `11033bd85c59`의 diff와 해당 SHA의 관련 source와 test harness를 확인했습니다. 저장소 checkout, build, nonblocking test, fault suite, sanitizer는 실행하지 않았습니다.

@@ -1,282 +1,233 @@
-# Thread: 검증 경계 — 출력 바이트에서 배포 아카이브와 sanitizer까지
+# Thread: 검증은 출력 동작·실패 시퀀스·배포 아카이브·계측 실행을 분리한다
+> Project: `ft_printf` · Branch: `c/ft_printf` · 문서 번호: 06
 
 ## 개요
 
-`ft_printf`가 “테스트를 통과한다”는 말은 하나의 사실이 아닙니다. 이 history는 서로 다른 결함을 서로 다른 관찰 방법으로 확인합니다.
+`ft_printf`가 “테스트를 통과한다”는 말은 하나의 보장을 뜻하지 않습니다. Public return과 raw bytes가 맞는지, rare `write` sequence를 상태 머신이 처리하는지, libc가 oracle이 될 수 없는 repository 규칙이 유지되는지, 실제 `.a`가 기대한 member·symbol·dependency를 갖는지, 실행된 source에서 sanitizer 진단이 없는지는 서로 다른 질문입니다.
 
-| 검증 계층 | 묻는 질문 |
-| --- | --- |
-| 기능·차등 비교 | 반환값과 실제 출력 바이트가 기대 결과와 같은가? |
-| 결정적 output fault | 부분 쓰기·`EINTR`·0 진행·영구 실패 순서를 production 상태 머신이 올바르게 처리하는가? |
-| 고정된 프로젝트 규칙 | libc가 이식 가능한 oracle이 아닌 경우 repository가 선택한 결과가 유지되는가? |
-| release artifact | 실제 `.a`의 member·symbol·외부 의존성과 public-header-only consumer가 기대한 형태인가? |
-| sanitizer runtime | 실행된 production/fault 경로에서 ASan/UBSan이 메모리 오류나 UB를 보고하는가? |
+이 Thread는 하나의 거대한 test suite로 합치지 않고 관찰 경계를 나눕니다. 각 계층이 강하게 보는 대상과 보지 못하는 대상이 다르기 때문에, 하나의 성공을 다른 계층의 증거로 소급하지 않습니다.
 
-이 계층들은 서로 대체할 수 없습니다. Source를 sanitizer로 직접 compile한 테스트가 통과해도 archive의 member/symbol 구성이 맞다는 뜻은 아니고, out-of-tree consumer가 link된다고 해서 `EINTR` 재시도가 맞다는 뜻도 아닙니다.
-
-| SHA | 제목 | 중요도 | 태그 | 역할 |
-| --- | --- | :---: | --- | --- |
-| `1b8049e411bb` | test(printf): 기본 변환과 포맷 경계 검증 | A | `FORMAT, TEST, VERIFY` | stdout capture, return-count 비교, libc differential 기반 구축 |
-| `1223518652bd` | test(output): 쓰기 실패 시퀀스와 채움 전략 검증 | A | `OUTPUT, TEST, RISK` | scripted syscall result와 실제 `SIGPIPE` policy 검증 |
-| `12d715eba77d` | test(printf): 공개 계약 경계 사례 확대 | A | `FORMAT, TEST, EDGE` | libc에 맡길 수 없는 프로젝트 고유 결과를 fixed expectation으로 기록 |
-| `a87bcf560789` | test(release): 아카이브와 외부 소비자 검증 | A | `RELEASE, ARCH, VERIFY` | archive members, global definitions, external dependencies, out-of-tree consumer 확인 |
-| `1b474fa2a5e3` | build(sanitize): UBSan과 Linux ASan 검증 추가 | B | `VERIFY, TEST` | normal/fault source를 UBSan과 Linux GCC ASan으로 실행하는 target 추가 |
-
-## `1b8049e411bb` — visible contract를 raw bytes로 관찰
-
-**중요도** A · **태그** `FORMAT, TEST, VERIFY`
-
-### stdout capture
-
-테스트는 `pipe`, `dup`, `dup2`로 stdout을 임시 pipe에 연결합니다.
-
-```c
-typedef struct s_capture
-{
-	int	saved_stdout;
-	int	pipe_fd[2];
-}	t_capture;
-```
-
-`capture_begin`이 원래 stdout을 저장하고 pipe write end를 1번 FD에 복제한 뒤, `ft_printf`를 호출합니다. `capture_end`는 stdout을 복원하고 pipe read end를 EOF까지 읽습니다. 따라서 테스트는 C string으로 보이는 값뿐 아니라 실제 byte count를 얻습니다.
-
-```c
-if (actual_ret != expected_ret || actual_len != expected_ret
-	|| memcmp(expected, actual, (size_t)expected_ret) != 0)
-	fail_test(...);
-```
-
-이 세 비교는 서로 다른 회귀를 잡습니다.
-
-- bytes는 맞지만 반환 count가 틀린 경우
-- 반환 count는 맞지만 실제로 덜/더 출력한 경우
-- embedded NUL 뒤의 byte가 달라 C string 비교로는 놓치는 경우
-
-### 차등 oracle와 fixed expectation의 분리
-
-Portable behavior로 취급하는 case는 `snprintf`가 같은 format과 argument로 만든 expected bytes/return을 사용합니다.
-
-```c
-expected_ret = snprintf(expected, sizeof(expected), FORMAT, ...);
-actual_ret = ft_printf(FORMAT, ...);
-```
-
-반면 null pointer/string처럼 플랫폼별 libc representation이 달라질 수 있거나 repository가 명시적으로 다른 규칙을 택한 case는 `EXPECT_OUTPUT`으로 expected bytes를 직접 적습니다. 이 구분은 이후 public-contract test가 확장되는 기반입니다.
-
-초기 suite는 literal, `%%`, embedded-NUL `%c`, string/null string, signed extrema, unsigned/hex, pointer, width/alignment/precision/flags, parser field overflow를 통과합니다. Production source는 이 commit에서 바뀌지 않습니다.
-
-### 증명 범위
-
-이 harness는 실제 public `ft_printf` 전체 경로를 link해 bytes와 count를 검증합니다. 그러나 raw `write`를 제어하지 않으므로 정확히 첫 호출이 `EINTR`, 두 번째가 short write 같은 rare sequence는 운영체제 타이밍에 맡겨집니다. Late invalid field의 whole-call preflight, archive symbol 구성, sanitizer 진단도 아직 범위 밖입니다.
-
-## `1223518652bd` — 시스템 호출 결과를 script로 만들기
-
-**중요도** A · **태그** `OUTPUT, TEST, RISK`
-
-### Production writer를 그대로 통과하는 test seam
-
-Makefile은 `FT_PRINTF_TEST_WRITE`를 정의한 별도 fault binary를 production source와 함께 compile합니다. 이 macro 아래에서 `ft_printf_write`가 호출하는 함수만 test writer로 치환되고, 결과를 해석하는 loop는 동일합니다.
-
-```c
-typedef enum e_write_action
-{
-	WRITE_ALL,
-	WRITE_PART,
-	WRITE_EINTR,
-	WRITE_EPIPE,
-	WRITE_ZERO
-}	t_write_action;
-```
-
-Scripted writer는 호출 수, 가장 큰 요청 길이, 실제로 받아들인 bytes를 기록합니다. 각 action은 production loop에 다음 상태를 만듭니다.
-
-| action | 반환/errno | 관찰 대상 |
+| 검증 계층 | 강하게 관찰하는 것 | 단독으로 관찰하지 못하는 것 |
 | --- | --- | --- |
-| `WRITE_ALL` | 요청 길이 전부 | 정상 완료 |
-| `WRITE_PART(n)` | 양의 n | pointer·remaining·count 전진 |
-| `WRITE_EINTR` | -1 / `EINTR` | 상태 변경 없는 재시도 |
-| `WRITE_EPIPE` | -1 / `EPIPE` | sticky error와 `-1` |
-| `WRITE_ZERO` | 0 | 무한 루프 방지를 위한 실패 처리 |
+| stdout capture + differential | 실제 bytes, captured length, public return | 결정적 syscall 순서, archive shape |
+| scripted writer + real broken pipe | partial/`EINTR`/zero/`EPIPE` 상태 전이와 `SIGPIPE` policy | 전체 format surface, artifact symbols |
+| fixed expectations | repository가 선택한 null·pointer·percent 결과 | 그 선택의 표준성·이식성 |
+| release check | archive member·global symbol·외부 dependency·out-of-tree consumer | sanitizer 진단, 모든 runtime branch |
+| UBSan/ASan build | 실행된 normal/fault source 경로의 UB·invalid access | 미실행 경로, prebuilt archive packaging |
 
-### 순서가 중요한 regression
+| 순서 | SHA | 제목 | 중요도 | 태그 | 역할 |
+| ---: | --- | --- | :---: | --- | --- |
+| 1 | `1b8049e411bb` | test(printf): 기본 변환과 포맷 경계 검증 | A | `FORMAT, TEST, VERIFY` | stdout capture, return-count 비교, libc differential 기반 구축 |
+| 2 | `1223518652bd` | test(output): 쓰기 실패 시퀀스와 채움 전략 검증 | A | `OUTPUT, TEST, RISK` | scripted syscall result와 실제 `SIGPIPE` policy 검증 |
+| 3 | `12d715eba77d` | test(printf): 공개 계약 경계 사례 확대 | A | `FORMAT, TEST, EDGE` | libc에 맡길 수 없는 repository 결과를 fixed expectation으로 기록 |
+| 4 | `a87bcf560789` | test(release): 아카이브와 외부 소비자 검증 | A | `RELEASE, ARCH, VERIFY` | archive members, global definitions, external dependencies, out-of-tree consumer 확인 |
+| 5 | `1b474fa2a5e3` | build(sanitize): UBSan과 Linux ASan 검증 추가 | B | `VERIFY, TEST` | normal/fault source를 UBSan과 Linux GCC ASan으로 실행하는 target 추가 |
 
-```text
-PART(2) → ALL
-EINTR → PART(3) → EINTR → ALL
-PART(3) → EPIPE
+## Public behavior를 바이트와 고정 기대값으로 관찰한다
+
+## 1b8049e411bb — test(printf): 기본 변환과 포맷 경계 검증
+**중요도** `A` · **태그** `FORMAT, TEST, VERIFY`
+
+### 왜 다른 기법이 필요한가
+
+일반적인 C string 비교만으로는 embedded NUL 뒤의 bytes나 실제 출력 길이를 확인하기 어렵습니다. 이 commit은 stdout을 pipe에 연결해 `ft_printf`가 기록한 raw bytes를 직접 수집하고, public return과 capture length를 함께 비교합니다.
+
+### 무엇을 추가했는가 (diff)
+
+```diff
++typedef struct s_capture
++{
++	int	saved_stdout;
++	int	pipe_fd[2];
++}	t_capture;
 ```
 
-첫 두 sequence는 성공 뒤 exact bytes, return, write call count, largest request를 검사합니다. 세 번째는 public return이 `-1`이더라도 writer가 이미 받아들인 앞 3바이트 `"par"`가 남는다는 non-atomic runtime contract를 확인합니다.
-
-Padding case는 `%1000d`에서 총 1000바이트, 17회 호출, 최대 요청 64바이트를 요구합니다. 이 assertion은 `ft_printf_putnchar`가 문자별 writer 호출로 회귀하지 않고 64바이트 bounded chunk를 사용한다는 구현 전략까지 고정합니다.
-
-### Scripted `EPIPE`와 실제 `SIGPIPE`는 다른 검증
-
-Mock writer가 `EPIPE`를 반환하는 것만으로는 process signal policy를 확인할 수 없습니다. 그래서 normal archive-linked suite는 읽기 끝이 닫힌 실제 pipe에 stdout을 연결하고, caller가 설치한 `SIGPIPE` handler를 사용합니다.
-
-테스트는 다음을 요구합니다.
-
-- handler가 한 번 실행됨
-- 살아남은 `write`가 실패해 `ft_printf`가 `-1`을 반환함
-- 호출 뒤에도 caller의 handler가 그대로 설치됨
-
-이는 library가 process-wide `SIGPIPE` disposition을 변경하지 않는다는 검증입니다. 기본 disposition인 프로세스가 실제로 종료되지 않는다는 보장은 하지 않습니다. 그 정책은 caller/process가 소유합니다.
-
-## `12d715eba77d` — libc 비교와 프로젝트 고유 계약을 명시적으로 분리
-
-**중요도** A · **태그** `FORMAT, TEST, EDGE`
-
-이 커밋은 signed/unsigned/hex의 boundary matrix를 `EXPECT_PRINTF`로 넓히는 한편, portable libc oracle에 맡기지 않을 결과를 `EXPECT_OUTPUT`으로 고정합니다.
-
-대표적인 fixed expectation은 다음과 같습니다.
-
-```c
-EXPECT_OUTPUT("0x", "%.0p", (void *)0);
-EXPECT_OUTPUT("      0x", "%8.0p", (void *)0);
-EXPECT_OUTPUT("  (null)", "%8s", (char *)0);
-EXPECT_OUTPUT("", "%.0s", (char *)0);
-EXPECT_OUTPUT("0000%|%    |%", "%05%|%-5%|%.%");
+```diff
++static void	check_case(int line, const char *format, const char *expected,
++		int expected_ret, const char *actual, ssize_t actual_len,
++		int actual_ret)
++{
++	if (actual_ret != expected_ret || actual_len != expected_ret
++		|| memcmp(expected, actual, (size_t)expected_ret) != 0)
++	{
++		/* mismatch diagnostic 출력 생략 */
++		fail_test(line, "ft_printf output mismatch");
++	}
++}
 ```
 
-여기에는 세 종류의 repository 결정이 섞여 있습니다.
+Portable behavior로 취급하는 case는 `snprintf`가 만든 expected bytes와 return을 사용하고, null string이나 pointer처럼 fixed representation이 필요한 case는 `EXPECT_OUTPUT`으로 직접 적습니다. 초기 suite는 literal, `%%`, NUL 문자 `%c`, 문자열, signed/unsigned/hex/pointer, width·precision·flags, parser field overflow를 public entry를 통해 실행합니다.
 
-1. null pointer를 `0x` 계열로 표현
-2. null string을 `(null)`로 대체한 뒤 width/precision 적용
-3. formatted percent에 width, LEFT, ZERO를 적용
+### 이 테스트가 증명하는 것 / 증명하지 않는 것
 
-이 값들을 host libc 결과와 비교하면 플랫폼에 따라 테스트 자체가 불안정하거나 프로젝트 extension을 잘못된 것으로 판정할 수 있습니다. Fixed expectation은 “표준과 같다”가 아니라 “이 repository가 선택한 public contract가 이것이다”를 기록합니다.
+열거된 format surface에서 actual bytes, captured length, return이 기대값과 일치함을 증명합니다. Raw `write`를 제어하지 않으므로 첫 호출 `EINTR`, 다음 호출 partial 같은 rare sequence를 결정적으로 만들 수 없고, late invalid field의 whole-call atomicity나 archive symbol 구성도 확인하지 않습니다.
 
-이 commit의 숫자 행렬은 많은 경계 조합을 늘리지만 exhaustive proof는 아닙니다. 또한 fixed output이 합리적인 specification인지 평가하는 테스트가 아니라, 이미 선택한 결과의 회귀를 막는 테스트입니다.
+### 관련 커밋
 
-## `a87bcf560789` — source tree 밖의 실제 archive를 검사
+`1223518652bd`은 같은 production writer의 syscall 결과를 script로 만들어 이 harness가 재현하지 못한 rare transition을 검증합니다. `12d715eba77d`은 differential과 fixed expectation의 구분을 더 넓은 public contract에 적용합니다.
 
-**중요도** A · **태그** `RELEASE, ARCH, VERIFY`
+## 1223518652bd — test(output): 쓰기 실패 시퀀스와 채움 전략 검증
+**중요도** `A` · **태그** `OUTPUT, TEST, RISK`
 
-`release-check`는 `libftprintf.a`를 단순히 link해보는 데서 끝나지 않습니다.
+### 왜 다른 기법이 필요한가
 
-### 1. archive member 목록
+Kernel timing에 의존하면 short write, `EINTR`, zero progress, `EPIPE`의 호출 순서를 안정적으로 재현하기 어렵습니다. Test build는 `FT_PRINTF_TEST_WRITE`로 호출 target만 교체하고, 결과를 해석하는 `ft_printf_write` loop는 production source를 그대로 사용합니다.
 
-`ar t` 결과에서 Darwin index member를 제외한 뒤 exact object 목록과 순서를 비교합니다.
+### 어떤 실패 시퀀스를 만드는가 (diff)
 
-```text
-ft_printf.o
-ft_output.o
-ft_parse.o
-ft_measure.o
-ft_dispatch.o
-ft_text.o
-ft_numeric_layout.o
-ft_number.o
-ft_hex.o
+```diff
++typedef enum e_write_action
++{
++	WRITE_ALL,
++	WRITE_PART,
++	WRITE_EINTR,
++	WRITE_EPIPE,
++	WRITE_ZERO
++}	t_write_action;
 ```
 
-Source file이 Makefile에서 빠지거나 의도하지 않은 object가 archive에 들어가면 consumer test가 우연히 link되더라도 여기서 실패합니다.
-
-### 2. global definition과 unresolved dependency
-
-`nm -g` 결과를 Darwin/Linux 차이에 맞게 정규화하고, archive가 정의하는 global symbol 집합을 exact 목록과 비교합니다. 이 목록에는 public `ft_printf`뿐 아니라 repository가 global definition으로 빌드한 내부 함수들도 포함됩니다.
-
-정의되지 않은 symbol 중 archive 내부 정의로 해결되지 않는 외부 의존성도 별도로 계산합니다.
-
-- Linux: `__errno_location`, `write`
-- Darwin: `__error`, `write`, compiler에 따라 stack-check symbol
-
-따라서 source에 새 libc 호출이 들어가거나 platform/compiler 가정을 벗어나면 명시적으로 드러납니다. 이 check는 지원 대상을 Linux/Darwin과 인식 가능한 compiler 조합으로 제한하며, 알 수 없는 platform에서 조용히 통과하지 않습니다.
-
-### 3. public-header-only out-of-tree consumer
-
-Script는 임시 디렉터리에 다음 세 파일만 복사합니다.
-
-- `include/ft_printf.h`
-- `libftprintf.a`
-- `tests/test_consumer.c`
-
-그 위치에서 consumer를 compile하고 실행합니다.
-
-```c
-#include "ft_printf.h"
-
-int	main(void)
-{
-	if (ft_printf("consumer:%d:%s\n", 17, "ok") != 15)
-		return (1);
-	return (0);
-}
+```diff
++	reset_writer();
++	add_step(WRITE_PART, 2);
++	add_step(WRITE_ALL, 0);
++	expect_success("partial", 2, 7);
++
++	reset_writer();
++	add_step(WRITE_EINTR, 0);
++	add_step(WRITE_PART, 3);
++	add_step(WRITE_EINTR, 0);
++	add_step(WRITE_ALL, 0);
++	expect_success("interrupt", 4, 9);
 ```
 
-Shell command substitution 결과가 `consumer:17:ok`인지 확인하고, 임시 디렉터리 cleanup까지 검사합니다. 이는 repository 내부 include path나 object file에 우연히 의존하지 않고 배포 artifact와 public header만으로 소비할 수 있음을 겨냥합니다.
+Failure matrix는 first-call `EPIPE`, partial 3바이트 뒤 `EPIPE`, zero-byte return을 구분합니다. `%1000d` case는 total 1000바이트, writer call 17회, largest request 64바이트를 요구해 padding chunk 전략도 관찰합니다.
 
-### 이 check가 증명하지 않는 것
+Scripted `EPIPE`는 signal delivery를 만들지 않으므로 별도의 archive-linked test가 읽기 끝을 닫은 실제 pipe와 caller-installed `SIGPIPE` handler를 사용합니다. Handler가 한 번 실행되고, `ft_printf`가 `-1`을 반환하며, 호출 뒤 handler가 그대로 설치되어 있어야 합니다.
 
-- ABI가 미래 compiler/version에서도 안정적이라는 장기 보장
-- 내부 함수가 global로 노출되는 설계가 이상적인지
-- archive를 shared object 또는 다른 linker mode에서 사용할 수 있는지
-- runtime formatting의 모든 경계
+### 이 테스트가 증명하는 것 / 증명하지 않는 것
 
-Release check는 현재 repository가 선언한 artifact shape를 검증합니다.
+열거된 sequence에서 pointer·remaining·count·sticky error 전이가 맞고, partial failure에서 이미 accepted된 prefix가 남으며, library가 caller의 `SIGPIPE` disposition을 변경하지 않음을 증명합니다. 모든 errno와 real kernel scheduling을 포괄하지 않고, default `SIGPIPE` policy에서 process가 생존함을 보장하지도 않습니다.
 
-## `1b474fa2a5e3` — 실행된 source에 instrumentation을 추가
+### 관련 커밋
 
-**중요도** B · **태그** `VERIFY, TEST`
+이 test는 `8a3ec50cb689`의 retry/request policy와 `22e65c176b5d`의 chunk strategy를 고정합니다. 그 production 결정은 `01-output-state-system-call-boundary.md`가 설명합니다.
 
-Makefile에 normal suite와 output fault suite를 sanitizer flags로 직접 compile하는 target이 추가됩니다.
+## 12d715eba77d — test(printf): 공개 계약 경계 사례 확대
+**중요도** `A` · **태그** `FORMAT, TEST, EDGE`
 
-### UBSan
+### 무엇을 검증하는가
 
-```make
-UBSAN_FLAGS := -g -fno-omit-frame-pointer -fsanitize=undefined
+Signed, unsigned, hex의 boundary matrix는 libc-comparable case로 유지하고, repository가 선택한 null pointer·null string·formatted percent 결과는 fixed expectation으로 분리합니다.
 
-sanitize-undefined:
-	$(CC) ... $(UBSAN_FLAGS) tests/test_ft_printf.c $(SRC) ...
-	UBSAN_OPTIONS=halt_on_error=1 ./tests/bin/test_ft_printf_ubsan
-	$(CC) ... $(UBSAN_FLAGS) -DFT_PRINTF_TEST_WRITE \
-		tests/test_output_faults.c $(SRC) ...
-	UBSAN_OPTIONS=halt_on_error=1 ./tests/bin/test_output_faults_ubsan
+```diff
++	EXPECT_OUTPUT("0x", "%.0p", (void *)0);
++	EXPECT_OUTPUT("      0x", "%8.0p", (void *)0);
++	EXPECT_OUTPUT("  (null)", "%8s", (char *)0);
++	EXPECT_OUTPUT("", "%.0s", (char *)0);
++	EXPECT_OUTPUT("0000%|%    |%", "%05%|%-5%|%.%");
 ```
 
-Normal conversion 경로뿐 아니라 injected partial/EINTR/error path도 implementation source와 함께 instrument합니다.
+Host libc 결과와 무조건 비교하면 platform-dependent pointer/null 표현이나 project extension을 잘못된 것으로 판정할 수 있습니다. Fixed expectation은 “표준과 같다”가 아니라 “이 repository의 public contract는 이것이다”를 기록합니다.
 
-### Linux GCC ASan + UBSan
+### 이 테스트가 증명하는 것 / 증명하지 않는 것
 
-```make
-SANITIZER_FLAGS := -g -fno-omit-frame-pointer \
-	-fsanitize=address,undefined
+열거된 fixed bytes와 numeric matrix가 유지됨을 증명합니다. 그 contract가 모든 플랫폼에서 바람직하거나 표준적으로 유일한 선택임을 평가하지 않으며, 모든 width·precision 조합을 exhaustive하게 검증하지도 않습니다.
 
-sanitize-linux:
-	docker run --rm -v "$(CURDIR):/source:ro" gcc:14-bookworm \
-		sh -c 'cp -R /source /tmp/format-printer-fix && \
-		cd /tmp/format-printer-fix && \
-		make sanitize-address SANITIZER_CC=gcc'
+### 관련 커밋
+
+`1b8049e411bb`이 만든 `EXPECT_PRINTF`와 `EXPECT_OUTPUT`의 역할 구분을 확대합니다. Numeric layout과 bounded string semantics의 구현 근거는 `03`과 `04` 문서가 각각 다룹니다.
+
+## Source-tree 내부 성공을 배포 artifact와 계측 runtime 경계로 확장한다
+
+## a87bcf560789 — test(release): 아카이브와 외부 소비자 검증
+**중요도** `A` · **태그** `RELEASE, ARCH, VERIFY`
+
+### 왜 다른 기법이 필요한가
+
+Source tree 안에서 test binary가 link되고 동작해도 실제 `libftprintf.a`에 object가 빠졌거나, 의도하지 않은 global symbol·외부 dependency가 들어갔거나, public header만 가진 외부 consumer가 link하지 못할 수 있습니다. Release check는 runtime formatting과 다른 artifact boundary를 검사합니다.
+
+### 무엇을 검사하는가 (diff)
+
+```diff
++release-check: $(NAME)
++	CC="$(CC)" sh tests/check_release.sh $(NAME) include \
++		tests/test_consumer.c
 ```
 
-Read-only mounted source를 container 내부 임시 디렉터리로 복사하고 GCC 14 환경에서 AddressSanitizer와 UndefinedBehaviorSanitizer를 함께 실행합니다. `sanitize-address`도 normal/fault 두 binary를 각각 compile합니다.
+Script는 `ar t`의 exact member 목록을 비교하고, `nm -g`를 platform별로 정규화해 global definition과 archive 내부에서 해결되지 않는 external symbol을 계산합니다. Linux에서는 `__errno_location`, `write`, Darwin에서는 `__error`, `write`와 compiler에 따른 stack-check symbol을 기대합니다.
 
-`make sanitize`는 UBSan target만 실행하고 Linux ASan은 별도의 `make sanitize-linux`입니다. `make check` 역시 `test`, `release-check`, `sanitize`와 `git diff --check`를 묶지만 Docker ASan까지 자동 포함하지는 않습니다.
+마지막에는 임시 디렉터리에 public header, archive, consumer source만 복사해 compile하고 실행합니다.
 
-### Source instrumentation과 release artifact의 차이
+```diff
++#include "ft_printf.h"
++
++int	main(void)
++{
++	if (ft_printf("consumer:%d:%s\n", 17, "ok") != 15)
++		return (1);
++	return (0);
++}
+```
 
-Sanitizer target은 prebuilt `libftprintf.a`를 link하지 않고 `$(SRC)`를 test와 함께 compile합니다. 그래야 implementation 자체에 instrumentation이 들어갑니다. 대신 이 결과는 archive member/symbol/dependency shape를 검증하지 않으므로 release check와 보완 관계입니다.
+Expected output을 확인한 뒤 temporary directory cleanup까지 검사합니다.
 
-Sanitizer 성공은 실행된 입력과 경로에서 진단이 없었다는 뜻입니다. 모든 가능한 format, 모든 allocator/OS behavior, 실행되지 않은 branch의 메모리 안전성을 증명하지 않습니다.
+### 이 check가 증명하는 것 / 증명하지 않는 것
 
-## 최종 검증 지도
+현재 repository가 선언한 archive members, global definitions, external dependencies와 public-header-only consumer 경계를 검증합니다. ABI가 미래 compiler/version에서도 안정적이라는 장기 보장, shared-object 사용 가능성, runtime formatting의 모든 edge case는 증명하지 않습니다.
 
-| 계층 | 실제 production 경로 | 강하게 관찰하는 것 | 관찰하지 못하는 것 |
-| --- | --- | --- | --- |
-| stdout capture + differential | archive-linked public `ft_printf` | bytes, captured length, public return | rare syscall sequence, artifact symbols |
-| fixed expectation | archive-linked public `ft_printf` | repository-specific output rules | 그 규칙의 표준성·이식성 |
-| scripted writer | source-built `ft_printf_write` 포함 전체 path | partial/EINTR/zero/permanent failure와 chunk call shape | real kernel timing과 signal delivery |
-| real broken pipe | archive-linked public path + OS pipe | caller `SIGPIPE` policy 보존과 write failure | default policy에서 process 생존 |
-| release check | built `.a`, public header, external consumer | member/symbol/dependency/link/run artifact | sanitizer 진단과 전체 runtime surface |
-| UBSan/ASan | instrumented normal/fault source binary | 실행 경로의 UB·invalid memory access | 미실행 경로와 archive packaging |
+### 관련 커밋
 
-## Thread 경계
+`1b474fa2a5e3`은 artifact shape가 아니라 실행된 source의 UB·invalid access를 관찰합니다. 두 계층은 서로 대체하지 않습니다.
 
-이 Thread는 검증 방법과 각 방법이 볼 수 있는 경계를 설명합니다. 다음 production decision 자체는 다른 문서가 source of truth입니다.
+## 1b474fa2a5e3 — build(sanitize): UBSan과 Linux ASan 검증 추가
+**중요도** `B` · **태그** `VERIFY, TEST`
 
-- 부분 쓰기와 `EINTR` 처리: output-state Thread
-- 숫자 prefix/precision/width 순서: numeric layout Thread
-- `%s` bounded read: string precision Thread
-- late format error의 no-output 보장: whole-call preflight Thread
+### 왜 별도의 빌드 경계가 필요한가
 
-검사 과정에서는 test/release/sanitizer source와 Makefile diff를 exact SHA에서 확인했습니다. 해당 target을 이 환경에서 직접 실행한 결과를 주장하지 않습니다.
+Prebuilt archive만 test에 link하면 implementation object에 sanitizer instrumentation이 들어가지 않을 수 있습니다. 이 commit은 normal suite와 output fault suite를 `$(SRC)`와 함께 다시 compile해 production과 injected failure 경로를 모두 계측합니다.
+
+### 무엇이 바뀌었는가 (diff)
+
+```diff
++UBSAN_FLAGS := -g -fno-omit-frame-pointer -fsanitize=undefined
++SANITIZER_FLAGS := -g -fno-omit-frame-pointer -fsanitize=address,undefined
+@@
++sanitize-undefined:
++	mkdir -p tests/bin
++	$(CC) $(CFLAGS) $(CPPFLAGS) $(UBSAN_FLAGS) \
++		tests/test_ft_printf.c $(SRC) -o $(UBSAN_TEST_BIN)
++	UBSAN_OPTIONS=halt_on_error=1 ./$(UBSAN_TEST_BIN)
++	$(CC) $(CFLAGS) $(CPPFLAGS) $(UBSAN_FLAGS) \
++		-DFT_PRINTF_TEST_WRITE tests/test_output_faults.c $(SRC) \
++		-o $(UBSAN_FAULT_BIN)
++	UBSAN_OPTIONS=halt_on_error=1 ./$(UBSAN_FAULT_BIN)
+```
+
+Linux AddressSanitizer는 GCC 14 Bookworm container에서 별도 target으로 실행합니다.
+
+```diff
++sanitize-linux:
++	docker run --rm -v "$(CURDIR):/source:ro" gcc:14-bookworm \
++		sh -c 'cp -R /source /tmp/format-printer-fix && \
++		cd /tmp/format-printer-fix && \
++		make sanitize-address SANITIZER_CC=gcc'
+```
+
+`make sanitize`는 UBSan만 실행하고 `sanitize-linux`는 별도입니다. `make check`도 `test`, `release-check`, `sanitize`, `git diff --check`를 묶지만 Docker ASan을 포함하지 않습니다.
+
+### 이 target이 증명하는 것 / 증명하지 않는 것
+
+실제로 실행된 normal/fault inputs에서 instrumented source가 UBSan 또는 ASan 진단 없이 끝나는지를 관찰하도록 구성합니다. 실행하지 않은 branch와 모든 가능한 format의 안전성, prebuilt archive의 member·symbol shape는 증명하지 않습니다.
+
+### 관련 커밋
+
+`9ac825379180`의 bounded string scan과 `e040e69db535`의 non-NUL object case 같은 memory boundary를 계측된 suite에서 관찰할 수 있고, `1223518652bd`의 fault path도 별도 sanitizer binary에 포함됩니다. Artifact 구성은 `a87bcf560789`의 release check가 계속 담당합니다.
+
+## 이 Thread의 경계
+
+- Partial write, `EINTR`, sticky error의 production contract는 `01-output-state-system-call-boundary.md`가 다룹니다.
+- Numeric prefix·precision·width 순서는 `03-shared-numeric-layout.md`가 다룹니다.
+- `%s` bounded read는 `04-string-precision-bounded-access.md`가 다룹니다.
+- Late format error의 무출력 보장은 `05-whole-call-preflight.md`가 다룹니다.
+
+> 검토 범위: `1b8049e411bb`, `1223518652bd`, `12d715eba77d`, `a87bcf560789`, `1b474fa2a5e3`의 exact diff와 해당 시점의 functional/fault tests, release script, consumer source, Makefile sanitizer targets를 확인했습니다. `test`, `release-check`, UBSan, Docker ASan target은 이 환경에서 실행하지 않았습니다.

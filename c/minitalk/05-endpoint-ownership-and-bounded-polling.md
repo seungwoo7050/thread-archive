@@ -1,305 +1,330 @@
-# Thread: Unix endpoint 소유권과 `fd_set` 표현 범위
-
-Project: `minitalk` · Branch: `c/minitalk` · 문서 번호: 05
+# Thread: endpoint 경로는 bind한 process만 정리하고 polling 표현 범위를 넘지 않는다
+> Project: `minitalk` · Branch: `c/minitalk` · 문서 번호: 05
 
 ## 개요
 
-Unix datagram socket은 descriptor 하나만 얻는 작업이 아니다. filesystem namespace에 predictable path를 만들고, 기존 entry를 검사하고, bind 성공 시 그 path를 삭제할 책임까지 얻는다. 따라서 “path 문자열을 계산했다”, “stale socket을 지울 권한이 있다”, “내 socket을 그 path에 bind했다”는 서로 다른 상태다.
+Unix datagram endpoint를 만든다는 것은 descriptor 하나를 여는 작업보다 크다. process는 predictable filesystem path를 계산하고, 기존 entry가 교체 가능한 stale socket인지 확인하고, bind에 성공한 경우에만 그 path의 cleanup owner가 된다. “경로를 안다”, “기존 entry를 지울 수 있다”, “현재 endpoint를 내가 소유한다”는 서로 다른 상태다.
 
-또한 descriptor가 유효한 정수라는 사실만으로 `select`에 넣을 수 있는 것은 아니다. `fd_set`은 `FD_SETSIZE` 미만의 번호만 표현할 수 있으므로, 높은 descriptor를 `FD_SET`에 넘기기 전에 controlled startup failure로 바꿔야 한다.
+이 Thread의 앞부분은 per-UID namespace와 client/server endpoint lifecycle을 만든 뒤, bind 실패 후 unowned path를 지우던 client cleanup을 고친다. 뒷부분은 valid descriptor라도 `fd_set`이 표현할 수 없는 번호라면 `FD_SET` 전에 startup을 중단해야 한다는 별도 runtime boundary를 확립하고, real inherited descriptor table로 이를 검증한다.
 
-### 최종 불변 조건
+### 최종 ownership 상태
 
-- runtime directory는 current UID 전용 경로이며 directory type, owner, group/other permission을 검사한다.
-- endpoint path는 허용된 role과 PID에서만 생성하고 buffer truncation을 거부한다.
-- same-UID stale Unix socket은 교체할 수 있지만 regular file이나 다른 종류의 entry는 삭제하지 않는다.
-- cleanup은 **실제로 bind한 path만** unlink한다.
-- socket과 self-pipe descriptors는 acquisition 실패와 normal exit 모두에서 close된다.
-- `FD_SET`에 들어갈 client socket, server socket, event-pipe read end는 생성 직후 `FD_SETSIZE` 미만인지 검사한다.
+| 단계 | process가 알고 있거나 소유한 것 | cleanup 책임 |
+| --- | --- | --- |
+| path 계산 완료 | expected pathname | 없음 |
+| same-UID stale socket 제거 | 비어 있는 pathname | 없음 |
+| socket 생성·flag 설정 | descriptor | descriptor close |
+| bind 성공 | descriptor + filesystem socket entry | close + own path unlink |
+| bind 전 실패 | 계산한 path와 descriptor 일부 | descriptor만 close, 기존 path는 unlink하지 않음 |
+| descriptor `>= FD_SETSIZE` | polling에 넣을 수 없는 descriptor | 초기화 실패로 close/unlink rollback |
 
 ### 커밋 목록
 
 | 순서 | SHA | 제목 | 중요도 | 태그 | 역할 |
 | ---: | --- | --- | :---: | --- | --- |
-| 1 | `2c37cb592d05` | feat(runtime): 안전한 응답 endpoint 경로 생성 | A | `ARCH, ENDPOINT, RISK` | per-UID private runtime directory와 role/PID-derived Unix socket path helper를 정의합니다. |
-| 2 | `25780b881ee8` | feat(client): datagram 응답 endpoint 수명주기 관리 | B | `ENDPOINT, PROCESS_LIFECYCLE` | client가 nonblocking, close-on-exec datagram socket을 PID-derived path에 bind하고 invocation lifetime에 맞춰 cleanup합니다. |
-| 3 | `32390dcdfc1b` | feat(server): datagram 응답 endpoint 수명주기 관리 | B | `ENDPOINT, PROCESS_LIFECYCLE` | server가 long-lived nonblocking, close-on-exec datagram endpoint를 server path에 bind하고 normal exit와 rollback에서 cleanup합니다. |
-| 4 | `622d80020fb2` | fix(client): bind한 응답 경로만 정리 | A | `ENDPOINT, RISK` | client cleanup이 response path를 실제 `bind`한 경우에만 unlink하도록 bound ownership flag를 사용합니다. |
-| 5 | `ffd3647a1518` | test(runtime): stale 응답 endpoint 처리 검증 | A | `TEST, ENDPOINT, RISK` | real PID-derived paths에 stale client/server sockets, regular files, unrelated live processes를 만들어 endpoint trust와 cleanup policy를 검증합니다. |
-| 6 | `4e1c84bfacfc` | fix(runtime): select 범위를 벗어난 descriptor 거부 | A | `EDGE, PRACTICAL, RISK` | client response socket, server response socket, self-pipe read fd가 `FD_SETSIZE` 이상이면 initialization에서 거부합니다. |
-| 7 | `1de95310195d` | test(runtime): 높은 descriptor 번호의 안전한 실패 검증 | A | `TEST, EDGE, RISK` | wrapper가 `/dev/null`을 반복 open해 inherited descriptor table을 `FD_SETSIZE` boundary까지 높인 뒤 real client/server를 `exec`합니다. |
+| 1 | `2c37cb592d05` | feat(runtime): 안전한 응답 endpoint 경로 생성 | A | `ARCH, ENDPOINT, RISK` | current UID 전용 runtime directory와 role/PID 기반 Unix socket path를 만든다. |
+| 2 | `25780b881ee8` | feat(client): datagram 응답 endpoint 수명주기 관리 | B | `ENDPOINT, PROCESS_LIFECYCLE` | client가 nonblocking·close-on-exec datagram socket을 PID path에 bind하고 invocation 종료 시 정리한다. |
+| 3 | `32390dcdfc1b` | feat(server): datagram 응답 endpoint 수명주기 관리 | B | `ENDPOINT, PROCESS_LIFECYCLE` | server가 long-lived response socket을 bind하고 rollback과 normal exit에서 정리한다. |
+| 4 | `622d80020fb2` | fix(client): bind한 응답 경로만 정리 | A | `ENDPOINT, RISK` | client cleanup이 actual bind ownership을 별도 flag로 확인하게 한다. |
+| 5 | `ffd3647a1518` | test(runtime): stale 응답 endpoint 처리 검증 | A | `TEST, ENDPOINT, RISK` | real stale sockets, regular files와 unrelated process로 replacement·preservation policy를 검증한다. |
+| 6 | `4e1c84bfacfc` | fix(runtime): select 범위를 벗어난 descriptor 거부 | A | `EDGE, PRACTICAL, RISK` | `FD_SET` 대상 descriptor가 `FD_SETSIZE` 이상이면 initialization에서 거부한다. |
+| 7 | `1de95310195d` | test(runtime): 높은 descriptor 번호의 안전한 실패 검증 | A | `TEST, EDGE, RISK` | `/dev/null`을 반복 open한 뒤 real client/server를 `exec`해 high-FD failure를 검증한다. |
 
-## `2c37cb592d05` — feat(runtime): 안전한 응답 endpoint 경로 생성
+---
+
+**역할군: private namespace와 endpoint lifecycle을 만들기**
+
+## 2c37cb592d05 — feat(runtime): 안전한 응답 endpoint 경로 생성
 
 **중요도** `A` · **태그** `ARCH, ENDPOINT, RISK`
 
-### per-UID namespace
+### 무엇을 만들었는가 (diff)
 
-`mt_runtime_dir`는 다음 경로를 만든다.
-
-```text
-/tmp/signal-message-bus-<uid>
+```diff
++static int validate_runtime_dir(const char *path)
++{
++    struct stat info;
++
++    if (lstat(path, &info) == -1)
++        return (-1);
++    if (!S_ISDIR(info.st_mode) || info.st_uid != getuid()
++        || (info.st_mode & 077) != 0)
++    {
++        errno = EACCES;
++        return (-1);
++    }
++    return (0);
++}
+@@
++    length = snprintf(buffer, size, "/tmp/signal-message-bus-%lu",
++            (unsigned long)getuid());
++    if (length < 0 || (size_t)length >= size)
++    {
++        errno = ENAMETOOLONG;
++        return (-1);
++    }
++    if (mkdir(buffer, 0700) == -1 && errno != EEXIST)
++        return (-1);
++    return (validate_runtime_dir(buffer));
 ```
 
-```c
-length = snprintf(buffer, size, "/tmp/signal-message-bus-%lu",
-        (unsigned long)getuid());
-if (length < 0 || (size_t)length >= size)
-{
-    errno = ENAMETOOLONG;
-    return (-1);
-}
-if (mkdir(buffer, 0700) == -1 && errno != EEXIST)
-    return (-1);
-return (validate_runtime_dir(buffer));
+existing runtime path는 directory인지, current UID 소유인지, group/other permission bit가 모두 꺼져 있는지 확인한다. 생성 mode는 0700이지만 validation은 owner permission 자체를 정확히 7로 고정하지 않고 외부 접근 가능성만 거부한다.
+
+role/PID helper는 `server`, `client`, test의 `forger`만 허용하고 `pid <= 1`, NULL input과 formatted path truncation을 거부한다.
+
+```diff
++    if (buffer == NULL || role == NULL || pid <= 1
++        || mt_runtime_dir(directory, sizeof(directory)) == -1)
++        return (-1);
++    if (strcmp(role, "server") != 0 && strcmp(role, "client") != 0
++        && strcmp(role, "forger") != 0)
++    {
++        errno = EINVAL;
++        return (-1);
++    }
++    length = snprintf(buffer, size, "%s/%s-%ld.sock", directory, role,
++            (long)pid);
++    if (length < 0 || (size_t)length >= size)
++    {
++        errno = ENAMETOOLONG;
++        return (-1);
++    }
 ```
 
-이미 존재하는 path는 이름만 믿지 않는다.
+### 이 namespace가 보장하지 않는 것은 무엇인가
 
-```c
-if (lstat(path, &info) == -1)
-    return (-1);
-if (!S_ISDIR(info.st_mode) || info.st_uid != getuid()
-    || (info.st_mode & 077) != 0)
-{
-    errno = EACCES;
-    return (-1);
-}
-```
+private per-UID directory는 다른 UID의 filesystem interference를 줄인다. 같은 UID의 다른 process를 cryptographically authenticate하지 않으며, predictable PID-derived path 자체가 peer identity proof는 아니다.
 
-검사는 directory type, current UID owner, group/other permission 부재를 요구한다. 생성 시에는 0700을 사용하지만 validation이 owner permission을 정확히 0700으로 강제하는 것은 아니다. 핵심은 다른 UID 또는 group/other가 접근 가능한 namespace를 사용하지 않는다는 점이다.
+### 관련 커밋과 어떤 관계인가
 
-### role/PID path
+`25780b881ee8`과 `32390dcdfc1b`가 이 naming policy를 실제 client/server socket acquisition과 cleanup에 연결한다. `ffd3647a1518`은 real filesystem object로 stale replacement와 protected entry preservation을 검증한다.
 
-```c
-if (buffer == NULL || role == NULL || pid <= 1
-    || mt_runtime_dir(directory, sizeof(directory)) == -1)
-    return (-1);
-if (strcmp(role, "server") != 0 && strcmp(role, "client") != 0
-    && strcmp(role, "forger") != 0)
-{
-    errno = EINVAL;
-    return (-1);
-}
-length = snprintf(buffer, size, "%s/%s-%ld.sock",
-        directory, role, (long)pid);
-if (length < 0 || (size_t)length >= size)
-{
-    errno = ENAMETOOLONG;
-    return (-1);
-}
-```
-
-결과는 `server-<pid>.sock`, `client-<pid>.sock`이며 test response source를 위한 `forger` role도 whitelist에 포함된다. helper는 path를 계산할 뿐 파일을 만들거나 그 path의 소유권을 획득하지 않는다.
-
-이 namespace는 cooperative same-UID local boundary다. path와 UID 검사는 다른 user의 entry를 배제하지만, 같은 UID의 악의적인 process까지 cryptographically 인증하지는 않는다.
-
-## `25780b881ee8` — feat(client): datagram 응답 endpoint 수명주기 관리
+## 25780b881ee8 — feat(client): datagram 응답 endpoint 수명주기 관리
 
 **중요도** `B` · **태그** `ENDPOINT, PROCESS_LIFECYCLE`
 
-client는 자신의 PID-derived path를 준비하고 datagram socket을 bind한다.
+### 무엇이 바뀌었는가 (diff)
 
-```text
-client path 계산
-  → 기존 entry 검사/제거
-  → socket(AF_UNIX, SOCK_DGRAM)
-  → O_NONBLOCK, FD_CLOEXEC
-  → sockaddr_un 길이 확인
-  → bind
-  → atexit cleanup 등록
+```diff
++static int g_response_socket = -1;
++static char g_client_path[MT_RESPONSE_PATH_SIZE];
++
++static void cleanup_response_socket(void)
++{
++    if (g_response_socket != -1)
++        close(g_response_socket);
++    g_response_socket = -1;
++    if (g_client_path[0] != '\0')
++        unlink(g_client_path);
++    g_client_path[0] = '\0';
++}
 ```
 
-stale entry 제거는 제한적이다.
+client setup 순서는 path 계산 → same-UID stale socket 확인/삭제 → `socket(AF_UNIX, SOCK_DGRAM)` → `O_NONBLOCK`/`FD_CLOEXEC` → sockaddr 구성 → `bind`다. 성공한 invocation은 `atexit(cleanup_response_socket)`로 descriptor와 filesystem entry를 정리한다.
 
-```c
-if (lstat(path, &info) == -1)
-{
-    if (errno == ENOENT)
-        return (0);
-    return (-1);
-}
-if (!S_ISSOCK(info.st_mode) || info.st_uid != getuid())
-{
-    errno = EACCES;
-    return (-1);
-}
-return (unlink(path));
-```
+### 무엇을 준비하지만 아직 불완전한가
 
-same-UID Unix socket만 stale candidate로 지운다. regular file, symlink가 가리키는 target, 다른 UID entry는 거부한다. `lstat`을 사용하므로 symlink 자체는 socket으로 판정되지 않는다.
+`g_client_path`는 bind를 시도하기 전에 채워진다. 그런데 cleanup은 path 문자열이 비어 있지 않다는 사실만 보고 unlink한다. bind가 기존 regular file 때문에 실패하면 client가 그 file을 소유한 적이 없는데도 cleanup에서 삭제를 시도할 수 있다. path knowledge와 bind ownership이 아직 분리되지 않았다.
 
-cleanup은 socket descriptor를 close하고 client path를 unlink하도록 작성됐다. 그러나 이 최초 구현은 path 문자열이 채워졌다는 사실만 보고 unlink한다. bind 전 failure에서도 `g_client_path`는 이미 계산돼 있으므로 ownership 판정이 불완전하다. 이 bug가 `622d80020fb2`의 직접 원인이다.
+### 관련 커밋과 어떤 관계인가
 
-## `32390dcdfc1b` — feat(server): datagram 응답 endpoint 수명주기 관리
+`622d80020fb2`가 successful bind를 ownership publication point로 만들고 cleanup 조건을 고친다. `ffd3647a1518`의 regular-file fixture가 이 차이를 직접 관찰한다.
+
+## 32390dcdfc1b — feat(server): datagram 응답 endpoint 수명주기 관리
 
 **중요도** `B` · **태그** `ENDPOINT, PROCESS_LIFECYCLE`
 
-server도 같은 stale-entry 검사, nonblocking/CLOEXEC socket, path-length check를 거쳐 long-lived endpoint를 bind한다.
+### 무엇이 바뀌었는가 (diff)
 
-server 구현은 처음부터 `g_server_bound`를 둔다.
-
-```c
-if (bind(g_response_socket, (struct sockaddr *)&address,
-        sizeof(address)) == -1)
-    return (-1);
-g_server_bound = 1;
+```diff
++static int  g_response_socket = -1;
++static int  g_server_bound;
++static char g_server_path[MT_RESPONSE_PATH_SIZE];
++
++static void cleanup_server(void)
++{
++    if (g_response_socket != -1)
++        close(g_response_socket);
++    g_response_socket = -1;
++    if (g_server_bound && g_server_path[0] != '\0')
++        unlink(g_server_path);
++    g_server_bound = 0;
++    g_server_path[0] = '\0';
++}
+@@
++    if (bind(g_response_socket, (struct sockaddr *)&address,
++            sizeof(address)) == -1)
++        return (-1);
++    g_server_bound = 1;
 ```
 
-cleanup은 이 flag가 true일 때만 unlink한다.
+### 왜 가볍게 다루는가
 
-```c
-if (g_server_bound && g_server_path[0] != '\0')
-    unlink(g_server_path);
-g_server_bound = 0;
-g_server_path[0] = '\0';
-```
+client와 같은 create/flags/stale/bind lifecycle을 server에 적용하지만, server는 처음부터 `g_server_bound`를 actual bind success 뒤에 설정한다. 이 Thread의 핵심 ownership bug는 client path에만 남는다. server-specific 의미는 long-lived control endpoint가 startup failure와 normal exit에서 동일 cleanup 함수를 사용한다는 점이다.
 
-따라서 path 계산 후 socket creation이나 bind가 실패하면 descriptor는 close하지만 unowned filesystem entry는 지우지 않는다. normal main return과 initialization rollback 모두 같은 cleanup function을 사용한다.
+### 관련 커밋과 어떤 관계인가
 
-## `622d80020fb2` — fix(client): bind한 응답 경로만 정리
+`caf2feec4971`과 이후 event loop는 이 bound server socket에서 session request를 받지만, 그 protocol 의미는 다른 Thread의 책임이다. 여기서는 `2c37cb592d05`의 path policy가 resource lifecycle로 이어지는 지점만 다룬다.
+
+## 622d80020fb2 — fix(client): bind한 응답 경로만 정리
 
 **중요도** `A` · **태그** `ENDPOINT, RISK`
 
-### path knowledge와 ownership을 혼동한 failure
-
-client path에 같은 UID의 regular file이 있다고 가정한다.
-
-1. `mt_response_path`가 그 path를 `g_client_path`에 쓴다.
-2. `remove_stale_socket`은 regular file을 보고 `EACCES`로 실패한다. 여기까지는 안전하다.
-3. main의 error path가 `cleanup_response_socket()`을 호출한다.
-4. old cleanup은 `g_client_path[0] != '\0'`만 보고 regular file을 unlink한다.
-
-즉 guard가 stale removal 함수에는 있었지만 rollback cleanup이 이를 우회했다.
-
-### bind success를 ownership publication으로 사용
+### 무엇이 바뀌었는가 (diff)
 
 ```diff
  static int  g_response_socket = -1;
  static char g_client_path[MT_RESPONSE_PATH_SIZE];
 +static int  g_client_bound;
+@@
+-    if (g_client_path[0] != '\0')
++    if (g_client_bound && g_client_path[0] != '\0')
+         unlink(g_client_path);
++    g_client_bound = 0;
+     g_client_path[0] = '\0';
+@@
+     if (bind(g_response_socket, (struct sockaddr *)&address,
+             sizeof(address)) == -1)
+         return (-1);
++    g_client_bound = 1;
 ```
 
-```c
-if (bind(g_response_socket, (struct sockaddr *)&address,
-        sizeof(address)) == -1)
-    return (-1);
-g_client_bound = 1;
-```
+### 왜 이렇게 작은가
 
-```c
-if (g_client_bound && g_client_path[0] != '\0')
-    unlink(g_client_path);
-g_client_bound = 0;
-g_client_path[0] = '\0';
-```
+문제는 cleanup code 양이 아니라 ownership representation 하나가 빠진 데 있다. path buffer가 채워졌다는 사실은 bind success를 뜻하지 않는다. `g_client_bound`는 exact success 지점에서만 1이 되고, cleanup은 이 flag가 있을 때만 unlink한다. descriptor close는 bind 여부와 무관하게 계속 수행한다.
 
-`g_client_bound`는 단순 상태 flag가 아니라 filesystem cleanup authority가 생기는 commit point다. path를 계산하거나 stale socket을 지운 것만으로는 true가 되지 않는다.
+### 관련 커밋과 어떤 관계인가
 
-## `ffd3647a1518` — test(runtime): stale 응답 endpoint 처리 검증
+`ffd3647a1518`은 client PID path에 stale socket 또는 regular file을 미리 만들어, 전자는 교체·정리하고 후자는 보존하는지 검증한다.
+
+## ffd3647a1518 — test(runtime): stale 응답 endpoint 처리 검증
 
 **중요도** `A` · **태그** `TEST, ENDPOINT, RISK`
 
-이 commit은 mock path 대신 실제 future child PID에서 계산한 path에 entry를 만든 뒤 child를 exec한다. gate pipe로 child 실행 시점을 늦춰, parent가 정확한 PID-derived path를 먼저 준비한다.
+### 왜 다른 기법이 필요한가
 
-주요 fixture는 다음 policy를 구분한다.
+cleanup ownership은 return code만으로 확인하기 어렵다. test는 target PID에서 실제로 계산되는 path에 filesystem object를 만들고 child를 `exec`해, 종료 뒤 object가 남았는지 직접 검사한다.
 
-| 준비한 상태 | 기대 동작 |
-| --- | --- |
-| target PID는 살아 있지만 server endpoint 없음 | client가 invalid server PID로 거부 |
-| same-UID stale client Unix socket | client가 stale socket을 제거하고 새 endpoint를 bind해 정상 전송 |
-| client path에 regular file | client startup 실패, file은 남아 있음 |
-| server path에 stale same-UID socket | server가 교체 가능 |
-| server path에 protected non-socket entry | server startup 실패, entry를 임의 삭제하지 않음 |
-| 새 runtime directory | mode가 700 |
+```diff
++static int create_stale_entry(const char *path, const char *mode)
++{
++    int fd;
++
++    unlink(path);
++    if (strcmp(mode, "socket") == 0)
++        return (create_stale_socket(path));
++    if (strcmp(mode, "file") != 0)
++        return (-1);
++    fd = open(path, O_WRONLY | O_CREAT | O_EXCL, 0600);
++    if (fd == -1)
++        return (-1);
++    return (close(fd));
++}
+```
 
-`stale_exec`는 fork한 child의 PID path에 socket 또는 file을 만들고 child를 release해 real client를 exec한다. socket case에서는 child 성공 후 path가 사라져야 하고, file case에서는 child가 실패해도 path가 그대로 있어야 한다. 이는 `622d80020fb2`의 bound flag를 filesystem 관찰로 고정한다.
+shell regression은 다음 차이를 요구한다.
 
-이 test는 same-UID namespace가 공격자에 안전하다는 것을 증명하지 않는다. 허용된 stale socket 교체와 보호해야 할 non-socket entry를 구분하는 local cleanup policy를 검증한다.
+```diff
++"$ROOT/tests/stale_exec" "$ROOT/client" "$SERVER_PID" stale socket
++[ ! -s "$TEST_TMP/stale.err" ]
++
++"$ROOT/tests/stale_exec" "$ROOT/client" "$SERVER_PID" blocked file \
++    2>"$TEST_TMP/file.err"
++grep -qx 'client: failed to create response channel' "$TEST_TMP/file.err"
+```
 
-## `4e1c84bfacfc` — fix(runtime): select 범위를 벗어난 descriptor 거부
+stale same-UID socket은 교체할 수 있고 child 종료 뒤 없어져야 한다. regular file은 client setup을 실패시키지만 그대로 보존돼야 한다. 별도 helper는 unrelated live process의 PID path와 stale server entry도 구성한다.
+
+### 이 테스트가 증명하는 것 / 증명하지 않는 것
+
+selected same-UID socket/file fixtures에서 replacement authority와 cleanup ownership이 구분된다는 direct filesystem evidence를 제공한다. bind와 lstat 사이의 TOCTOU race, symlink 공격 전체, 다른 UID fixture는 다루지 않는다.
+
+### 관련 커밋과 어떤 관계인가
+
+`622d80020fb2`의 bound flag가 없다면 regular-file scenario의 cleanup이 unowned path에 unlink를 시도한다. `2c37cb592d05`의 directory mode와 object-type validation도 같은 suite에서 관찰된다.
+
+---
+
+**역할군: valid descriptor와 `fd_set`에 표현 가능한 descriptor를 구분하기**
+
+## 4e1c84bfacfc — fix(runtime): select 범위를 벗어난 descriptor 거부
 
 **중요도** `A` · **태그** `EDGE, PRACTICAL, RISK`
 
-`FD_SET(fd, &set)`은 fd가 open되어 있는지만 확인하지 않는다. `fd >= FD_SETSIZE`이면 fixed bitmap 밖을 접근할 수 있다. 따라서 실제 `FD_SET` 대상이 되는 descriptor를 acquisition 직후 거부한다.
+### 왜 바뀌었는가 (문제 → 원인 → 결정)
 
-```c
-/* client: wait_for_response에서 FD_SET되는 socket */
-if (g_response_socket == -1
-    || g_response_socket >= FD_SETSIZE
-    || set_nonblocking_close_on_exec(g_response_socket) == -1)
-    return (-1);
+`socket`이나 `pipe`가 nonnegative descriptor를 반환해도 `FD_SET(fd, &set)`이 안전하다는 뜻은 아니다. classic `fd_set`은 `0 <= fd < FD_SETSIZE`만 표현한다. 높은 번호를 넘기면 set storage 범위 밖을 접근할 수 있으므로, descriptor 생성 직후 controlled initialization failure로 바꾼다.
+
+```diff
+     g_response_socket = socket(AF_UNIX, SOCK_DGRAM, 0);
+     if (g_response_socket == -1
++        || g_response_socket >= FD_SETSIZE
+         || set_nonblocking_close_on_exec(g_response_socket) == -1)
+         return (-1);
+@@
+     if (pipe(g_event_pipe) == -1
++        || g_event_pipe[0] >= FD_SETSIZE
+         || set_close_on_exec(g_event_pipe[0]) == -1
+@@
+     g_response_socket = socket(AF_UNIX, SOCK_DGRAM, 0);
+     if (g_response_socket == -1
++        || g_response_socket >= FD_SETSIZE
+         || set_nonblocking_close_on_exec(g_response_socket) == -1)
+         return (-1);
 ```
 
-```c
-/* server: event loop의 self-pipe read end */
-if (pipe(g_event_pipe) == -1
-    || g_event_pipe[0] >= FD_SETSIZE
-    || set_close_on_exec(g_event_pipe[0]) == -1
-    || set_nonblocking_close_on_exec(g_event_pipe[1]) == -1)
-    return (-1);
-```
+client response socket, server response socket와 self-pipe read end가 실제 `FD_SET` 대상이므로 세 곳을 검사한다. self-pipe write end는 handler가 write만 하고 `fd_set`에 넣지 않으므로 같은 guard 대상이 아니다.
 
-```c
-/* server: event loop의 datagram socket */
-if (g_response_socket == -1
-    || g_response_socket >= FD_SETSIZE
-    || set_nonblocking_close_on_exec(g_response_socket) == -1)
-    return (-1);
-```
+### 이 커밋이 보장하는 것 / 보장하지 않는 것
 
-write-only event pipe end는 `FD_SET`에 들어가지 않으므로 이 commit에서 같은 guard 대상이 아니다. initialization이 실패하면 기존 cleanup이 열린 pipe ends/socket을 close하고 bound path만 제거한다.
+`select` representation을 넘는 descriptor를 use-before-check하지 않고 setup failure로 바꾼다. polling backend를 `poll`/`epoll`로 확장하거나 `FD_SETSIZE` 자체를 늘리지는 않는다.
 
-이 fix는 descriptor를 낮은 번호로 복제하지 않는다. 현재 `select` representation으로 표현할 수 없는 runtime state를 명시적으로 거부한다.
+### 관련 커밋과 어떤 관계인가
 
-## `1de95310195d` — test(runtime): 높은 descriptor 번호의 안전한 실패 검증
+`1de95310195d`는 fake integer를 주입하지 않고 inherited descriptor table을 실제로 채운 뒤 client/server가 이 guard에서 실패하는지 검증한다.
+
+## 1de95310195d — test(runtime): 높은 descriptor 번호의 안전한 실패 검증
 
 **중요도** `A` · **태그** `TEST, EDGE, RISK`
 
-`tests/high_fd_exec`는 `/dev/null`을 반복 open한다.
+### 무엇을 검증하는가
 
-```c
-fd = -1;
-while (fd < FD_SETSIZE - 1)
-{
-    fd = open("/dev/null", O_RDONLY);
-    if (fd == -1)
-        return (1);
-}
-execv(argv[1], &argv[1]);
+helper는 `/dev/null`을 반복 open해 마지막 descriptor가 `FD_SETSIZE - 1` 이상이 된 뒤 target program을 `exec`한다. open descriptors는 close-on-exec가 아니므로 child가 새로 얻는 socket/pipe 번호가 polling 범위를 넘는다.
+
+```diff
++int main(int argc, char **argv)
++{
++    int fd;
++
++    if (argc < 2)
++        return (2);
++    fd = -1;
++    while (fd < FD_SETSIZE - 1)
++    {
++        fd = open("/dev/null", O_RDONLY);
++        if (fd == -1)
++            return (1);
++    }
++    execv(argv[1], &argv[1]);
++    return (127);
++}
 ```
 
-wrapper가 연 descriptors에는 `FD_CLOEXEC`를 설정하지 않으므로 exec된 client/server가 같은 높은 table을 상속한다. 다음 `socket` 또는 `pipe`가 `FD_SETSIZE` 이상의 실제 kernel descriptor를 반환한다.
+shell test는 high-FD client가 status 1과 `client: failed to create response channel`을 내되 기존 server는 살아 있어야 한다고 요구한다. high-FD server는 PID를 publish하지 않고 `server: failed to create response channel`로 status 1이어야 한다.
 
-script가 요구하는 결과는 다음과 같다.
+### 이 테스트가 증명하는 것 / 증명하지 않는 것
 
-- high-FD client는 `client: failed to create response channel`과 status 1로 끝난다.
-- 그 client가 대상으로 삼은 정상 server는 계속 살아 있고 stderr도 비어 있다.
-- high-FD server는 PID를 publish하거나 event loop에 들어가지 않고 `server: failed to create response channel`로 status 1을 반환한다.
+real descriptor allocation order를 통해 client/server initialization이 `FD_SET` 전에 멈춘다는 regression evidence다. 운영체제가 hard limit 때문에 `FD_SETSIZE`까지 open하지 못하는 환경, 다른 polling call site, descriptor exhaustion 자체의 정책을 일반화하지 않는다.
 
-mock integer를 helper에 넘기는 unit test가 아니라 real inherited descriptor table을 사용하므로, guard 위치와 initialization cleanup을 함께 통과한다.
+### 관련 커밋과 어떤 관계인가
 
-## 소유권 상태 요약
-
-| 상태 | path | descriptor | cleanup 권한 |
-| --- | --- | --- | --- |
-| path 계산 전 | 없음 | 없음 | 없음 |
-| path 계산 완료 | 알고 있음 | 없음 | 없음 |
-| same-UID stale socket 제거 | 빈 namespace | 없음 | 아직 없음 |
-| socket 생성/flags 설정 | bind 예정 path | open | descriptor close만 |
-| bind 성공 | process가 만든 socket entry | open | close + unlink |
-| bind 전 실패 | 기존 entry일 수 있음 | 일부 resource 가능 | close만, path unlink 금지 |
-| normal exit | owned path | open | close + unlink 후 state clear |
+`4e1c84bfacfc`의 세 guards가 모두 acquisition 직후에 있어야 이 test가 memory-unsafe polling 대신 controlled error로 끝난다. endpoint cleanup code도 실패 과정에서 이미 얻은 descriptors와 bound path를 회수해야 한다.
 
 ## 이 Thread의 경계
 
-이 Thread는 **endpoint namespace와 polling representation을 누가 언제 소유하는가**를 다룬다.
+- server가 client endpoint의 존재를 session owner availability에 사용하는 의미는 `02-session-ownership-and-recovery.md`가 다룬다.
+- self-pipe가 signal event를 전달하고 overflow를 처리하는 protocol 책임은 `03-self-pipe-event-loop.md`에 있다. 이 문서는 pipe descriptor의 acquisition과 polling 표현 범위만 다룬다.
+- response source path와 record fields를 함께 검사하는 acceptance policy는 `06-bounded-response-correlation.md`가 다룬다.
+- same-UID adversary에 대한 cryptographic authentication, filesystem TOCTOU hardening과 `select`를 다른 polling API로 교체하는 설계는 별개의 문제다.
 
-- endpoint가 session owner availability의 일부가 되는 이유는 `02-session-ownership-and-recovery.md`에서 다룬다.
-- self-pipe가 전달하는 event semantics는 `03-self-pipe-event-loop.md`의 주제다.
-- response source path와 record fields를 결합한 acceptance predicate는 `06-bounded-response-correlation.md`에서 다룬다.
-- same-UID path는 cryptographic authentication이나 hostile local user isolation을 제공하지 않는다.
-
-## 조사 범위
-
-각 설명은 exact SHA의 `src/response_channel.c`, client/server setup·cleanup diff와 test helpers를 기준으로 작성했다. high-FD와 stale-entry scripts는 실행하지 않았으며, source에 적힌 fixture와 assertion을 실행 결과처럼 표현하지 않았다.
+> 검토 범위: `2c37cb592d05`, `25780b881ee8`, `32390dcdfc1b`, `622d80020fb2`, `ffd3647a1518`, `4e1c84bfacfc`, `1de95310195d`의 diff와 해당 SHA의 `src/response_channel.c`, client/server setup·cleanup, stale/high-FD test helpers를 확인했다. branch checkout, stale-entry suite와 high-FD suite 실행은 수행하지 않았으므로 runtime 통과를 주장하지 않는다.

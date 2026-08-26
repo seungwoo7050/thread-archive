@@ -1,523 +1,408 @@
-# Thread: 명시적 reader 수명과 하나의 authoritative engine
+# Thread: reader 수명과 결과 상태를 caller에게 드러내고 parser engine을 하나로 유지하기
+> Project: `get_next_line` · Branch: `c/get_next_line` · 문서 번호: 03
 
-fd별 hidden node는 여러 stream을 번갈아 읽을 수 있게 하지만, caller가 buffered state를 직접 취소하거나 외부 `lseek` 뒤 초기화할 방법은 없습니다. 또한 `char *` 하나만 반환하는 `get_next_line`은 EOF와 오류를 모두 `NULL`로 표현하므로 상태를 정확히 구분할 수 없습니다.
+## 개요
 
-이 Thread는 다음 문제를 함께 해결합니다.
+fd별 hidden node는 interleaved stream을 지원하지만, caller가 buffered read-ahead를 직접 취소하거나 external `lseek` 뒤 state를 초기화할 방법은 없습니다. `char *` 하나만 반환하는 compatibility API도 EOF와 error를 모두 `NULL`로 축소해 상태를 구분하지 못합니다.
 
-- caller가 reader context를 생성·reset·destroy하는 명시적 lifetime
-- `LINE`, `EOF`, `ERROR`를 분리하는 result state
-- context가 소유하는 memory와 caller가 소유하는 descriptor의 구분
-- legacy `get_next_line`과 explicit API가 서로 다른 parser로 갈라지지 않도록 하나의 engine으로 수렴
-- line result allocation이 실패했을 때 unread input을 소비하지 않는 commit rule
+이 Thread는 opaque reader context와 명시적 lifetime, `LINE`·`EOF`·`ERROR` result를 공개합니다. 핵심 architecture 결정은 새 API를 추가하는 데서 끝나지 않고, legacy `get_next_line`을 같은 `blr_reader_next` engine의 adapter로 축소하는 것입니다. 결과 allocation이 실패하면 cursor를 commit하지 않는다는 규칙과 descriptor borrowing 제약은 API test와 fault test로 고정됩니다.
 
-## 커밋 구성
-
-| 순서 | SHA | 제목 | 중요도 | 태그 | 이 Thread에서의 역할 |
+| 순서 | SHA | 제목 | 중요도 | 태그 | 역할 |
 | ---: | --- | --- | :---: | --- | --- |
-| 1 | `903768a43bf4` | `feat(context): 명시적 reader 수명 API 추가` | A | `ARCH`, `READER_LIFECYCLE`, `API_CONTRACT` | opaque context와 create/reset/destroy를 공개하고 fd ownership을 caller에게 둡니다. |
-| 2 | `2e681112b304` | `feat(reader): 명시적 결과 상태 API 추가` | S | `ARCH`, `API_CONTRACT`, `CORE` | `BLR_LINE`, `BLR_EOF`, `BLR_ERROR`와 stable EOF state를 도입합니다. |
-| 3 | `9bd6ebf429e2` | `refactor(reader): legacy API를 context reader에 연결` | A | `REFACTOR`, `INTEGRATION`, `API_CONTRACT` | `get_next_line`을 `blr_reader_next` adapter로 만들고 extraction을 하나로 합칩니다. |
-| 4 | `249093ba477a` | `test(context): 결과 상태와 컨텍스트 수명 검증` | A | `TEST`, `READER_LIFECYCLE`, `API_CONTRACT` | descriptor borrowing, reset, reuse, dup alias, stable result를 검증합니다. |
-| 5 | `a24ad4e49cc4` | `test(failure): 컨텍스트의 line 할당 재시도 검증` | A | `TEST`, `READER_LIFECYCLE`, `RISK` | newline line과 EOF tail allocation 실패가 input loss 없이 재시도되는지 확인합니다. |
+| 1 | `903768a43bf4` | `feat(context): 명시적 reader 수명 API 추가` | A | `ARCH, READER_LIFECYCLE, API_CONTRACT` | opaque context와 create/reset/destroy를 공개하고 fd ownership을 caller에게 남깁니다. |
+| 2 | `2e681112b304` | `feat(reader): 명시적 결과 상태 API 추가` | S | `ARCH, API_CONTRACT, CORE` | `BLR_LINE`, `BLR_EOF`, `BLR_ERROR`와 stable EOF state를 도입합니다. |
+| 3 | `9bd6ebf429e2` | `refactor(reader): legacy API를 context reader에 연결` | A | `REFACTOR, INTEGRATION, API_CONTRACT` | compatibility API를 authoritative context engine의 adapter로 바꿉니다. |
+| 4 | `249093ba477a` | `test(context): 결과 상태와 컨텍스트 수명 검증` | A | `TEST, READER_LIFECYCLE, API_CONTRACT` | result state, descriptor borrowing, reset, fd reuse, dup alias를 검증합니다. |
+| 5 | `a24ad4e49cc4` | `test(failure): 컨텍스트의 line 할당 재시도 검증` | A | `TEST, READER_LIFECYCLE, RISK` | newline line과 EOF tail allocation failure가 non-consuming인지 검증합니다. |
 
-## 최종 API 계약
+### 최종 API 결과는 무엇을 뜻하는가
 
-| API | 역할 | memory ownership | fd ownership |
+| result | `*line` | context | caller 책임 |
 | --- | --- | --- | --- |
-| `blr_reader_create(fd)` | fd에 결합된 context 생성 | context object를 caller가 보유 | fd는 빌릴 뿐 닫지 않음 |
-| `blr_reader_next(reader, &line)` | 다음 result state와 optional line 반환 | `BLR_LINE`의 `line`은 caller가 free | fd offset을 읽으며 close하지 않음 |
-| `blr_reader_reset(reader)` | buffered bytes/cursor/EOF state 폐기 | context object 자체는 유지 | fd와 현재 kernel offset은 유지 |
-| `blr_reader_destroy(reader)` | buffer와 context object 해제 | context ownership 종료 | fd는 열린 채로 유지 |
-| `get_next_line(fd)` | hidden context를 사용하는 compatibility adapter | non-NULL result를 caller가 free | fd는 caller 소유 |
+| `BLR_LINE` | caller-owned allocation | 다음 unread 위치로 commit | line을 `free`하고 재호출 가능 |
+| `BLR_EOF` | `NULL` | stable terminal state | reset 또는 destroy, 반복 호출도 EOF |
+| `BLR_ERROR` | `NULL` | explicit context는 파괴되지 않음 | 원인에 따라 retry·reset·destroy 선택 |
 
----
+context는 object와 internal buffer를 소유하지만 supplied fd는 빌릴 뿐 닫지 않습니다.
 
-## `903768a43bf4` — hidden node type을 opaque context로 공개
+**수명과 결과 상태를 공개한 커밋**
 
-**중요도** A · **태그** `ARCH, READER_LIFECYCLE, API_CONTRACT`
+## 903768a43bf4 — feat(context): 명시적 reader 수명 API 추가
+**중요도** `A` · **태그** `ARCH, READER_LIFECYCLE, API_CONTRACT`
 
-### public header는 layout을 숨긴다
+### 무엇을 만들었는가 (diff)
 
-```c
-/* get_next_line.h */
-typedef struct s_blr_reader t_blr_reader;
-
-t_blr_reader *blr_reader_create(int fd);
-void          blr_reader_reset(t_blr_reader *reader);
-void          blr_reader_destroy(t_blr_reader *reader);
-```
-
-caller는 pointer handle만 알며 `fd`, `bytes`, cursor를 직접 수정할 수 없습니다. 실제 layout은 implementation file에 남습니다.
-
-```c
-struct s_blr_reader
-{
-    int           fd;
-    char          *bytes;
-    size_t        begin;
-    size_t        scan;
-    size_t        end;
-    size_t        capacity;
-    t_blr_reader  *next;
-};
-```
-
-이 exact SHA에는 `reached_eof`가 아직 없습니다. stable EOF field는 다음 커밋에서 추가됩니다.
-
-### create는 context object만 즉시 할당한다
-
-```c
-t_blr_reader *blr_reader_create(int fd)
-{
-    char          probe;
-    t_blr_reader  *reader;
-
-    if (fd < 0 || read(fd, &probe, 0) < 0)
-        return (NULL);
-    reader = malloc(sizeof(*reader));
-    if (reader == NULL)
-        return (NULL);
-    reader->fd = fd;
-    reader->bytes = NULL;
-    reader->begin = 0;
-    reader->scan = 0;
-    reader->end = 0;
-    reader->capacity = 0;
-    reader->next = NULL;
-    return (reader);
-}
-```
-
-internal byte buffer는 lazy allocation입니다. 따라서 create의 partial construction은 “context allocation 성공 후 buffer allocation 실패”가 아니라, 이 시점에는 context object 하나의 성공/실패뿐입니다.
-
-zero-length `read` probe는 fd가 읽기 가능한지 확인하지만 data를 소비하지 않습니다. 성공한 context는 supplied fd 번호를 보관하되 fd 자체를 소유하지 않습니다.
-
-### reset과 destroy의 차이
-
-```c
-void blr_reader_reset(t_blr_reader *reader)
-{
-    if (reader == NULL)
-        return ;
-    free(reader->bytes);
-    reader->bytes = NULL;
-    reader->begin = 0;
-    reader->scan = 0;
-    reader->end = 0;
-    reader->capacity = 0;
-}
-```
-
-reset은 buffered read-ahead를 버리지만 context object와 `reader->fd`는 유지합니다. kernel fd offset을 rewind하지도 않습니다.
-
-```c
-void blr_reader_destroy(t_blr_reader *reader)
-{
-    if (reader == NULL)
-        return ;
-    free(reader->bytes);
-    free(reader);
-}
-```
-
-destroy는 context-owned memory를 모두 해제하지만 `close(reader->fd)`는 호출하지 않습니다.
-
-```text
-context owns: context object, internal byte allocation
-caller owns:  supplied descriptor, descriptor close timing
-```
-
-### legacy list도 같은 lifecycle primitive를 사용
-
-hidden compatibility list는 그대로 남아 있지만 node 생성과 폐기에 public primitive를 재사용합니다.
-
-```c
-static t_blr_reader *create_legacy_reader(int fd)
-{
-    t_blr_reader *reader;
-
-    reader = blr_reader_create(fd);
-    if (reader == NULL)
-        return (NULL);
-    reader->next = g_readers;
-    g_readers = reader;
-    return (reader);
-}
-```
-
-```c
-static void discard_legacy_reader(t_blr_reader *reader)
-{
-    /* list에서 unlink */
-    blr_reader_destroy(reader);
-}
-```
-
-그러나 아직 explicit “next line” API는 없습니다. caller가 context를 만들 수는 있어도 읽기 engine을 직접 호출할 수 없는 중간 단계입니다.
-
----
-
-## `2e681112b304` — data와 status를 분리하는 result state
-
-**중요도** S · **태그** `ARCH, API_CONTRACT, CORE`
-
-### `char *` / `NULL`만으로 표현할 수 없는 상태
-
-legacy API에서는 다음 세 상황이 모두 `NULL`입니다.
-
-- 정상 EOF
-- invalid/closed fd 또는 read error
-- allocation failure
-
-explicit API는 enum으로 이를 분리합니다.
-
-```c
-typedef enum e_blr_result
-{
-    BLR_ERROR = -1,
-    BLR_EOF = 0,
-    BLR_LINE = 1
-} t_blr_result;
-```
-
-이 SHA에는 아직 `BLR_AGAIN`이 없습니다. nonblocking wait state는 POSIX Thread의 `f0055ae5cf19`에서 추가됩니다.
-
-### output pointer rule
-
-`blr_reader_next`는 가능한 경우 가장 먼저 output을 `NULL`로 만듭니다.
-
-```c
-if (line != NULL)
-    *line = NULL;
-if (reader == NULL || line == NULL)
-    return (BLR_ERROR);
-```
-
-따라서 `BLR_EOF`와 `BLR_ERROR`에서 caller가 stale pointer를 실수로 사용하는 것을 막습니다. `BLR_LINE`일 때만 non-NULL allocation의 ownership이 caller에게 넘어갑니다.
-
-### stable EOF를 context state로 저장
+private `t_reader`가 public header에는 layout을 숨긴 opaque type으로 노출됩니다.
 
 ```diff
-  size_t capacity;
-+ int    reached_eof;
++typedef struct s_blr_reader	t_blr_reader;
++
++t_blr_reader	*blr_reader_create(int fd);
++void			blr_reader_reset(t_blr_reader *reader);
++void			blr_reader_destroy(t_blr_reader *reader);
 ```
 
-create/reset은 `reached_eof = 0`으로 초기화합니다. `read`가 0을 반환하면 1로 바뀝니다.
+implementation type은 기존 buffer/cursor fields를 그대로 보유합니다.
 
-```c
-if (read_size == 0)
-{
-    reader->reached_eof = 1;
-    if (unread_length(reader) == 0)
-        return (BLR_EOF);
-    line_end = reader->end;
-}
+```diff
+-typedef struct s_reader
++struct s_blr_reader
+ {
+ 	int			fd;
+ 	char		*bytes;
+ 	size_t		begin;
+ 	size_t		scan;
+ 	size_t		end;
+ 	size_t		capacity;
+-	struct s_reader	*next;
+-}t_reader;
++	t_blr_reader	*next;
++};
 ```
 
-다음 호출에서 이미 EOF에 도달했고 unread bytes도 없다면 새 `read` 없이 바로 `BLR_EOF`를 반환합니다.
+create는 zero-length read probe 뒤 context object만 즉시 할당하고, byte buffer는 첫 reserve까지 `NULL`로 둡니다.
 
-```c
-if (line_end == 0 && reader->reached_eof)
-{
-    if (unread_length(reader) == 0)
-        return (BLR_EOF);
-    line_end = reader->end;
-}
+```diff
++t_blr_reader	*blr_reader_create(int fd)
++{
++	char			probe;
++	t_blr_reader	*reader;
++
++	if (fd < 0 || read(fd, &probe, 0) < 0)
++		return (NULL);
++	reader = malloc(sizeof(*reader));
++	if (reader == NULL)
++		return (NULL);
++	reader->fd = fd;
++	reader->bytes = NULL;
++	reader->begin = 0;
++	reader->scan = 0;
++	reader->end = 0;
++	reader->capacity = 0;
++	reader->next = NULL;
++	return (reader);
++}
 ```
 
-EOF는 “이번 system call이 0을 반환했다”는 순간적 사건이 아니라 context의 stable terminal state가 됩니다.
+reset과 destroy는 owned memory만 다룹니다.
 
-### line allocation과 cursor commit 순서
-
-```c
-length = line_end - reader->begin;
-*line = malloc(length + 1);
-if (*line == NULL)
-{
-    reader->scan = reader->begin;
-    return (BLR_ERROR);
-}
-copy_bytes(*line, reader->bytes + reader->begin, length);
-(*line)[length] = '\0';
-reader->begin = line_end;
-reader->scan = reader->begin;
-return (BLR_LINE);
+```diff
++void	blr_reader_reset(t_blr_reader *reader)
++{
++	if (reader == NULL)
++		return ;
++	free(reader->bytes);
++	reader->bytes = NULL;
++	reader->begin = 0;
++	reader->scan = 0;
++	reader->end = 0;
++	reader->capacity = 0;
++}
++
++void	blr_reader_destroy(t_blr_reader *reader)
++{
++	if (reader == NULL)
++		return ;
++	free(reader->bytes);
++	free(reader);
++}
 ```
 
-`begin`은 result allocation과 copy가 성공한 뒤에만 전진합니다. allocation 실패 시 `scan`을 `begin`으로 되돌려 다음 호출이 같은 delimiter를 다시 찾게 합니다.
+`reader->fd`를 close하거나 reset하지 않으므로 descriptor lifetime은 caller에게 남습니다. reset은 buffered bytes와 indices만 버리며 kernel offset을 rewind하지 않습니다.
+
+### 무엇을 준비하는가, 아직 없는 것은 무엇인가
+
+legacy hidden list도 `blr_reader_create`와 `blr_reader_destroy`를 재사용하지만, 이 exact SHA에는 context로 다음 line을 요청하는 public operation이 없습니다. caller가 context lifetime을 가질 수 있게 된 중간 단계이고, actual result API는 `2e681112b304`에서 추가됩니다. `reached_eof` field도 아직 존재하지 않습니다.
+
+### 관련 커밋
+
+`2e681112b304`는 이 opaque object에 stable EOF state를 추가하고 `blr_reader_next`를 공개해 context를 실제 reader engine으로 만듭니다.
+
+## 2e681112b304 — feat(reader): 명시적 결과 상태 API 추가
+**중요도** `S` · **태그** `ARCH, API_CONTRACT, CORE`
+
+### 무엇을 만들었는가 (diff)
+
+line pointer와 status를 분리하는 enum이 public contract에 들어갑니다.
+
+```diff
++typedef enum e_blr_result
++{
++	BLR_ERROR = -1,
++	BLR_EOF = 0,
++	BLR_LINE = 1
++}t_blr_result;
++
++t_blr_result	blr_reader_next(t_blr_reader *reader, char **line);
+```
+
+context는 EOF를 반복 read하지 않도록 terminal state를 기억합니다.
+
+```diff
+ 	size_t		end;
+ 	size_t		capacity;
++	int			reached_eof;
+ 	t_blr_reader	*next;
+```
+
+`blr_reader_next`는 non-line result에서 stale pointer가 남지 않도록 먼저 output을 비웁니다.
+
+```diff
++t_blr_result	blr_reader_next(t_blr_reader *reader, char **line)
++{
++	if (line != NULL)
++		*line = NULL;
++	if (reader == NULL || line == NULL)
++		return (BLR_ERROR);
++	/* ... */
++}
+```
+
+EOF가 한 번 관찰된 뒤 unread bytes가 없으면 새 system call 없이 `BLR_EOF`를 반복 반환합니다.
+
+```diff
++	line_end = find_line_end(reader);
++	if (line_end == 0 && reader->reached_eof)
++	{
++		if (unread_length(reader) == 0)
++			return (BLR_EOF);
++		line_end = reader->end;
++	}
+```
+
+result allocation이 실패하면 `begin`과 `end`를 유지하고 `scan`만 unread 시작점으로 되돌립니다.
+
+```diff
++	*line = malloc(length + 1);
++	if (*line == NULL)
++	{
++		reader->scan = reader->begin;
++		return (BLR_ERROR);
++	}
++	copy_bytes(*line, reader->bytes + reader->begin, length);
++	(*line)[length] = '\0';
++	reader->begin = line_end;
++	reader->scan = reader->begin;
++	return (BLR_LINE);
+```
+
+caller-visible allocation이 성공한 뒤에만 consumption이 commit되므로 allocation failure는 같은 bytes를 다시 시도할 수 있는 state를 남깁니다.
+
+### 아직 두 engine이 공존하는 이유는 무엇인가
+
+이 commit은 `blr_reader_next`를 추가하지만 기존 `get_next_line`의 read/scan/EOF loop를 제거하지 않습니다. helper를 공유해도 top-level state transition이 둘이면 future fix가 한쪽에만 적용될 위험이 남습니다.
 
 ```text
-실패 전: [begin ........ line_end .... end)
-malloc 실패
-실패 후: begin unchanged, end unchanged, scan = begin
-
-재시도: 같은 bytes에서 같은 line_end를 다시 발견
+explicit API  -> blr_reader_next
+legacy API    -> 기존 get_next_line loop
 ```
 
-이것이 line extraction의 transaction boundary입니다. caller-visible result를 만들지 못한 시도는 input consumption을 commit하지 않습니다.
+### 관련 커밋
 
-### 아직 두 engine이 공존한다
+`9bd6ebf429e2`는 legacy loop를 삭제하고 `get_next_line`이 `blr_reader_next` result만 map하도록 바꿔 authoritative engine을 하나로 만듭니다.
 
-중요한 제한이 있습니다. 이 커밋은 `blr_reader_next`를 추가하지만 기존 `get_next_line` body를 제거하지 않습니다. explicit API와 legacy API가 같은 helper를 일부 공유하더라도 top-level parsing control flow는 둘입니다.
+**Engine 통합과 API 사용 규칙을 고정한 커밋**
 
-```text
-explicit caller -> blr_reader_next(...)
-legacy caller   -> 기존 get_next_line parser body
+## 9bd6ebf429e2 — refactor(reader): legacy API를 context reader에 연결
+**중요도** `A` · **태그** `REFACTOR, INTEGRATION, API_CONTRACT`
+
+### 왜 두 parser를 유지할 수 없는가
+
+EOF tail, allocation failure, future errno mapping이 explicit loop와 legacy loop에서 따로 구현되면 같은 buffer representation을 써도 behavior가 쉽게 갈라집니다. 이 refactor는 외부 API를 없애지 않고 state-transition authority만 `blr_reader_next`로 집중합니다.
+
+### 무엇이 바뀌었는가 (diff)
+
+`get_next_line`의 자체 parser body가 사라지고 adapter만 남습니다.
+
+```diff
+ char	*get_next_line(int fd)
+ {
+-	char		probe;
+-	ssize_t	read_size;
+-	size_t	line_end;
++	char			*line;
+ 	t_blr_reader	*reader;
++	t_blr_result	result;
+ 
+ 	reader = find_reader(fd);
+ 	if (reader == NULL)
+ 		reader = create_legacy_reader(fd);
+ 	if (reader == NULL)
+ 		return (NULL);
+-	/* ... */
+-	return (release_final_line(reader));
++	result = blr_reader_next(reader, &line);
++	if (result == BLR_LINE)
++		return (line);
++	discard_legacy_reader(reader);
++	return (NULL);
+ }
 ```
 
-따라서 이 커밋만으로 “하나의 authoritative engine”이 완성됐다고 설명하면 안 됩니다. 그 수렴은 다음 커밋에서 일어납니다.
+이 SHA에는 `BLR_AGAIN`이 없으므로 EOF와 ERROR 모두 `NULL`로 축소되고 hidden context는 폐기됩니다.
 
----
+newline line과 EOF tail은 모두 같은 `extract_line`에서 independent allocation을 만듭니다. 별도 ownership-transfer 함수는 제거됩니다.
 
-## `9bd6ebf429e2` — legacy API를 adapter로 축소
-
-**중요도** A · **태그** `REFACTOR, INTEGRATION, API_CONTRACT`
-
-### 두 parser가 유지될 때의 위험
-
-같은 buffer representation을 사용해도 EOF 처리, allocation failure, future errno mapping이 두 top-level loop에서 따로 바뀌면 behavior가 쉽게 diverge합니다.
-
-```text
-fix explicit engine only -> legacy regression
-fix legacy path only      -> context API regression
+```diff
+-static char	*release_final_line(t_blr_reader *reader)
+-{
+-	char	*line;
+-	size_t	length;
+-
+-	length = unread_length(reader);
+-	if (reader->begin > 0)
+-		copy_bytes(reader->bytes, reader->bytes + reader->begin, length);
+-	reader->bytes[length] = '\0';
+-	line = reader->bytes;
+-	reader->bytes = NULL;
+-	discard_legacy_reader(reader);
+-	return (line);
+-}
+-
+ 	if (reader->reached_eof)
+ 	{
+ 		if (unread_length(reader) == 0)
+ 			return (BLR_EOF);
++		*line = extract_line(reader, reader->end);
++		if (*line == NULL)
++			return (BLR_ERROR);
++		return (BLR_LINE);
+ 	}
 ```
 
-이 커밋은 `blr_reader_next`만 record state를 전이하는 engine으로 두고, `get_next_line`은 result를 축소해 반환하는 adapter로 만듭니다.
+`extract_line` allocation failure도 hidden node를 직접 폐기하지 않고 scan만 rewind합니다.
 
-```c
-char *get_next_line(int fd)
-{
-    char          *line;
-    t_blr_reader  *reader;
-    t_blr_result  result;
-
-    reader = find_reader(fd);
-    if (reader == NULL)
-        reader = create_legacy_reader(fd);
-    if (reader == NULL)
-        return (NULL);
-    result = blr_reader_next(reader, &line);
-    if (result == BLR_LINE)
-        return (line);
-    discard_legacy_reader(reader);
-    return (NULL);
-}
+```diff
+ 	line = malloc(length + 1);
+ 	if (line == NULL)
+ 	{
+-		discard_legacy_reader(reader);
++		reader->scan = reader->begin;
+ 		return (NULL);
+ 	}
 ```
 
-이 SHA에는 `BLR_AGAIN`이 없으므로 non-line result는 EOF든 ERROR든 hidden node를 폐기하고 `NULL`로 축소합니다.
+engine의 state mutation은 non-consuming이지만, legacy adapter는 `BLR_ERROR` 뒤 node를 폐기합니다. “engine이 bytes를 보존한다”와 “특정 adapter가 context를 유지한다”는 서로 다른 결정입니다.
 
-### newline line과 EOF tail도 같은 extractor 사용
+### descriptor borrowing은 어떤 사용 규칙을 만드는가
 
-별도 `release_final_line` ownership-transfer 경로가 제거되고, buffered newline과 EOF tail 모두 `extract_line`으로 independent allocation을 만듭니다.
-
-```c
-if (reader->reached_eof)
-{
-    if (unread_length(reader) == 0)
-        return (BLR_EOF);
-    *line = extract_line(reader, reader->end);
-    if (*line == NULL)
-        return (BLR_ERROR);
-    return (BLR_LINE);
-}
-```
-
-결과 종류에 따라 서로 다른 ownership 방식이 섞이지 않습니다.
-
-```text
-newline-terminated line -> new caller-owned allocation
-EOF tail                -> new caller-owned allocation
-internal buffer         -> context가 계속 소유
-```
-
-이 때문에 context는 EOF tail을 반환한 뒤에도 살아 있고, 다음 호출에서 stable `BLR_EOF`를 반환할 수 있습니다.
-
-### extraction failure에서 context를 보존
-
-```c
-line = malloc(length + 1);
-if (line == NULL)
-{
-    reader->scan = reader->begin;
-    return (NULL);
-}
-```
-
-이전 hidden implementation처럼 node 전체를 제거하지 않습니다. `begin`, `end`, bytes는 유지하고 scan만 rewind합니다. explicit API에서 same context retry가 가능해지고, authoritative engine을 사용하는 모든 caller가 같은 commit rule을 따릅니다.
-
-legacy adapter는 `BLR_ERROR`를 받은 뒤 hidden node를 폐기하므로 legacy caller가 allocation error 뒤 retry할 수 있다는 뜻은 아닙니다. “engine은 non-consuming”과 “adapter가 context를 유지하는가”는 별개의 결정입니다.
-
-### public usage rule의 명문화
-
-header comment는 context와 fd의 관계를 구체적으로 제한합니다.
+header comment는 buffered read-ahead와 kernel offset이 결합된다는 점을 명시합니다.
 
 - context는 fd를 빌릴 뿐 닫지 않습니다.
-- 같은 open file description을 공유하는 dup fd에는 context 하나만 사용해야 합니다.
-- 외부에서 offset을 바꾼 뒤에는 `blr_reader_reset`이 필요합니다.
-- context가 살아 있는 동안 fd를 닫고 같은 번호를 재사용했다면 기존 context를 쓰면 안 됩니다.
-- 서로 다른 context를 다른 thread에서 쓸 수는 있지만 한 context의 concurrent call은 지원하지 않습니다.
+- external seek 뒤에는 caller가 `blr_reader_reset`을 호출해야 합니다.
+- context가 살아 있는 동안 fd를 close하고 같은 번호를 재사용하면 기존 context를 쓰지 않습니다.
+- 같은 open file description을 공유하는 dup alias에는 context 하나만 사용합니다.
+- 서로 다른 context는 별도 thread에서 사용할 수 있지만 같은 context의 concurrent call은 지원하지 않습니다.
 
-이 규칙은 buffered read-ahead가 kernel offset보다 앞서 있을 수 있다는 사실에서 나옵니다.
+### 관련 커밋
 
-```text
-kernel offset: BUFFER_SIZE만큼 이미 진행
-context begin/end: 그중 caller에게 아직 안 준 bytes 보유
+`249093ba477a`는 이 header contract를 actual seek, destroy, reuse, dup fixtures로 고정합니다. `a24ad4e49cc4`는 unified engine의 non-consuming extraction을 allocation failure에서 직접 검증합니다.
+
+## 249093ba477a — test(context): 결과 상태와 컨텍스트 수명 검증
+**중요도** `A` · **태그** `TEST, READER_LIFECYCLE, API_CONTRACT`
+
+### 무엇을 검증하는가
+
+`"first\nlast"`에서 `LINE`, `LINE`, `EOF`, `EOF` sequence와 non-line output `NULL`을 확인합니다.
+
+```diff
++	check_line(reader, "first\n");
++	check_line(reader, "last");
++	line = (char *)reader;
++	CHECK(blr_reader_next(reader, &line) == BLR_EOF);
++	CHECK(line == NULL);
++	CHECK(blr_reader_next(reader, &line) == BLR_EOF);
++	CHECK(line == NULL);
 ```
 
-external `lseek`만 바꾸고 context를 reset하지 않으면 kernel과 user-space state가 서로 다른 stream 위치를 가리키게 됩니다.
+external seek와 context reset은 caller가 함께 조정해야 합니다.
 
----
-
-## `249093ba477a` — lifetime과 descriptor coupling을 실제 사용 시나리오로 고정
-
-**중요도** A · **태그** `TEST, READER_LIFECYCLE, API_CONTRACT`
-
-### result states와 output pointer
-
-`"first\nlast"`에서 다음 sequence를 검사합니다.
-
-```text
-BLR_LINE, line="first\n"
-BLR_LINE, line="last"
-BLR_EOF,  line=NULL
-BLR_EOF,  line=NULL
+```diff
++	check_line(reader, "repeat\n");
++	CHECK(lseek(fd, 0, SEEK_SET) == 0);
++	blr_reader_reset(reader);
++	check_line(reader, "repeat\n");
 ```
 
-repeated EOF가 stable하고 non-line outcome이 output pointer를 `NULL`로 만든다는 계약을 함께 검증합니다.
+destroy 뒤 fd가 여전히 valid한지 확인하고, 같은 integer fd가 새 open file description을 가리키게 된 경우에는 새 context를 생성합니다.
 
-### empty EOF와 closed-fd error는 다르다
-
-빈 파일은 `BLR_EOF`입니다. 같은 context를 reset한 뒤 fd를 close하고 호출하면 `BLR_ERROR`입니다. legacy `NULL` 하나로는 구분할 수 없었던 두 상태가 explicit API에서는 분리됩니다.
-
-### external seek에는 reset이 필요하다
-
-첫 줄을 읽고 `lseek(fd, 0, SEEK_SET)`만 수행하면 context 안에 prefetched suffix가 남을 수 있습니다. test는 seek 직후 `blr_reader_reset(reader)`도 호출한 뒤 첫 줄을 다시 읽습니다.
-
-```c
-check_line(reader, "repeat\n");
-CHECK(lseek(fd, 0, SEEK_SET) == 0);
-blr_reader_reset(reader);
-check_line(reader, "repeat\n");
+```diff
++	blr_reader_destroy(reader);
++	CHECK(fcntl(fd, F_GETFD) >= 0);
++	CHECK(lseek(fd, 0, SEEK_SET) == 0);
++	reader = blr_reader_create(fd);
 ```
 
-reset은 fd offset을 바꾸지 않으므로 caller가 offset 변경과 context 초기화를 함께 조정합니다.
-
-### destroy는 fd를 닫지 않는다
-
-context를 destroy한 뒤 `fcntl(fd, F_GETFD)`가 성공하는지 확인하고, fd를 rewind해 새 context를 생성합니다. context cancellation과 descriptor lifetime이 분리되어 있음을 직접 확인합니다.
-
-### 같은 integer fd를 재사용할 때는 새 context
-
-```text
-first fd -> old stream context 생성/사용/파괴
-close(first)
-dup2(replacement, first) -> 같은 숫자에 new stream 연결
-blr_reader_create(first) -> 새 context 생성
+```diff
++	close(first);
++	CHECK(dup2(replacement, first) == first);
++	close(replacement);
++	reader = blr_reader_create(first);
++	CHECK(reader != NULL);
++	if (reader != NULL)
++	{
++		check_line(reader, "new\n");
++		blr_reader_destroy(reader);
++	}
 ```
 
-새 context에서 `"new\n"`가 나와야 합니다. fd 숫자가 같다는 이유로 이전 buffered state를 재사용하면 안 된다는 가장 직접적인 regression입니다.
+### 무엇을 증명하고 무엇을 증명하지 않는가
 
-### dup alias는 하나의 context로 읽는다
+stable EOF, EOF/error 구분, reset-after-seek, descriptor borrowing, fd number reuse 시 new context, dup alias 하나에 context 하나를 사용하는 fixture를 증명합니다. 같은 open file description에 context 둘을 만들어 경쟁시키는 behavior나 same-context concurrency를 지원한다는 뜻은 아닙니다.
 
-`dup(fd)`로 같은 open file description을 공유하는 alias를 만든 뒤 original fd를 닫고 alias 하나에 context 하나를 생성합니다. 두 descriptor에 context를 따로 만들어 경쟁시키는 행동을 지원한다는 test가 아닙니다. 오히려 header의 “같은 open file description에는 context 하나”라는 사용 규칙과 일치합니다.
+### 관련 커밋
 
-### invalid argument
+`903768a43bf4`의 lifetime primitives와 `9bd6ebf429e2`의 header usage rule이 직접 검증 대상입니다. allocation failure에서 state가 실제로 재사용 가능한지는 `a24ad4e49cc4`가 별도로 고정합니다.
 
-- `blr_reader_create(-1) == NULL`
-- `blr_reader_next(NULL, &line) == BLR_ERROR`이며 `line == NULL`
-- `blr_reader_next(NULL, NULL) == BLR_ERROR`
-- `reset(NULL)`과 `destroy(NULL)`은 안전하게 반환
+## a24ad4e49cc4 — test(failure): 컨텍스트의 line 할당 재시도 검증
+**중요도** `A` · **태그** `TEST, READER_LIFECYCLE, RISK`
 
-이 test set은 public API가 error state에서도 caller가 정리 가능한 형태를 유지하는지 확인합니다.
+### 무엇을 검증하는가
 
----
+newline 하나만 있는 input에서 result allocation을 실패시킨 뒤 같은 context로 다시 호출합니다.
 
-## `a24ad4e49cc4` — allocation 실패를 consumption으로 확정하지 않기
-
-**중요도** A · **태그** `TEST, READER_LIFECYCLE, RISK`
-
-### delimiter가 있는 최소 line
-
-input `"\n"`에서 line result allocation만 실패시킵니다.
-
-```text
-1차 blr_reader_next
-  -> BLR_ERROR
-  -> line == NULL
-  -> context 안의 "\n"은 아직 unread
-
-fault 해제 후 2차 호출
-  -> BLR_LINE
-  -> line == "\n"
-
-3차 호출
-  -> BLR_EOF
+```diff
++	fault_allocation_fail_at(3);
++	line = (char *)reader;
++	CHECK(blr_reader_next(reader, &line) == BLR_ERROR);
++	CHECK(line == NULL);
++	CHECK(fault_allocation_failed());
++	fault_allocation_fail_at(0);
++	CHECK(blr_reader_next(reader, &line) == BLR_LINE);
++	CHECK(line != NULL && strcmp(line, "\n") == 0);
++	test_free(line);
++	CHECK(blr_reader_next(reader, &line) == BLR_EOF);
 ```
 
-`find_line_end`가 newline을 발견하면서 `scan`을 전진시켰더라도 allocation failure branch가 `scan=begin`으로 되돌리지 않으면 재시도에서 delimiter를 놓칠 수 있습니다. 이 test는 그 rewind를 겨냥합니다.
+EOF tail은 baseline allocation count를 구한 뒤 context object 이후의 각 allocation을 하나씩 실패시키며 재시도합니다.
 
-### EOF tail allocation sweep
-
-`"tail"`처럼 newline 없이 끝나는 입력에서는 EOF를 먼저 관찰한 뒤 tail result allocation이 필요합니다. baseline allocation attempt 수를 구하고, context object 이후의 각 allocation 지점을 하나씩 실패시킵니다.
-
-실패가 result allocation에 해당하면 fault를 해제하고 같은 context를 계속 호출합니다. `"tail"`은 정확히 한 번만 반환되고 그 뒤 EOF가 나와야 합니다.
-
-```text
-read EOF -> reached_eof=1, unread="tail"
-result malloc failure -> BLR_ERROR, unread 유지
-retry -> BLR_LINE "tail", begin=end
-next -> BLR_EOF
+```diff
++	baseline = consume_context_tail(0, &failed);
++	index = 2;
++	while (index <= baseline)
++	{
++		consume_context_tail(index, &failed);
++		CHECK(failed);
++		index++;
++	}
 ```
 
-### 증명 범위
+`consume_context_tail`은 allocation fault를 해제한 뒤 같은 reader에서 `"tail"`을 정확히 한 번 받고 EOF까지 진행하는지 검사합니다.
 
-- newline-delimited line과 EOF tail의 result allocation failure가 non-consuming입니다.
-- retry 뒤 byte loss나 duplicate result가 없습니다.
-- context destroy 뒤 allocation ledger가 깨끗합니다.
+### 무엇을 증명하고 무엇을 증명하지 않는가
 
-이 커밋은 `EINTR`, `EAGAIN`, terminal read error sequence를 다루지 않습니다. read recovery는 다음 Thread에서 별도로 검증합니다.
+newline-delimited line과 EOF tail에서 result allocation failure가 `begin`을 전진시키지 않고, retry가 byte loss나 duplicate 없이 성공함을 증명합니다. 이 commit은 `EINTR`, `EAGAIN`, terminal read error sequence를 다루지 않으며, 그 state transition은 `04-posix-transient-read-and-recovery.md`의 범위입니다.
 
----
+### 관련 커밋
 
-## authoritative engine의 최종 흐름
-
-```text
-caller
-  ├─ explicit API: blr_reader_next(context, &line)
-  └─ compatibility: get_next_line(fd)
-         └─ hidden context find/create
-              └─ blr_reader_next(context, &line)  <-- 유일한 parser engine
-
-blr_reader_next
-  1. *line = NULL
-  2. argument/fd probe
-  3. buffered newline 검색
-  4. stable EOF + unread tail 처리
-  5. reserve → read → end publish → scan 반복
-  6. result allocation
-  7. allocation/copy 성공 뒤 begin commit
-  8. BLR_LINE / BLR_EOF / BLR_ERROR 반환
-
-get_next_line adapter
-  BLR_LINE -> line 반환
-  그 외   -> context 정책에 따라 hidden node 정리, NULL 반환
-```
-
-## 상태별 caller 책임
-
-| result | `*line` | context state | caller action |
-| --- | --- | --- | --- |
-| `BLR_LINE` | caller-owned allocation | 다음 unread 위치로 commit | line free 후 다음 호출 가능 |
-| `BLR_EOF` | `NULL` | stable EOF | destroy/reset 가능, 반복 호출도 EOF |
-| `BLR_ERROR` | `NULL` | context 자체는 valid; unread input은 engine에서 보존 가능 | retry, reset, destroy 중 선택 |
-
-`BLR_ERROR` 뒤 실제 retry가 유용한지는 오류 원인에 따라 다릅니다. closed fd처럼 지속되는 오류는 같은 호출을 반복해도 해결되지 않습니다. API는 context를 파괴하지 않고 선택권을 caller에게 남깁니다.
+`2e681112b304`가 도입하고 `9bd6ebf429e2`가 모든 caller에 통합한 “allocation 성공 뒤 cursor commit” 규칙이 이 test의 production target입니다.
 
 ## 이 Thread의 경계
 
-- hidden descriptor list의 도입 자체는 이전 Thread에서 다룹니다.
-- 이 문서는 blocking reader의 lifetime/result/engine 통합에 집중합니다.
-- `BLR_AGAIN`, `EINTR` retry, terminal read error 뒤 accepted bytes resume는 POSIX transient-read Thread에서 이어집니다.
-- context의 same-object concurrent access를 안전하게 만드는 synchronization은 제공하지 않습니다.
+이 문서는 caller-visible lifetime/result와 하나의 parser engine을 유지하는 책임에 집중합니다.
 
-> 검증 메모: exact SHA의 GitHub diff, source, header contract, test fixture를 확인했습니다. 이 환경에서는 test target을 실행하지 않았습니다.
+- hidden descriptor list를 도입하고 node별 cleanup을 격리하는 문제는 `02-singleton-to-descriptor-scoped-state.md`가 담당합니다.
+- `BLR_AGAIN`, `EINTR` retry, terminal read error 뒤 accepted bytes resume는 `04-posix-transient-read-and-recovery.md`가 담당합니다.
+- same-context concurrent access를 안전하게 만드는 synchronization은 이 API가 제공하지 않습니다.
+
+> 검토 범위: `903768a43bf4`, `2e681112b304`, `9bd6ebf429e2`, `249093ba477a`, `a24ad4e49cc4`의 diff와 해당 SHA의 header, source, test fixture를 확인했습니다. 저장소 checkout, build, context test, fault suite, sanitizer는 실행하지 않았습니다.

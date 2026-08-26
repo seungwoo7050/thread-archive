@@ -1,336 +1,316 @@
-# Thread: 출력 상태와 `write` 경계 — 단순 helper에서 진행 상태 머신까지
+# Thread: 출력 상태는 부분 진행과 실패를 하나의 writer에서 관리한다
+> Project: `ft_printf` · Branch: `c/ft_printf` · 문서 번호: 01
 
 ## 개요
 
-이 Thread는 `ft_printf`의 출력이 “한 번의 `write`가 요청 길이를 전부 처리하면 성공”이라는 초기 구현에서 출발해, 모든 변환이 공유하는 출력 상태와 POSIX 부분 진행 규칙으로 바뀌는 과정을 다룹니다.
+초기 출력 경로는 한 번의 `write`가 요청 길이를 모두 처리해야 성공으로 보았습니다. 이 Thread는 그 local helper가 descriptor·누적 count·sticky error를 공유하는 `t_printf` 상태로 바뀌고, positive short write와 `EINTR`을 진행 가능한 사건으로 처리하며, padding 최적화도 같은 writer 경계를 통과하도록 정리되는 과정을 다룹니다.
 
-최종적으로 출력 계층이 소유하는 것은 세 가지입니다.
+최종 writer는 이미 운영체제가 받아들인 바이트만 count하고, 아직 남은 suffix를 계속 처리합니다. 영구 오류나 0바이트 반환, public `int` count로 표현할 수 없는 결과가 발생하면 error state를 고정해 후속 출력을 거부합니다. Library는 이 과정에서 process-wide `SIGPIPE` disposition을 바꾸지 않습니다.
 
-- **출력 대상**: `fd`
-- **이미 운영체제가 받아들인 바이트 수**: `count`
-- **이후 출력을 중단해야 하는 오류 상태**: `error`
+| 사건 | 상태 변화 | 호출 결과 |
+| --- | --- | --- |
+| 양의 전체·부분 쓰기 | buffer와 remaining을 전진시키고 count 증가 | 요청이 끝날 때까지 계속 |
+| `EINTR` | buffer·remaining·count·error 유지 | 같은 요청 재시도 |
+| non-`EINTR` 음수 또는 0바이트 | `error = 1` | `-1` |
+| 개별 결과나 누적 count가 `INT_MAX`를 넘음 | 더 이상 count하지 않고 `error = 1` | `-1`; 이미 accepted된 바이트는 되돌릴 수 없음 |
 
-`ft_printf_write`는 부분 쓰기에서 남은 suffix를 계속 기록하고, `EINTR`에서는 같은 요청을 다시 시도합니다. 한 번이라도 영구 오류나 0바이트 진행, 반환 길이 범위 초과가 발생하면 `error`를 고정하고 이후 호출을 거부합니다. 이 정책은 숫자·문자열·padding을 포함한 모든 출력 경로가 공유합니다.
+| 순서 | SHA | 제목 | 중요도 | 태그 | 역할 |
+| ---: | --- | --- | :---: | --- | --- |
+| 1 | `1d6a5cee3041` | feat(core): 리터럴과 퍼센트 출력 구현 | B | `CORE, OUTPUT` | local write/count helper와 public entry의 최소 출력 경로 도입 |
+| 2 | `3f7b0ab926d0` | feat(output): 출력 컨텍스트와 쓰기 API 추가 | S | `ARCH, OUTPUT, CORE` | FD·count·sticky error를 한 상태로 묶고 positive short write를 이어 처리 |
+| 3 | `78e5d25d7df6` | refactor(core): 리터럴 출력을 컨텍스트 API로 이관 | B | `OUTPUT, REFACTOR` | public literal 경로를 공통 출력 상태에 연결 |
+| 4 | `c627bd1f85bb` | fix(output): 쓰기 결과를 집계하기 전에 범위 검증 | A | `OUTPUT, RISK, DEBUG` | `ssize_t` 결과를 `int`로 줄이기 전에 표현 가능 여부 검사 |
+| 5 | `8a3ec50cb689` | fix(output): 중단된 쓰기 재시도와 요청 크기 제한 | S | `OUTPUT, CORE, RISK` | `SSIZE_MAX` 요청 제한, `EINTR` 재시도, 결정적 writer seam 도입 |
+| 6 | `22e65c176b5d` | perf(output): 반복 채움을 묶어서 출력 | A | `OUTPUT, PERF` | 반복 padding을 64바이트 chunk로 묶되 공통 오류·count 경계 유지 |
+| 7 | `1223518652bd` | test(output): 쓰기 실패 시퀀스와 채움 전략 검증 | A | `OUTPUT, TEST, RISK` | 부분 진행·중단·0 진행·`EPIPE`·`SIGPIPE`·chunk 정책 검증 |
 
-| SHA | 제목 | 중요도 | 태그 | 역할 |
-| --- | --- | :---: | --- | --- |
-| `1d6a5cee3041` | feat(core): 리터럴과 퍼센트 출력 구현 | B | `CORE, OUTPUT` | local write/count helper와 public entry의 최소 경로 도입 |
-| `3f7b0ab926d0` | feat(output): 출력 컨텍스트와 쓰기 API 추가 | S | `ARCH, OUTPUT, CORE` | FD·count·sticky error를 한 상태로 묶고 부분 쓰기 진행을 보존 |
-| `78e5d25d7df6` | refactor(core): 리터럴 출력을 컨텍스트 API로 이관 | B | `OUTPUT, REFACTOR` | public literal 경로를 공통 출력 상태로 이동 |
-| `c627bd1f85bb` | fix(output): 쓰기 결과를 집계하기 전에 범위 검증 | A | `OUTPUT, RISK, DEBUG` | `ssize_t` 결과를 `int`로 줄이기 전에 표현 가능 여부 확인 |
-| `8a3ec50cb689` | fix(output): 중단된 쓰기 재시도와 요청 크기 제한 | S | `OUTPUT, CORE, RISK` | `SSIZE_MAX` 제한, `EINTR` 재시도, 결정적 test seam 도입 |
-| `22e65c176b5d` | perf(output): 반복 채움을 묶어서 출력 | A | `OUTPUT, PERF` | padding을 64바이트 단위로 묶되 공통 오류/count 경로 유지 |
-| `1223518652bd` | test(output): 쓰기 실패 시퀀스와 채움 전략 검증 | A | `OUTPUT, TEST, RISK` | 부분 진행·중단·0 진행·`EPIPE`·`SIGPIPE`·chunk 크기 검증 |
+## 공통 출력 상태가 public 경계를 형성한다
 
-## `1d6a5cee3041` — “한 번에 전부 기록”을 성공으로 본 시작점
+## 1d6a5cee3041 — feat(core): 리터럴과 퍼센트 출력 구현
+**중요도** `B` · **태그** `CORE, OUTPUT`
 
-**중요도** B · **태그** `CORE, OUTPUT`
+### 무엇을 만들었는가 (diff)
 
-첫 구현에서 `ft_printf`는 local `count`를 직접 소유하고 리터럴과 `%%`를 한 바이트씩 출력합니다. `ft_write_count`는 요청 길이가 `INT_MAX`를 넘기지 않는지 먼저 확인한 뒤 `write(1, ...)`를 한 번 호출합니다.
+Public entry와 archive build가 처음 생기고, 리터럴과 `%%`를 한 바이트씩 기록하는 local helper가 추가됩니다.
 
-```c
-static int	ft_write_count(const char *buffer, int length, int *count)
-{
-	int	written;
-
-	if (length <= 0)
-		return (0);
-	if (*count > INT_MAX - length)
-		return (-1);
-	written = (int)write(1, buffer, (size_t)length);
-	if (written < 0 || written != length)
-		return (-1);
-	*count += written;
-	return (0);
-}
+```diff
++static int	ft_write_count(const char *buffer, int length, int *count)
++{
++	int	written;
++
++	if (length <= 0)
++		return (0);
++	if (*count > INT_MAX - length)
++		return (-1);
++	written = (int)write(1, buffer, (size_t)length);
++	if (written < 0 || written != length)
++		return (-1);
++	*count += written;
++	return (0);
++}
 ```
 
-이 코드는 최소 기능에는 충분하지만, positive short write를 실패로 취급합니다. 예를 들어 8바이트를 요청하고 커널이 3바이트를 받아들였다면, 이미 발생한 외부 효과 3바이트를 진행 상태로 보존하지 않고 곧바로 `-1`로 끝냅니다. 남은 5바이트를 이어 쓰는 책임을 표현할 상태도 없습니다.
+### 왜 가볍게 다루는가
 
-또한 FD가 상수 `1`, count와 오류가 entry 함수의 local convention으로 묶여 있습니다. 이후 conversion마다 별도의 출력 helper가 생기면 같은 집계·오류 규칙을 중복 구현하기 쉬운 구조입니다.
+이 시점에는 descriptor가 상수 `1`, count는 `ft_printf` local이고, error는 helper의 negative return으로만 표현됩니다. 요청 8바이트 중 3바이트가 기록된 positive short write도 `written != length` 때문에 즉시 실패하며, 남은 5바이트를 이어 처리할 상태가 없습니다.
 
-## `3f7b0ab926d0` — 공통 출력 상태를 만드는 결정
+이 커밋은 최소 public 경로를 만들지만 이후 모든 conversion이 공유할 output ownership이나 retry 정책은 아직 형성하지 않습니다.
 
-**중요도** S · **태그** `ARCH, OUTPUT, CORE`
+### 관련 커밋
 
-이 커밋은 `t_printf`를 도입합니다.
+`3f7b0ab926d0`은 descriptor·count·error를 `t_printf`에 모으고 short write 뒤 suffix를 계속 기록합니다. `78e5d25d7df6`은 새 API를 실제 public entry에 연결합니다.
 
-```c
-typedef struct s_printf
-{
-	int	fd;
-	int	count;
-	int	error;
-}	t_printf;
+## 3f7b0ab926d0 — feat(output): 출력 컨텍스트와 쓰기 API 추가
+**중요도** `S` · **태그** `ARCH, OUTPUT, CORE`
+
+### 무엇을 만들었는가 (diff)
+
+```diff
++typedef struct s_printf
++{
++	int	fd;
++	int	count;
++	int	error;
++}	t_printf;
 ```
 
-세 필드는 독립적인 편의 값이 아닙니다. 한 출력 작업의 상태 전이를 함께 표현합니다.
+`ft_printf_write`는 남은 길이가 0이 될 때까지 positive progress를 상태에 반영합니다.
 
-```text
-초기화
-  fd = caller가 정한 descriptor
-  count = 0
-  error = 0
-
-positive write
-  count += written
-  buffer += written
-  remaining -= written
-
-영구 실패 또는 0 진행
-  error = 1
-  이후 모든 write 요청 거부
+```diff
++int	ft_printf_write(t_printf *ctx, const char *buffer, size_t length)
++{
++	ssize_t	written;
++
++	if (ctx->error)
++		return (-1);
++	while (length > 0)
++	{
++		written = write(ctx->fd, buffer, length);
++		if (written <= 0)
++		{
++			ctx->error = 1;
++			return (-1);
++		}
++		if (ctx->count > INT_MAX - (int)written)
++		{
++			ctx->error = 1;
++			return (-1);
++		}
++		ctx->count += (int)written;
++		buffer += written;
++		length -= (size_t)written;
++	}
++	return (0);
++}
 ```
 
-새 `ft_printf_write`는 요청 전체가 끝날 때까지 반복합니다.
+### 설계 결정은 무엇인가
 
-```c
-while (length > 0)
-{
-	written = write(ctx->fd, buffer, length);
-	if (written <= 0)
-	{
-		ctx->error = 1;
-		return (-1);
-	}
-	if (ctx->count > INT_MAX - (int)written)
-	{
-		ctx->error = 1;
-		return (-1);
-	}
-	ctx->count += (int)written;
-	buffer += written;
-	length -= (size_t)written;
-}
-```
+한 출력 작업의 mutable state를 output API가 독점합니다. Positive result가 나오면 count, buffer pointer, remaining length가 함께 전진하고, 실패하면 `error`를 sticky하게 만들어 이후 writer 호출을 차단합니다. Renderer는 `write` 결과를 각자 해석하지 않고 이 API의 성공 여부만 확인하면 됩니다.
 
-여기서 중요한 변화는 “부분 쓰기를 허용했다”보다 더 큽니다. 이미 기록된 prefix와 아직 남은 suffix, public 반환값에 반영될 count, 이후 출력을 차단할 오류를 하나의 함수가 동시에 갱신합니다. 각 renderer는 자체적으로 `write` 결과를 해석하지 않고 이 API의 성공/실패만 따르면 됩니다.
+### 아직 다루지 않는 것은 무엇인가
 
-다만 이 exact SHA에서는 새 모듈이 추가됐을 뿐, public `ft_printf`는 아직 이전 local helper를 사용합니다. architecture가 먼저 생기고 실제 entry가 다음 커밋에서 이관됩니다. 또한 다음 문제가 남아 있습니다.
+이 exact SHA에서는 모듈만 추가되고 public `ft_printf`는 기존 local helper를 계속 사용합니다. 또한 `ssize_t` 결과를 `(int)`로 줄인 뒤 범위를 검사하고, `EINTR`을 영구 실패처럼 취급하며, 한 요청이 `SSIZE_MAX`를 넘는 상황도 제한하지 않습니다.
 
-- `write`의 `ssize_t` 결과를 `(int)`로 먼저 줄여 count 식에 사용합니다.
-- 요청 `size_t`가 `SSIZE_MAX`보다 클 수 있습니다.
-- `EINTR`도 영구 실패처럼 처리합니다.
+### 관련 커밋
 
-## `78e5d25d7df6` — public 경로가 공통 상태를 실제로 사용
+`78e5d25d7df6`은 public path를 이 상태로 이관합니다. `c627bd1f85bb`과 `8a3ec50cb689`은 각각 count type boundary와 POSIX retry/request boundary를 보강합니다.
 
-**중요도** B · **태그** `OUTPUT, REFACTOR`
+## 78e5d25d7df6 — refactor(core): 리터럴 출력을 컨텍스트 API로 이관
+**중요도** `B` · **태그** `OUTPUT, REFACTOR`
 
-이 커밋은 local `ft_write_count`를 제거하고 stack의 `t_printf ctx`를 초기화합니다.
+### 무엇이 바뀌었는가 (diff)
 
 ```diff
 -	int		count;
 +	t_printf	ctx;
-...
+@@
 -	count = 0;
 +	ft_printf_init(&ctx, 1);
-...
--	if (ft_write_count(format, 1, &count) < 0)
--		count = -1;
-+	if (ft_printf_putchar(&ctx, *format) < 0)
-+		break ;
-...
+@@
+-			if (ft_write_count(format, 1, &count) < 0)
+-				count = -1;
++			if (ft_printf_putchar(&ctx, *format) < 0)
++				break ;
+@@
 -	return (count);
 +	if (ctx.error)
 +		return (-1);
 +	return (ctx.count);
 ```
 
-이후 리터럴과 escaped percent도 다른 conversion과 같은 count/error 규칙을 사용합니다. `ft_printf_putchar`는 별도 정책을 갖지 않고 `ft_printf_write(ctx, &c, 1)`로 위임하므로, 한 바이트 출력도 공통 상태 머신 밖으로 빠져나가지 않습니다.
+### 이 refactor가 확정하는 책임은 무엇인가
 
-## `c627bd1f85bb` — 넓은 반환형을 먼저 검증해야 하는 이유
+Local helper가 제거되고 literal과 escaped percent도 `ft_printf_putchar` → `ft_printf_write` 경로를 사용합니다. 한 바이트 출력도 별도 count/error 규칙을 갖지 않으므로 이후 conversion과 동일한 output state를 공유합니다.
 
-**중요도** A · **태그** `OUTPUT, RISK, DEBUG`
+### 관련 커밋
 
-직전 코드는 다음 식에서 `written`을 먼저 `int`로 변환했습니다.
+`3f7b0ab926d0`이 만든 abstraction이 이 커밋에서 public behavior를 실제로 소유하게 됩니다. 이후 `c627bd1f85bb`, `8a3ec50cb689`, `22e65c176b5d`의 수정과 최적화는 이 단일 경계에 적용됩니다.
 
-```c
-ctx->count > INT_MAX - (int)written
-```
+## 시스템 호출의 타입·진행·비용 경계가 강화된다
 
-`write`의 반환형은 `ssize_t`이고, 공통 API의 요청 길이는 `size_t`입니다. `written > INT_MAX`인 결과를 먼저 `int`로 줄이면 그 변환 결과에 의존한 뒤에 overflow를 검사하는 순서가 됩니다. 수정은 한 줄이지만 경계의 위치를 바로잡습니다.
+## c627bd1f85bb — fix(output): 쓰기 결과를 집계하기 전에 범위 검증
+**중요도** `A` · **태그** `OUTPUT, RISK, DEBUG`
+
+### 무엇이 바뀌었는가 (diff)
 
 ```diff
--	if (ctx->count > INT_MAX - (int)written)
-+	if (written > INT_MAX || ctx->count > INT_MAX - (int)written)
+-		if (ctx->count > INT_MAX - (int)written)
++		if (written > INT_MAX || ctx->count > INT_MAX - (int)written)
 ```
 
-이제 `(int)written`은 `written <= INT_MAX`가 확인된 오른쪽 항에서만 평가됩니다. public 반환형이 `int`라는 제약을 시스템 호출의 넓은 결과형에 적용한 다음 count에 더합니다.
+### 왜 이렇게 작은가
 
-주의할 점은 overflow가 검사되는 시점입니다. `write`가 바이트를 받아들인 뒤 검사하므로 이미 발생한 외부 출력을 되돌릴 수는 없습니다. 이 방어는 잘못된 count를 반환하지 않게 하지만 출력 원자성을 만들지는 않습니다. 전체 결과 길이를 첫 write 전에 검사하는 문제는 별도의 preflight Thread에서 해결됩니다.
+`write`는 `ssize_t`를 반환하지만 public count는 `int`입니다. 이전 식은 넓은 결과를 먼저 `(int)`로 줄인 뒤 overflow guard에 사용했습니다. 수정 후에는 `written > INT_MAX`가 먼저 평가되고, 그 조건이 거짓일 때만 오른쪽 항의 cast가 실행됩니다.
 
-## `8a3ec50cb689` — POSIX 진행 규칙을 완성하는 핵심 수정
+이 fix는 잘못된 count를 저장하지 않게 하지만, range check가 `write` 뒤에 있으므로 이미 운영체제가 받아들인 바이트를 되돌리지는 못합니다. 형식과 총 길이를 첫 출력 전에 판정하는 atomicity는 `05-whole-call-preflight.md`의 별도 문제입니다.
 
-**중요도** S · **태그** `OUTPUT, CORE, RISK`
+### 관련 커밋
 
-이 커밋은 세 가지를 한꺼번에 맞춥니다.
+`8a3ec50cb689`은 한 요청 자체를 `SSIZE_MAX` 이하로 제한하고 `EINTR`을 재시도해 같은 writer의 syscall contract를 완성합니다.
 
-### 1. 한 번의 요청을 `SSIZE_MAX` 이하로 제한
+## 8a3ec50cb689 — fix(output): 중단된 쓰기 재시도와 요청 크기 제한
+**중요도** `S` · **태그** `OUTPUT, CORE, RISK`
 
-```c
-request = length;
-if (request > (size_t)SSIZE_MAX)
-	request = (size_t)SSIZE_MAX;
-written = FT_PRINTF_SYSTEM_WRITE(ctx->fd, buffer, request);
+### 왜 바뀌었는가 (문제 → 원인 → 결정)
+
+- **문제**: 남은 `size_t` 길이가 `ssize_t`가 표현할 수 있는 요청보다 클 수 있고, 신호로 중단된 `write`도 영구 오류로 처리되었습니다.
+- **원인**: Writer가 positive/zero/negative만 구분했고 request size와 `errno` 의미를 상태 전이에 반영하지 않았습니다.
+- **결정**: 각 syscall 요청을 `SSIZE_MAX` 이하로 제한하고, `EINTR`은 상태를 바꾸지 않은 채 재시도하며, 0과 non-`EINTR` 음수만 sticky error로 전환했습니다.
+
+### 무엇이 바뀌었는가 (diff)
+
+```diff
++#include <errno.h>
+@@
++	request = length;
++	if (request > (size_t)SSIZE_MAX)
++		request = (size_t)SSIZE_MAX;
+-	written = write(ctx->fd, buffer, length);
++	written = FT_PRINTF_SYSTEM_WRITE(ctx->fd, buffer, request);
++	if (written < 0 && errno == EINTR)
++		continue ;
+ 	if (written <= 0)
+ 	{
+ 		ctx->error = 1;
+ 		return (-1);
+ 	}
 ```
 
-`write`가 반환할 수 있는 양의 값은 `ssize_t`로 표현되어야 합니다. 따라서 남은 전체 길이가 더 크더라도 한 호출의 요청은 `SSIZE_MAX`를 넘기지 않고, 성공한 만큼 pointer와 remaining length를 전진시켜 다음 호출로 이어갑니다.
+Test build에서만 system call target을 바꿀 seam도 추가됩니다.
 
-### 2. `EINTR`과 영구 실패를 구분
-
-```c
-if (written < 0 && errno == EINTR)
-	continue ;
-if (written <= 0)
-{
-	ctx->error = 1;
-	return (-1);
-}
+```diff
++#ifdef FT_PRINTF_TEST_WRITE
++ssize_t	ft_printf_test_write(int fd, const void *buffer, size_t length);
++# define FT_PRINTF_SYSTEM_WRITE ft_printf_test_write
++#else
++# define FT_PRINTF_SYSTEM_WRITE write
++#endif
 ```
 
-신호로 중단된 호출은 바이트 진행이 없고 동일 상태에서 다시 시도할 수 있으므로 `count`, `buffer`, `length`, `error`를 바꾸지 않습니다. 반면 non-`EINTR` 음수와 0은 더 진행할 수 없는 결과로 취급합니다. 0을 성공으로 인정하면 `length`가 줄지 않아 무한 루프가 되므로 반드시 실패 상태로 전환해야 합니다.
+Production branch는 raw `write`를 그대로 호출합니다. 결과를 해석하는 loop는 production과 test에서 동일하므로 seam은 별도 output policy를 만들지 않습니다.
 
-### 3. 운영체제 타이밍에 의존하지 않는 seam
+### 이 커밋이 보장하는 것 / 보장하지 않는 것
 
-```c
-#ifdef FT_PRINTF_TEST_WRITE
-ssize_t	ft_printf_test_write(int fd, const void *buffer, size_t length);
-# define FT_PRINTF_SYSTEM_WRITE ft_printf_test_write
-#else
-# define FT_PRINTF_SYSTEM_WRITE write
-#endif
+Positive short write는 suffix 처리로 이어지고, `EINTR`은 count·pointer·remaining·error를 바꾸지 않습니다. 0바이트 반환은 progress가 없으므로 무한 loop를 피하기 위해 실패로 처리합니다. Non-`EINTR` 오류 이후에는 후속 출력이 거부됩니다.
+
+Library는 여기서 `SIGPIPE` disposition을 설정하지 않습니다. Broken pipe에서 process가 살아남아 `write`가 `EPIPE`를 반환하는지는 caller가 선택한 signal policy에 달려 있습니다.
+
+### 관련 커밋
+
+`1223518652bd`은 이 seam을 사용해 partial, `EINTR`, zero, `EPIPE` 순서를 결정적으로 만들고, 실제 pipe를 사용해 caller의 `SIGPIPE` handler가 보존되는지도 별도로 확인합니다.
+
+## 22e65c176b5d — perf(output): 반복 채움을 묶어서 출력
+**중요도** `A` · **태그** `OUTPUT, PERF`
+
+### 무엇이 바뀌었는가 (diff)
+
+```diff
+ int	ft_printf_putnchar(t_printf *ctx, char c, int length)
+ {
++	char	buffer[64];
++	int		index;
++	int		chunk;
++
++	index = 0;
++	while (index < (int)sizeof(buffer))
++		buffer[index++] = c;
+ 	while (length > 0)
+ 	{
+-		if (ft_printf_putchar(ctx, c) < 0)
++		chunk = length;
++		if (chunk > (int)sizeof(buffer))
++			chunk = (int)sizeof(buffer);
++		if (ft_printf_write(ctx, buffer, (size_t)chunk) < 0)
+ 			return (-1);
+-		length--;
++		length -= chunk;
+ 	}
+ 	return (0);
+ }
 ```
 
-production에서는 그대로 `write`를 호출하고, test build에서만 scripted writer로 치환합니다. seam은 출력 정책을 소유하지 않습니다. 동일한 `ft_printf_write`가 실제 호출과 주입된 결과를 모두 해석하므로, 후속 테스트가 검증하는 대상은 별도의 mock 구현이 아니라 production 상태 전이입니다.
+### 최적화가 correctness 경계를 왜 바꾸지 않는가
 
-이 시점의 최종 loop는 다음과 같습니다.
+Padding 한 글자마다 writer를 호출하던 구현을 최대 64바이트 chunk로 묶습니다. Direct `write`를 새로 호출하지 않고 각 chunk를 계속 `ft_printf_write`에 전달하므로 partial progress, `EINTR`, count range, sticky error 규칙은 그대로 유지됩니다. 바뀌는 것은 syscall 호출 단위뿐입니다.
 
-```c
-int	ft_printf_write(t_printf *ctx, const char *buffer, size_t length)
-{
-	ssize_t	written;
-	size_t	request;
+### 관련 커밋
 
-	if (ctx->error)
-		return (-1);
-	while (length > 0)
-	{
-		request = length;
-		if (request > (size_t)SSIZE_MAX)
-			request = (size_t)SSIZE_MAX;
-		written = FT_PRINTF_SYSTEM_WRITE(ctx->fd, buffer, request);
-		if (written < 0 && errno == EINTR)
-			continue ;
-		if (written <= 0)
-		{
-			ctx->error = 1;
-			return (-1);
-		}
-		if (written > INT_MAX
-			|| ctx->count > INT_MAX - (int)written)
-		{
-			ctx->error = 1;
-			return (-1);
-		}
-		ctx->count += (int)written;
-		buffer += written;
-		length -= (size_t)written;
-	}
-	return (0);
-}
+`1223518652bd`은 `%1000d`에서 총 17회의 writer 호출과 최대 요청 64바이트를 요구해 이 chunk 전략이 문자별 호출로 되돌아가지 않도록 고정합니다.
+
+## 상태 전이와 process policy를 서로 다른 테스트로 관찰한다
+
+## 1223518652bd — test(output): 쓰기 실패 시퀀스와 채움 전략 검증
+**중요도** `A` · **태그** `OUTPUT, TEST, RISK`
+
+### 왜 다른 기법이 필요한가
+
+실제 커널에서 “첫 호출은 2바이트만 성공, 다음 호출은 전부 성공”이나 “`EINTR` → 부분 성공 → `EINTR`” 순서를 안정적으로 만들기 어렵습니다. 이 commit은 `FT_PRINTF_TEST_WRITE` binary에 scripted writer를 연결해 syscall 결과의 순서를 테스트 입력으로 바꿉니다.
+
+```diff
++typedef enum e_write_action
++{
++	WRITE_ALL,
++	WRITE_PART,
++	WRITE_EINTR,
++	WRITE_EPIPE,
++	WRITE_ZERO
++}	t_write_action;
 ```
 
-## `22e65c176b5d` — 성능 개선이 출력 규칙을 우회하지 않도록
+### 어떤 경로를 검증하는가
 
-**중요도** A · **태그** `OUTPUT, PERF`
-
-기존 `ft_printf_putnchar`는 padding 한 글자마다 `ft_printf_putchar`를 호출했습니다. width 1000이면 거의 천 번의 `write`가 발생할 수 있습니다. 수정은 64바이트 stack buffer를 같은 문자로 채우고 bounded chunk로 보냅니다.
-
-```c
-char	buffer[64];
-...
-while (length > 0)
-{
-	chunk = length;
-	if (chunk > (int)sizeof(buffer))
-		chunk = (int)sizeof(buffer);
-	if (ft_printf_write(ctx, buffer, (size_t)chunk) < 0)
-		return (-1);
-	length -= chunk;
-}
+```diff
++	reset_writer();
++	add_step(WRITE_PART, 2);
++	add_step(WRITE_ALL, 0);
++	expect_success("partial", 2, 7);
++
++	reset_writer();
++	add_step(WRITE_EINTR, 0);
++	add_step(WRITE_PART, 3);
++	add_step(WRITE_EINTR, 0);
++	add_step(WRITE_ALL, 0);
++	expect_success("interrupt", 4, 9);
 ```
 
-중요한 점은 direct `write`로 최적화하지 않았다는 것입니다. 각 chunk는 계속 `ft_printf_write`를 통과하므로 부분 쓰기, `EINTR`, count 범위, sticky error의 의미는 변하지 않습니다. 최적화 대상은 호출 횟수이고, correctness 경계는 그대로 유지됩니다.
+Failure cases는 첫 `EPIPE`, partial 3바이트 뒤 `EPIPE`, 0바이트 반환을 구분합니다. Partial failure에서는 public return이 `-1`이어도 이미 accepted된 `"par"`가 남아야 합니다. Padding case는 `%1000d`가 총 1000바이트를 만들고 writer 호출 17회, 최대 요청 64바이트를 사용한다고 검사합니다.
 
-## `1223518652bd` — 상태 전이와 process policy를 나누어 검증
+Mock `EPIPE`만으로는 signal disposition을 볼 수 없으므로 normal suite에는 실제 broken pipe test도 추가됩니다. Caller가 설치한 handler가 한 번 호출되고, `ft_printf`가 `-1`을 반환하며, 호출 뒤에도 같은 handler가 설치되어 있어야 합니다.
 
-**중요도** A · **태그** `OUTPUT, TEST, RISK`
+### 이 테스트가 증명하는 것 / 증명하지 않는 것
 
-이 커밋은 test build에 scripted writer를 연결합니다. writer는 호출 순서대로 다음 결과를 만들 수 있습니다.
+열거된 syscall sequence에서 production writer의 pointer·remaining·count·error 전이가 맞고, padding이 64바이트 bounded chunk를 사용하며, library가 caller의 `SIGPIPE` handler를 변경하지 않음을 증명합니다. Default `SIGPIPE` disposition에서 process가 생존한다는 보장은 하지 않으며, 모든 가능한 errno와 커널 타이밍을 포괄하지도 않습니다.
 
-```c
-typedef enum e_write_action
-{
-	WRITE_ALL,
-	WRITE_PART,
-	WRITE_EINTR,
-	WRITE_EPIPE,
-	WRITE_ZERO
-}	t_write_action;
-```
+### 관련 커밋
 
-### 결정적으로 재현하는 경로
+이 test는 `8a3ec50cb689`의 request/retry 정책과 `22e65c176b5d`의 chunk 전략을 함께 고정합니다. Public formatting bytes를 폭넓게 비교하는 harness 자체는 `06-runtime-artifact-verification.md`에서 별도 검증 계층으로 설명합니다.
 
-| 주입 순서 | production path에서 기대하는 상태 |
-| --- | --- |
-| `PART(2) → ALL` | 앞 2바이트를 count하고 pointer를 전진시킨 뒤 suffix 기록 |
-| `EINTR → PART(3) → EINTR → ALL` | 중단에서는 상태 유지, 실제 progress만 count |
-| `EPIPE` | `error = 1`, public `-1`, accepted byte 0 |
-| `PART(3) → EPIPE` | public `-1`이지만 이미 받아들인 앞 3바이트는 남음 |
-| `ZERO` | 무한 재시도하지 않고 오류로 종료 |
+## 이 Thread의 경계
 
-부분 실패 사례가 중요한 이유는 `ft_printf`가 transaction이 아니기 때문입니다. 커널이 이미 받은 `"par"`를 되돌릴 수 없으므로 테스트도 `-1`과 함께 정확히 3바이트가 남아 있음을 요구합니다.
+- 포맷 전체의 문법과 총 길이를 첫 출력 전에 거부하는 문제는 `05-whole-call-preflight.md`가 다룹니다.
+- 접두사·정밀도·너비의 바이트 순서는 `03-shared-numeric-layout.md`가 다룹니다.
+- `%s` 정밀도의 읽기 범위는 `04-string-precision-bounded-access.md`가 다룹니다.
+- Archive member·symbol·dependency와 sanitizer target은 `06-runtime-artifact-verification.md`의 검증 문제입니다.
 
-padding 테스트는 `%1000d`에 대해 총 1000바이트, 최대 요청 64바이트, 총 17회의 writer 호출을 요구합니다. 999개의 공백은 64바이트 단위 호출 16회로 처리되고 마지막 digit 출력이 한 번 추가됩니다. 이 assertion은 “빠르다”는 추상적 주장보다 최적화 전략이 실제 공통 writer 호출 단위에 반영됐는지를 고정합니다.
-
-### `SIGPIPE`에서 library가 소유하지 않는 것
-
-별도 실제 pipe 테스트는 읽기 끝을 닫고 stdout을 write end에 연결한 뒤, 호출자가 설치한 `SIGPIPE` handler 아래에서 `ft_printf`를 실행합니다. 기대 조건은 다음 두 가지입니다.
-
-1. handler가 한 번 호출되고 `write` 오류가 `-1`로 전파됩니다.
-2. 호출 후에도 같은 handler가 설치되어 있습니다.
-
-즉 library는 process-wide signal disposition을 임의로 `SIG_IGN`으로 바꾸거나 자체 handler로 덮어쓰지 않습니다. 기본 disposition을 유지한 프로세스라면 `SIGPIPE`로 종료될 수 있으며, 그것도 호출자가 선택한 process policy입니다. 이 Thread의 출력 계층은 살아남은 `write` 호출이 반환한 오류를 처리할 뿐 signal 정책을 소유하지 않습니다.
-
-## 최종 불변 조건
-
-| 사건 | buffer/remaining | `count` | `error` | public 결과 |
-| --- | --- | ---: | ---: | --- |
-| 양의 전체/부분 쓰기 | `written`만큼 전진 | 증가 | 유지 | 요청 완료까지 계속 |
-| `EINTR` | 변화 없음 | 변화 없음 | 유지 | 재시도 |
-| non-`EINTR` 음수 | 변화 없음 | 변화 없음 | 1 | -1 |
-| 0바이트 반환 | 변화 없음 | 변화 없음 | 1 | -1 |
-| 개별 결과 또는 누적 count가 `INT_MAX` 초과 | 이미 accepted된 바이트는 되돌릴 수 없음 | 더하지 않음 | 1 | -1 |
-| 오류 뒤 후속 출력 요청 | 처리하지 않음 | 변화 없음 | 1 | -1 |
-
-최종 호출 흐름은 다음과 같습니다.
-
-```text
-renderer / literal / padding
-  → ft_printf_putchar 또는 ft_printf_putnchar
-  → ft_printf_write
-      → request를 SSIZE_MAX 이하로 제한
-      → write 또는 test writer
-      → EINTR: 그대로 재시도
-      → positive: count/pointer/remaining 갱신
-      → zero/permanent error/range failure: sticky error
-  → public ft_printf가 error면 -1, 아니면 count 반환
-```
-
-## Thread 경계
-
-- 포맷 전체 길이를 첫 출력 전에 계산해 `INT_MAX` 초과를 원자적으로 거부하는 문제는 whole-call preflight Thread에서 다룹니다.
-- 숫자 접두사와 padding 순서는 numeric layout Thread의 문제이며, 이 Thread는 그 바이트들이 공통 writer를 통과한 뒤의 상태만 다룹니다.
-- archive의 symbol/dependency와 sanitizer 실행은 verification Thread의 문제입니다.
-
-검사 과정에서는 exact SHA의 diff와 source/test를 확인했으며, 이 환경에서 test binary를 직접 실행하지는 않았습니다.
+> 검토 범위: `1d6a5cee3041`, `3f7b0ab926d0`, `78e5d25d7df6`, `c627bd1f85bb`, `8a3ec50cb689`, `22e65c176b5d`, `1223518652bd`의 exact diff와 해당 시점의 `src/ft_printf.c`, `src/ft_output.c`, internal header, output fault test, `SIGPIPE` test를 확인했습니다. Build와 test binary는 이 환경에서 실행하지 않았습니다.

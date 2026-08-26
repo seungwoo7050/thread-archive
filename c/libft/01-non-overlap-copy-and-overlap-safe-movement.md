@@ -1,184 +1,175 @@
 # Thread: 비중첩 복사와 겹침 안전 이동의 책임 분리
 
-> Project: `libft`  
-> Branch: `c/libft`
+> Project: `libft` · Branch: `c/libft` · 문서 번호: 01
 
 ## 개요
 
-이 Thread는 `ft_memcpy`와 `ft_memmove`를 같은 함수의 약한 버전과 강한 버전으로 보지 않는다. 두 함수는 애초에 책임 범위가 다르다.
-
-- `ft_memcpy`는 **두 범위가 겹치지 않는다는 호출자 전제** 아래에서 앞에서부터 byte를 복사한다.
-- `ft_memmove`는 두 범위가 겹칠 수 있으므로, destination이 아직 읽지 않은 source byte를 먼저 덮지 않는 방향을 선택한다.
-- 테스트는 같은 위치, 두 겹침 방향, 비겹침 배치를 system `memmove`와 비교해 이 차이를 고정한다.
-
-핵심 불변 조건은 다음과 같다.
-
-> 길이가 `n`인 복사는 유효한 `[0, n)` 범위만 읽고 쓴다. `n == 0`이면 memory에 접근하지 않는다. 겹치는 이동에서는 이후에 읽어야 할 source byte가 앞선 write로 파괴되지 않아야 한다.
-
-## 커밋 구성
+이 Thread는 “모든 byte 복사를 항상 가장 강한 연산으로 처리한다”는 방향 대신, 호출 전제가 다른 두 API를 분리한다. 핵심은 구현 복잡도를 숨기는 것이 아니라 caller가 선택해야 할 계약을 분명히 하고, 더 강한 계약이 필요한 경우에만 추가 비용과 분기를 부담하게 만드는 것이다.
 
 | 순서 | SHA | 제목 | 중요도 | 태그 | 역할 |
 | ---: | --- | --- | :---: | --- | --- |
-| 1 | `4873fb11ac60` | `feat(memory): 겹치지 않는 메모리 복사 구현` | B | `BYTE_RANGE`, `CORE` | 비중첩 범위를 순방향으로 복사하는 기본 primitive와 호출자 전제를 도입한다. |
-| 2 | `f2c4c042b339` | `feat(memory): 겹치는 메모리의 안전한 이동 구현` | A | `BYTE_RANGE`, `CORE`, `RISK` | range 배치에 따라 복사 방향을 선택해 아직 읽지 않은 source를 보존한다. |
-| 3 | `69853cd4d3ce` | `test(memory): 겹치는 메모리 이동 검증` | B | `BYTE_RANGE`, `TEST` | 겹침 방향과 비겹침 배치를 system `memmove`와 전체 buffer 단위로 비교한다. |
+| 1 | `4873fb11ac60` | `feat(memory): 겹치지 않는 메모리 복사 구현` | B | `BYTE_RANGE, CORE` | 비중첩 범위를 순방향으로 복사하는 기본 primitive와 호출자 전제를 도입한다. |
+| 2 | `f2c4c042b339` | `feat(memory): 겹치는 메모리의 안전한 이동 구현` | A | `BYTE_RANGE, CORE, RISK` | 겹침 배치에 따라 traversal 방향을 선택해 아직 읽지 않은 source byte를 보존한다. |
+| 3 | `69853cd4d3ce` | `test(memory): 겹치는 메모리 이동 검증` | B | `BYTE_RANGE, TEST` | 방향별 겹침과 비겹침을 system `memmove` 및 전체 buffer 비교로 검증한다. |
 
-## `4873fb11ac60` — 비중첩 복사의 최소 책임
+## 4873fb11ac60 — feat(memory): 겹치지 않는 메모리 복사 구현
+**중요도** `B` · **태그** `BYTE_RANGE, CORE`
 
-이 커밋은 `Makefile`, `libft.h`, 새 구현 파일을 함께 변경해 `ft_memcpy`를 공개 API와 archive build에 추가한다.
+### 무엇을 만들었는가 (diff)
 
-```c
-void	*ft_memcpy(void *destination, const void *source, size_t length)
-{
-	unsigned char		*destination_byte;
-	const unsigned char	*source_byte;
+이 커밋은 `Makefile`, `libft.h`, `src/memory/ft_memory_copy.c`를 함께 변경해 public declaration과 순방향 byte-copy loop를 archive build에 추가한다.
 
-	destination_byte = destination;
-	source_byte = source;
-	while (length > 0)
-	{
-		*destination_byte = *source_byte;
-		destination_byte++;
-		source_byte++;
-		length--;
-	}
-	return (destination);
-}
+```diff
+ SRC := \
+ 	src/char/ft_char.c \
+-	src/memory/ft_memory_fill.c
++	src/memory/ft_memory_fill.c \
++	src/memory/ft_memory_copy.c
+
++void	*ft_memcpy(void *destination, const void *source, size_t length);
+
++void	*ft_memcpy(void *destination, const void *source, size_t length)
++{
++	unsigned char		*destination_byte;
++	const unsigned char	*source_byte;
++
++	destination_byte = destination;
++	source_byte = source;
++	while (length > 0)
++	{
++		*destination_byte = *source_byte;
++		destination_byte++;
++		source_byte++;
++		length--;
++	}
++	return (destination);
++}
 ```
 
-구현이 보장하는 범위는 분명하다.
+`unsigned char` pointer를 사용하므로 object representation을 byte 단위로 옮긴다. loop 조건이 `length > 0`이어서 길이가 0이면 pointer를 역참조하지 않고, local pointer가 전진해도 반환값은 최초 `destination`이다.
 
-- source는 `const unsigned char *`, destination은 `unsigned char *`로 다뤄 byte representation을 그대로 옮긴다.
-- loop는 `length > 0`일 때만 pointer를 역참조한다. 따라서 길이가 0이면 source와 destination을 읽거나 쓰지 않는다.
-- local pointer는 전진하지만 반환값은 원래 매개변수 `destination`이다.
-- overlap 판정, 임시 buffer, 역방향 복사는 없다.
+### 왜 가볍게 다루는가
 
-마지막 항목은 누락이 아니라 이 함수의 precondition이다. source와 destination이 겹치면 앞선 write가 뒤에서 읽어야 할 source를 바꿀 수 있지만, 그 경우의 보존 책임은 `ft_memcpy`에 없다. 모든 복사에 overlap 처리를 넣는 대신, 필요한 호출만 더 강한 `ft_memmove`를 선택하게 한다.
+이 시점에는 traversal이 하나뿐이고, source와 destination이 겹치지 않는다는 전제를 caller가 지킨다. overlap 판정, 임시 buffer, 역방향 복사가 없는 것은 누락된 복구 로직이 아니라 이 primitive가 맡지 않는 책임이다. 겹침을 허용하는 순간 생기는 unread-source 파괴 위험은 다음 커밋에서 처음 다뤄진다.
 
-## `f2c4c042b339` — 겹침 방향을 보고 traversal을 바꾸다
+### 어떤 커밋과 왜 연결되는가
 
-### 순방향 복사가 깨지는 배치
+`f2c4c042b339`은 이 순방향 primitive를 안전한 경우에 재사용하면서, destination이 source range 안에서 뒤쪽에 놓일 때만 더 강한 역방향 복사를 추가한다. `69853cd4d3ce`는 그 분기가 실제 byte 결과와 범위 보존으로 이어지는지 검증한다.
 
-초기 buffer가 다음과 같다고 하자.
+## f2c4c042b339 — feat(memory): 겹치는 메모리의 안전한 이동 구현
+**중요도** `A` · **태그** `BYTE_RANGE, CORE, RISK`
+
+### 무엇을 만들었는가 (diff)
+
+`Makefile`, `libft.h`, `src/memory/ft_memory_move.c`에 새 API와 구현이 추가된다.
+
+```diff
++void	*ft_memmove(void *destination, const void *source, size_t length);
+
++void	*ft_memmove(void *destination, const void *source, size_t length)
++{
++	unsigned char		*destination_byte;
++	const unsigned char	*source_byte;
++	size_t			offset;
++
++	destination_byte = destination;
++	source_byte = source;
++	if (destination_byte == source_byte || length == 0)
++		return (destination);
++	offset = 1;
++	while (offset < length)
++	{
++		if (destination_byte == source_byte + offset)
++		{
++			while (length > 0)
++			{
++				length--;
++				destination_byte[length] = source_byte[length];
++			}
++			return (destination);
++		}
++		offset++;
++	}
++	ft_memcpy(destination_byte, source_byte, length);
++	return (destination);
++}
+```
+
+### 왜 traversal 방향을 바꿔야 하는가
+
+초기 buffer가 `A B C D E`이고 `source = &buffer[0]`, `destination = &buffer[1]`, `length = 4`라면 순방향 첫 write가 `buffer[1] = buffer[0]`을 수행한다. 다음 iteration에서 읽어야 할 원본 `B`가 이미 `A`로 바뀌므로 결과가 연쇄적으로 오염된다.
+
+구현은 destination이 `source + 1`부터 `source + length - 1` 중 하나와 같은지 equality로 찾는다. 이 범위 안에서 시작하면 높은 offset부터 낮은 offset으로 복사한다. 반대로 destination이 source보다 앞선 겹침이거나 두 range가 떨어져 있으면, 앞선 write가 이후 source read를 파괴하지 않으므로 `ft_memcpy`의 순방향 loop를 재사용한다. `destination == source`와 `length == 0`은 탐색 전에 반환한다.
 
 ```text
-index:       0 1 2 3 4
-before:      A B C D E
-source:      0 ───── 3
-destination:   1 ───── 4
+source:       [0][1][2][3]
+destination:    [0][1][2][3]
+                 ↑ source + 1에서 시작
+
+안전한 순서: 3 → 2 → 1 → 0
 ```
 
-`source = &buffer[0]`, `destination = &buffer[1]`, `length = 4`를 앞에서부터 복사하면 첫 write가 `buffer[1] = buffer[0]`을 수행한다. 아직 다음 iteration에서 읽어야 할 원본 `B`가 이미 `A`로 바뀐다. 이후에는 변경된 값이 연쇄적으로 전달된다.
+### 무엇을 보장하고 무엇은 남기는가
 
-따라서 destination이 source range 안쪽의 더 높은 위치에서 시작할 때는 끝 byte부터 복사해야 한다.
+두 range가 각각 `length` byte만큼 유효하다는 전제 아래, 겹침 방향과 무관하게 호출 전 source byte가 destination에 보존된다. 길이가 0이면 memory access가 없다. 반면 nonzero length의 invalid pointer, 실제 object 범위 부족, 범위 유효성 검사는 이 API가 방어하지 않는다. 이 커밋 자체에는 새 테스트가 없어, 선택된 분기와 destination 바깥 byte 보존은 다음 커밋의 검증 대상이다.
 
-### 실제 결정 코드
+### 어떤 커밋과 왜 연결되는가
 
-```c
-void	*ft_memmove(void *destination, const void *source, size_t length)
-{
-	unsigned char		*destination_byte;
-	const unsigned char	*source_byte;
-	size_t				offset;
+`4873fb11ac60`의 순방향 복사는 안전한 배치의 하위 primitive로 남는다. `69853cd4d3ce`는 same-position, 양쪽 겹침 방향, 비겹침을 하나의 differential fixture로 통과시켜 이 방향 선택을 회귀 조건으로 만든다.
 
-	destination_byte = destination;
-	source_byte = source;
-	if (destination_byte == source_byte || length == 0)
-		return (destination);
-	offset = 1;
-	while (offset < length)
-	{
-		if (destination_byte == source_byte + offset)
-		{
-			while (length > 0)
-			{
-				length--;
-				destination_byte[length] = source_byte[length];
-			}
-			return (destination);
-		}
-		offset++;
-	}
-	ft_memcpy(destination_byte, source_byte, length);
-	return (destination);
-}
+## 69853cd4d3ce — test(memory): 겹치는 메모리 이동 검증
+**중요도** `B` · **태그** `BYTE_RANGE, TEST`
+
+### 무엇을 검증하는가
+
+`tests/test_memory_move.c`는 동일한 128-byte pattern을 가진 `actual`과 `expected`를 만들고 project 함수와 system `memmove`를 각각 적용한다. 반환 pointer뿐 아니라 buffer 전체를 비교하므로 destination 결과와 destination 밖의 예상치 못한 write를 함께 관찰한다.
+
+```diff
++static void	check_move(size_t destination_offset, size_t source_offset,
++		size_t length)
++{
++	unsigned char	actual[MOVE_BUFFER_SIZE];
++	unsigned char	expected[MOVE_BUFFER_SIZE];
++
++	seed_move_buffer(actual);
++	memcpy(expected, actual, sizeof(actual));
++	CHECK(ft_memmove(actual + destination_offset, actual + source_offset, length)
++		== actual + destination_offset);
++	memmove(expected + destination_offset, expected + source_offset, length);
++	CHECK(memcmp(actual, expected, sizeof(actual)) == 0);
++}
++
++void	test_memory_move(void)
++{
++	static const size_t	lengths[] = {0, 1, 2, 3, 7, 8, 15, 16, 31, 63};
++	size_t			index;
++
++	CHECK(ft_memmove(NULL, NULL, 0) == NULL);
++	index = 0;
++	while (index < sizeof(lengths) / sizeof(lengths[0]))
++	{
++		check_move(0, 0, lengths[index]);
++		check_move(0, 1, lengths[index]);
++		check_move(1, 0, lengths[index]);
++		check_move(7, 19, lengths[index]);
++		check_move(23, 5, lengths[index]);
++		index++;
++	}
++}
 ```
 
-판정은 단순한 pointer 대소 비교가 아니라, destination이 `source + 1`부터 `source + length - 1` 사이의 어느 위치와 같은지를 찾는 방식이다.
+`(0, 0)`은 same-position, `(0, 1)`은 destination-before-source, `(1, 0)`은 destination-inside-source 배치를 만든다. `(7, 19)`와 `(23, 5)`는 길이에 따라 비겹침과 겹침 사이를 오가므로 한 fixture에서 여러 branch를 통과한다.
 
-- `destination == source` 또는 `length == 0`: 즉시 반환한다. overlap 탐색이나 memory access가 없다.
-- destination이 source range 내부의 더 높은 offset에서 시작한다: `length - 1`부터 0까지 역방향으로 복사한다.
-- destination이 source보다 앞에 있는 겹침이거나 두 range가 떨어져 있다: 순방향 복사가 안전하므로 `ft_memcpy`를 재사용한다.
-- destination이 정확히 `source + length`에서 시작하면 두 range는 맞닿아 있을 뿐 겹치지 않으므로 역시 `ft_memcpy` 경로로 간다.
+### 무엇을 증명하고 무엇은 증명하지 않는가
 
-역방향 branch에서는 가장 높은 source byte를 먼저 읽고 같은 offset의 destination에 쓴다. 이후에 읽을 낮은 source offset은 아직 건드리지 않으므로 원본 정보가 유지된다.
+선택된 offset·length 조합에서 반환 pointer와 전체 128-byte 결과가 system `memmove`와 같고, `ft_memmove(NULL, NULL, 0)`이 no-access 경로로 반환됨을 증명한다. 모든 가능한 배치, nonzero length의 잘못된 pointer, sanitizer가 탐지하는 모든 memory error까지 증명하지는 않는다.
 
-### 이 커밋이 보장하지 않는 것
+### 어떤 커밋과 왜 연결되는가
 
-`ft_memmove`도 source와 destination의 각 `length` byte 범위가 유효하다는 전제까지 대신 검증하지 않는다. nonzero length에 잘못된 pointer를 넘기는 경우나, 유효 범위 자체가 부족한 경우는 이 API의 방어 범위가 아니다.
+이 테스트는 `f2c4c042b339`의 방향 판정과 `4873fb11ac60` 재사용 경로를 모두 통과한다. 특히 whole-buffer comparison은 구현이 destination 밖을 건드리는 회귀까지 함께 막는다.
 
-또한 이 커밋 자체에는 새 테스트가 없다. 두 겹침 방향과 destination 바깥 byte가 실제로 보존되는지는 다음 커밋에서 고정된다.
+## 이 Thread의 경계
 
-## `69853cd4d3ce` — 방향별 결과와 범위 밖 write를 함께 검증
+이 Thread는 byte 복사에서 비겹침 전제와 겹침 보존 책임만 다룬다. allocation과 rollback은 [`02-single-allocation-to-rollback-safe-ownership`](02-single-allocation-to-rollback-safe-ownership.md), system call 진행 보장은 [`03-fd-output-partial-system-calls`](03-fd-output-partial-system-calls.md), sanitizer와 archive 검증은 [`04-static-archive-release-verification`](04-static-archive-release-verification.md)의 관심사다. memory fill·scan과 문자열 terminator 규칙은 이 문서 세트 밖의 별도 개발 단위다.
 
-테스트는 128-byte `actual`과 `expected`를 같은 pattern으로 채운다. 한쪽에는 project `ft_memmove`, 다른 쪽에는 system `memmove`를 적용한 뒤 **destination만이 아니라 buffer 전체**를 비교한다.
-
-```c
-static void	check_move(size_t destination_offset, size_t source_offset,
-		size_t length)
-{
-	unsigned char	actual[MOVE_BUFFER_SIZE];
-	unsigned char	expected[MOVE_BUFFER_SIZE];
-
-	seed_move_buffer(actual);
-	memcpy(expected, actual, sizeof(actual));
-	CHECK(ft_memmove(actual + destination_offset, actual + source_offset, length)
-		== actual + destination_offset);
-	memmove(expected + destination_offset, expected + source_offset, length);
-	CHECK(memcmp(actual, expected, sizeof(actual)) == 0);
-}
-```
-
-이 비교 방식은 두 가지를 동시에 확인한다.
-
-1. destination의 결과 byte가 system `memmove`와 같다.
-2. 지정한 destination range 밖의 byte가 예상하지 않게 바뀌지 않는다.
-
-실제 case는 다음 offset 조합을 여러 길이와 교차한다.
-
-| 호출 | 대표 의미 |
-| --- | --- |
-| `check_move(0, 0, length)` | 같은 위치 |
-| `check_move(0, 1, length)` | destination이 source보다 앞선 겹침 또는 비겹침 |
-| `check_move(1, 0, length)` | destination이 source 안쪽의 뒤에서 시작하는 겹침 |
-| `check_move(7, 19, length)` | 길이에 따라 비겹침에서 destination-before-source 겹침으로 전환 |
-| `check_move(23, 5, length)` | 길이에 따라 비겹침에서 역방향 복사가 필요한 겹침으로 전환 |
-
-길이 집합은 `0, 1, 2, 3, 7, 8, 15, 16, 31, 63`이다. 별도로 다음 assertion이 zero-length no-access 경계를 직접 겨냥한다.
-
-```c
-CHECK(ft_memmove(NULL, NULL, 0) == NULL);
-```
-
-이 테스트는 선택된 offset·length 조합에서 반환 pointer와 전체 buffer 결과가 system 함수와 같음을 증명한다. 모든 가능한 배치나 잘못된 pointer를 증명하지는 않으며, sanitizer instrumentation도 이 커밋에는 포함되지 않는다.
-
-## Thread가 확정한 책임 경계
-
-```text
-호출자가 non-overlap을 보장
-    └─ ft_memcpy: 낮은 offset → 높은 offset
-
-overlap 가능
-    └─ ft_memmove
-         ├─ same pointer 또는 length 0 → 즉시 반환
-         ├─ destination ∈ source[1, length) → 높은 offset → 낮은 offset
-         └─ 그 밖의 배치 → ft_memcpy 재사용
-```
-
-이 Thread의 결론은 “모든 복사를 더 복잡하게 만든다”가 아니다. 약한 연산의 precondition을 숨기지 않고, 겹침 보존이 필요한 곳에서만 방향 선택 비용을 갖는 더 강한 연산을 사용한다.
-
-## Thread의 범위
-
-이 문서는 byte 복사와 겹침 보존만 다룬다. memory fill, scan, 문자열 함수의 terminator 규칙, invalid pointer 방어, sanitizer build는 별개의 개발 단위다.
-
-> 검토 범위: 표시된 exact SHA의 commit diff와 해당 SHA source를 확인했다. binary와 test suite는 실행하지 않았다.
+> 검토 범위: `4873fb11ac60`, `f2c4c042b339`, `69853cd4d3ce`의 commit diff와 해당 SHA의 `Makefile`, `libft.h`, memory 구현 및 `tests/test_memory_move.c`를 확인했다. binary, ordinary test suite, sanitizer는 실행하지 않았다.
